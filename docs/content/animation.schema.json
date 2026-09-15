@@ -1,0 +1,75 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://aura-battle.dev/schema/animation.json",
+  "title": "Aura Battle animation",
+  "type": "object",
+  "required": ["id", "version", "name", "move", "loop", "hands", "frames"],
+  "additionalProperties": false,
+  "$defs": {
+    "joint": { "type": "array", "items": { "type": "number" }, "minItems": 2, "maxItems": 2 },
+    "jointName": { "enum": ["head", "neck", "hip", "le", "lh", "re", "rh", "lk", "lf", "rk", "rf"] },
+    "hand": {
+      "type": "array", "minItems": 2, "maxItems": 2,
+      "prefixItems": [
+        { "enum": ["relax", "fist", "open", "point", "L", "peace"] },
+        { "enum": ["in", "up", "down", "fwd", "back"] }
+      ]
+    },
+    "frame": {
+      "type": "object",
+      "required": ["joints"],
+      "additionalProperties": false,
+      "properties": {
+        "joints": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["head", "neck", "hip", "le", "lh", "re", "rh", "lk", "lf", "rk", "rf"],
+          "properties": {
+            "head": { "$ref": "#/$defs/joint" }, "neck": { "$ref": "#/$defs/joint" }, "hip": { "$ref": "#/$defs/joint" },
+            "le": { "$ref": "#/$defs/joint" }, "lh": { "$ref": "#/$defs/joint" }, "re": { "$ref": "#/$defs/joint" }, "rh": { "$ref": "#/$defs/joint" },
+            "lk": { "$ref": "#/$defs/joint" }, "lf": { "$ref": "#/$defs/joint" }, "rk": { "$ref": "#/$defs/joint" }, "rf": { "$ref": "#/$defs/joint" }
+          }
+        },
+        "z": { "type": "object", "propertyNames": { "$ref": "#/$defs/jointName" }, "additionalProperties": { "type": "number" } },
+        "lift": { "type": "number", "maximum": 0 },
+        "rot": { "type": "number" },
+        "hy": { "type": "number", "minimum": -1.6, "maximum": 1.6 },
+        "pitch": { "type": "number" }
+      }
+    }
+  },
+  "properties": {
+    "id": { "type": "string", "pattern": "^anim\\.(calme|hype|provoc|system)\\.(t[0-4]|none)\\.[a-z0-9-]+$" },
+    "version": { "type": "integer", "minimum": 1 },
+    "name": { "type": "object", "required": ["fr"], "additionalProperties": { "type": "string", "minLength": 1 } },
+    "move": {
+      "type": "object", "required": ["style", "tier"], "additionalProperties": false,
+      "properties": {
+        "style": { "enum": ["calme", "hype", "provoc", "system"] },
+        "tier": { "type": ["integer", "null"], "minimum": 0, "maximum": 4 }
+      }
+    },
+    "rarity": { "enum": ["default", "common", "rare", "epic", "legendary"] },
+    "loop": {
+      "type": "object", "required": ["duration"], "additionalProperties": false,
+      "properties": {
+        "duration": { "type": "number", "exclusiveMinimum": 0.2, "maximum": 12 },
+        "weights": { "type": ["array", "null"], "items": { "type": "number", "exclusiveMinimum": 0 } },
+        "ease": { "type": "boolean" }
+      }
+    },
+    "flags": {
+      "type": "object", "additionalProperties": false,
+      "properties": {
+        "armsFront": { "type": "boolean" },
+        "armsBack": { "type": "boolean" },
+        "noFace": { "type": "boolean" },
+        "float": { "type": "number", "maximum": 0 },
+        "expression": { "enum": ["neutral", "smug", "sad", "angry", "hurt"] }
+      }
+    },
+    "emit": { "type": "array", "items": { "type": "string", "maxLength": 3 }, "maxItems": 4 },
+    "hands": { "type": "array", "minItems": 2, "maxItems": 2, "items": { "$ref": "#/$defs/hand" } },
+    "frames": { "type": "array", "minItems": 1, "maxItems": 16, "items": { "$ref": "#/$defs/frame" } }
+  }
+}
