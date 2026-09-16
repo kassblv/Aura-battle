@@ -8,13 +8,13 @@ Phase 1 (M0 → M6) : **PvP jouable sur mobile, en ligne, classé**. C'est la pr
 
 ## M0 — Monorepo et outillage
 
-- [ ] pnpm workspaces + Turborepo ; scripts racine `dev`, `build`, `test`, `lint`, `typecheck`, `sim`
-- [ ] TypeScript strict partagé (`tsconfig.base.json`), ESM, alias de chemins
-- [ ] ESLint (typescript-eslint) + Prettier, config partagée
-- [ ] Vitest dans chaque package et app, avec un test d'exemple vert
-- [ ] `docker-compose.yml` : Postgres 16, Redis 7 ; `.env.example`
-- [ ] CI GitHub Actions : install avec cache, lint, typecheck, test
-- [ ] Packages `@aura/rules`, `@aura/protocol`, `@aura/content` et apps `server`, `mobile` créés et compilables
+- [x] pnpm workspaces + Turborepo ; scripts racine `dev`, `build`, `test`, `lint`, `typecheck`, `sim`
+- [x] TypeScript strict partagé (`tsconfig.base.json`), ESM, alias de chemins
+- [x] ESLint (typescript-eslint) + Prettier, config partagée
+- [x] Vitest dans chaque package et app, avec un test d'exemple vert
+- [x] `docker-compose.yml` : Postgres 16, Redis 7 ; `.env.example`
+- [x] CI GitHub Actions : install avec cache, lint, typecheck, test
+- [x] Packages `@aura/rules`, `@aura/protocol`, `@aura/content` et apps `server`, `mobile` créés et compilables
 
 ## M1 — `@aura/rules` : moteur de règles pur *(critique)*
 

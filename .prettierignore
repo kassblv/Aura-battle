@@ -1,0 +1,10 @@
+node_modules
+dist
+coverage
+.turbo
+pnpm-lock.yaml
+prototype
+
+# La doc et le prototype gardent leur mise en forme d origine.
+*.md
+docs
