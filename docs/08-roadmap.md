@@ -20,8 +20,8 @@ Phase 1 (M0 → M6) : **PvP jouable sur mobile, en ligne, classé**. C'est la pr
 
 Référence : `docs/01-game-design.md`, `docs/02-architecture.md` (forme attendue).
 
-- [ ] `balance.ts` avec toutes les valeurs du game design, typées et gelées
-- [ ] RNG seedé déterministe + tests de reproductibilité
+- [x] `balance.ts` avec toutes les valeurs du game design, typées et gelées
+- [x] RNG seedé déterministe + tests de reproductibilité
 - [ ] Génération de la séquence d'orbes et des paramètres de jauge à partir d'une graine
 - [ ] Évaluation de la recharge : validation des taps, combos, orbes dorées, plafond 12/s, gains (boost, Ultime, énergie)
 - [ ] Évaluation du timing : position du curseur, qualité, écart
