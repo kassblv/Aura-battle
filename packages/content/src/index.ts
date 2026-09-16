@@ -1,14 +1,17 @@
 /**
  * @aura/content — animations et cosmetiques, sous forme de donnees.
  *
- * Regle d'or : ajouter une danse ne doit demander aucun changement de code.
- * Un fichier JSON valide contre `docs/content/animation.schema.json` suffit.
- *
- * Contenu reel au jalon M2 (docs/07-content-pipeline.md).
+ * Regle d'or n°5 : le contenu est de la donnee. Ajouter une danse ne demande
+ * aucun changement de code — un fichier JSON valide et une entree au catalogue
+ * suffisent.
  */
 
 /**
- * Version du catalogue de contenu. Servie au client avec les animations pour
- * qu'il sache invalider son cache.
+ * Version du catalogue. Servie au client avec les animations pour qu'il sache
+ * invalider son cache (`contentVersion` dans `match:found`).
  */
-export const CONTENT_VERSION = '0.0.0';
+export const CONTENT_VERSION = '1.0.0';
+
+export * from './catalogue.js';
+export * from './cosmetics.js';
+export * from './validate.js';

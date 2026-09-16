@@ -38,10 +38,10 @@ Références : `docs/03-pvp-protocol.md`, `docs/07-content-pipeline.md`.
 - [x] Schémas zod de tous les messages client→serveur et serveur→client, types inférés exportés
 - [x] `PROTOCOL_VERSION` et codes d'erreur
 - [x] Tests : chaque exemple du doc de protocole est accepté ; charges invalides rejetées
-- [ ] Schéma JSON des animations dans `packages/content`, validateur CLI (`validate`)
-- [ ] Port des 21 poses et des 5 animations système (charge, atterrissage, titubement, victoire, défaite) du prototype en JSON (skill `/port-prototype animations`), toutes valides
-- [ ] Index : animation par défaut par mouvement, liste des skins par mouvement
-- [ ] Catalogue initial des effets d'aura, couleurs, tenues, coiffures
+- [x] Schéma JSON des animations dans `packages/content`, validateur CLI (`validate`)
+- [x] Port des 21 poses et des 5 animations système (charge, atterrissage, titubement, victoire, défaite) du prototype en JSON (skill `/port-prototype animations`), toutes valides
+- [x] Index : animation par défaut par mouvement, liste des skins par mouvement
+- [x] Catalogue initial des effets d'aura, couleurs, tenues, coiffures
 
 ## M3 — Serveur de match en ligne
 

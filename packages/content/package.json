@@ -17,6 +17,10 @@
     "typecheck": "tsc -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
-    "validate": "tsx cli/validate.ts"
+    "validate": "tsx cli/validate.ts",
+    "port": "tsx tools/port.ts"
+  },
+  "dependencies": {
+    "ajv": "^8.20.0"
   }
 }

@@ -1,0 +1,59 @@
+{
+  "id": "anim.calme.t3.meditate",
+  "version": 1,
+  "name": {
+    "fr": "Méditation"
+  },
+  "move": {
+    "style": "calme",
+    "tier": 3
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 6,
+    "weights": null,
+    "ease": false
+  },
+  "flags": {
+    "expression": "neutral",
+    "float": -14
+  },
+  "hands": [
+    ["L", "up"],
+    ["L", "up"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [0, -100],
+        "neck": [0, -84],
+        "hip": [0, -32],
+        "le": [-20, -58],
+        "lh": [-12, -36],
+        "re": [20, -58],
+        "rh": [12, -36],
+        "lk": [-32, -14],
+        "lf": [10, -6],
+        "rk": [32, -14],
+        "rf": [-10, -6]
+      },
+      "rot": -0.3
+    },
+    {
+      "joints": {
+        "head": [0, -102],
+        "neck": [0, -85],
+        "hip": [0, -32],
+        "le": [-21, -59],
+        "lh": [-13, -37],
+        "re": [21, -59],
+        "rh": [13, -37],
+        "lk": [-32, -14],
+        "lf": [10, -6],
+        "rk": [32, -14],
+        "rf": [-10, -6]
+      },
+      "rot": 0.3
+    }
+  ]
+}

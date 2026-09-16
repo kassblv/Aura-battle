@@ -1,0 +1,69 @@
+{
+  "id": "anim.hype.t1.sixseven",
+  "version": 1,
+  "name": {
+    "fr": "Six Seven"
+  },
+  "move": {
+    "style": "hype",
+    "tier": 1
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 0.72,
+    "weights": null,
+    "ease": false
+  },
+  "flags": {
+    "expression": "neutral"
+  },
+  "emit": ["6", "7"],
+  "hands": [
+    ["open", "up"],
+    ["open", "up"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [2, -148],
+        "neck": [1, -130],
+        "hip": [1, -78],
+        "le": [-10, -102],
+        "lh": [14, -121],
+        "re": [14, -104],
+        "rh": [36, -95],
+        "lk": [-8, -38],
+        "lf": [-12, 0],
+        "rk": [9, -38],
+        "rf": [12, 0]
+      },
+      "z": {
+        "lh": 4,
+        "rh": -4
+      },
+      "rot": 0.12,
+      "hy": -0.15
+    },
+    {
+      "joints": {
+        "head": [0, -152],
+        "neck": [-1, -133],
+        "hip": [-1, -81],
+        "le": [-10, -105],
+        "lh": [14, -95],
+        "re": [14, -102],
+        "rh": [36, -121],
+        "lk": [-8, -40],
+        "lf": [-12, 0],
+        "rk": [8, -40],
+        "rf": [12, 0]
+      },
+      "z": {
+        "lh": 4,
+        "rh": -4
+      },
+      "rot": -0.12,
+      "hy": -0.05
+    }
+  ]
+}

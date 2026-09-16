@@ -52,7 +52,17 @@ Schéma : `docs/content/animation.schema.json` (à copier dans `packages/content
 ## Pipeline
 
 1. Écrire ou générer le JSON (skill `/add-dance`).
-2. `pnpm --filter @aura/content validate` : schéma, articulations complètes, angles plausibles, longueurs de membres dans les tolérances (±25 %), boucle sans saut.
+2. `pnpm --filter @aura/content validate` : schéma, articulations complètes, angles plausibles, longueurs de membres, continuité de la boucle. Les signalements ont deux niveaux — une **erreur** bloque la publication, un **avertissement** est affiché sans bloquer :
+
+   | Contrôle | Seuil | Niveau |
+   |---|---|---|
+   | Schéma JSON, articulation manquante, champ inconnu | — | erreur |
+   | Longueur d'un membre autour de sa médiane | > 25 % | avertissement |
+   | Longueur d'un membre autour de sa médiane | > 60 % | erreur |
+   | Rotation du corps / salto | > 2π / > 4π | erreur |
+   | Déplacement moyen entre deux images clés (bouclage compris) | > 90 cm | erreur |
+
+   **Pourquoi la tolérance de longueur n'est qu'un avertissement.** Mesure faite sur les 26 animations portées du prototype : le salto arrière écarte jusqu'à 47 %, le dab et la danse du bateau environ 34 %. Ce ne sont pas des fautes de saisie — les poses sont dessinées en 2D, et un bras qui pointe vers la caméra se raccourcit à l'écran sans que sa longueur réelle change. Traiter l'écart comme une erreur reviendrait à rejeter le contenu qui sert de référence de qualité. Le seuil dur de 60 % est posé au-dessus du pire cas légitime mesuré. Le plafond de 90 cm par transition l'est de même : l'animation la plus extrême, le salto arrière, atteint 63,5 cm.
 3. Aperçu dans la page `apps/mobile` `/dev/animation-viewer` (à créer en M4) : lecture, pause, image par image, caméra orbitale.
 4. Ajout au catalogue (prix, rareté, dates de disponibilité).
 5. Publication : les fichiers sont servis par le serveur avec un `contentVersion` ; le client met en cache et télécharge le delta.
