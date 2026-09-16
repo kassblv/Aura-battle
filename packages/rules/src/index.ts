@@ -20,3 +20,6 @@ export * from './timing.js';
 export * from './recharge.js';
 export * from './round.js';
 export * from './match.js';
+export * from './ai/profiles.js';
+export * from './sim/strategies.js';
+export * from './sim/simulate.js';
