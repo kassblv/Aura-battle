@@ -24,7 +24,23 @@ export const tierSchema = z.union([
 /** Niveau d'amplificateur, 0 a 4. */
 export const amplifierSchema = tierSchema;
 
-export const matchIdSchema = z.string().min(1).max(64);
+/**
+ * Identifiant de match.
+ *
+ * Le jeu de caracteres est contraint, et ce n'est pas cosmetique : cet
+ * identifiant finit concatene dans une cle Redis (`match:{id}`), dans un nom de
+ * room Socket.IO et dans une ligne de journal. Autoriser `:` ou un saut de
+ * ligne, c'est autoriser une collision de cle ou une fausse ligne de journal.
+ */
+export const matchIdSchema = z
+  .string()
+  .regex(/^[A-Za-z0-9_-]{1,64}$/, 'identifiant de match invalide');
+
+/** Identifiant de contenu : toujours des segments pointes en minuscules. */
+export const contentIdSchema = z
+  .string()
+  .regex(/^[a-z0-9]+(?:[.-][a-z0-9]+)*$/, 'identifiant de contenu invalide')
+  .max(120);
 
 /** Numero de manche, borne par le format du match. */
 export const roundSchema = z.number().int().min(1).max(BALANCE.match.maxRounds);
@@ -41,8 +57,22 @@ export const moveSchema = z.strictObject({
 });
 
 export const cosmeticSchema = z.strictObject({
-  animationId: z.string().min(1).max(120),
-  effectId: z.string().min(1).max(120),
+  animationId: contentIdSchema,
+  effectId: contentIdSchema,
+});
+
+/**
+ * Emplacements cosmetiques connus d'un joueur.
+ *
+ * Volontairement une liste fermee : c'etait le dernier conteneur ouvert du
+ * registre sortant, donc le seul endroit ou un bug futur pouvait deverser le
+ * profil complet de l'adversaire sans que la validation de sortie bronche.
+ */
+export const opponentCosmeticsSchema = z.strictObject({
+  auraColor: contentIdSchema.optional(),
+  auraEffect: contentIdSchema.optional(),
+  outfit: contentIdSchema.optional(),
+  hair: contentIdSchema.optional(),
 });
 
 export const timingQualitySchema = z.enum(['perfect', 'good', 'miss']);

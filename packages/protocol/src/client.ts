@@ -2,6 +2,7 @@ import { BALANCE } from '@aura/rules';
 import { z } from 'zod';
 import {
   amplifierSchema,
+  contentIdSchema,
   cosmeticSchema,
   matchIdSchema,
   moveSchema,
@@ -32,15 +33,32 @@ export const MAX_TAPS_PER_MESSAGE =
 /** Delai minimal entre le lancement de la charge et le tap. En deca, c'est un robot. */
 export const MIN_CHARGE_TO_TAP_MS = 120;
 
+/**
+ * Indice d'orbe maximal.
+ *
+ * La sequence d'une manche est bornee ; un indice au-dela ne designe rien.
+ * Le plafonner ici evite qu'un entier absurde serve un jour a dimensionner ou
+ * indexer un tableau cote serveur.
+ */
+const MAX_ORB_INDEX =
+  BALANCE.recharge.visibleOrbs +
+  (BALANCE.recharge.maxTapsPerSecond * BALANCE.recharge.durationMs) / 1_000 +
+  Math.floor(
+    (BALANCE.recharge.visibleOrbs * BALANCE.recharge.durationMs) /
+      Math.min(BALANCE.recharge.normalOrb.lifetimeMs, BALANCE.recharge.goldenOrb.lifetimeMs),
+  );
+
 const tapSchema = z.strictObject({
-  orbIndex: z.number().int().nonnegative(),
+  orbIndex: z.number().int().nonnegative().max(MAX_ORB_INDEX),
   /** Millisecondes depuis le debut de la phase, mesurees avec `performance.now()`. */
   t: z.number().min(0).max(BALANCE.recharge.durationMs),
 });
 
 const timingSchema = z
   .strictObject({
-    chargeAt: z.number().min(0),
+    // La charge se lance pendant la phase de choix : au-dela de sa duree,
+    // l'instant ne peut pas etre relatif a son debut.
+    chargeAt: z.number().min(0).max(BALANCE.phases.choiceMs),
     tapAt: z.number().min(0).nullable(),
   })
   .refine(
@@ -60,7 +78,10 @@ export const CLIENT_MESSAGES = {
   'queue:leave': z.strictObject({}),
 
   'invite:create': z.strictObject({}),
-  'invite:join': z.strictObject({ code: z.string().min(1).max(16) }),
+  // Un code d'invitation se dicte a voix haute : majuscules et chiffres.
+  'invite:join': z.strictObject({
+    code: z.string().regex(/^[A-Z0-9]{4,16}$/, "code d'invitation invalide"),
+  }),
 
   'match:ready': z.strictObject({ matchId: matchIdSchema }),
   'match:rejoin': z.strictObject({ matchId: matchIdSchema }),
@@ -70,7 +91,14 @@ export const CLIENT_MESSAGES = {
     matchId: matchIdSchema,
     round: roundSchema,
     seq: seqSchema,
-    taps: z.array(tapSchema).max(MAX_TAPS_PER_MESSAGE),
+    taps: z
+      .array(tapSchema)
+      .max(MAX_TAPS_PER_MESSAGE)
+      // La monotonie est verifiable sans etat : autant la refuser ici plutot
+      // que de faire confiance a l'ordre d'arrivee (docs/03, validation serveur).
+      .refine((list) => list.every((tap, index) => index === 0 || tap.t >= list[index - 1]!.t), {
+        message: 'les instants de tap doivent etre croissants',
+      }),
   }),
 
   'choice:lock': z.strictObject({
@@ -84,15 +112,25 @@ export const CLIENT_MESSAGES = {
     timing: timingSchema,
   }),
 
+  /**
+   * Bulle d'intention (docs/01 §10).
+   *
+   * Le `seq` n'est pas decoratif : gagner la manche avec le style annonce
+   * rapporte +10 de jauge d'Ultime. Sans numero d'ordre, rien n'empeche
+   * d'annoncer les trois styles et d'encaisser le bonus a tous les coups. Le
+   * serveur ne retient que la premiere annonce d'une manche, et le `seq` lui
+   * permet de rester idempotent apres une reconnexion.
+   */
   'intent:show': z.strictObject({
     matchId: matchIdSchema,
     round: roundSchema,
+    seq: seqSchema,
     style: styleSchema,
   }),
 
   'emote:send': z.strictObject({
     matchId: matchIdSchema,
-    emoteId: z.string().min(1).max(64),
+    emoteId: contentIdSchema,
   }),
 } as const;
 

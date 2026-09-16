@@ -3,6 +3,7 @@ import { errorCodeSchema } from './errors.js';
 import {
   cosmeticSchema,
   matchIdSchema,
+  opponentCosmeticsSchema,
   moveSchema,
   roundSchema,
   seatSchema,
@@ -18,14 +19,26 @@ import {
  * Messages serveur -> client (docs/03-pvp-protocol.md).
  *
  * Tous les schemas sont **stricts**, et la validation s'applique aussi en
- * sortie. C'est ce qui fait tenir la regle d'or n°4 : glisser le choix, le
- * timing, l'energie ou la jauge de l'adversaire dans un message emis avant
- * `round:result` ne produit pas une fuite, mais un refus d'emettre. La
- * confidentialite devient une propriete du protocole, pas une consigne de
- * relecture.
+ * sortie : glisser un champ appartenant a l'adversaire dans un message emis
+ * avant `round:result` ne produit pas une fuite, mais un refus d'emettre.
+ *
+ * **Ce que cela ne protege pas.** Un schema ferme les champs *en trop*, pas les
+ * mauvaises *valeurs* dans un champ legitime : envoyer a `a` un `choice:start`
+ * dont `energy` est celle de `b` reste valide. Le protocole couvre donc la
+ * moitie structurelle de la regle d'or n°4 ; l'autre moitie revient au serveur,
+ * qui doit construire chaque envoi par une unique fonction de vue par siege
+ * (jalon M3), testee en propriete : deux vues d'un meme etat ne partagent
+ * aucune valeur propre a l'adversaire.
  */
 
 const normalizedSchema = z.number().min(0).max(1);
+
+/**
+ * Nombre maximal d'orbes dans la sequence d'une manche.
+ * Borner le tableau rend une anomalie detectable a l'emission, et non sur le
+ * telephone du joueur.
+ */
+const MAX_ORBS_PER_ROUND = 256;
 
 const orbSpecSchema = z.strictObject({
   index: z.number().int().nonnegative(),
@@ -79,8 +92,12 @@ export const SERVER_MESSAGES = {
   }),
 
   'invite:created': z.strictObject({
-    code: z.string().min(1).max(16),
-    deepLink: z.string().min(1),
+    code: z.string().regex(/^[A-Z0-9]{4,16}$/),
+    // Schema impose : le client ouvre ce lien. Un `javascript:` ou un `http:`
+    // hostile n'a rien a faire dans un message de notre propre serveur.
+    deepLink: z
+      .string()
+      .regex(/^(aurabattle:\/\/|https:\/\/)[A-Za-z0-9._~:/?#@!$&'()*+,;=%-]{1,200}$/),
     expiresAt: serverTimeSchema,
   }),
 
@@ -90,11 +107,11 @@ export const SERVER_MESSAGES = {
     opponent: z.strictObject({
       displayName: z.string().min(1).max(40),
       league: z.string().min(1).max(32),
-      cosmetics: z.record(z.string(), z.string()),
+      cosmetics: opponentCosmeticsSchema,
     }),
-    protocolVersion: z.string(),
-    rulesVersion: z.string(),
-    contentVersion: z.string(),
+    protocolVersion: z.string().max(16),
+    rulesVersion: z.string().max(16),
+    contentVersion: z.string().max(16),
     ghost: z.boolean(),
   }),
 
@@ -113,7 +130,7 @@ export const SERVER_MESSAGES = {
     round: roundSchema,
     startsAt: serverTimeSchema,
     endsAt: serverTimeSchema,
-    orbs: z.array(orbSpecSchema),
+    orbs: z.array(orbSpecSchema).max(MAX_ORBS_PER_ROUND),
   }),
 
   'choice:start': z.strictObject({
@@ -186,7 +203,7 @@ export const SERVER_MESSAGES = {
     energy: z.number().int().min(0),
     ult: z.number().min(0),
     opponentLocked: z.boolean(),
-    orbs: z.array(orbSpecSchema).optional(),
+    orbs: z.array(orbSpecSchema).max(MAX_ORBS_PER_ROUND).optional(),
     meter: z
       .strictObject({
         period: z.number().positive(),
@@ -209,9 +226,16 @@ export const SERVER_MESSAGES = {
     emoteId: z.string().min(1).max(64),
   }),
 
+  /**
+   * Erreur renvoyee au client.
+   *
+   * `message` est borne et doit rester une cle i18n ou un texte fixe : c'est le
+   * message le plus susceptible de vehiculer de l'etat interne par inadvertance,
+   * puisqu'il est tentant d'y recopier le detail d'un echec de validation.
+   */
   error: z.strictObject({
     code: errorCodeSchema,
-    message: z.string(),
+    message: z.string().max(200),
     retryable: z.boolean(),
   }),
 } as const;

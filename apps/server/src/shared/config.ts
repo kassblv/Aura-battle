@@ -20,6 +20,9 @@ const configSchema = z.object({
 
 export type ServerConfig = Readonly<z.infer<typeof configSchema>>;
 
+/** Jeton d'injection de la configuration. */
+export const CONFIG = Symbol('CONFIG');
+
 /** Erreur levee quand l'environnement ne decrit pas une configuration valable. */
 export class ConfigError extends Error {
   constructor(message: string) {
