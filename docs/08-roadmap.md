@@ -22,9 +22,9 @@ Référence : `docs/01-game-design.md`, `docs/02-architecture.md` (forme attendu
 
 - [x] `balance.ts` avec toutes les valeurs du game design, typées et gelées
 - [x] RNG seedé déterministe + tests de reproductibilité
-- [ ] Génération de la séquence d'orbes et des paramètres de jauge à partir d'une graine
-- [ ] Évaluation de la recharge : validation des taps, combos, orbes dorées, plafond 12/s, gains (boost, Ultime, énergie)
-- [ ] Évaluation du timing : position du curseur, qualité, écart
+- [x] Génération de la séquence d'orbes et des paramètres de jauge à partir d'une graine
+- [x] Évaluation de la recharge : validation des taps, combos, orbes dorées, plafond 12/s, gains (boost, Ultime, énergie)
+- [x] Évaluation du timing : position du curseur, qualité, écart
 - [ ] Résolution d'une manche : coûts, répétition, Ultime, contres, contre bloqué, score, départage
 - [ ] Machine d'état du match (`reduce`) : phases, échéances, actions par défaut, forfait, fin de match et départage
 - [ ] IA solo (4 profils du prototype adaptés aux nouvelles règles)
