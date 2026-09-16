@@ -18,6 +18,7 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@aura/rules": "workspace:*"
+    "@aura/rules": "workspace:*",
+    "zod": "^4.6.5"
   }
 }

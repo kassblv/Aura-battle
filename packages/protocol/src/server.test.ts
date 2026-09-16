@@ -1,0 +1,275 @@
+import { describe, expect, it } from 'vitest';
+import {
+  SERVER_MESSAGES,
+  SERVER_MESSAGE_NAMES,
+  parseServerMessage,
+  serializeServerMessage,
+} from './server.js';
+
+const roundResult = {
+  matchId: 'm_01',
+  round: 1,
+  sides: {
+    a: {
+      move: { style: 'provoc', tier: 2 },
+      amp: 1,
+      ult: false,
+      cosmetic: { animationId: 'anim.provoc.t2.mewing', effectId: 'fx.sparks' },
+      recharge: { points: 9, bestCombo: 5, boostPct: 9, ultGain: 22.5, energyGain: 1 },
+      timing: { quality: 'good', error: 0.05 },
+      repeat: false,
+      counter: true,
+      countered: false,
+      counterBlocked: false,
+      base: 43,
+      final: 58,
+      energyAfter: 11,
+      ultAfter: 57.5,
+    },
+    b: {
+      move: { style: 'calme', tier: 2 },
+      amp: 0,
+      ult: false,
+      cosmetic: { animationId: 'anim.calme.t2.lookaway', effectId: 'fx.glow' },
+      recharge: { points: 4, bestCombo: 2, boostPct: 4, ultGain: 10, energyGain: 0 },
+      timing: { quality: 'miss', error: 0.31 },
+      repeat: false,
+      counter: false,
+      countered: true,
+      counterBlocked: false,
+      base: 19,
+      final: 16,
+      energyAfter: 12,
+      ultAfter: 35,
+    },
+  },
+  winner: 'a',
+  roundsWon: { a: 1, b: 0 },
+  timeline: { revealFirst: 'b' },
+};
+
+describe('registre des messages serveur', () => {
+  it('couvre tous les evenements du protocole', () => {
+    expect([...SERVER_MESSAGE_NAMES].sort()).toEqual(
+      [
+        'choice:start',
+        'emote:received',
+        'error',
+        'intent:shown',
+        'invite:created',
+        'match:end',
+        'match:found',
+        'match:state',
+        'opponent:locked',
+        'pong',
+        'queue:status',
+        'recharge:start',
+        'round:intro',
+        'round:result',
+      ].sort(),
+    );
+  });
+
+  it('associe un schema a chaque nom', () => {
+    for (const name of SERVER_MESSAGE_NAMES) {
+      expect(SERVER_MESSAGES[name]).toBeDefined();
+    }
+  });
+});
+
+describe('aucune fuite avant la revelation (regle d or n°4)', () => {
+  it('ne laisse passer que le strict necessaire dans opponent:locked', () => {
+    expect(parseServerMessage('opponent:locked', { matchId: 'm_01', round: 1 }).success).toBe(true);
+  });
+
+  it('refuse d emettre un opponent:locked qui contiendrait le choix adverse', () => {
+    const fuite = { matchId: 'm_01', round: 1, move: { style: 'calme', tier: 3 } };
+    expect(parseServerMessage('opponent:locked', fuite).success).toBe(false);
+  });
+
+  it('refuse un choice:start qui contiendrait l energie adverse', () => {
+    const valide = {
+      matchId: 'm_01',
+      round: 1,
+      endsAt: 1_700_000_023_400,
+      meter: { period: 1_720, zone: 0.22, perfect: 0.08, center: 0.41 },
+      energy: 14,
+      ult: 32,
+    };
+    expect(parseServerMessage('choice:start', valide).success).toBe(true);
+    expect(parseServerMessage('choice:start', { ...valide, opponentEnergy: 12 }).success).toBe(
+      false,
+    );
+  });
+
+  it('refuse un round:intro qui contiendrait la jauge adverse', () => {
+    const valide = {
+      matchId: 'm_01',
+      round: 1,
+      endsAt: 1_700_000_002_000,
+      roundsWon: { a: 0, b: 0 },
+      energy: 14,
+      ult: 0,
+    };
+    expect(parseServerMessage('round:intro', valide).success).toBe(true);
+    expect(parseServerMessage('round:intro', { ...valide, opponentUlt: 40 }).success).toBe(false);
+  });
+
+  it('refuse un match:state qui contiendrait le choix verrouille de l adversaire', () => {
+    const valide = {
+      matchId: 'm_01',
+      seat: 'a',
+      phase: 'choice',
+      round: 2,
+      endsAt: 1_700_000_050_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 11,
+      ult: 57.5,
+      opponentLocked: true,
+      history: [],
+    };
+    expect(parseServerMessage('match:state', valide).success).toBe(true);
+    expect(
+      parseServerMessage('match:state', {
+        ...valide,
+        opponentChoice: { style: 'hype', tier: 4 },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('round:result', () => {
+  it('accepte le resultat complet des deux cotes', () => {
+    expect(parseServerMessage('round:result', roundResult).success).toBe(true);
+  });
+
+  it('refuse un resultat auquel il manque un siege', () => {
+    const { a: _omis, ...unSeul } = roundResult.sides;
+    expect(parseServerMessage('round:result', { ...roundResult, sides: unSeul }).success).toBe(
+      false,
+    );
+  });
+
+  it('accepte une manche nulle', () => {
+    expect(parseServerMessage('round:result', { ...roundResult, winner: null }).success).toBe(true);
+  });
+
+  it('refuse une qualite de timing inconnue', () => {
+    const casse = {
+      ...roundResult,
+      sides: {
+        ...roundResult.sides,
+        a: { ...roundResult.sides.a, timing: { quality: 'excellent', error: 0.05 } },
+      },
+    };
+    expect(parseServerMessage('round:result', casse).success).toBe(false);
+  });
+});
+
+describe('recharge:start', () => {
+  it('accepte une sequence d orbes', () => {
+    expect(
+      parseServerMessage('recharge:start', {
+        matchId: 'm_01',
+        round: 1,
+        startsAt: 1_700_000_002_000,
+        endsAt: 1_700_000_008_000,
+        orbs: [
+          { index: 0, x: 0.3, y: 0.7, kind: 'normal', points: 1, lifetimeMs: 1_600 },
+          { index: 1, x: 0.8, y: 0.2, kind: 'golden', points: 3, lifetimeMs: 950 },
+        ],
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuse une position hors du carre unite', () => {
+    expect(
+      parseServerMessage('recharge:start', {
+        matchId: 'm_01',
+        round: 1,
+        startsAt: 1,
+        endsAt: 2,
+        orbs: [{ index: 0, x: 1.4, y: 0.5, kind: 'normal', points: 1, lifetimeMs: 1_600 }],
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('match:found et match:end', () => {
+  it('accepte une rencontre annoncee', () => {
+    expect(
+      parseServerMessage('match:found', {
+        matchId: 'm_01',
+        seat: 'a',
+        opponent: { displayName: 'Invite 4821', league: 'bronze', cosmetics: {} },
+        protocolVersion: '1.0.0',
+        rulesVersion: '0.0.0',
+        contentVersion: '0.0.0',
+        ghost: false,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('accepte les quatre raisons de fin de match', () => {
+    for (const reason of ['rounds', 'tiebreak', 'forfeit', 'disconnect']) {
+      expect(
+        parseServerMessage('match:end', {
+          matchId: 'm_01',
+          winner: 'a',
+          reason,
+          rating: { before: 1_000, after: 1_020, leagueBefore: 'bronze', leagueAfter: 'bronze' },
+          rewards: { softCurrency: 40, xp: 120 },
+        }).success,
+      ).toBe(true);
+    }
+  });
+
+  it('refuse une raison de fin inconnue', () => {
+    expect(
+      parseServerMessage('match:end', {
+        matchId: 'm_01',
+        winner: null,
+        reason: 'crash',
+        rating: { before: 1_000, after: 1_000, leagueBefore: 'bronze', leagueAfter: 'bronze' },
+        rewards: { softCurrency: 0, xp: 0 },
+      }).success,
+    ).toBe(false);
+  });
+});
+
+describe('error', () => {
+  it('accepte un code du protocole', () => {
+    expect(
+      parseServerMessage('error', {
+        code: 'NOT_ENOUGH_ENERGY',
+        message: 'Choix trop cher',
+        retryable: false,
+      }).success,
+    ).toBe(true);
+  });
+
+  it('refuse un code hors de la liste', () => {
+    expect(
+      parseServerMessage('error', { code: 'OOPS', message: 'x', retryable: false }).success,
+    ).toBe(false);
+  });
+});
+
+describe('serializeServerMessage', () => {
+  it('valide le message avant de l emettre', () => {
+    const result = serializeServerMessage('opponent:locked', { matchId: 'm_01', round: 1 });
+    expect(result.success).toBe(true);
+  });
+
+  it('empeche le serveur d emettre un message qui fuite', () => {
+    // Le serveur se refuse a lui-meme : la validation est sortante autant qu entrante.
+    const result = serializeServerMessage('opponent:locked', {
+      matchId: 'm_01',
+      round: 1,
+      // @ts-expect-error — le type interdit deja ce champ ; on verifie que
+      // l execution le refuse aussi, au cas ou la valeur vienne d un `any`.
+      move: { style: 'calme', tier: 3 },
+    });
+    expect(result.success).toBe(false);
+  });
+});

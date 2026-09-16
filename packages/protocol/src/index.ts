@@ -1,15 +1,16 @@
 /**
- * @aura/protocol — schemas zod des messages client<->serveur.
+ * @aura/protocol — contrat reseau client<->serveur.
  *
- * Source de verite unique : le serveur valide l'entrant ET le sortant avec ces
- * schemas, le client en infere ses types. Un message qui n'est pas decrit ici
- * n'existe pas.
+ * Source de verite unique : le serveur valide l'entrant **et** le sortant avec
+ * ces schemas, le client en infere ses types. Un message qui n'est pas decrit
+ * ici n'existe pas.
  *
- * Contenu reel au jalon M2 (docs/03-pvp-protocol.md).
+ * Les bornes descendent de `@aura/rules` : changer une valeur d'equilibrage
+ * resserre automatiquement la validation reseau.
  */
 
-/**
- * Version du protocole. A incrementer des qu'un message change de forme.
- * Le client l'envoie au handshake ; le serveur refuse les versions incompatibles.
- */
-export const PROTOCOL_VERSION = 1;
+export * from './version.js';
+export * from './errors.js';
+export * from './primitives.js';
+export * from './client.js';
+export * from './server.js';

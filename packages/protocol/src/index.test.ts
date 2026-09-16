@@ -1,9 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { PROTOCOL_VERSION } from './index.js';
+import {
+  CLIENT_MESSAGE_NAMES,
+  ERROR_CODES,
+  parseClientMessage,
+  PROTOCOL_VERSION,
+  SERVER_MESSAGE_NAMES,
+} from './index.js';
 
-describe('@aura/protocol', () => {
-  it('expose une version de protocole entiere et positive', () => {
-    expect(Number.isInteger(PROTOCOL_VERSION)).toBe(true);
-    expect(PROTOCOL_VERSION).toBeGreaterThan(0);
+describe('@aura/protocol — surface publique', () => {
+  it('expose la version, les registres et les codes d erreur', () => {
+    expect(PROTOCOL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(CLIENT_MESSAGE_NAMES.length).toBeGreaterThan(0);
+    expect(SERVER_MESSAGE_NAMES.length).toBeGreaterThan(0);
+    expect(ERROR_CODES).toContain('CLIENT_OUTDATED');
+  });
+
+  it('valide un message depuis la racine du package', () => {
+    expect(parseClientMessage('queue:join', { mode: 'ranked' }).success).toBe(true);
   });
 });
