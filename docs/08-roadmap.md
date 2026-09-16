@@ -25,7 +25,7 @@ Référence : `docs/01-game-design.md`, `docs/02-architecture.md` (forme attendu
 - [x] Génération de la séquence d'orbes et des paramètres de jauge à partir d'une graine
 - [x] Évaluation de la recharge : validation des taps, combos, orbes dorées, plafond 12/s, gains (boost, Ultime, énergie)
 - [x] Évaluation du timing : position du curseur, qualité, écart
-- [ ] Résolution d'une manche : coûts, répétition, Ultime, contres, contre bloqué, score, départage
+- [x] Résolution d'une manche : coûts, répétition, Ultime, contres, contre bloqué, score, départage
 - [ ] Machine d'état du match (`reduce`) : phases, échéances, actions par défaut, forfait, fin de match et départage
 - [ ] IA solo (4 profils du prototype adaptés aux nouvelles règles)
 - [ ] Tests unitaires (couverture lignes ≥ 95 %) + tests de propriétés : score ≥ 1, énergie jamais négative, déterminisme (même graine + mêmes événements ⇒ même résultat), aucun état où les deux joueurs gagnent

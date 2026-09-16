@@ -28,6 +28,17 @@ export interface Move {
   readonly tier: Tier;
 }
 
+/**
+ * Ce qu'un joueur verrouille a la phase de choix.
+ * Reste secret jusqu'a la revelation : c'est tout l'interet du bluff.
+ */
+export interface Choice {
+  readonly move: Move;
+  readonly amplifier: AmplifierLevel;
+  /** Ne peut etre vrai que si la jauge d'Ultime est pleine. */
+  readonly useUltimate: boolean;
+}
+
 /** Renvoie le siege adverse. */
 export function opponentOf(seat: Seat): Seat {
   return seat === 'a' ? 'b' : 'a';
