@@ -71,7 +71,8 @@ Coût total d'une manche = coût du palier + coût de l'amplificateur (8 maximum
 - Le serveur génère la séquence d'orbes à partir d'une graine : position (x, y normalisés 0–1), instant d'apparition, durée de vie, type.
 - **3 orbes** visibles en permanence ; une orbe touchée ou expirée est remplacée par la suivante de la séquence.
 - Orbe normale : 1 point, durée de vie 1 600 ms. Orbe dorée : 3 points, durée de vie 950 ms, probabilité 13 %.
-- Combo : taper dans le vide ou laisser expirer une orbe remet le combo à 0. À partir de **10 d'affilée**, chaque orbe rapporte **+1**.
+- Combo : taper dans le vide ou laisser expirer une orbe remet le combo à 0. À partir de **10 d'affilée**, chaque orbe rapporte **+1**. Le bonus s'applique **dès la 10e orbe** (10 d'affilée rapportent donc 11 points).
+- Un tap **rejeté** (orbe déjà morte, ou au-delà du plafond de 12 taps/s) est ignoré : il ne rapporte rien, mais **ne casse pas le combo**. Un tap rejeté n'a pas eu lieu, il n'est pas un échec — cela protège le joueur dont la latence fait taper une orbe encore affichée chez lui mais déjà expirée côté serveur.
 - Gains :
   - **Boost d'aura** de la manche : +1 % par point, **25 % maximum**.
   - **Jauge d'Ultime** : +2,5 par point, **40 maximum** par recharge.
