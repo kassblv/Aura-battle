@@ -19,3 +19,4 @@ export * from './rng.js';
 export * from './timing.js';
 export * from './recharge.js';
 export * from './round.js';
+export * from './match.js';
