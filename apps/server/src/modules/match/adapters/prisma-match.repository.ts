@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Prisma, Seat as SeatColumn } from '@prisma/client';
 import { PinoLoggerService } from '../../../shared/logger.js';
 import { PrismaService } from '../../../shared/prisma.service.js';
-import type { MatchRecord, MatchRepository } from '../domain/ports.js';
+import type { MatchRecord, MatchRepository, PersistedEvent } from '../domain/ports.js';
 
 /**
  * Adaptateur Prisma du port `MatchRepository` (docs/02, docs/04).
@@ -45,12 +45,19 @@ const toJson = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJ
 const TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 10_000 } as const;
 
 /**
- * Taille maximale du journal ecrit, en octets de JSON.
+ * Taille maximale de la colonne `events`, en octets de JSON.
  *
- * Le journal est deja borne en nombre d'entrees par le runtime ; cette seconde
- * borne porte sur le volume, que le nombre d'entrees ne predit pas. Un journal
- * plausible pese quelques dizaines de kilo-octets : 256 Ko laissent une marge
- * confortable tout en gardant l'ecriture loin de son echeance.
+ * Le runtime borne deja le journal en **nombre** d'entrees ; cette seconde
+ * borne porte sur le **volume**, que le nombre d'entrees ne predit pas : une
+ * seule socket au debit autorise, par lots de 72 taps sur les 18 s de recharge,
+ * produit environ 610 Ko sans jamais atteindre les 500 entrees.
+ *
+ * Ce seuil est donc franchissable par un client parfaitement legal, et pas
+ * seulement par un abus. Il faut le lire dans les deux sens : au-dela, le
+ * journal est **tronque**, et `docs/06` promet un journal de litige conserve
+ * 30 jours — un match dispute pourra n'en avoir qu'un debut. C'est aussi
+ * pourquoi on tronque au lieu de jeter : jeter donnerait a qui veut effacer sa
+ * partie un moyen simple et legal de l'obtenir.
  */
 const MAX_EVENTS_BYTES = 256 * 1024;
 
@@ -65,6 +72,33 @@ function jsonSize(value: unknown): number | null {
   } catch {
     return null;
   }
+}
+
+/**
+ * Plus long prefixe du journal qui tient dans le budget donne.
+ *
+ * On mesure entree par entree, une seule fois chacune : mesurer le tableau
+ * entier a chaque essai couterait un carre la ou le journal peut deja compter
+ * 500 entrees de plusieurs kilo-octets.
+ *
+ * Une entree non serialisable arrete la coupe : elle ferait echouer l'ecriture
+ * complete, et ce qui la precede reste rejouable.
+ */
+function fittingPrefix(
+  entries: readonly PersistedEvent[],
+  budgetBytes: number,
+): readonly PersistedEvent[] {
+  let used = 0;
+  let kept = 0;
+  for (const entry of entries) {
+    const size = jsonSize(entry);
+    if (size === null) break;
+    // La virgule qui separe l'entree de la precedente compte, elle aussi.
+    used += size + 1;
+    if (used > budgetBytes) break;
+    kept += 1;
+  }
+  return kept === entries.length ? entries : entries.slice(0, kept);
 }
 
 /**
@@ -157,30 +191,50 @@ export class PrismaMatchRepository implements MatchRepository {
    *
    * Le journal part dans une seule colonne JSON : au-dela d'une certaine
    * taille, l'ecriture ne ralentit pas, elle **echoue** — et emporte avec elle
-   * la graine, les sieges et les manches. On prefere donc ecrire le match sans
-   * son journal. Perdre de quoi rejouer un match est regrettable ; perdre le
-   * match lui-meme, qui a decide d'un classement, ne l'est pas au meme titre.
+   * la graine, les sieges et les manches. On ecrit donc le plus long debut de
+   * journal qui tienne sous le plafond, et on compte le reste. Graine plus
+   * prefixe rejoue le match jusqu'au point de coupure ; graine plus rien ne
+   * rejoue rien, et offrirait a qui veut effacer sa partie un moyen legal d'y
+   * parvenir (voir MAX_EVENTS_BYTES).
    *
-   * Les compteurs restent dans tous les cas : ils ne pesent rien et disent a
-   * l'anti-triche ce que le journal ne dit plus. `impossibleTaps` est le signal
-   * « Latence » de docs/06 — il ne s'observe que match apres match, donc le
-   * laisser tomber avec le journal reviendrait a l'eteindre pour de bon.
+   * Les compteurs, eux, ne sont jamais tronques : ils ne pesent rien et disent
+   * a l'anti-triche ce que le journal ne dit plus.
    */
   private eventsColumn(record: MatchRecord): Prisma.InputJsonValue {
-    const counters = {
-      rejectedEvents: record.rejectedEvents,
-      droppedEvents: record.droppedEvents,
-      impossibleTaps: record.impossibleTaps,
-    };
-    const size = jsonSize(record.events);
-    if (size !== null && size <= MAX_EVENTS_BYTES) {
-      return toJson({ entries: record.events, ...counters, omittedEntries: 0 });
-    }
+    const counters = this.countersColumn(record);
+    // Le budget des entrees est ce que l'enveloppe laisse : compteurs et
+    // `omittedEntries` partent dans la meme colonne et comptent dans le total.
+    const overhead = jsonSize({ entries: [], counters, omittedEntries: record.events.length }) ?? 0;
+    const kept = fittingPrefix(record.events, MAX_EVENTS_BYTES - overhead);
+    const omittedEntries = record.events.length - kept.length;
 
-    this.logger.warn(
-      `journal du match ${record.matchId} ecarte a l'ecriture : ${String(record.events.length)} entrees, ${size === null ? 'non serialisable' : `${String(size)} octets`}`,
-      'PrismaMatchRepository',
-    );
-    return toJson({ entries: [], ...counters, omittedEntries: record.events.length });
+    if (omittedEntries > 0) {
+      this.logger.warn(
+        `journal du match ${record.matchId} tronque a l'ecriture : ${String(kept.length)} entrees conservees, ${String(omittedEntries)} ecartees`,
+        'PrismaMatchRepository',
+      );
+    }
+    return toJson({ entries: kept, counters, omittedEntries });
+  }
+
+  /**
+   * Compteurs d'anti-triche, **par siege**.
+   *
+   * Les sanctions de docs/06 visent un joueur et les premieres sont
+   * automatiques : un compteur commun aux deux sieges attribuerait a un
+   * innocent les mensonges de son adversaire, et un tricheur prolifique
+   * empoisonnerait le score de suspicion de chaque personne qu'il croise.
+   *
+   * Les cles sont celles de l'enum Prisma (`A`/`B`), pas celles du moteur :
+   * c'est la ligne `MatchSeat` correspondante qu'on voudra rapprocher de ces
+   * chiffres, et c'est la que ces compteurs finiront en colonnes.
+   */
+  private countersColumn(record: MatchRecord): Record<string, Record<string, number>> {
+    const forSeat = (seat: 'a' | 'b'): Record<string, number> => ({
+      rejectedEvents: record.rejectedEvents[seat],
+      droppedEvents: record.droppedEvents[seat],
+      impossibleTaps: record.impossibleTaps[seat],
+    });
+    return { [SEAT_COLUMN.a]: forSeat('a'), [SEAT_COLUMN.b]: forSeat('b') };
   }
 }

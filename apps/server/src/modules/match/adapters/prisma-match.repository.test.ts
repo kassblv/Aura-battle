@@ -124,9 +124,9 @@ function aRecord(overrides: Partial<MatchRecord> = {}): MatchRecord {
       { atMs: STARTED_AT + 10, event: { type: 'recharge:tap', seat: 'a' } },
       { atMs: STARTED_AT + 20, event: { type: 'choice:lock', seat: 'b' } },
     ],
-    rejectedEvents: 3,
-    droppedEvents: 0,
-    impossibleTaps: 0,
+    rejectedEvents: { a: 3, b: 0 },
+    droppedEvents: { a: 0, b: 0 },
+    impossibleTaps: { a: 0, b: 0 },
     ...overrides,
   };
 }
@@ -136,8 +136,32 @@ const MARKER = 'contenu-de-manche-';
 function aHugeJournal(entries = 40, bytesPerEntry = 10_000): MatchRecord['events'] {
   return Array.from({ length: entries }, (_, index) => ({
     atMs: STARTED_AT + index,
-    event: { type: 'recharge:tap', payload: MARKER + 'x'.repeat(bytesPerEntry) },
+    event: { type: 'recharge:tap', index, payload: MARKER + 'x'.repeat(bytesPerEntry) },
   }));
+}
+
+/**
+ * Plafond du journal ecrit, recopie de l'adaptateur.
+ *
+ * Le test ne verifie pas la valeur mais l'invariant : ce qui part en base tient
+ * dessous. C'est la seule chose qui protege la transaction.
+ */
+const MAX_EVENTS_BYTES = 256 * 1024;
+
+/** Colonne `events` telle qu'elle part en base. */
+function eventsColumnOf(prisma: FakePrisma): {
+  entries: { atMs: number; event: { index: number } }[];
+  omittedEntries: number;
+  counters: Record<string, Record<string, number>>;
+} {
+  const data = prisma.callsTo('match.create')[0]?.args.data as {
+    events: {
+      entries: { atMs: number; event: { index: number } }[];
+      omittedEntries: number;
+      counters: Record<string, Record<string, number>>;
+    };
+  };
+  return data.events;
 }
 
 describe('PrismaMatchRepository', () => {
@@ -182,31 +206,56 @@ describe('PrismaMatchRepository', () => {
           { atMs: STARTED_AT + 10, event: { type: 'recharge:tap', seat: 'a' } },
           { atMs: STARTED_AT + 20, event: { type: 'choice:lock', seat: 'b' } },
         ],
-        rejectedEvents: 3,
-        droppedEvents: 0,
-        impossibleTaps: 0,
+        counters: {
+          A: { rejectedEvents: 3, droppedEvents: 0, impossibleTaps: 0 },
+          B: { rejectedEvents: 0, droppedEvents: 0, impossibleTaps: 0 },
+        },
         omittedEntries: 0,
       },
     });
   });
 
-  it('conserve les compteurs d evenements refuses, ecartes et impossibles', async () => {
-    await repository.save(aRecord({ rejectedEvents: 12, droppedEvents: 47, impossibleTaps: 8 }));
+  /**
+   * Les sanctions de docs/06 visent un joueur, pas un match. Un compteur
+   * commun aux deux sieges attribuerait a un innocent les mensonges de son
+   * adversaire : la separation par siege est la raison d'etre de ces chiffres.
+   */
+  it('garde les compteurs separes par siege, sans jamais les additionner', async () => {
+    await repository.save(
+      aRecord({
+        rejectedEvents: { a: 12, b: 1 },
+        droppedEvents: { a: 47, b: 2 },
+        impossibleTaps: { a: 8, b: 0 },
+      }),
+    );
 
-    expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({
-      events: { rejectedEvents: 12, droppedEvents: 47, impossibleTaps: 8 },
+    expect(eventsColumnOf(prisma).counters).toEqual({
+      A: { rejectedEvents: 12, droppedEvents: 47, impossibleTaps: 8 },
+      B: { rejectedEvents: 1, droppedEvents: 2, impossibleTaps: 0 },
     });
+  });
+
+  /**
+   * Les cles suivent l'enum Prisma (`A`/`B`), pas le vocabulaire du moteur :
+   * c'est ce qui permet de rapprocher ces compteurs d'une ligne `MatchSeat`
+   * sans table de conversion en tete.
+   */
+  it('nomme les sieges comme la colonne MatchSeat', async () => {
+    await repository.save(aRecord());
+
+    expect(Object.keys(eventsColumnOf(prisma).counters)).toEqual(['A', 'B']);
   });
 
   /**
    * Le signal « Latence » de docs/06 ne s'observe que sur la duree, match apres
    * match. Un compteur perdu avec le journal serait un signal aveugle.
    */
-  it('conserve les compteurs meme quand le journal est ecarte', async () => {
-    await repository.save(aRecord({ events: aHugeJournal(), impossibleTaps: 31 }));
+  it('conserve les compteurs meme quand le journal est tronque', async () => {
+    await repository.save(aRecord({ events: aHugeJournal(), impossibleTaps: { a: 31, b: 0 } }));
 
-    expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({
-      events: { entries: [], impossibleTaps: 31, rejectedEvents: 3 },
+    expect(eventsColumnOf(prisma).counters).toMatchObject({
+      A: { impossibleTaps: 31, rejectedEvents: 3 },
+      B: { impossibleTaps: 0 },
     });
   });
 
@@ -275,24 +324,47 @@ describe('PrismaMatchRepository', () => {
     });
   });
 
-  it('ecrit le match sans son journal quand celui-ci est demesure', async () => {
-    await repository.save(aRecord({ events: aHugeJournal(), droppedEvents: 9 }));
+  /**
+   * Un journal trop gros est **tronque**, pas jete : graine plus prefixe rejoue
+   * le match jusqu'au point de coupure, graine plus rien ne rejoue rien. Le
+   * seuil etant atteignable au debit legal, jeter offrirait a qui le veut un
+   * moyen simple de faire disparaitre la trace de sa partie.
+   */
+  it('tronque un journal demesure au lieu de le jeter', async () => {
+    await repository.save(aRecord({ events: aHugeJournal(), droppedEvents: { a: 9, b: 0 } }));
 
+    const events = eventsColumnOf(prisma);
+    expect(events.entries.length).toBeGreaterThan(0);
+    expect(events.entries.length + events.omittedEntries).toBe(40);
     // La graine et les manches partent quand meme : c'est ce qui compte le plus.
-    expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({
-      seed: 'graine',
-      events: {
-        entries: [],
-        rejectedEvents: 3,
-        droppedEvents: 9,
-        impossibleTaps: 0,
-        omittedEntries: 40,
-      },
-    });
+    expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({ seed: 'graine' });
     expect(prisma.callsTo('matchRound.createMany')[0]?.args.data).toHaveLength(2);
   });
 
-  it('signale le journal ecarte sans en recopier le contenu', async () => {
+  it('garde le debut du journal, dans l ordre', async () => {
+    await repository.save(aRecord({ events: aHugeJournal() }));
+
+    const gardees = eventsColumnOf(prisma).entries;
+    expect(gardees.map((entry) => entry.event.index)).toEqual(
+      Array.from({ length: gardees.length }, (_, index) => index),
+    );
+  });
+
+  it('ecrit une colonne qui tient sous le plafond', async () => {
+    await repository.save(aRecord({ events: aHugeJournal(200) }));
+
+    const ecrit = JSON.stringify(eventsColumnOf(prisma));
+    expect(Buffer.byteLength(ecrit)).toBeLessThanOrEqual(MAX_EVENTS_BYTES);
+  });
+
+  it('ecrit le journal entier quand il tient', async () => {
+    await repository.save(aRecord());
+
+    expect(eventsColumnOf(prisma).entries).toHaveLength(2);
+    expect(eventsColumnOf(prisma).omittedEntries).toBe(0);
+  });
+
+  it('signale le journal tronque sans en recopier le contenu', async () => {
     await repository.save(aRecord({ events: aHugeJournal() }));
 
     const sortie = lines.join('');
@@ -309,6 +381,18 @@ describe('PrismaMatchRepository', () => {
     expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({
       events: { entries: [], omittedEntries: 1 },
     });
+  });
+
+  it('garde ce qui precede une entree non serialisable', async () => {
+    const boucle: { self?: unknown } = {};
+    boucle.self = boucle;
+    const journal = [...aHugeJournal(2, 10), { atMs: STARTED_AT + 2, event: boucle }];
+
+    await repository.save(aRecord({ events: journal }));
+
+    const events = eventsColumnOf(prisma);
+    expect(events.entries).toHaveLength(2);
+    expect(events.omittedEntries).toBe(1);
   });
 
   it('journalise puis propage un echec d ecriture', async () => {
