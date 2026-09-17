@@ -42,8 +42,34 @@ const databaseUrl = process.env.DATABASE_URL ?? '';
  * moindre `beforeAll` ne s'execute : une variable renseignee plus tard vaudrait
  * toujours `false` au moment de decider.
  */
+/**
+ * Ce test **ecrit et supprime** des lignes. Il ne doit donc jamais toucher
+ * autre chose qu'une base de developpement locale.
+ *
+ * Le garde-fou n'est pas theorique : un `.env` de preprod oublie, ou une
+ * variable exportee dans un shell, suffisent a pointer `DATABASE_URL` ailleurs.
+ * Le test « marcherait » tout aussi bien — et effacerait des lignes reelles.
+ * On exige donc explicitement un hote local.
+ */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+
+function isLocalDatabase(url: string): boolean {
+  try {
+    return LOCAL_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
 async function connect(): Promise<PrismaClient | null> {
   if (databaseUrl === '') return null;
+  if (!isLocalDatabase(databaseUrl)) {
+    console.warn(
+      '[integration] DATABASE_URL ne designe pas un hote local : test ignore. ' +
+        'Ce test ecrit et supprime des lignes, il ne doit jamais viser une base distante.',
+    );
+    return null;
+  }
   try {
     const client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
     await client.$queryRaw`select 1`;
@@ -212,6 +238,19 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
     await settle();
 
     expect(await prisma!.match.findUnique({ where: { id: matchId } })).toBeNull();
+  });
+});
+
+describe('garde-fou de la base visee', () => {
+  it('refuse une base distante, qui pourrait etre une vraie', () => {
+    expect(isLocalDatabase('postgresql://u:p@db.production.example.com:5432/aura')).toBe(false);
+    expect(isLocalDatabase('postgresql://u:p@10.0.0.4:5432/aura')).toBe(false);
+    expect(isLocalDatabase('pas-une-url')).toBe(false);
+  });
+
+  it('accepte les hotes locaux', () => {
+    expect(isLocalDatabase('postgresql://aura:aura@localhost:5433/aura')).toBe(true);
+    expect(isLocalDatabase('postgresql://aura:aura@127.0.0.1:5433/aura')).toBe(true);
   });
 });
 

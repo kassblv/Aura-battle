@@ -105,6 +105,25 @@ const MAX_EVENTS_BYTES = 256 * 1024;
 /** Longueur maximale de la cause recopiee dans un journal d'erreur. */
 const MAX_CAUSE_CHARS = 200;
 
+/** Nombre de chemins fautifs recopies avant de se contenter de les compter. */
+const MAX_LOGGED_ISSUE_PATHS = 10;
+
+/**
+ * Chemins des champs refuses par le schema, bornes.
+ *
+ * `z.array()` signale **chaque** element invalide : un journal de 500 entrees
+ * malformees donnerait 500 chemins sur une seule ligne, emise au moment precis
+ * ou le serveur va deja mal. Dix chemins disent de quoi il s'agit, le compte
+ * dit l'ampleur.
+ */
+function describeIssues(issues: readonly { readonly path: readonly PropertyKey[] }[]): string {
+  const paths = issues
+    .slice(0, MAX_LOGGED_ISSUE_PATHS)
+    .map((issue) => issue.path.map(String).join('.'));
+  const rest = issues.length - paths.length;
+  return rest > 0 ? `${paths.join(', ')} (+${String(rest)} autres)` : paths.join(', ');
+}
+
 /** Poids JSON d'une valeur, ou `null` si elle n'est pas serialisable. */
 function jsonSize(value: unknown): number | null {
   try {
@@ -269,22 +288,38 @@ export class PrismaMatchRepository implements MatchRepository {
     if (checked.success) return toJson(checked.data);
 
     /**
-     * Une enveloppe hors schema est un defaut du serveur, pas une donnee du
-     * joueur : ses compteurs ne meritent pas plus confiance que sa forme. On
-     * ecrit la colonne nulle et on garde le reste de la ligne — la graine, les
-     * sieges et les manches, eux, ont decide d'un classement.
+     * Repli en deux temps, parce que les deux moities de l'enveloppe n'ont pas
+     * la meme solidite.
      *
+     * `atMs` est la seule valeur ici qui sorte d'un calcul sur des horloges :
+     * c'est la ou une aberration est plausible. Les compteurs, eux, sortent
+     * d'un `+= 1` sur des champs initialises a zero — s'ils sont faux, le
+     * runtime a un probleme bien plus grave que cette colonne. On abandonne
+     * donc le journal, jamais les compteurs, tant que ceux-ci se tiennent : le
+     * signal « Latence » de docs/06 ne vaut qu'agrege sur des milliers de
+     * matchs, et une entree horodatee de travers ne doit pas l'eteindre.
+     */
+    const withoutEntries = matchEventsColumnSchema.safeParse({
+      entries: [],
+      omittedEntries: record.events.length,
+      counters,
+    });
+
+    /**
      * Seuls les **chemins** fautifs sont journalises : un message de zod
      * recopie les valeurs refusees, donc potentiellement le journal entier.
      */
     this.logger.error(
       new Error(
-        `colonne events du match ${record.matchId} hors schema : ${checked.error.issues.map((issue) => issue.path.join('.')).join(', ')}`,
+        `colonne events du match ${record.matchId} hors schema (${withoutEntries.success ? 'journal abandonne, compteurs conserves' : 'colonne nulle'}) : ${describeIssues(checked.error.issues)}`,
       ),
       undefined,
       'PrismaMatchRepository',
     );
-    return Prisma.JsonNull;
+
+    // Les compteurs eux-memes sont en cause : plus rien de cette colonne n'est
+    // croyable. Le reste de la ligne — graine, sieges, manches — part quand meme.
+    return withoutEntries.success ? toJson(withoutEntries.data) : Prisma.JsonNull;
   }
 
   /**

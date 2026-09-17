@@ -433,11 +433,33 @@ describe('PrismaMatchRepository', () => {
   });
 
   /**
-   * Cas inatteignable aujourd'hui — les compteurs viennent d'un type `number`.
-   * Il fixe le sens de la chute : une enveloppe qu'on ne sait pas ecrire
-   * n'emporte ni la graine, ni les sieges, ni les manches.
+   * La panne vraisemblable est locale au journal : `atMs` est la seule valeur
+   * de l'enveloppe qui sorte d'un calcul sur des horloges. Les compteurs, eux,
+   * sortent d'un `+= 1` sur des champs a zero — les jeter avec le journal
+   * eteindrait le signal « Latence » pour un horodatage aberrant.
    */
-  it('ecrit une colonne nulle plutot qu une enveloppe qu elle ne sait pas decrire', async () => {
+  it('abandonne le journal mais garde les compteurs quand une entree est hors schema', async () => {
+    await repository.save(
+      aRecord({
+        events: [{ atMs: Number.NaN, event: { type: 'recharge:tap' } }],
+        impossibleTaps: { a: 5, b: 0 },
+      }),
+    );
+
+    const events = eventsColumnOf(prisma);
+    expect(events.entries).toEqual([]);
+    expect(events.omittedEntries).toBe(1);
+    expect(events.counters).toMatchObject({ A: { impossibleTaps: 5 }, B: { impossibleTaps: 0 } });
+    expect(lines.join('')).toContain('entries.0.atMs');
+  });
+
+  /**
+   * Cas inatteignable aujourd'hui — les compteurs viennent d'un type `number`.
+   * Il fixe le sens de la derniere chute : quand ce sont les compteurs qui sont
+   * en cause, plus rien de la colonne n'est croyable, mais la graine, les
+   * sieges et les manches partent quand meme.
+   */
+  it('ecrit une colonne nulle quand les compteurs eux-memes sont hors schema', async () => {
     const compteurAbsurde = { a: 1n as unknown as number, b: 0 };
 
     await repository.save(aRecord({ rejectedEvents: compteurAbsurde }));
@@ -449,6 +471,26 @@ describe('PrismaMatchRepository', () => {
     expect(sortie).toContain('m_1');
     expect(sortie).toContain('counters.A.rejectedEvents');
     expect(sortie).not.toContain('graine');
+  });
+
+  /**
+   * Un journal entierement malforme produit autant de chemins que d'entrees.
+   * Une ligne de journal de plusieurs kilo-octets, emise quand le serveur va
+   * deja mal, n'aide personne.
+   */
+  it('borne la liste des chemins fautifs', async () => {
+    const journal = Array.from({ length: 500 }, (_, index) => ({
+      atMs: Number.NaN,
+      event: { index },
+    }));
+
+    await repository.save(aRecord({ events: journal }));
+
+    const ligne = lines.find((ecrite) => ecrite.includes('hors schema')) ?? '';
+    const message = (JSON.parse(ligne) as { msg: string }).msg;
+    expect(message.match(/entries\.\d+\.atMs/g)).toHaveLength(10);
+    expect(message).toContain('+490 autres');
+    expect(message.length).toBeLessThan(500);
   });
 
   it('garde ce qui precede une entree non serialisable', async () => {
