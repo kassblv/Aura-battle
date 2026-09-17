@@ -5,11 +5,13 @@ import { SystemClock } from '../../shared/clock.js';
 import { PrismaService } from '../../shared/prisma.service.js';
 import { AuthController } from './adapters/auth.controller.js';
 import { JwtAccessTokenSigner } from './adapters/jwt-signer.js';
+import { JwtAccessTokenVerifier } from './adapters/jwt-verifier.js';
 import {
   PrismaPlayerRepository,
   PrismaRefreshTokenRepository,
 } from './adapters/prisma-repositories.js';
 import { SessionService } from './application/session.js';
+import { SocketAuthenticator } from './application/socket-auth.js';
 
 /**
  * Module d'authentification (architecture hexagonale, docs/02).
@@ -32,6 +34,12 @@ import { SessionService } from './application/session.js';
   controllers: [AuthController],
   providers: [
     SystemClock,
+    JwtAccessTokenVerifier,
+    {
+      provide: SocketAuthenticator,
+      inject: [JwtAccessTokenVerifier],
+      useFactory: (verifier: JwtAccessTokenVerifier) => new SocketAuthenticator(verifier),
+    },
     {
       provide: PrismaService,
       inject: [CONFIG],
@@ -70,6 +78,6 @@ import { SessionService } from './application/session.js';
         }),
     },
   ],
-  exports: [SessionService, PrismaService],
+  exports: [SessionService, SocketAuthenticator, PrismaService],
 })
 export class AuthModule {}

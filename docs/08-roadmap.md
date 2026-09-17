@@ -49,8 +49,8 @@ Référence : `docs/02-architecture.md`, `docs/03-pvp-protocol.md`, `docs/04-dat
 
 - [x] NestJS hexagonal, config typée, logger pino, healthcheck
 - [x] Prisma : schéma initial, migrations, seed (saison 1, catalogue)
-- [ ] Auth invité : `POST /auth/device` → JWT d'accès + refresh ; garde WebSocket — *routes REST faites et vérifiées de bout en bout ; garde WebSocket à faire avec la passerelle*
-- [ ] Gateway Socket.IO : validation zod entrante et sortante, limite de débit, `ping/pong`
+- [x] Auth invité : `POST /auth/device` → JWT d'accès + refresh ; garde WebSocket
+- [x] Gateway Socket.IO : validation zod entrante et sortante, limite de débit, `ping/pong`
 - [ ] Module match : création, `match:ready`, phases et timers pilotés par `@aura/rules`, envois ciblés sans fuite d'information
 - [ ] Invitations par code (`invite:create` / `invite:join`)
 - [ ] Déconnexion, reconnexion (`match:rejoin` → `match:state`), forfait

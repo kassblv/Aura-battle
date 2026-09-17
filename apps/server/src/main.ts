@@ -3,7 +3,7 @@ import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { AppModule } from './app.module.js';
 import { loadConfig } from './shared/config.js';
-import { createLogger, PinoLoggerService } from './shared/logger.js';
+import { PinoLoggerService } from './shared/logger.js';
 
 /**
  * Point d'entree du serveur.
@@ -15,11 +15,12 @@ import { createLogger, PinoLoggerService } from './shared/logger.js';
 async function bootstrap(): Promise<void> {
   const config = loadConfig(process.env);
 
-  const logger = new PinoLoggerService(createLogger(config));
-
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
     bufferLogs: true,
   });
+  // Le logger vient du conteneur : un seul objet pour tout le serveur, donc un
+  // seul endroit ou la redaction des secrets est definie.
+  const logger = app.get(PinoLoggerService);
   app.useLogger(logger);
   app.enableShutdownHooks();
 

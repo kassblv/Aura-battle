@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { MatchModule } from './modules/match/match.module.js';
 import { ConfigModule } from './shared/config.module.js';
+import { LoggerModule } from './shared/logger.module.js';
 
 /**
  * Racine de l'application (docs/02-architecture.md).
@@ -12,6 +14,6 @@ import { ConfigModule } from './shared/config.module.js';
  * configure qui tombera en pleine partie.
  */
 @Module({
-  imports: [ConfigModule, HealthModule, AuthModule],
+  imports: [ConfigModule, LoggerModule, HealthModule, AuthModule, MatchModule],
 })
 export class AppModule {}
