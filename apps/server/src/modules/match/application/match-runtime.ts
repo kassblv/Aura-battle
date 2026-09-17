@@ -95,6 +95,8 @@ interface LiveMatch {
    * empoisonnerait le score de suspicion de chaque personne qu'il croise.
    */
   impossibleTaps: Record<Seat, number>;
+  /** Transitions de phase deja journalisees, pour tenir leur reserve. */
+  phaseEntries: number;
 }
 
 const SEATS: readonly Seat[] = ['a', 'b'];
@@ -121,6 +123,21 @@ const DISCONNECT_GRACE_MS = 45_000;
  * pouvoir y arriver en parlant trop.
  */
 const MAX_JOURNAL_ENTRIES = 500;
+
+/**
+ * Places reservees aux transitions de phase dans le journal.
+ *
+ * Toutes les entrees n'ont pas la meme valeur. Les `PHASE_TIMEOUT` font avancer
+ * la machine a etats : ce sont eux le **squelette** du rejeu, les lots de taps
+ * n'en sont que la chair. Un journal de 484 lots de taps ampute de ses
+ * transitions ne rejoue rien du tout, alors que l'inverse rejoue l'essentiel.
+ *
+ * Un match en produit au plus une quinzaine — quatre par manche, trois manches.
+ * Trente-deux places laissent le double de marge, et garantissent surtout qu'une
+ * transition n'est **jamais** perdue : la comptabilite du journal boucle donc,
+ * et rien ne disparait sans compteur.
+ */
+const PHASE_JOURNAL_RESERVE = 32;
 
 /**
  * Tolerances reseau (docs/03-pvp-protocol.md, tableau « Validation serveur »).
@@ -221,6 +238,20 @@ export class MatchRuntime {
     return true;
   }
 
+  /**
+   * Reste-t-il de la place au journal pour cette entree ?
+   *
+   * Les transitions de phase puisent dans une reserve qui leur est propre : un
+   * joueur bavard ne peut donc pas les chasser du journal, et le squelette du
+   * rejeu survit toujours a la troncature.
+   */
+  private hasRoomInJournal(match: LiveMatch, seat: Seat | null): boolean {
+    if (seat === null) {
+      return match.phaseEntries < PHASE_JOURNAL_RESERVE;
+    }
+    return match.journal.length - match.phaseEntries < MAX_JOURNAL_ENTRIES - PHASE_JOURNAL_RESERVE;
+  }
+
   /** Retrouve le match et le siege d'un joueur, s'il en a un. */
   private locate(playerId: string): { match: LiveMatch; seat: Seat } | null {
     for (const match of this.matches.values()) {
@@ -259,6 +290,7 @@ export class MatchRuntime {
       rejected: { a: 0, b: 0 },
       dropped: { a: 0, b: 0 },
       impossibleTaps: { a: 0, b: 0 },
+      phaseEntries: 0,
     };
     this.matches.set(input.matchId, match);
     this.runEffects(match, step.effects);
@@ -393,8 +425,9 @@ export class MatchRuntime {
 
     if (step.state === match.state) {
       if (seat !== null) match.rejected[seat] += 1;
-    } else if (match.journal.length < MAX_JOURNAL_ENTRIES) {
+    } else if (this.hasRoomInJournal(match, seat)) {
       match.journal.push({ atMs, event });
+      if (seat === null) match.phaseEntries += 1;
     } else if (seat !== null) {
       match.dropped[seat] += 1;
     }

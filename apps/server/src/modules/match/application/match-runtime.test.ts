@@ -734,3 +734,62 @@ describe('compteurs anti-triche — attribues au bon siege', () => {
     expect(record.rejectedEvents).toEqual({ a: 0, b: 0 });
   });
 });
+
+describe('journal — le squelette du rejeu survit a la troncature', () => {
+  class Keeper2 {
+    readonly saved: MatchRecord[] = [];
+    save(record: MatchRecord): Promise<void> {
+      this.saved.push(record);
+      return Promise.resolve();
+    }
+  }
+
+  let keeper: Keeper2;
+
+  beforeEach(() => {
+    keeper = new Keeper2();
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, keeper);
+    runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS });
+  });
+
+  it('garde les transitions de phase meme quand un joueur noie le journal', () => {
+    scheduler.fire(MATCH_ID); // intro -> recharge
+    const orbs = (notifier.to(SEATS.a, 'recharge:start')[0] as { orbs: { index: number }[] }).orbs;
+    clock.current += 200;
+    // Bien plus de lots que le journal ne peut en contenir.
+    for (let i = 0; i < 900; i += 1) {
+      runtime.submitTaps(MATCH_ID, 'a', [{ atMs: 100, orbIndex: orbs[0]!.index }]);
+    }
+    // Les phases continuent d'avancer apres la noyade.
+    advanceTo('choice');
+    runtime.forfeit(MATCH_ID, 'a');
+
+    const record = keeper.saved[0]!;
+    const transitions = record.events.filter(
+      (entry) => (entry.event as { type: string }).type === 'PHASE_TIMEOUT',
+    );
+    // Sans reserve, ces transitions auraient ete chassees par les lots de taps
+    // et le journal ne rejouerait plus rien.
+    expect(transitions.length).toBeGreaterThanOrEqual(2);
+    expect(record.droppedEvents.a).toBeGreaterThan(0);
+  });
+
+  it('ne perd jamais une transition de phase, donc la comptabilite boucle', () => {
+    scheduler.fire(MATCH_ID);
+    const orbs = (notifier.to(SEATS.a, 'recharge:start')[0] as { orbs: { index: number }[] }).orbs;
+    clock.current += 200;
+    for (let i = 0; i < 900; i += 1) {
+      runtime.submitTaps(MATCH_ID, 'a', [{ atMs: 100, orbIndex: orbs[0]!.index }]);
+    }
+    advanceTo('choice');
+    runtime.forfeit(MATCH_ID, 'a');
+
+    const record = keeper.saved[0]!;
+    const phases = record.events.filter(
+      (entry) => (entry.event as { type: string }).type === 'PHASE_TIMEOUT',
+    ).length;
+    const seatEntries = record.events.length - phases;
+    // Tout ce qui manque est impute a un siege : rien ne disparait en silence.
+    expect(seatEntries + record.droppedEvents.a + record.droppedEvents.b).toBeGreaterThan(900);
+  });
+});
