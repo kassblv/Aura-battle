@@ -1,9 +1,9 @@
 import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
-import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module.js';
 import { loadConfig } from './shared/config.js';
+import { createLogger, PinoLoggerService } from './shared/logger.js';
 
 /**
  * Point d'entree du serveur.
@@ -15,17 +15,19 @@ import { loadConfig } from './shared/config.js';
 async function bootstrap(): Promise<void> {
   const config = loadConfig(process.env);
 
+  const logger = new PinoLoggerService(createLogger(config));
+
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
     bufferLogs: true,
   });
-  app.useLogger(app.get(Logger));
+  app.useLogger(logger);
   app.enableShutdownHooks();
 
   // 0.0.0.0 : le serveur doit etre joignable depuis un telephone sur le meme
   // reseau, pas seulement depuis la machine de developpement.
   await app.listen({ port: config.port, host: '0.0.0.0' });
 
-  app.get(Logger).log(`serveur pret sur le port ${config.port} — environnement ${config.nodeEnv}`);
+  logger.log(`serveur pret sur le port ${config.port} — environnement ${config.nodeEnv}`);
 }
 
 void bootstrap();

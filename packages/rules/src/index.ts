@@ -11,7 +11,7 @@
  */
 
 /** Version du moteur de regles, exposee dans le handshake du protocole. */
-export const RULES_VERSION = '0.0.0';
+export const RULES_VERSION = '1.0.0';
 
 export * from './types.js';
 export * from './balance.js';

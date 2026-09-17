@@ -1,8 +1,7 @@
 import { Module } from '@nestjs/common';
-import { LoggerModule } from 'nestjs-pino';
+import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
-import { CONFIG, loadConfig } from './shared/config.js';
-import { loggerOptions } from './shared/logger.js';
+import { ConfigModule } from './shared/config.module.js';
 
 /**
  * Racine de l'application (docs/02-architecture.md).
@@ -13,13 +12,6 @@ import { loggerOptions } from './shared/logger.js';
  * configure qui tombera en pleine partie.
  */
 @Module({
-  imports: [
-    LoggerModule.forRootAsync({
-      useFactory: () => loggerOptions(loadConfig(process.env)),
-    }),
-    HealthModule,
-  ],
-  providers: [{ provide: CONFIG, useFactory: () => loadConfig(process.env) }],
-  exports: [CONFIG],
+  imports: [ConfigModule, HealthModule, AuthModule],
 })
 export class AppModule {}
