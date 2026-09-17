@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Prisma, Seat as SeatColumn } from '@prisma/client';
+import { Prisma, type Seat as SeatColumn } from '@prisma/client';
+import { z } from 'zod';
 import { PinoLoggerService } from '../../../shared/logger.js';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import type { MatchRecord, MatchRepository, PersistedEvent } from '../domain/ports.js';
@@ -18,7 +19,47 @@ import type { MatchRecord, MatchRepository, PersistedEvent } from '../domain/por
  * telle quelle a Prisma serait refusee a l'ecriture — donc au pire moment, en
  * fin de match, quand le resultat est deja parti chez les joueurs.
  */
-const SEAT_COLUMN: Readonly<Record<'a' | 'b', SeatColumn>> = { a: 'A', b: 'B' };
+const SEAT_COLUMN = { a: 'A', b: 'B' } as const satisfies Record<'a' | 'b', SeatColumn>;
+
+/**
+ * Forme de la colonne `events`, declaree plutot que deduite.
+ *
+ * Cette colonne est un contrat persiste : ce qu'on y ecrit aujourd'hui, une
+ * autre version du serveur le relira dans six mois. Le declarer ici vaut ce que
+ * vaut `serializeServerMessage` sur le reseau — le schema est le seul endroit
+ * ou la forme est ecrite une fois pour toutes, et il sert autant a l'ecriture
+ * qu'a la relecture.
+ *
+ * Le schema vit dans l'adaptateur, pas a cote du port : la disposition d'une
+ * colonne Prisma est une affaire de stockage, et le domaine n'a pas a la
+ * connaitre (docs/02). Une lecture de ces lignes est elle aussi un adaptateur,
+ * et importera ce schema d'ici.
+ *
+ * Deux champs comptent des evenements perdus et leurs noms se ressemblent ;
+ * c'est la raison premiere de ce schema. Ils ne disent pas la meme chose :
+ * `droppedEvents` vient du runtime et compte les entrees refusees au journal
+ * faute de **place au journal** ; `omittedEntries` vient de l'adaptateur et
+ * compte celles refusees a l'ecriture faute de **place en octets**.
+ */
+const seatCountersSchema = z.object({
+  /** Evenements que le moteur a refuses (hors phase, energie manquante…). */
+  rejectedEvents: z.number().int().nonnegative(),
+  /** Entrees que le runtime n'a pas journalisees : journal plein. */
+  droppedEvents: z.number().int().nonnegative(),
+  /** Instants declares qui n'ont pas pu avoir lieu : signal « Latence », docs/06. */
+  impossibleTaps: z.number().int().nonnegative(),
+});
+
+export const matchEventsColumnSchema = z.object({
+  /** Journal des evenements acceptes, dans l'ordre, eventuellement tronque. */
+  entries: z.array(z.object({ atMs: z.number(), event: z.unknown() })),
+  /** Entrees que l'adaptateur n'a pas ecrites : plafond d'octets atteint. */
+  omittedEntries: z.number().int().nonnegative(),
+  /** Compteurs d'anti-triche, par siege : les sanctions visent un joueur. */
+  counters: z.object({ A: seatCountersSchema, B: seatCountersSchema }),
+});
+
+export type MatchEventsColumn = z.infer<typeof matchEventsColumnSchema>;
 
 /**
  * Le port garde les charges utiles opaques (`unknown`) pour que le modele de
@@ -200,12 +241,17 @@ export class PrismaMatchRepository implements MatchRepository {
    * Les compteurs, eux, ne sont jamais tronques : ils ne pesent rien et disent
    * a l'anti-triche ce que le journal ne dit plus.
    */
-  private eventsColumn(record: MatchRecord): Prisma.InputJsonValue {
+  private eventsColumn(
+    record: MatchRecord,
+  ): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
     const counters = this.countersColumn(record);
     // Le budget des entrees est ce que l'enveloppe laisse : compteurs et
     // `omittedEntries` partent dans la meme colonne et comptent dans le total.
-    const overhead = jsonSize({ entries: [], counters, omittedEntries: record.events.length }) ?? 0;
-    const kept = fittingPrefix(record.events, MAX_EVENTS_BYTES - overhead);
+    // Une enveloppe qu'on ne sait pas peser ne laisse aucun budget : un repli
+    // genereux accorderait le plafond entier aux entrees, soit exactement le
+    // depassement que ce calcul existe pour empecher.
+    const overhead = jsonSize({ entries: [], counters, omittedEntries: record.events.length });
+    const kept = fittingPrefix(record.events, overhead === null ? 0 : MAX_EVENTS_BYTES - overhead);
     const omittedEntries = record.events.length - kept.length;
 
     if (omittedEntries > 0) {
@@ -214,7 +260,31 @@ export class PrismaMatchRepository implements MatchRepository {
         'PrismaMatchRepository',
       );
     }
-    return toJson({ entries: kept, counters, omittedEntries });
+
+    const checked = matchEventsColumnSchema.safeParse({
+      entries: [...kept],
+      omittedEntries,
+      counters,
+    });
+    if (checked.success) return toJson(checked.data);
+
+    /**
+     * Une enveloppe hors schema est un defaut du serveur, pas une donnee du
+     * joueur : ses compteurs ne meritent pas plus confiance que sa forme. On
+     * ecrit la colonne nulle et on garde le reste de la ligne — la graine, les
+     * sieges et les manches, eux, ont decide d'un classement.
+     *
+     * Seuls les **chemins** fautifs sont journalises : un message de zod
+     * recopie les valeurs refusees, donc potentiellement le journal entier.
+     */
+    this.logger.error(
+      new Error(
+        `colonne events du match ${record.matchId} hors schema : ${checked.error.issues.map((issue) => issue.path.join('.')).join(', ')}`,
+      ),
+      undefined,
+      'PrismaMatchRepository',
+    );
+    return Prisma.JsonNull;
   }
 
   /**
@@ -229,8 +299,8 @@ export class PrismaMatchRepository implements MatchRepository {
    * c'est la ligne `MatchSeat` correspondante qu'on voudra rapprocher de ces
    * chiffres, et c'est la que ces compteurs finiront en colonnes.
    */
-  private countersColumn(record: MatchRecord): Record<string, Record<string, number>> {
-    const forSeat = (seat: 'a' | 'b'): Record<string, number> => ({
+  private countersColumn(record: MatchRecord): MatchEventsColumn['counters'] {
+    const forSeat = (seat: 'a' | 'b'): MatchEventsColumn['counters']['A'] => ({
       rejectedEvents: record.rejectedEvents[seat],
       droppedEvents: record.droppedEvents[seat],
       impossibleTaps: record.impossibleTaps[seat],

@@ -1,11 +1,11 @@
 import { Writable } from 'node:stream';
-import type { Prisma } from '@prisma/client';
+import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
 import type { PrismaService } from '../../../shared/prisma.service.js';
 import type { MatchRecord } from '../domain/ports.js';
-import { PrismaMatchRepository } from './prisma-match.repository.js';
+import { matchEventsColumnSchema, PrismaMatchRepository } from './prisma-match.repository.js';
 
 /**
  * L'adaptateur se teste sans base de donnees : ce qui compte ici n'est pas que
@@ -381,6 +381,74 @@ describe('PrismaMatchRepository', () => {
     expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({
       events: { entries: [], omittedEntries: 1 },
     });
+  });
+
+  /**
+   * La colonne est un contrat persiste : ce qu'on ecrit doit etre exactement ce
+   * qu'une lecture, dans six mois, saura interpreter.
+   */
+  it('ecrit une colonne conforme a son schema, journal entier comme journal tronque', async () => {
+    await repository.save(aRecord());
+    expect(matchEventsColumnSchema.safeParse(eventsColumnOf(prisma)).success).toBe(true);
+
+    prisma.calls.length = 0;
+    await repository.save(aRecord({ events: aHugeJournal() }));
+    expect(matchEventsColumnSchema.safeParse(eventsColumnOf(prisma)).success).toBe(true);
+  });
+
+  it('refuse une enveloppe amputee d un siege', () => {
+    const ampute = {
+      entries: [],
+      omittedEntries: 0,
+      counters: { A: { rejectedEvents: 0, droppedEvents: 0, impossibleTaps: 0 } },
+    };
+
+    expect(matchEventsColumnSchema.safeParse(ampute).success).toBe(false);
+  });
+
+  it('refuse un compteur mal nomme', () => {
+    const fauteDeFrappe = {
+      entries: [],
+      omittedEntries: 0,
+      counters: {
+        A: { rejectedEvent: 0, droppedEvents: 0, impossibleTaps: 0 },
+        B: { rejectedEvents: 0, droppedEvents: 0, impossibleTaps: 0 },
+      },
+    };
+
+    expect(matchEventsColumnSchema.safeParse(fauteDeFrappe).success).toBe(false);
+  });
+
+  it('refuse un compte de pertes negatif', () => {
+    const impossible = {
+      entries: [],
+      omittedEntries: -1,
+      counters: {
+        A: { rejectedEvents: 0, droppedEvents: 0, impossibleTaps: 0 },
+        B: { rejectedEvents: 0, droppedEvents: 0, impossibleTaps: 0 },
+      },
+    };
+
+    expect(matchEventsColumnSchema.safeParse(impossible).success).toBe(false);
+  });
+
+  /**
+   * Cas inatteignable aujourd'hui — les compteurs viennent d'un type `number`.
+   * Il fixe le sens de la chute : une enveloppe qu'on ne sait pas ecrire
+   * n'emporte ni la graine, ni les sieges, ni les manches.
+   */
+  it('ecrit une colonne nulle plutot qu une enveloppe qu elle ne sait pas decrire', async () => {
+    const compteurAbsurde = { a: 1n as unknown as number, b: 0 };
+
+    await repository.save(aRecord({ rejectedEvents: compteurAbsurde }));
+
+    const data = prisma.callsTo('match.create')[0]?.args.data as { events: unknown };
+    expect(data.events).toBe(Prisma.JsonNull);
+    expect(prisma.callsTo('matchRound.createMany')[0]?.args.data).toHaveLength(2);
+    const sortie = lines.join('');
+    expect(sortie).toContain('m_1');
+    expect(sortie).toContain('counters.A.rejectedEvents');
+    expect(sortie).not.toContain('graine');
   });
 
   it('garde ce qui precede une entree non serialisable', async () => {
