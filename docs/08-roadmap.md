@@ -53,7 +53,7 @@ Référence : `docs/02-architecture.md`, `docs/03-pvp-protocol.md`, `docs/04-dat
 - [x] Gateway Socket.IO : validation zod entrante et sortante, limite de débit, `ping/pong`
 - [x] Module match : création, `match:ready`, phases et timers pilotés par `@aura/rules`, envois ciblés sans fuite d'information
 - [x] Invitations par code (`invite:create` / `invite:join`)
-- [ ] Déconnexion, reconnexion (`match:rejoin` → `match:state`), forfait — *`match:rejoin` → `match:state` et forfait faits ; délai de 45 s de déconnexion définitive à faire*
+- [x] Déconnexion, reconnexion (`match:rejoin` → `match:state`), forfait — le match continue sans le joueur déconnecté, forfait au bout de 45 s s'il ne revient pas
 - [x] Persistance du match, des manches et du journal d'événements
 - [x] Tests e2e : deux clients Socket.IO jouent un match complet, timeout de choix, reconnexion en pleine manche, double verrouillage refusé, message hors match ignoré — plus un test d'intégration contre une vraie base Postgres. *Testcontainers reste à ajouter pour la CI, qui est bloquée pour facturation.*
 - [x] Relecture `security-reviewer` sans point bloquant — 7 défauts trouvés et corrigés (3 dénis de service, 1 triche sans violation de règle, granularité des compteurs anti-triche, journal effaçable, squelette de rejeu)
