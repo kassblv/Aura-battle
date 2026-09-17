@@ -292,6 +292,9 @@ export class MatchGateway implements OnGatewayConnection {
     const seat = this.seatIn(socket, body.matchId);
     if (seat === null) return;
 
+    // Un renvoi apres reconnexion ne doit pas compter une seconde fois.
+    if (!this.runtime.acceptSeq(body.matchId, seat, body.seq)) return;
+
     this.runtime.submitTaps(
       body.matchId,
       seat,
@@ -306,6 +309,8 @@ export class MatchGateway implements OnGatewayConnection {
   ): void {
     const seat = this.seatIn(socket, body.matchId);
     if (seat === null) return;
+
+    if (!this.runtime.acceptSeq(body.matchId, seat, body.seq)) return;
 
     // Le client envoie l'instant du tap et celui du lancement de charge ; le
     // moteur ne veut que l'ecart, relatif au debut de la charge.

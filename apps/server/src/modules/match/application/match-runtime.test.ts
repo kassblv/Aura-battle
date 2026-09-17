@@ -473,3 +473,47 @@ describe('deconnexion — le match continue, puis tranche', () => {
     expect(scheduler.pending(`${MATCH_ID}:disconnect:a`)).toBe(null);
   });
 });
+
+describe('idempotence — un renvoi ne doit pas compter deux fois', () => {
+  it('accepte un seq croissant', () => {
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 1)).toBe(true);
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 2)).toBe(true);
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 7)).toBe(true);
+  });
+
+  it('refuse un seq deja traite', () => {
+    runtime.acceptSeq(MATCH_ID, 'a', 5);
+    // Le cas reel : le client se reconnecte et renvoie ses taps par securite.
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 5)).toBe(false);
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 3)).toBe(false);
+  });
+
+  it('compte les deux sieges separement', () => {
+    runtime.acceptSeq(MATCH_ID, 'a', 9);
+    // Le compteur de l'un ne doit pas bloquer l'autre.
+    expect(runtime.acceptSeq(MATCH_ID, 'b', 1)).toBe(true);
+  });
+
+  it('refuse tout seq sur un match inconnu', () => {
+    expect(runtime.acceptSeq('inexistant', 'a', 1)).toBe(false);
+  });
+
+  it('ne compte pas deux fois des taps renvoyes', () => {
+    scheduler.fire(MATCH_ID);
+    const [start] = notifier.to(SEATS.a, 'recharge:start') as [{ orbs: { index: number }[] }];
+    const taps = start.orbs
+      .slice(0, 4)
+      .map((orb, i) => ({ atMs: (i + 1) * 200, orbIndex: orb.index }));
+
+    // Premier envoi accepte, renvoi identique rejete.
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 1)).toBe(true);
+    runtime.submitTaps(MATCH_ID, 'a', taps);
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 1)).toBe(false);
+
+    notifier.clear();
+    scheduler.fire(MATCH_ID);
+    const [choiceStart] = notifier.to(SEATS.a, 'choice:start') as [{ ult: number }];
+    // Quatre orbes touchees une seule fois : la jauge ne doit pas avoir double.
+    expect(choiceStart.ult).toBeLessThanOrEqual(4 * 3 * BALANCE.recharge.ultimatePerPoint);
+  });
+});

@@ -57,6 +57,15 @@ interface LiveMatch {
   /** Cosmetiques de la manche en cours, par siege. */
   cosmetics: Record<Seat, Cosmetic | null>;
   /**
+   * Dernier `seq` traite par siege.
+   *
+   * Le protocole impose un compteur croissant par client (docs/03). Sans lui,
+   * un client qui se reconnecte et renvoie ses taps par securite les fait
+   * compter deux fois — un champ valide mais jamais lu donne l'illusion d'une
+   * protection.
+   */
+  lastSeq: Record<Seat, number>;
+  /**
    * Journal des evenements appliques.
    *
    * Graine + journal = le match rejouable a l'identique. C'est la seule facon
@@ -140,6 +149,21 @@ export class MatchRuntime {
     this.scheduler.cancel(disconnectKey(found.match.matchId, found.seat));
   }
 
+  /**
+   * Accepte un numero d'action, ou le rejette comme deja traite.
+   *
+   * Idempotence : rejouer une action deja prise en compte ne doit rien
+   * changer. On compare au dernier numero vu plutot que de tenir la liste de
+   * tous les numeros — le protocole garantit qu'ils croissent.
+   */
+  acceptSeq(matchId: string, seat: Seat, seq: number): boolean {
+    const match = this.matches.get(matchId);
+    if (match === undefined) return false;
+    if (seq <= match.lastSeq[seat]) return false;
+    match.lastSeq[seat] = seq;
+    return true;
+  }
+
   /** Retrouve le match et le siege d'un joueur, s'il en a un. */
   private locate(playerId: string): { match: LiveMatch; seat: Seat } | null {
     for (const match of this.matches.values()) {
@@ -173,6 +197,7 @@ export class MatchRuntime {
       startedAtMs: this.clock.now(),
       state: step.state,
       cosmetics: { a: null, b: null },
+      lastSeq: { a: 0, b: 0 },
       journal: [],
     };
     this.matches.set(input.matchId, match);
