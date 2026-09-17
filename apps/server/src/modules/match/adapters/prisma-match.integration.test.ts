@@ -14,9 +14,14 @@ import { PrismaMatchRepository } from './prisma-match.repository.js';
  * base.
  *
  * Les tests unitaires de l'adaptateur verifient ce qu'on **demande** a Prisma ;
- * seul celui-ci verifie ce que Postgres **accepte** — contraintes, enums,
- * colonnes JSON, transaction. Les deux sont necessaires et aucun ne remplace
- * l'autre.
+ * seul celui-ci verifie ce que Postgres **accepte** — cles etrangeres, enums,
+ * colonnes JSON, atomicite de la transaction. Les deux sont necessaires et
+ * aucun ne remplace l'autre.
+ *
+ * Deux points valent d'etre exerces ici et nulle part ailleurs : un siege
+ * rattache a un **vrai** joueur, donc la cle etrangere ; et une ecriture qui
+ * echoue en cours de route, qui ne doit **rien** laisser derriere elle. Un
+ * double de test ne peut demontrer ni l'une ni l'autre.
  *
  * Il se saute proprement si la base n'est pas joignable, pour qu'une machine
  * sans `docker compose up` ne voie pas une suite rouge sans raison.
@@ -84,6 +89,52 @@ class Movable implements MatchClock {
 
 const silent: MatchNotifier = { send: () => undefined };
 
+/** Cree un joueur reel, pour que la cle etrangere des sieges soit exercee. */
+async function createPlayer(): Promise<string> {
+  const player = await prisma!.player.create({
+    data: { displayName: `Test ${randomUUID().slice(0, 8)}` },
+    select: { id: true },
+  });
+  return player.id;
+}
+
+/** Monte un runtime branche sur le vrai depot. */
+function buildRuntime(): { runtime: MatchRuntime; scheduler: Manual; clock: Movable } {
+  const config = loadConfig({
+    DATABASE_URL: databaseUrl,
+    REDIS_URL: 'redis://localhost:6379',
+    JWT_SECRET: 'un-secret-assez-long',
+    NODE_ENV: 'test',
+  });
+  const repository = new PrismaMatchRepository(
+    prisma as never,
+    new PinoLoggerService(createLogger(config)),
+  );
+  const clock = new Movable();
+  const scheduler = new Manual(clock);
+  return {
+    runtime: new MatchRuntime(silent, scheduler, clock, BALANCE, repository),
+    scheduler,
+    clock,
+  };
+}
+
+/** Joue deux manches gagnees par le siege a. */
+function playToVictory(runtime: MatchRuntime, scheduler: Manual, matchId: string): void {
+  for (let round = 1; round <= 2; round += 1) {
+    while (runtime.phaseOf(matchId) !== 'choice' && runtime.phaseOf(matchId) !== null) {
+      scheduler.fire(matchId);
+    }
+    if (runtime.phaseOf(matchId) === null) break;
+    runtime.lockChoice(matchId, 'a', choice(3), null);
+    runtime.lockChoice(matchId, 'b', choice(0), null);
+    scheduler.fire(matchId);
+  }
+}
+
+/** L'ecriture ne bloque pas la fin de partie : on lui laisse le temps. */
+const settle = (): Promise<void> => new Promise((resolve) => setTimeout(resolve, 600));
+
 const choice = (tier: 0 | 1 | 2 | 3 | 4): Choice => ({
   move: { style: 'calme', tier },
   amplifier: 0,
@@ -91,39 +142,15 @@ const choice = (tier: 0 | 1 | 2 | 3 | 4): Choice => ({
 });
 
 describe.skipIf(!reachable)('ecriture reelle en base', () => {
-  it('ecrit le match, ses deux sieges et ses manches', async () => {
-    const config = loadConfig({
-      DATABASE_URL: databaseUrl,
-      REDIS_URL: 'redis://localhost:6379',
-      JWT_SECRET: 'un-secret-assez-long',
-      NODE_ENV: 'test',
-    });
-    const repository = new PrismaMatchRepository(
-      prisma as never,
-      new PinoLoggerService(createLogger(config)),
-    );
-
-    const clock = new Movable();
-    const scheduler = new Manual(clock);
-    const runtime = new MatchRuntime(silent, scheduler, clock, BALANCE, repository);
+  it('ecrit le match, ses deux sieges rattaches a de vrais joueurs, et ses manches', async () => {
+    const [playerA, playerB] = [await createPlayer(), await createPlayer()];
+    const { runtime, scheduler } = buildRuntime();
 
     const matchId = `m_${randomUUID()}`;
     const seed = randomUUID();
-    runtime.createMatch({ matchId, seed, seats: { a: null as never, b: null as never } });
-
-    // Deux manches gagnees par le siege a.
-    for (let round = 1; round <= 2; round += 1) {
-      while (runtime.phaseOf(matchId) !== 'choice' && runtime.phaseOf(matchId) !== null) {
-        scheduler.fire(matchId);
-      }
-      if (runtime.phaseOf(matchId) === null) break;
-      runtime.lockChoice(matchId, 'a', choice(3), null);
-      runtime.lockChoice(matchId, 'b', choice(0), null);
-      scheduler.fire(matchId);
-    }
-
-    // L'ecriture ne bloque pas la fin de partie : on lui laisse le temps.
-    await new Promise((resolve) => setTimeout(resolve, 500));
+    runtime.createMatch({ matchId, seed, seats: { a: playerA, b: playerB } });
+    playToVictory(runtime, scheduler, matchId);
+    await settle();
 
     const written = await prisma!.match.findUnique({
       where: { id: matchId },
@@ -135,40 +162,54 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
     expect(written?.status).toBe('ENDED');
     expect(written?.winnerSeat).toBe('A');
     expect(written?.endReason).toBe('rounds');
-    // Les deux sieges, meme sans joueur rattache.
-    expect(written?.seats).toHaveLength(2);
     expect(written?.rounds).toHaveLength(2);
 
-    // L'enveloppe du journal est bien une enveloppe, pas un tableau nu.
+    // La cle etrangere est reellement exercee : les sieges portent des joueurs
+    // qui existent, ce qu'un double de test ne peut pas verifier.
+    const seats = [...(written?.seats ?? [])].sort((l, r) => l.seat.localeCompare(r.seat));
+    expect(seats.map((s) => s.seat)).toEqual(['A', 'B']);
+    expect(seats.map((s) => s.playerId)).toEqual([playerA, playerB]);
+
     const events = written?.events as { entries?: unknown[]; counters?: unknown } | null;
     expect(Array.isArray(events?.entries)).toBe(true);
     expect(events?.counters).toBeDefined();
 
     await prisma!.match.delete({ where: { id: matchId } });
+    await prisma!.player.deleteMany({ where: { id: { in: [playerA, playerB] } } });
+  });
+
+  it('ne laisse rien derriere elle quand l ecriture echoue', async () => {
+    // Un siege rattache a un joueur inexistant viole la cle etrangere **apres**
+    // que le match a ete cree dans la transaction. Si l'atomicite tient, la
+    // ligne de match ne doit pas survivre — c'est la seule chose que ce test
+    // apporte et que le double ne peut pas prouver.
+    const playerA = await createPlayer();
+    const fantome = randomUUID();
+    const { runtime, scheduler } = buildRuntime();
+
+    const matchId = `m_${randomUUID()}`;
+    runtime.createMatch({ matchId, seed: randomUUID(), seats: { a: playerA, b: fantome } });
+    playToVictory(runtime, scheduler, matchId);
+    await settle();
+
+    expect(await prisma!.match.findUnique({ where: { id: matchId } })).toBeNull();
+    expect(await prisma!.matchSeat.findMany({ where: { matchId } })).toHaveLength(0);
+    expect(await prisma!.matchRound.findMany({ where: { matchId } })).toHaveLength(0);
+
+    await prisma!.player.delete({ where: { id: playerA } });
   });
 
   it('n ecrit rien pour un match encore en cours', async () => {
-    const config = loadConfig({
-      DATABASE_URL: databaseUrl,
-      REDIS_URL: 'redis://localhost:6379',
-      JWT_SECRET: 'un-secret-assez-long',
-      NODE_ENV: 'test',
-    });
-    const repository = new PrismaMatchRepository(
-      prisma as never,
-      new PinoLoggerService(createLogger(config)),
-    );
-    const clock = new Movable();
-    const scheduler = new Manual(clock);
-    const runtime = new MatchRuntime(silent, scheduler, clock, BALANCE, repository);
-
+    const { runtime } = buildRuntime();
     const matchId = `m_${randomUUID()}`;
+    // Le match ne se termine pas, donc rien n'est ecrit : les identifiants de
+    // joueur n'ont pas besoin d'exister.
     runtime.createMatch({
       matchId,
       seed: randomUUID(),
-      seats: { a: null as never, b: null as never },
+      seats: { a: randomUUID(), b: randomUUID() },
     });
-    await new Promise((resolve) => setTimeout(resolve, 200));
+    await settle();
 
     expect(await prisma!.match.findUnique({ where: { id: matchId } })).toBeNull();
   });
