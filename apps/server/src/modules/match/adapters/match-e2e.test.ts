@@ -4,7 +4,7 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { Test } from '@nestjs/testing';
 import { io, type Socket as ClientSocket } from 'socket.io-client';
-import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
@@ -430,5 +430,37 @@ describe('deconnexion et reprise', () => {
     expect(host.received.map((m) => m.name)).not.toContain('match:end');
 
     close(host);
+  });
+});
+
+describe('abus — un seul compte ne doit pas multiplier son budget', () => {
+  it('ferme la socket precedente quand un joueur se reconnecte', async () => {
+    const playerId = nextPlayerId();
+    const premiere = await record(playerId);
+    const seconde = await record(playerId);
+
+    // La premiere doit etre coupee : sinon elle reste authentifiee, muette
+    // mais pleinement emettrice, avec son propre budget de debit.
+    await vi.waitFor(() => {
+      expect(premiere.socket.connected).toBe(false);
+    }, 3_000);
+    expect(seconde.socket.connected).toBe(true);
+
+    close(seconde);
+  });
+
+  it('ne repond qu une fois a un client qui inonde', async () => {
+    const player = await record();
+    for (let i = 0; i < 120; i += 1) {
+      player.socket.emit('ping', { t: i });
+    }
+    await player.first('error');
+    // Laisser le temps a d'eventuels refus supplementaires d'arriver.
+    await new Promise((resolve) => setTimeout(resolve, 300));
+    const refus = player
+      .all('error')
+      .filter((e) => (e as { code: string }).code === 'RATE_LIMITED');
+    expect(refus).toHaveLength(1);
+    close(player);
   });
 });

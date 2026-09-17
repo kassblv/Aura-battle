@@ -124,6 +124,24 @@ export interface MatchStep {
 
 const SEATS: readonly Seat[] = ['a', 'b'];
 
+/**
+ * Nombre maximal de taps conserves pour une manche, par siege.
+ *
+ * `maxTapsPerSecond x duree` est le maximum **physiquement** atteignable : le
+ * plafond de cadence rejette tout ce qui va au-dela, donc les taps
+ * supplementaires ne peuvent de toute facon rien rapporter.
+ *
+ * On plafonne au **stockage** et non a l'evaluation, et la difference n'est pas
+ * cosmetique : le schema du protocole borne un message, pas la somme des
+ * messages d'une phase. Sans cette borne, un client peut empiler des centaines
+ * de milliers de taps en six secondes, que `evaluateRecharge` devra ensuite
+ * trier — dans le callback d'une echeance, donc en bloquant tous les autres
+ * matchs du processus. Un joueur honnete n'atteint jamais ce plafond.
+ */
+function maxStoredTaps(config: BalanceConfig): number {
+  return (config.recharge.maxTapsPerSecond * config.recharge.durationMs) / 1_000;
+}
+
 const emptyPending = (): PendingSeat => ({
   taps: [],
   boostPercent: 0,
@@ -420,6 +438,12 @@ export function reduce(
 
     case 'RECHARGE_TAPS': {
       if (state.phase !== 'recharge') return { state, effects: [] };
+
+      const kept = [...state.pending[event.seat].taps, ...event.taps].slice(
+        0,
+        maxStoredTaps(config),
+      );
+
       return {
         state: {
           ...state,
@@ -427,7 +451,7 @@ export function reduce(
             ...state.pending,
             [event.seat]: {
               ...state.pending[event.seat],
-              taps: [...state.pending[event.seat].taps, ...event.taps],
+              taps: kept,
               acted: state.pending[event.seat].acted || event.taps.length > 0,
             },
           },

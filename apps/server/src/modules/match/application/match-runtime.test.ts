@@ -517,3 +517,64 @@ describe('idempotence — un renvoi ne doit pas compter deux fois', () => {
     expect(choiceStart.ult).toBeLessThanOrEqual(4 * 3 * BALANCE.recharge.ultimatePerPoint);
   });
 });
+
+describe('journal — borne et purge des evenements refuses', () => {
+  class CountingRepository {
+    readonly saved: MatchRecord[] = [];
+    save(record: MatchRecord): Promise<void> {
+      this.saved.push(record);
+      return Promise.resolve();
+    }
+  }
+
+  let repository: CountingRepository;
+
+  beforeEach(() => {
+    repository = new CountingRepository();
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, repository);
+    runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS });
+  });
+
+  it('ne journalise pas un evenement que le moteur refuse', () => {
+    // Des taps hors de la phase de recharge : le moteur les jette. Sans cette
+    // regle, le journal les garderait quand meme.
+    for (let i = 0; i < 50; i += 1) {
+      runtime.submitTaps(MATCH_ID, 'a', [{ atMs: 10, orbIndex: 0 }]);
+    }
+    runtime.forfeit(MATCH_ID, 'a');
+
+    const record = repository.saved[0]!;
+    expect(record.rejectedEvents).toBe(50);
+    // Seul l'abandon, qui change l'etat, figure au journal.
+    expect(record.events).toHaveLength(1);
+  });
+
+  it('borne le journal meme sous un flot d evenements acceptes', () => {
+    scheduler.fire(MATCH_ID);
+    const orbs =
+      (notifier.to(SEATS.a, 'recharge:start')[0] as { orbs: { index: number }[] }).orbs ?? [];
+    // Beaucoup plus d'envois que ce qu'un match honnete produit.
+    for (let i = 0; i < 700; i += 1) {
+      runtime.submitTaps(MATCH_ID, 'a', [{ atMs: 100, orbIndex: orbs[0]!.index }]);
+    }
+    runtime.forfeit(MATCH_ID, 'a');
+
+    const record = repository.saved[0]!;
+    expect(record.events.length).toBeLessThanOrEqual(500);
+    expect(record.droppedEvents).toBeGreaterThan(0);
+  });
+
+  it('garde un journal complet pour un match normal', () => {
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', choice(3), null);
+    runtime.lockChoice(MATCH_ID, 'b', choice(1), null);
+    scheduler.fire(MATCH_ID);
+    runtime.forfeit(MATCH_ID, 'a');
+
+    const record = repository.saved[0]!;
+    // Rien de perdu, rien de refuse : un match honnete tient tres largement.
+    expect(record.droppedEvents).toBe(0);
+    expect(record.rejectedEvents).toBe(0);
+    expect(record.events.length).toBeGreaterThan(3);
+  });
+});

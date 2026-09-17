@@ -57,7 +57,18 @@ export interface MatchRecord {
   readonly startedAtMs: number;
   readonly endedAtMs: number;
   readonly rounds: readonly PersistedRound[];
+  /** Journal des evenements **acceptes**, borne. */
   readonly events: readonly PersistedEvent[];
+  /**
+   * Evenements refuses par le moteur.
+   *
+   * Comptes et non conserves : leur nombre interesse l'anti-triche, leur
+   * contenu offrirait a un client bavard de quoi faire gonfler l'ecriture
+   * jusqu'a la faire echouer.
+   */
+  readonly rejectedEvents: number;
+  /** Entrees ecartees parce que le journal etait plein. */
+  readonly droppedEvents: number;
 }
 
 /** Ecriture d'un match acheve. */

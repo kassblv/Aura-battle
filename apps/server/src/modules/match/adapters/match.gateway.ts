@@ -45,10 +45,21 @@ import { SocketNotifier } from './socket-notifier.js';
  */
 const RATE_LIMIT = { capacity: 30, refillPerSecond: 15 } as const;
 
+/**
+ * Nombre de refus de debit signales a un client avant qu'on ne se taise.
+ *
+ * Repondre `error` a chaque paquet refuse **amplifie** l'inondation au lieu de
+ * l'amortir : l'attaquant paie un message, le serveur en paie deux. On previent
+ * une fois, puis silence ; un client honnete a compris des le premier.
+ */
+const MAX_RATE_LIMIT_REPLIES = 1;
+
 /** Donnees attachees a une socket authentifiee. */
 interface SocketState {
   playerId: string;
   bucket: TokenBucket;
+  /** Refus de debit deja signales a ce client. */
+  rateLimitReplies: number;
 }
 
 @Injectable()
@@ -122,6 +133,7 @@ export class MatchGateway implements OnGatewayConnection {
     const state: SocketState = {
       playerId: result.playerId,
       bucket: new TokenBucket(RATE_LIMIT),
+      rateLimitReplies: 0,
     };
     socket.data = state;
     this.notifier.register(state.playerId, socket);
@@ -145,13 +157,19 @@ export class MatchGateway implements OnGatewayConnection {
       const payload: unknown = packet[1];
 
       if (!state.bucket.tryConsume(Date.now())) {
-        this.emit(socket, 'error', {
-          code: 'RATE_LIMITED',
-          message: 'trop de messages',
-          retryable: true,
-        });
+        // On previent une fois, puis on se tait : repondre a chaque paquet
+        // refuse ferait du serveur le complice de l'inondation.
+        if (state.rateLimitReplies < MAX_RATE_LIMIT_REPLIES) {
+          state.rateLimitReplies += 1;
+          this.emit(socket, 'error', {
+            code: 'RATE_LIMITED',
+            message: 'trop de messages',
+            retryable: true,
+          });
+        }
         return;
       }
+      state.rateLimitReplies = 0;
 
       if (!isClientMessageName(event)) {
         this.emit(socket, 'error', {

@@ -72,6 +72,15 @@ interface LiveMatch {
    * de trancher un litige sur un resultat autrement que sur parole.
    */
   readonly journal: { atMs: number; event: MatchEvent }[];
+  /**
+   * Evenements refuses par le moteur, comptes mais pas conserves.
+   *
+   * Leur nombre interesse l'anti-triche ; leur contenu, non. Les garder
+   * offrirait justement le levier qu'on veut retirer.
+   */
+  rejected: number;
+  /** Entrees ecartees faute de place au journal. */
+  dropped: number;
 }
 
 const SEATS: readonly Seat[] = ['a', 'b'];
@@ -85,6 +94,19 @@ const SEATS: readonly Seat[] = ['a', 'b'];
  * defaut s'appliquent — il n'est pas puni, il joue mal.
  */
 const DISCONNECT_GRACE_MS = 45_000;
+
+/**
+ * Nombre maximal d'entrees conservees au journal d'un match.
+ *
+ * Un match honnete en produit quelques dizaines : quatre echeances de phase et
+ * deux verrouillages par manche, plus les lots de taps. Le plafond existe pour
+ * qu'un client bavard ne puisse pas gonfler le journal jusqu'a faire echouer
+ * son ecriture — ce journal part dans une seule colonne JSON, au sein d'une
+ * transaction qui expire, et son echec fait perdre **tout** le match : graine
+ * et manches comprises. Celui qui a interet a effacer ses traces ne doit pas
+ * pouvoir y arriver en parlant trop.
+ */
+const MAX_JOURNAL_ENTRIES = 500;
 
 /** Cle du minuteur de deconnexion d'un siege. */
 const disconnectKey = (matchId: string, seat: Seat): string => `${matchId}:disconnect:${seat}`;
@@ -199,6 +221,8 @@ export class MatchRuntime {
       cosmetics: { a: null, b: null },
       lastSeq: { a: 0, b: 0 },
       journal: [],
+      rejected: 0,
+      dropped: 0,
     };
     this.matches.set(input.matchId, match);
     this.runEffects(match, step.effects);
@@ -265,8 +289,20 @@ export class MatchRuntime {
   }
 
   private apply(match: LiveMatch, event: MatchEvent): void {
-    match.journal.push({ atMs: this.clock.now(), event });
+    const atMs = this.clock.now();
     const step = reduce(match.state, event, this.config);
+
+    // On ne journalise qu'un evenement **accepte**. Le moteur renvoie l'etat
+    // inchange — le meme objet — quand il ignore un evenement ; c'est ce qui
+    // permet de faire la difference sans dupliquer sa logique de validation.
+    if (step.state === match.state) {
+      match.rejected += 1;
+    } else if (match.journal.length < MAX_JOURNAL_ENTRIES) {
+      match.journal.push({ atMs, event });
+    } else {
+      match.dropped += 1;
+    }
+
     match.state = step.state;
     this.runEffects(match, step.effects);
   }
@@ -449,6 +485,8 @@ export class MatchRuntime {
       endedAtMs: this.clock.now(),
       rounds: match.state.history.map((round, index) => ({ round: index + 1, result: round })),
       events: match.journal.map((entry) => ({ atMs: entry.atMs, event: entry.event })),
+      rejectedEvents: match.rejected,
+      droppedEvents: match.dropped,
     };
 
     void this.repository.save(record).catch(() => {

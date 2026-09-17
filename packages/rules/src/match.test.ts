@@ -597,3 +597,66 @@ describe('resultat de recharge conserve dans l etat', () => {
     expect(step.state.pending.a.recharge).toBe(null);
   });
 });
+
+describe('plafond des taps accumules', () => {
+  const rechargePhase = () => {
+    const start = createMatch('graine');
+    return reduce(start.state, timeout(start.state));
+  };
+
+  const physicalMax = (BALANCE.recharge.maxTapsPerSecond * BALANCE.recharge.durationMs) / 1_000;
+
+  it('accepte tout ce qu un joueur peut physiquement produire', () => {
+    const step = rechargePhase();
+    const taps = Array.from({ length: physicalMax }, (_unused, i) => ({
+      atMs: i * 80,
+      orbIndex: i,
+    }));
+    const after = reduce(step.state, { type: 'RECHARGE_TAPS', seat: 'a', taps, atMs: 100 });
+    expect(after.state.pending.a.taps).toHaveLength(physicalMax);
+  });
+
+  it('ne garde jamais plus que ce maximum, meme sur plusieurs envois', () => {
+    // Le schema du protocole borne un message, pas la somme des messages d'une
+    // phase : sans plafond ici, un client empile autant qu'il veut.
+    let step = rechargePhase();
+    for (let envoi = 0; envoi < 20; envoi += 1) {
+      const taps = Array.from({ length: physicalMax }, (_unused, i) => ({
+        atMs: i * 80,
+        orbIndex: i,
+      }));
+      step = reduce(step.state, { type: 'RECHARGE_TAPS', seat: 'a', taps, atMs: 100 });
+    }
+    expect(step.state.pending.a.taps).toHaveLength(physicalMax);
+  });
+
+  it('garde les premiers taps, pas les derniers', () => {
+    // Le joueur honnete tape dans l'ordre : ce sont ses premiers taps qui
+    // comptent, pas ceux qu'un tricheur ajouterait ensuite.
+    const step = rechargePhase();
+    const taps = Array.from({ length: physicalMax + 50 }, (_unused, i) => ({
+      atMs: i,
+      orbIndex: i,
+    }));
+    const after = reduce(step.state, { type: 'RECHARGE_TAPS', seat: 'a', taps, atMs: 100 });
+    expect(after.state.pending.a.taps[0]?.orbIndex).toBe(0);
+    expect(after.state.pending.a.taps.at(-1)?.orbIndex).toBe(physicalMax - 1);
+  });
+
+  it('plafonne chaque siege separement', () => {
+    let step = rechargePhase();
+    const taps = Array.from({ length: physicalMax + 10 }, (_unused, i) => ({
+      atMs: i,
+      orbIndex: i,
+    }));
+    step = reduce(step.state, { type: 'RECHARGE_TAPS', seat: 'a', taps, atMs: 100 });
+    step = reduce(step.state, {
+      type: 'RECHARGE_TAPS',
+      seat: 'b',
+      taps: taps.slice(0, 3),
+      atMs: 100,
+    });
+    expect(step.state.pending.a.taps).toHaveLength(physicalMax);
+    expect(step.state.pending.b.taps).toHaveLength(3);
+  });
+});

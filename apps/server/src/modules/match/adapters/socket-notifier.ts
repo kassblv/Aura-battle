@@ -19,8 +19,22 @@ export class SocketNotifier implements MatchNotifier {
 
   constructor(@Inject(PinoLoggerService) private readonly logger: PinoLoggerService) {}
 
+  /**
+   * Enregistre la socket d'un joueur et **ferme la precedente**.
+   *
+   * Sans cette fermeture, l'ancienne socket reste authentifiee et pleinement
+   * operante : elle ne recoit plus rien, mais elle peut toujours emettre. Un
+   * joueur ouvrant cent sockets avec un seul jeton disposerait alors de cent
+   * fois le budget de debit, chacune ayant son propre seau a jetons. `docs/03`
+   * prevoit de toute facon que le client ferme proprement avant de se
+   * reconnecter.
+   */
   register(playerId: string, socket: Socket): void {
+    const previous = this.sockets.get(playerId);
     this.sockets.set(playerId, socket);
+    if (previous !== undefined && previous !== socket) {
+      previous.disconnect(true);
+    }
   }
 
   unregister(playerId: string, socket: Socket): void {
