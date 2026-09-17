@@ -124,18 +124,20 @@ async function createPlayer(): Promise<string> {
   return player.id;
 }
 
-/** Monte un runtime branche sur le vrai depot. */
-function buildRuntime(): { runtime: MatchRuntime; scheduler: Manual; clock: Movable } {
+/** Monte le depot branche sur la vraie base. */
+function buildRepository(): PrismaMatchRepository {
   const config = loadConfig({
     DATABASE_URL: databaseUrl,
     REDIS_URL: 'redis://localhost:6379',
     JWT_SECRET: 'un-secret-assez-long',
     NODE_ENV: 'test',
   });
-  const repository = new PrismaMatchRepository(
-    prisma as never,
-    new PinoLoggerService(createLogger(config)),
-  );
+  return new PrismaMatchRepository(prisma as never, new PinoLoggerService(createLogger(config)));
+}
+
+/** Monte un runtime branche sur le vrai depot. */
+function buildRuntime(): { runtime: MatchRuntime; scheduler: Manual; clock: Movable } {
+  const repository = buildRepository();
   const clock = new Movable();
   const scheduler = new Manual(clock);
   return {
@@ -204,19 +206,65 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
     await prisma!.player.deleteMany({ where: { id: { in: [playerA, playerB] } } });
   });
 
-  it('ne laisse rien derriere elle quand l ecriture echoue', async () => {
-    // Un siege rattache a un joueur inexistant viole la cle etrangere **apres**
-    // que le match a ete cree dans la transaction. Si l'atomicite tient, la
-    // ligne de match ne doit pas survivre — c'est la seule chose que ce test
-    // apporte et que le double ne peut pas prouver.
+  it('archive le match meme quand le joueur d un siege a disparu', async () => {
+    // Compte supprime, purge RGPD, incident : un siege peut designer un joueur
+    // que la base ne connait plus. L'archive doit survivre — sinon effacer son
+    // compte devient un moyen legal de detruire le journal de litige (docs/06).
+    // Seule une vraie cle etrangere peut le prouver : un double accepterait
+    // n'importe quel identifiant.
     const playerA = await createPlayer();
-    const fantome = randomUUID();
+    const disparu = randomUUID();
     const { runtime, scheduler } = buildRuntime();
 
     const matchId = `m_${randomUUID()}`;
-    runtime.createMatch({ matchId, seed: randomUUID(), seats: { a: playerA, b: fantome } });
+    runtime.createMatch({ matchId, seed: randomUUID(), seats: { a: playerA, b: disparu } });
     playToVictory(runtime, scheduler, matchId);
     await settle();
+
+    const written = await prisma!.match.findUnique({
+      where: { id: matchId },
+      include: { seats: true, rounds: true },
+    });
+    expect(written).not.toBeNull();
+    expect(written?.rounds).toHaveLength(2);
+
+    // Le siege du joueur disparu part sans attribution ; celui de l'autre garde
+    // la sienne. Desattribuer les deux punirait l'innocent.
+    const seats = [...(written?.seats ?? [])].sort((l, r) => l.seat.localeCompare(r.seat));
+    expect(seats.map((s) => s.playerId)).toEqual([playerA, null]);
+
+    await prisma!.match.delete({ where: { id: matchId } });
+    await prisma!.player.delete({ where: { id: playerA } });
+  });
+
+  it('ne laisse rien derriere elle quand l ecriture echoue', async () => {
+    // Deux manches portant le meme numero violent la cle primaire composee de
+    // `MatchRound` — **apres** que le match et ses sieges ont ete ecrits dans
+    // la transaction. Si l'atomicite tient, il ne doit rien rester. C'est la
+    // seule chose que ce test apporte et qu'un double ne peut pas prouver.
+    const playerA = await createPlayer();
+    const matchId = `m_${randomUUID()}`;
+    const round = { round: 1, result: { round: 1 } };
+
+    await expect(
+      buildRepository().save({
+        matchId,
+        seed: randomUUID(),
+        mode: 'INVITE',
+        rulesVersion: '1.0.0',
+        contentVersion: '1.0.0',
+        seats: { a: playerA, b: null },
+        winner: 'a',
+        reason: 'rounds',
+        startedAtMs: Date.now() - 60_000,
+        endedAtMs: Date.now(),
+        rounds: [round, round],
+        events: [],
+        rejectedEvents: { a: 0, b: 0 },
+        droppedEvents: { a: 0, b: 0 },
+        impossibleTaps: { a: 0, b: 0 },
+      }),
+    ).rejects.toThrow();
 
     expect(await prisma!.match.findUnique({ where: { id: matchId } })).toBeNull();
     expect(await prisma!.matchSeat.findMany({ where: { matchId } })).toHaveLength(0);

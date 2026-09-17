@@ -168,11 +168,18 @@ function fittingPrefix(
  * message **et** dans sa pile : journaliser l'un ou l'autre tel quel publierait
  * la graine et le journal d'evenements en clair. On ne garde que le nom et la
  * premiere ligne, tronquee — le detail d'une erreur ne vaut pas cette fuite.
+ *
+ * Le code d'erreur passe en revanche entier. Les messages de Prisma commencent
+ * par un saut de ligne : s'en tenir a la premiere ligne les reduit a une chaine
+ * vide, et le journal ne dirait plus rien de la panne. `P2002` (unicite) ou
+ * `P2003` (cle etrangere) nomment la cause exactement, et sont des constantes
+ * du client — ils ne peuvent rien recopier du match.
  */
 function describeCause(error: unknown): string {
   if (!(error instanceof Error)) return 'cause inconnue';
+  const code = 'code' in error && typeof error.code === 'string' ? ` [${error.code}]` : '';
   const firstLine = error.message.split('\n', 1)[0] ?? '';
-  return `${error.name}: ${firstLine.slice(0, MAX_CAUSE_CHARS)}`;
+  return `${error.name}${code}: ${firstLine.slice(0, MAX_CAUSE_CHARS)}`;
 }
 
 @Injectable()
@@ -211,10 +218,11 @@ export class PrismaMatchRepository implements MatchRepository {
           },
         });
 
+        const seats = await this.attributableSeats(tx, record);
         await tx.matchSeat.createMany({
           data: [
-            { matchId: record.matchId, seat: SEAT_COLUMN.a, playerId: record.seats.a },
-            { matchId: record.matchId, seat: SEAT_COLUMN.b, playerId: record.seats.b },
+            { matchId: record.matchId, seat: SEAT_COLUMN.a, playerId: seats.a },
+            { matchId: record.matchId, seat: SEAT_COLUMN.b, playerId: seats.b },
           ],
         });
 
@@ -244,6 +252,47 @@ export class PrismaMatchRepository implements MatchRepository {
       );
       throw error;
     }
+  }
+
+  /**
+   * Sieges, prives de toute attribution a un joueur que la base ne connait plus.
+   *
+   * Un joueur peut disparaitre entre le debut du match et son ecriture : compte
+   * supprime, purge RGPD, incident. La cle etrangere ferait alors echouer la
+   * transaction entiere, et on perdrait la graine, les manches et le journal
+   * pour une question d'attribution. `docs/06` veut un journal de litige, pas
+   * un nom : on ecrit le siege sans joueur, et on trace la perte.
+   *
+   * Verifier avant d'ecrire plutot que rattraper l'echec : l'erreur de cle
+   * etrangere ne dit pas **quel** siege est en cause — les deux partent dans le
+   * meme `createMany` — et un rattrapage aveugle desattribuerait aussi le
+   * joueur innocent. Une lecture par cle primaire sur au plus deux
+   * identifiants, dans la meme transaction, coute moins que cette confusion.
+   */
+  private async attributableSeats(
+    tx: Prisma.TransactionClient,
+    record: MatchRecord,
+  ): Promise<Record<'a' | 'b', string | null>> {
+    const claimed = [record.seats.a, record.seats.b].filter((id): id is string => id !== null);
+    // Deux sieges de fantomes : rien a verifier, donc rien a demander.
+    if (claimed.length === 0) return { a: null, b: null };
+
+    const known = await tx.player.findMany({
+      where: { id: { in: claimed } },
+      select: { id: true },
+    });
+    const alive = new Set(known.map((player) => player.id));
+    const lost = claimed.filter((id) => !alive.has(id));
+    if (lost.length > 0) {
+      this.logger.warn(
+        `match ${record.matchId} : siege non attribue, joueur introuvable (${lost.join(', ')})`,
+        'PrismaMatchRepository',
+      );
+    }
+
+    const attributed = (id: string | null): string | null =>
+      id !== null && alive.has(id) ? id : null;
+    return { a: attributed(record.seats.a), b: attributed(record.seats.b) };
   }
 
   /**
@@ -311,7 +360,10 @@ export class PrismaMatchRepository implements MatchRepository {
      */
     this.logger.error(
       new Error(
-        `colonne events du match ${record.matchId} hors schema (${withoutEntries.success ? 'journal abandonne, compteurs conserves' : 'colonne nulle'}) : ${describeIssues(checked.error.issues)}`,
+        // Les fautes citees sont celles du repli retenu : quand la colonne part
+        // nulle, la cause est du cote des compteurs, et les chemins `entries.*`
+        // de la premiere passe la noieraient.
+        `colonne events du match ${record.matchId} hors schema (${withoutEntries.success ? 'journal abandonne, compteurs conserves' : 'colonne nulle'}) : ${describeIssues(withoutEntries.success ? checked.error.issues : withoutEntries.error.issues)}`,
       ),
       undefined,
       'PrismaMatchRepository',

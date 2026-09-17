@@ -16,7 +16,7 @@ import { matchEventsColumnSchema, PrismaMatchRepository } from './prisma-match.r
 
 interface RecordedCall {
   readonly target: string;
-  readonly args: { data: unknown };
+  readonly args: { data?: unknown; where?: unknown };
 }
 
 /**
@@ -35,6 +35,8 @@ class FakePrisma {
   failOn: string | null = null;
   /** Erreur levee a la place de la banale `base indisponible`. */
   failWith: Error | null = null;
+  /** Joueurs presents en base, pour la verification d'attribution des sieges. */
+  readonly players = new Set<string>(['p_alice', 'p_bob']);
 
   get match(): never {
     throw new Error('ecriture hors transaction');
@@ -75,10 +77,17 @@ class FakePrisma {
           ? Promise.reject(this.failWith ?? new Error('base indisponible'))
           : Promise.resolve({});
       };
+    const findPlayers = (args: { where: { id: { in: string[] } } }): Promise<{ id: string }[]> => {
+      this.calls.push({ target: 'player.findMany', args: { where: args.where } });
+      return Promise.resolve(
+        args.where.id.in.filter((id) => this.players.has(id)).map((id) => ({ id })),
+      );
+    };
     return {
       match: { create: record('match.create') },
       matchSeat: { createMany: record('matchSeat.createMany') },
       matchRound: { createMany: record('matchRound.createMany') },
+      player: { findMany: findPlayers },
     } as unknown as Prisma.TransactionClient;
   }
 }
@@ -182,6 +191,7 @@ describe('PrismaMatchRepository', () => {
     expect(prisma.transactions).toBe(1);
     expect(prisma.calls.map((call) => call.target)).toEqual([
       'match.create',
+      'player.findMany',
       'matchSeat.createMany',
       'matchRound.createMany',
     ]);
@@ -316,12 +326,51 @@ describe('PrismaMatchRepository', () => {
     expect(prisma.transactions).toBe(1);
     expect(prisma.calls.map((call) => call.target)).toEqual([
       'match.create',
+      'player.findMany',
       'matchSeat.createMany',
     ]);
     expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({
       endReason: 'forfeit',
       winnerSeat: 'B',
     });
+  });
+
+  /**
+   * Un joueur peut avoir disparu entre le debut du match et son ecriture :
+   * compte supprime, purge RGPD, incident. La cle etrangere ferait alors
+   * echouer toute la transaction — on perdrait la graine, les manches et le
+   * journal pour une attribution. `docs/06` veut un journal de litige, pas un
+   * nom : le siege part sans joueur, et la perte est tracee.
+   */
+  it('ecrit un siege sans joueur plutot que de perdre le match', async () => {
+    prisma.players.delete('p_bob');
+
+    await repository.save(aRecord());
+
+    expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
+      { matchId: 'm_1', seat: 'A', playerId: 'p_alice' },
+      { matchId: 'm_1', seat: 'B', playerId: null },
+    ]);
+    expect(prisma.callsTo('matchRound.createMany')[0]?.args.data).toHaveLength(2);
+    const sortie = lines.join('');
+    expect(sortie).toContain('p_bob');
+    expect(sortie).not.toContain('p_alice');
+  });
+
+  it('ne demande a la base que les joueurs qu un siege revendique', async () => {
+    await repository.save(aRecord({ seats: { a: 'p_alice', b: null } }));
+
+    expect(prisma.callsTo('player.findMany')[0]?.args.where).toEqual({ id: { in: ['p_alice'] } });
+  });
+
+  it('n interroge pas la base quand aucun siege n est attribue', async () => {
+    await repository.save(aRecord({ seats: { a: null, b: null } }));
+
+    expect(prisma.callsTo('player.findMany')).toHaveLength(0);
+    expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
+      { matchId: 'm_1', seat: 'A', playerId: null },
+      { matchId: 'm_1', seat: 'B', playerId: null },
+    ]);
   });
 
   /**
@@ -493,6 +542,28 @@ describe('PrismaMatchRepository', () => {
     expect(message.length).toBeLessThan(500);
   });
 
+  /**
+   * Quand la colonne part nulle, la cause est forcement du cote des compteurs.
+   * Afficher les fautes de la premiere passe la noierait sous des chemins
+   * `entries.*` : `z.object` valide dans l'ordre de declaration, et les
+   * entrees passent en premier.
+   */
+  it('nomme la vraie cause quand la colonne part nulle', async () => {
+    const journal = Array.from({ length: 500 }, (_, index) => ({
+      atMs: Number.NaN,
+      event: { index },
+    }));
+
+    await repository.save(aRecord({ events: journal, rejectedEvents: { a: -1, b: 0 } }));
+
+    const data = prisma.callsTo('match.create')[0]?.args.data as { events: unknown };
+    expect(data.events).toBe(Prisma.JsonNull);
+    const ligne = lines.find((ecrite) => ecrite.includes('hors schema')) ?? '';
+    const message = (JSON.parse(ligne) as { msg: string }).msg;
+    expect(message).toContain('counters.A.rejectedEvents');
+    expect(message).not.toContain('entries.');
+  });
+
   it('garde ce qui precede une entree non serialisable', async () => {
     const boucle: { self?: unknown } = {};
     boucle.self = boucle;
@@ -546,6 +617,27 @@ describe('PrismaMatchRepository', () => {
     expect(sortie).not.toContain('ultimate');
     // Le vidage d'arguments commence a la deuxieme ligne : elle ne doit pas suivre.
     expect(sortie).not.toContain('{ data:');
+  });
+
+  /**
+   * Les messages de Prisma commencent par un saut de ligne : ne garder que la
+   * premiere ligne les reduisait a une chaine vide, et le journal ne disait
+   * plus **rien** de la panne. Le code d'erreur (`P2002`…) nomme la cause sans
+   * recopier le moindre argument — c'est la seule partie sure du diagnostic.
+   */
+  it('nomme le code d une erreur Prisma dont le message commence par un saut de ligne', async () => {
+    const connue = Object.assign(
+      new Error("\nInvalid `prisma.matchRound.createMany()` invocation\n  seed: 'graine'"),
+      { name: 'PrismaClientKnownRequestError', code: 'P2002' },
+    );
+    prisma.failOn = 'matchRound.createMany';
+    prisma.failWith = connue;
+
+    await expect(repository.save(aRecord())).rejects.toThrow();
+
+    const sortie = lines.join('');
+    expect(sortie).toContain('P2002');
+    expect(sortie).not.toContain('graine');
   });
 
   it('borne la cause journalisee d une erreur bavarde', async () => {
