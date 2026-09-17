@@ -1,6 +1,13 @@
 import { writeFileSync } from 'node:fs';
 import { parseArgs } from 'node:util';
-import { BALANCE, runTournament, STRATEGY_IDS, type TournamentReport } from '../src/index.js';
+import {
+  BALANCE,
+  measureSkill,
+  runTournament,
+  STRATEGY_IDS,
+  type SkillReport,
+  type TournamentReport,
+} from '../src/index.js';
 
 /**
  * Simulateur d'equilibrage — `pnpm sim --matches 10000`.
@@ -18,6 +25,9 @@ const { values } = parseArgs({
     seed: { type: 'string', short: 's', default: 'sim' },
     strategy: { type: 'string', default: 'all' },
     out: { type: 'string', short: 'o' },
+    // Les duels de skill coutent cinq matchs la ou le tournoi en coute un :
+    // par defaut on en joue un dixieme, assez pour lire un ecart de 10 points.
+    skill: { type: 'string', default: '' },
   },
 });
 
@@ -38,7 +48,8 @@ interface Threshold {
 
 const percent = (value: number): string => `${(value * 100).toFixed(1)} %`;
 
-function thresholdsOf(report: TournamentReport): readonly Threshold[] {
+function thresholdsOf(report: TournamentReport, skill: SkillReport): readonly Threshold[] {
+  const talent = skill.measures.find((measure) => measure.id === 'talent')?.winRate ?? 0.5;
   const styleRates = BALANCE.styles.map((style) => report.winRateByStyle[style]);
   const bestAgainstRandom = Math.max(
     ...STRATEGY_IDS.filter((id) => id !== 'random').map(
@@ -90,11 +101,33 @@ function thresholdsOf(report: TournamentReport): readonly Threshold[] {
       max: 0.75,
       format: percent,
     },
+    /**
+     * Le seuil qui garde l'intention produit : « le talent et la reflexion
+     * priment ». Il oppose un joueur qui lit et vise juste, avec la moitie du
+     * budget, a un joueur previsible et maladroit qui depense le maximum.
+     *
+     * Sous 55 %, l'energie excedentaire pese plus que le jeu. Au-dessus de
+     * 85 %, c'est l'inverse : le budget ne deciderait plus rien et l'un des
+     * quatre piliers de docs/00 serait vide. Voir
+     * docs/balance/2026-09-17-talent-contre-budget.md.
+     */
+    { label: 'Talent contre budget', value: talent, min: 0.55, max: 0.85, format: percent },
   ];
 }
 
-const report = runTournament({ matches, seed: values.seed ?? 'sim' });
-const checks = thresholdsOf(report);
+const seed = values.seed ?? 'sim';
+const skillMatches =
+  values.skill === undefined || values.skill === ''
+    ? Math.max(200, Math.round(matches / 10))
+    : Number.parseInt(values.skill, 10);
+if (!Number.isInteger(skillMatches) || skillMatches <= 0) {
+  console.error(`--skill doit etre un entier positif, recu : ${String(values.skill)}`);
+  process.exit(1);
+}
+
+const report = runTournament({ matches, seed });
+const skill = measureSkill({ matches: skillMatches, seed });
+const checks = thresholdsOf(report, skill);
 const failures = checks.filter((check) => check.value < check.min || check.value > check.max);
 
 console.log(`\n  Aura Battle — simulation d'equilibrage`);
@@ -120,6 +153,12 @@ for (const [round, value] of Object.entries(report.energyValueByRound)) {
   console.log(`    manche ${round}               ${value.toFixed(2)} points de score`);
 }
 
+console.log(`\n  Mesure du skill — ${String(skillMatches)} matchs par duel`);
+for (const measure of skill.measures) {
+  console.log(`    ${measure.name.padEnd(22)} ${percent(measure.winRate)}   ${measure.question}`);
+}
+console.log(`    ${'(temoin, deux sondes identiques)'.padEnd(22)} ${percent(skill.seatBias)}`);
+
 console.log('\n  Seuils de docs/09-testing.md');
 for (const check of checks) {
   const format = check.format ?? String;
@@ -131,7 +170,7 @@ for (const check of checks) {
 }
 
 if (values.out !== undefined) {
-  writeFileSync(values.out, `${JSON.stringify(report, null, 2)}\n`, 'utf8');
+  writeFileSync(values.out, `${JSON.stringify({ ...report, skill }, null, 2)}\n`, 'utf8');
   console.log(`\n  Rapport JSON ecrit dans ${values.out}`);
 }
 

@@ -4,7 +4,7 @@ import { createMatch, reduce, type MatchResult, type MatchState } from '../match
 import { createRng, deriveSeed, type Rng } from '../rng.js';
 import type { RoundResult } from '../round.js';
 import type { Move, Seat, Style, Tier } from '../types.js';
-import { STRATEGIES, STRATEGY_IDS, type Strategy, type StrategyId } from './strategies.js';
+import { STRATEGIES, STRATEGY_IDS, type ChoicePolicy, type StrategyId } from './strategies.js';
 
 /**
  * Simulateur d'equilibrage (docs/09-testing.md).
@@ -39,7 +39,7 @@ const MAX_TRANSITIONS = 200;
 
 export function simulateMatch(
   seed: string,
-  strategies: Readonly<Record<Seat, Strategy>>,
+  strategies: Readonly<Record<Seat, ChoicePolicy>>,
   options: SimulateOptions = {},
 ): MatchSimulation {
   const config = options.config ?? BALANCE;

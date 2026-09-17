@@ -32,10 +32,21 @@ export interface StrategyContext {
   readonly opponentRoundsWon: number;
 }
 
-export interface Strategy {
+/**
+ * Tout ce dont le simulateur a besoin pour faire jouer un siege.
+ *
+ * Separe de `Strategy` parce que le simulateur n'appelle jamais que cette
+ * methode : `id` et `name` n'existent que pour le rapport de tournoi. Les
+ * sondes de mesure du skill (`skill.ts`) ne font pas partie de ce rapport et
+ * n'ont donc pas d'identifiant a y porter.
+ */
+export interface ChoicePolicy {
+  decideChoice(context: StrategyContext, config?: BalanceConfig): Choice;
+}
+
+export interface Strategy extends ChoicePolicy {
   readonly id: StrategyId;
   readonly name: string;
-  decideChoice(context: StrategyContext, config?: BalanceConfig): Choice;
 }
 
 /**
