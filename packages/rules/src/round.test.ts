@@ -430,3 +430,32 @@ describe('resolveRound — invariants', () => {
     );
   });
 });
+
+describe('resolveRound — ce que le serveur doit pouvoir annoncer', () => {
+  it('rend le score avant contre, pour la mise en scene', () => {
+    const result = resolveRound({
+      a: seat({ style: 'calme', tier: 2 }),
+      b: seat({ style: 'hype', tier: 2 }),
+    });
+    // 45 avant contre, 61 apres : le client montre l un puis l autre.
+    expect(result.seats.a.base).toBe(45);
+    expect(result.seats.a.score).toBe(61);
+  });
+
+  it('rend le meme score et la meme base quand il n y a pas de contre', () => {
+    const result = resolveRound({
+      a: seat({ style: 'calme', tier: 2 }),
+      b: seat({ style: 'calme', tier: 2 }),
+    });
+    expect(result.seats.a.base).toBe(result.seats.a.score);
+  });
+
+  it('reprend le timing tel quel, sans le recalculer', () => {
+    const result = resolveRound({
+      a: seat({ style: 'calme', tier: 2, quality: 'good', delta: 0.07 }),
+      b: seat({ style: 'calme', tier: 2 }),
+    });
+    expect(result.seats.a.timing.quality).toBe('good');
+    expect(result.seats.a.timing.delta).toBe(0.07);
+  });
+});

@@ -51,11 +51,11 @@ Référence : `docs/02-architecture.md`, `docs/03-pvp-protocol.md`, `docs/04-dat
 - [x] Prisma : schéma initial, migrations, seed (saison 1, catalogue)
 - [x] Auth invité : `POST /auth/device` → JWT d'accès + refresh ; garde WebSocket
 - [x] Gateway Socket.IO : validation zod entrante et sortante, limite de débit, `ping/pong`
-- [ ] Module match : création, `match:ready`, phases et timers pilotés par `@aura/rules`, envois ciblés sans fuite d'information
-- [ ] Invitations par code (`invite:create` / `invite:join`)
-- [ ] Déconnexion, reconnexion (`match:rejoin` → `match:state`), forfait
+- [x] Module match : création, `match:ready`, phases et timers pilotés par `@aura/rules`, envois ciblés sans fuite d'information
+- [x] Invitations par code (`invite:create` / `invite:join`)
+- [ ] Déconnexion, reconnexion (`match:rejoin` → `match:state`), forfait — *`match:rejoin` → `match:state` et forfait faits ; délai de 45 s de déconnexion définitive à faire*
 - [ ] Persistance du match, des manches et du journal d'événements
-- [ ] Tests e2e (Testcontainers) avec deux clients Socket.IO : match complet, timeout de choix, reconnexion en pleine manche, choix trop cher refusé, message d'une manche passée ignoré
+- [ ] Tests e2e (Testcontainers) avec deux clients Socket.IO : match complet, timeout de choix, reconnexion en pleine manche, choix trop cher refusé, message d'une manche passée ignoré — *match complet, timeout de choix, reconnexion, double verrouillage et message hors match couverts sans base ; Testcontainers viendra avec la persistance*
 - [ ] Relecture `security-reviewer` sans point bloquant
 
 ## M4 — Client jouable en ligne

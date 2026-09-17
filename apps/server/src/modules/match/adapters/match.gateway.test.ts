@@ -7,7 +7,11 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
+import { InviteService } from '../application/invites.js';
+import { MatchRuntime } from '../application/match-runtime.js';
 import { MatchGateway } from './match.gateway.js';
+import { SocketNotifier } from './socket-notifier.js';
+import { SystemMatchClock, TimeoutScheduler } from './timeout-scheduler.js';
 
 /**
  * Tests de bout en bout de la passerelle, avec un vrai client Socket.IO.
@@ -77,6 +81,23 @@ beforeAll(async () => {
   const moduleRef = await Test.createTestingModule({
     providers: [
       MatchGateway,
+      InviteService,
+      TimeoutScheduler,
+      SystemMatchClock,
+      {
+        provide: SocketNotifier,
+        useFactory: (logger: PinoLoggerService) => new SocketNotifier(logger),
+        inject: [PinoLoggerService],
+      },
+      {
+        provide: MatchRuntime,
+        inject: [SocketNotifier, TimeoutScheduler, SystemMatchClock],
+        useFactory: (
+          notifier: SocketNotifier,
+          scheduler: TimeoutScheduler,
+          clock: SystemMatchClock,
+        ) => new MatchRuntime(notifier, scheduler, clock),
+      },
       {
         provide: SocketAuthenticator,
         useValue: new SocketAuthenticator({

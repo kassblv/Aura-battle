@@ -558,3 +558,42 @@ describe('invariants du match', () => {
     );
   });
 });
+
+describe('resultat de recharge conserve dans l etat', () => {
+  it('n a rien a montrer avant la fin de la recharge', () => {
+    const start = createMatch('graine');
+    expect(start.state.pending.a.recharge).toBe(null);
+  });
+
+  it('garde l evaluation complete apres la recharge', () => {
+    const start = createMatch('graine');
+    const recharge = reduce(start.state, timeout(start.state));
+    const orbs = recharge.state.roundContext?.orbs ?? [];
+    const taps = orbs.slice(0, 5).map((orb, i) => ({ atMs: (i + 1) * 200, orbIndex: orb.index }));
+    const withTaps = reduce(recharge.state, {
+      type: 'RECHARGE_TAPS',
+      seat: 'a',
+      taps,
+      atMs: 1_200,
+    });
+    const after = reduce(withTaps.state, timeout(withTaps.state));
+
+    // Le serveur doit pouvoir annoncer les points et le combo sans refaire le
+    // calcul de son cote. Les points dependent du type des orbes tirees — une
+    // doree en vaut trois — donc on verifie ce qui ne depend que des taps.
+    expect(after.state.pending.a.recharge?.hits).toBe(5);
+    expect(after.state.pending.a.recharge?.bestCombo).toBe(5);
+    expect(after.state.pending.a.recharge?.points).toBeGreaterThanOrEqual(5);
+    expect(after.state.pending.a.recharge?.boostPercent).toBe(after.state.pending.a.boostPercent);
+    expect(after.state.pending.b.recharge?.points).toBe(0);
+  });
+
+  it('remet l evaluation a zero a la manche suivante', () => {
+    let step = createMatch('graine');
+    for (let i = 0; i < 4 && step.state.phase !== 'ended'; i += 1) {
+      step = reduce(step.state, timeout(step.state));
+      if (step.state.round === 2 && step.state.phase === 'intro') break;
+    }
+    expect(step.state.pending.a.recharge).toBe(null);
+  });
+});

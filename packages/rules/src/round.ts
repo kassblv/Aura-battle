@@ -20,7 +20,18 @@ export interface RoundSeatInput {
 }
 
 export interface RoundSeatOutcome {
+  /** Score final, contres compris. C'est lui qui designe le vainqueur. */
   readonly score: number;
+  /**
+   * Score avant application des contres.
+   *
+   * Le client s'en sert pour mettre en scene la revelation : on montre d'abord
+   * ce que valait l'aura, puis l'effet du contre. Le calculer ici evite au
+   * serveur de refaire le produit de son cote.
+   */
+  readonly base: number;
+  /** Qualite et ecart du timing, repris tels quels pour `round:result`. */
+  readonly timing: TimingResult;
   readonly repeated: boolean;
   /** A contre l'adversaire et touche le bonus. */
   readonly countered: boolean;
@@ -109,6 +120,8 @@ export function resolveRound(
 
     return {
       score: roundScore(final),
+      base: roundScore(base),
+      timing: seat.timing,
       repeated,
       countered: counters,
       wasCountered: isCountered,

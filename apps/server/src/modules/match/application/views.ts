@@ -1,5 +1,6 @@
 import type { MatchState, Seat } from '@aura/rules';
-import { opponentOf } from '@aura/rules';
+import { BALANCE, opponentOf } from '@aura/rules';
+import type { BalanceConfig } from '@aura/rules';
 import type { ServerMessage } from '@aura/protocol';
 
 /**
@@ -48,12 +49,15 @@ export function roundIntroFor(
 export function rechargeStartFor(
   state: MatchState,
   matchId: string,
+  config: BalanceConfig = BALANCE,
 ): ServerMessage<'recharge:start'> {
   const orbs = state.roundContext?.orbs ?? [];
   return {
     matchId,
     round: state.round,
-    startsAt: state.phaseEndsAtMs,
+    // Le client a besoin des deux bornes : il fait apparaitre les orbes a
+    // partir du debut, pas de la fin.
+    startsAt: state.phaseEndsAtMs - config.phases.rechargeMs,
     endsAt: state.phaseEndsAtMs,
     // La sequence d'orbes est identique pour les deux joueurs : c'est ce qui
     // rend la recharge equitable, et elle n'apprend rien de l'adversaire.

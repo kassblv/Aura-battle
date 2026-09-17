@@ -1,5 +1,11 @@
 import { BALANCE, type BalanceConfig } from './balance.js';
-import { evaluateRecharge, generateOrbSequence, type Orb, type RechargeTap } from './recharge.js';
+import {
+  evaluateRecharge,
+  generateOrbSequence,
+  type Orb,
+  type RechargeResult,
+  type RechargeTap,
+} from './recharge.js';
 import { createRng, deriveSeed } from './rng.js';
 import {
   choiceCost,
@@ -43,6 +49,15 @@ export interface SeatState {
 export interface PendingSeat {
   readonly taps: readonly RechargeTap[];
   readonly boostPercent: number;
+  /**
+   * Evaluation complete de la recharge, disponible des la fin de la phase.
+   *
+   * Le serveur en a besoin pour annoncer les points et le combo dans
+   * `round:result`. La garder ici evite qu'il refasse le calcul de son cote —
+   * ce serait reimplementer une regle hors de ce package, avec le risque que
+   * les deux versions finissent par diverger.
+   */
+  readonly recharge: RechargeResult | null;
   readonly locked: { readonly choice: Choice; readonly timingTapAtMs: number | null } | null;
   /** Le siege a-t-il agi durant cette manche ? */
   readonly acted: boolean;
@@ -112,6 +127,7 @@ const SEATS: readonly Seat[] = ['a', 'b'];
 const emptyPending = (): PendingSeat => ({
   taps: [],
   boostPercent: 0,
+  recharge: null,
   locked: null,
   acted: false,
 });
@@ -306,7 +322,11 @@ function afterRecharge(state: MatchState, atMs: number, config: BalanceConfig): 
         config.ultimate.gaugeMax,
       ),
     };
-    pending[seat] = { ...state.pending[seat], boostPercent: evaluation.boostPercent };
+    pending[seat] = {
+      ...state.pending[seat],
+      boostPercent: evaluation.boostPercent,
+      recharge: evaluation,
+    };
   }
 
   return enterPhase({ ...state, seats, pending }, 'choice', atMs, config.phases.choiceMs);
