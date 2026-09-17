@@ -415,3 +415,20 @@ describe('securite du match', () => {
     close(host, guest);
   });
 });
+
+describe('deconnexion et reprise', () => {
+  it('ne coupe pas le match quand un joueur se deconnecte', async () => {
+    const { host, guest, matchId } = await seatTwoPlayers();
+    await host.first('choice:start');
+
+    guest.socket.disconnect();
+    // L'hote peut continuer a jouer : le match ne s'arrete pas parce que
+    // quelqu'un passe sous un tunnel.
+    lock(host, matchId, 1, 2);
+    const result = await host.first<ServerMessage<'round:result'>>('round:result');
+    expect(result.sides.a.move.tier).toBe(2);
+    expect(host.received.map((m) => m.name)).not.toContain('match:end');
+
+    close(host);
+  });
+});

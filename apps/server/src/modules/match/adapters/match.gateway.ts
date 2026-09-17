@@ -125,8 +125,14 @@ export class MatchGateway implements OnGatewayConnection {
     };
     socket.data = state;
     this.notifier.register(state.playerId, socket);
+
+    // Revenu a temps : le compte a rebours d'abandon est desarme.
+    this.runtime.notePlayerReconnected(state.playerId);
+
     socket.on('disconnect', () => {
       this.notifier.unregister(state.playerId, socket);
+      // Le match continue sans lui ; il a quarante-cinq secondes pour revenir.
+      this.runtime.notePlayerDisconnected(state.playerId);
     });
 
     // Un seul point de passage pour tout l'entrant : la limite de debit et la

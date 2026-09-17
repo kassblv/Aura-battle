@@ -1,7 +1,7 @@
 import { BALANCE, type Choice, type Seat } from '@aura/rules';
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { MatchClock, MatchNotifier, TimerScheduler } from '../domain/ports.js';
+import type { MatchClock, MatchNotifier, MatchRecord, TimerScheduler } from '../domain/ports.js';
 import { MatchRuntime } from './match-runtime.js';
 
 /** Note tout ce qui est envoye, pour pouvoir l'inspecter. */
@@ -330,5 +330,146 @@ describe('round:result — fidele a la resolution', () => {
     const [result] = notifier.to(SEATS.a, 'round:result') as [ServerMessage<'round:result'>];
     expect(result.sides.a.recharge.points).toBeGreaterThanOrEqual(3);
     expect(result.sides.b.recharge.points).toBe(0);
+  });
+});
+
+describe('persistance — un match doit pouvoir etre rejoue', () => {
+  class RecordingRepository {
+    readonly saved: MatchRecord[] = [];
+    save(record: MatchRecord): Promise<void> {
+      this.saved.push(record);
+      return Promise.resolve();
+    }
+  }
+
+  let repository: RecordingRepository;
+
+  beforeEach(() => {
+    repository = new RecordingRepository();
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, repository);
+    runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS });
+  });
+
+  const playRound = (winner: Seat): void => {
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, winner, choice(3), null);
+    runtime.lockChoice(MATCH_ID, winner === 'a' ? 'b' : 'a', choice(0), null);
+    scheduler.fire(MATCH_ID);
+  };
+
+  it('n ecrit rien tant que le match dure', () => {
+    playRound('a');
+    expect(repository.saved).toHaveLength(0);
+  });
+
+  it('ecrit le match une fois termine', () => {
+    playRound('a');
+    playRound('a');
+    expect(repository.saved).toHaveLength(1);
+    expect(repository.saved[0]?.winner).toBe('a');
+    expect(repository.saved[0]?.reason).toBe('rounds');
+  });
+
+  it('conserve la graine, sans laquelle rien n est rejouable', () => {
+    playRound('a');
+    playRound('a');
+    expect(repository.saved[0]?.seed).toBe('graine');
+  });
+
+  it('conserve les versions du moteur et du contenu', () => {
+    playRound('a');
+    playRound('a');
+    expect(repository.saved[0]?.rulesVersion).toMatch(/^\d+\.\d+\.\d+$/);
+    expect(repository.saved[0]?.contentVersion).toMatch(/^\d+\.\d+\.\d+$/);
+  });
+
+  it('conserve chaque manche resolue', () => {
+    playRound('a');
+    playRound('a');
+    expect(repository.saved[0]?.rounds).toHaveLength(2);
+    expect(repository.saved[0]?.rounds[0]?.round).toBe(1);
+  });
+
+  it('conserve le journal complet des evenements', () => {
+    playRound('a');
+    playRound('a');
+    const journal = repository.saved[0]?.events ?? [];
+    // Deux manches : verrouillages, echeances de phase. Le journal doit tout
+    // porter, sinon le rejeu ne redonne pas le meme match.
+    expect(journal.length).toBeGreaterThan(6);
+    expect(journal.every((entry) => typeof entry.atMs === 'number')).toBe(true);
+  });
+
+  it('conserve les deux sieges', () => {
+    playRound('a');
+    playRound('a');
+    expect(repository.saved[0]?.seats).toEqual({ a: SEATS.a, b: SEATS.b });
+  });
+
+  it('ecrit aussi un match termine par abandon', () => {
+    runtime.forfeit(MATCH_ID, 'a');
+    expect(repository.saved[0]?.reason).toBe('forfeit');
+    expect(repository.saved[0]?.winner).toBe('b');
+  });
+
+  it('ne fait pas tomber le match si l ecriture echoue', () => {
+    const cassee = {
+      save: () => Promise.reject(new Error('base indisponible')),
+    };
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, cassee);
+    runtime.createMatch({ matchId: 'm_02', seed: 'g', seats: SEATS });
+    // Les joueurs ont deja recu leur resultat : une base lente ou en panne ne
+    // doit pas retarder ni casser leur fin de partie.
+    expect(() => {
+      runtime.forfeit('m_02', 'a');
+    }).not.toThrow();
+  });
+});
+
+describe('deconnexion — le match continue, puis tranche', () => {
+  beforeEach(() => {
+    advanceTo('choice');
+    notifier.clear();
+  });
+
+  it('ne coupe pas le match quand un joueur se deconnecte', () => {
+    runtime.notePlayerDisconnected(SEATS.a);
+    // Le match continue : les echeances s'appliquent et les actions par
+    // defaut sont jouees (docs/01 §9). Couper tout de suite punirait un
+    // joueur qui passe sous un tunnel.
+    expect(runtime.phaseOf(MATCH_ID)).toBe('choice');
+    expect(notifier.namesFor(SEATS.b)).not.toContain('match:end');
+  });
+
+  it('programme un forfait a 45 secondes', () => {
+    runtime.notePlayerDisconnected(SEATS.a);
+    expect(scheduler.pending(`${MATCH_ID}:disconnect:a`)).toBe(clock.now() + 45_000);
+  });
+
+  it('declare forfait si le joueur ne revient pas', () => {
+    runtime.notePlayerDisconnected(SEATS.a);
+    scheduler.fire(`${MATCH_ID}:disconnect:a`);
+    const [end] = notifier.to(SEATS.b, 'match:end') as [{ winner: string; reason: string }];
+    expect(end.winner).toBe('b');
+    expect(end.reason).toBe('forfeit');
+  });
+
+  it('annule le forfait si le joueur revient a temps', () => {
+    runtime.notePlayerDisconnected(SEATS.a);
+    runtime.notePlayerReconnected(SEATS.a);
+    expect(scheduler.pending(`${MATCH_ID}:disconnect:a`)).toBe(null);
+    expect(runtime.phaseOf(MATCH_ID)).toBe('choice');
+  });
+
+  it('ignore la deconnexion d un joueur qui n est dans aucun match', () => {
+    expect(() => {
+      runtime.notePlayerDisconnected('inconnu');
+    }).not.toThrow();
+  });
+
+  it('oublie le minuteur de deconnexion a la fin du match', () => {
+    runtime.notePlayerDisconnected(SEATS.a);
+    runtime.forfeit(MATCH_ID, 'b');
+    expect(scheduler.pending(`${MATCH_ID}:disconnect:a`)).toBe(null);
   });
 });
