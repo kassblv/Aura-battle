@@ -60,20 +60,24 @@ export interface MatchRecord {
   /** Journal des evenements **acceptes**, borne. */
   readonly events: readonly PersistedEvent[];
   /**
-   * Evenements refuses par le moteur.
+   * Evenements refuses par le moteur, **par siege**.
    *
    * Comptes et non conserves : leur nombre interesse l'anti-triche, leur
    * contenu offrirait a un client bavard de quoi faire gonfler l'ecriture
    * jusqu'a la faire echouer.
    */
-  readonly rejectedEvents: number;
-  /** Entrees ecartees parce que le journal etait plein. */
-  readonly droppedEvents: number;
+  readonly rejectedEvents: Readonly<Record<'a' | 'b', number>>;
+  /** Entrees ecartees parce que le journal etait plein, par siege. */
+  readonly droppedEvents: Readonly<Record<'a' | 'b', number>>;
   /**
-   * Instants declares qui n'ont pas pu avoir lieu.
-   * Signal « Latence » du tableau de detection de docs/06.
+   * Instants declares qui n'ont pas pu avoir lieu, **par siege**.
+   *
+   * Signal « Latence » du tableau de detection de docs/06. Le decoupage par
+   * siege n'est pas un detail : ce document sanctionne un **joueur**, et ses
+   * premieres sanctions sont automatiques. Un compteur commun aux deux sieges
+   * imputerait a un joueur honnete les mensonges de ses adversaires.
    */
-  readonly impossibleTaps: number;
+  readonly impossibleTaps: Readonly<Record<'a' | 'b', number>>;
 }
 
 /** Ecriture d'un match acheve. */

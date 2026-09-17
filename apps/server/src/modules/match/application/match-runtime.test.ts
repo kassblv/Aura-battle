@@ -554,7 +554,8 @@ describe('journal — borne et purge des evenements refuses', () => {
     runtime.forfeit(MATCH_ID, 'a');
 
     const record = repository.saved[0]!;
-    expect(record.rejectedEvents).toBe(50);
+    expect(record.rejectedEvents.a).toBe(50);
+    expect(record.rejectedEvents.b).toBe(0);
     // Seul l'abandon, qui change l'etat, figure au journal.
     expect(record.events).toHaveLength(1);
   });
@@ -572,7 +573,7 @@ describe('journal — borne et purge des evenements refuses', () => {
 
     const record = repository.saved[0]!;
     expect(record.events.length).toBeLessThanOrEqual(500);
-    expect(record.droppedEvents).toBeGreaterThan(0);
+    expect(record.droppedEvents.a).toBeGreaterThan(0);
   });
 
   it('garde un journal complet pour un match normal', () => {
@@ -584,8 +585,8 @@ describe('journal — borne et purge des evenements refuses', () => {
 
     const record = repository.saved[0]!;
     // Rien de perdu, rien de refuse : un match honnete tient tres largement.
-    expect(record.droppedEvents).toBe(0);
-    expect(record.rejectedEvents).toBe(0);
+    expect(record.droppedEvents).toEqual({ a: 0, b: 0 });
+    expect(record.rejectedEvents).toEqual({ a: 0, b: 0 });
     expect(record.events.length).toBeGreaterThan(3);
   });
 });
@@ -673,5 +674,63 @@ describe('anti-triche — un instant declare doit avoir pu avoir lieu', () => {
     ];
     // Un vrai tap : l'ecart n'est pas le pire possible.
     expect(resolved[0]?.sides.a.timing.error).toBeLessThan(1);
+  });
+});
+
+describe('compteurs anti-triche — attribues au bon siege', () => {
+  class Keeper {
+    readonly saved: MatchRecord[] = [];
+    save(record: MatchRecord): Promise<void> {
+      this.saved.push(record);
+      return Promise.resolve();
+    }
+  }
+
+  let keeper: Keeper;
+
+  beforeEach(() => {
+    keeper = new Keeper();
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, keeper);
+    runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS });
+    scheduler.fire(MATCH_ID); // intro -> recharge
+  });
+
+  it('impute les instants impossibles au seul siege fautif', () => {
+    const orbs = (notifier.to(SEATS.a, 'recharge:start')[0] as { orbs: { index: number }[] }).orbs;
+    clock.current += 100;
+    // Le siege a ment ; le siege b joue normalement.
+    runtime.submitTaps(MATCH_ID, 'a', [
+      { atMs: 5_800, orbIndex: orbs[0]!.index },
+      { atMs: 5_900, orbIndex: orbs[1]!.index },
+    ]);
+    runtime.submitTaps(MATCH_ID, 'b', [{ atMs: 50, orbIndex: orbs[0]!.index }]);
+    runtime.forfeit(MATCH_ID, 'a');
+
+    const record = keeper.saved[0]!;
+    expect(record.impossibleTaps.a).toBe(2);
+    // Le point qui compte : l'innocent reste a zero. Un compteur commun lui
+    // attribuerait les mensonges de son adversaire, et docs/06 sanctionne
+    // automatiquement avant toute revue humaine.
+    expect(record.impossibleTaps.b).toBe(0);
+  });
+
+  it('impute les evenements refuses au seul siege fautif', () => {
+    scheduler.fire(MATCH_ID); // recharge -> choice : les taps n y ont plus leur place
+    for (let i = 0; i < 7; i += 1) {
+      runtime.submitTaps(MATCH_ID, 'b', [{ atMs: 10, orbIndex: 0 }]);
+    }
+    runtime.forfeit(MATCH_ID, 'a');
+
+    const record = keeper.saved[0]!;
+    expect(record.rejectedEvents.b).toBe(7);
+    expect(record.rejectedEvents.a).toBe(0);
+  });
+
+  it('n impute a personne un refus venu de notre propre minuteur', () => {
+    // Une echeance declenchee trop tot est un defaut du serveur, pas la faute
+    // d'un joueur.
+    runtime.forfeit(MATCH_ID, 'a');
+    const record = keeper.saved[0]!;
+    expect(record.rejectedEvents).toEqual({ a: 0, b: 0 });
   });
 });

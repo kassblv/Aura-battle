@@ -78,17 +78,23 @@ interface LiveMatch {
    * Leur nombre interesse l'anti-triche ; leur contenu, non. Les garder
    * offrirait justement le levier qu'on veut retirer.
    */
-  rejected: number;
+  rejected: Record<Seat, number>;
   /** Entrees ecartees faute de place au journal. */
-  dropped: number;
+  dropped: Record<Seat, number>;
   /**
    * Instants declares qui n'ont pas pu avoir lieu.
    *
    * Conserves comme un compteur : c'est le signal « Latence » du tableau de
    * detection de docs/06, et sans instant d'arrivee memorise il serait tout
    * simplement inobservable.
+   *
+   * **Par siege, et c'est essentiel.** `docs/06` ne sanctionne pas un match,
+   * il sanctionne un joueur — et les premieres sanctions sont automatiques,
+   * avant toute revue humaine. Un compteur commun attribuerait a un joueur
+   * honnete les mensonges de ses adversaires : un tricheur prolifique
+   * empoisonnerait le score de suspicion de chaque personne qu'il croise.
    */
-  impossibleTaps: number;
+  impossibleTaps: Record<Seat, number>;
 }
 
 const SEATS: readonly Seat[] = ['a', 'b'];
@@ -250,9 +256,9 @@ export class MatchRuntime {
       cosmetics: { a: null, b: null },
       lastSeq: { a: 0, b: 0 },
       journal: [],
-      rejected: 0,
-      dropped: 0,
-      impossibleTaps: 0,
+      rejected: { a: 0, b: 0 },
+      dropped: { a: 0, b: 0 },
+      impossibleTaps: { a: 0, b: 0 },
     };
     this.matches.set(input.matchId, match);
     this.runEffects(match, step.effects);
@@ -279,13 +285,23 @@ export class MatchRuntime {
     if (match === undefined) return;
 
     const arrivedAtMs = this.clock.now();
+
+    // Hors phase de recharge, le temps ecoule « depuis le debut de la
+    // recharge » n'a aucun sens : on laisse le moteur refuser, pour que le
+    // refus soit compte et impute au bon siege. Filtrer ici avalerait
+    // l'evenement avant qu'il ne soit vu.
+    if (match.state.phase !== 'recharge') {
+      this.apply(match, { type: 'RECHARGE_TAPS', seat, taps, atMs: arrivedAtMs });
+      return;
+    }
+
     const phaseStartedAtMs = match.state.phaseEndsAtMs - this.config.phases.rechargeMs;
     const elapsedMs = arrivedAtMs - phaseStartedAtMs;
     const latest = elapsedMs + TAP_TOLERANCE_MS + CLOCK_ALLOWANCE_MS;
 
     const plausible = taps.filter((tap) => tap.atMs <= latest);
     if (plausible.length < taps.length) {
-      match.impossibleTaps += taps.length - plausible.length;
+      match.impossibleTaps[seat] += taps.length - plausible.length;
     }
     if (plausible.length === 0) return;
 
@@ -321,7 +337,7 @@ export class MatchRuntime {
     // verrouillage, ce qui laisserait le tricheur rejouer indefiniment.
     const timing = this.timingIsPlausible(match, timingTapAtMs) ? timingTapAtMs : null;
     if (timing !== timingTapAtMs) {
-      match.impossibleTaps += 1;
+      match.impossibleTaps[seat] += 1;
     }
 
     // Le cosmetique n'est retenu que si le verrouillage est accepte : sinon un
@@ -370,12 +386,17 @@ export class MatchRuntime {
     // On ne journalise qu'un evenement **accepte**. Le moteur renvoie l'etat
     // inchange — le meme objet — quand il ignore un evenement ; c'est ce qui
     // permet de faire la difference sans dupliquer sa logique de validation.
+    // Un `PHASE_TIMEOUT` ne porte pas de siege : il vient de notre propre
+    // minuteur. Un refus de ce cote est un defaut du serveur, jamais la faute
+    // d'un joueur — on ne l'impute a personne.
+    const seat: Seat | null = 'seat' in event ? event.seat : null;
+
     if (step.state === match.state) {
-      match.rejected += 1;
+      if (seat !== null) match.rejected[seat] += 1;
     } else if (match.journal.length < MAX_JOURNAL_ENTRIES) {
       match.journal.push({ atMs, event });
-    } else {
-      match.dropped += 1;
+    } else if (seat !== null) {
+      match.dropped[seat] += 1;
     }
 
     match.state = step.state;
@@ -560,9 +581,9 @@ export class MatchRuntime {
       endedAtMs: this.clock.now(),
       rounds: match.state.history.map((round, index) => ({ round: index + 1, result: round })),
       events: match.journal.map((entry) => ({ atMs: entry.atMs, event: entry.event })),
-      rejectedEvents: match.rejected,
-      droppedEvents: match.dropped,
-      impossibleTaps: match.impossibleTaps,
+      rejectedEvents: { ...match.rejected },
+      droppedEvents: { ...match.dropped },
+      impossibleTaps: { ...match.impossibleTaps },
     };
 
     void this.repository.save(record).catch(() => {
