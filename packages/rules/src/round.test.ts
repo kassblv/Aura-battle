@@ -88,8 +88,8 @@ describe('resolveRound — score de base (§7)', () => {
       a: seat({ style: 'calme', tier: 2, amplifier: 2 }),
       b: seat({ style: 'calme', tier: 2 }),
     });
-    // 30 x 1,50 x 1,50 = 67,5 -> 68
-    expect(result.seats.a.score).toBe(68);
+    // 30 x 1,25 x 1,50 = 56,25 -> 56
+    expect(result.seats.a.score).toBe(56);
   });
 
   it('applique le boost de recharge', () => {
@@ -217,7 +217,7 @@ describe('resolveRound — Ultime (§6)', () => {
       a: seat({ style: 'calme', tier: 2, useUltimate: true }),
       b: seat({ style: 'calme', tier: 2 }),
     });
-    // 30 x 1,50 x 1,50 = 67,5 -> 68
+    // 30 x 1,50 (Ultime) x 1,50 (timing) = 67,5 -> 68 ; l amplificateur reste a A0.
     expect(result.seats.a.score).toBe(68);
   });
 

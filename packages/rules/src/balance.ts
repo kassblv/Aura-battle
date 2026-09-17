@@ -40,6 +40,15 @@ export interface BalanceConfig {
   };
   readonly tierPower: Readonly<Record<Tier, number>>;
   readonly tierCost: Readonly<Record<Tier, number>>;
+  /**
+   * Multiplicateurs d'amplificateur.
+   *
+   * Volontairement resserres (voir docs/balance/2026-09-17-talent-contre-budget.md).
+   * Un palier coute son propre numero, donc il **sature a 4** : deux joueurs qui
+   * depensent 8 et 4 jouent tous deux au palier 4, et tout l'ecart de budget
+   * part dans l'amplificateur. C'est donc lui, et lui seul, qui decide de ce que
+   * vaut l'energie excedentaire — et de si le talent peut la compenser.
+   */
   readonly amplifierMultiplier: Readonly<Record<AmplifierLevel, number>>;
   readonly amplifierCost: Readonly<Record<AmplifierLevel, number>>;
   /** Cout maximal d'un choix de manche (palier + amplificateur). */
@@ -108,7 +117,7 @@ export const BALANCE: BalanceConfig = deepFreeze({
   },
   tierPower: { 0: 11, 1: 20, 2: 30, 3: 42, 4: 56 },
   tierCost: { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4 },
-  amplifierMultiplier: { 0: 1.0, 1: 1.25, 2: 1.5, 3: 1.8, 4: 2.2 },
+  amplifierMultiplier: { 0: 1.0, 1: 1.12, 2: 1.25, 3: 1.4, 4: 1.55 },
   amplifierCost: { 0: 0, 1: 1, 2: 2, 3: 3, 4: 4 },
   maxRoundCost: 8,
   recharge: {

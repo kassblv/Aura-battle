@@ -62,11 +62,19 @@ describe('BALANCE — paliers (§2)', () => {
 
 describe('BALANCE — amplificateurs (§3)', () => {
   it('donne les multiplicateurs du tableau', () => {
-    expect(BALANCE.amplifierMultiplier).toEqual({ 0: 1.0, 1: 1.25, 2: 1.5, 3: 1.8, 4: 2.2 });
+    expect(BALANCE.amplifierMultiplier).toEqual({ 0: 1.0, 1: 1.12, 2: 1.25, 3: 1.4, 4: 1.55 });
   });
 
   it('fait couter l amplificateur son propre niveau', () => {
     expect(BALANCE.amplifierCost).toEqual({ 0: 0, 1: 1, 2: 2, 3: 3, 4: 4 });
+  });
+
+  it('garde l amplificateur assez discret pour que le talent puisse compenser', () => {
+    // Tout le talent reuni — contre parfait et timing parfait — vaut x2,03.
+    // L'amplificateur maximal doit rester en dessous, sinon l'energie
+    // excedentaire l'emporte sur le jeu (voir docs/balance/2026-09-17).
+    const talentMax = BALANCE.counter.winnerMultiplier * BALANCE.timing.qualityMultiplier.perfect;
+    expect(BALANCE.amplifierMultiplier[4]).toBeLessThan(talentMax);
   });
 
   it('plafonne le cout d une manche a 8', () => {
