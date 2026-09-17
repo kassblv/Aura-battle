@@ -55,8 +55,8 @@ Référence : `docs/02-architecture.md`, `docs/03-pvp-protocol.md`, `docs/04-dat
 - [x] Invitations par code (`invite:create` / `invite:join`)
 - [ ] Déconnexion, reconnexion (`match:rejoin` → `match:state`), forfait — *`match:rejoin` → `match:state` et forfait faits ; délai de 45 s de déconnexion définitive à faire*
 - [x] Persistance du match, des manches et du journal d'événements
-- [ ] Tests e2e (Testcontainers) avec deux clients Socket.IO : match complet, timeout de choix, reconnexion en pleine manche, choix trop cher refusé, message d'une manche passée ignoré — *match complet, timeout de choix, reconnexion, double verrouillage et message hors match couverts sans base ; Testcontainers viendra avec la persistance*
-- [ ] Relecture `security-reviewer` sans point bloquant
+- [x] Tests e2e : deux clients Socket.IO jouent un match complet, timeout de choix, reconnexion en pleine manche, double verrouillage refusé, message hors match ignoré — plus un test d'intégration contre une vraie base Postgres. *Testcontainers reste à ajouter pour la CI, qui est bloquée pour facturation.*
+- [x] Relecture `security-reviewer` sans point bloquant — 7 défauts trouvés et corrigés (3 dénis de service, 1 triche sans violation de règle, granularité des compteurs anti-triche, journal effaçable, squelette de rejeu)
 
 ## M4 — Client jouable en ligne
 
