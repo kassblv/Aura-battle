@@ -2,6 +2,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
 import { loadPrototypeData, type PrototypeData } from '../tools/prototype-source.js';
+import { loadAnimation, type Animation } from './animation.js';
 import { allAnimationIds, animationsFor, STYLES, SYSTEM_ANIMATIONS, TIERS } from './catalogue.js';
 import { createAnimationValidator } from './validate.js';
 
@@ -14,20 +15,15 @@ const schema: object = JSON.parse(
   readFileSync(fileURLToPath(new URL('../schema/animation.schema.json', import.meta.url)), 'utf8'),
 ) as object;
 
-interface Animation {
-  readonly id: string;
-  readonly move: { readonly style: string; readonly tier: number | null };
-  readonly rarity: string;
-  readonly frames: readonly { readonly joints: Record<string, [number, number]> }[];
-}
-
 function loadAll(): Map<string, Animation> {
   const animations = new Map<string, Animation>();
   for (const style of readdirSync(animationsRoot)) {
     for (const file of readdirSync(`${animationsRoot}${style}`)) {
-      const animation = JSON.parse(
-        readFileSync(`${animationsRoot}${style}/${file}`, 'utf8'),
-      ) as Animation;
+      // `loadAnimation` plutot qu'un cast : les 26 fichiers livres doivent
+      // passer le portier que le client utilisera, sinon le type ment.
+      const animation = loadAnimation(
+        JSON.parse(readFileSync(`${animationsRoot}${style}/${file}`, 'utf8')),
+      );
       animations.set(file.replace('.json', ''), animation);
     }
   }
