@@ -69,6 +69,11 @@ export interface MatchRecord {
   readonly rejectedEvents: number;
   /** Entrees ecartees parce que le journal etait plein. */
   readonly droppedEvents: number;
+  /**
+   * Instants declares qui n'ont pas pu avoir lieu.
+   * Signal « Latence » du tableau de detection de docs/06.
+   */
+  readonly impossibleTaps: number;
 }
 
 /** Ecriture d'un match acheve. */

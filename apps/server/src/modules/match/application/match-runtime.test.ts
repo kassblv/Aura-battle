@@ -27,9 +27,18 @@ class RecordingNotifier implements MatchNotifier {
   }
 }
 
-/** Minuteur manuel : le temps n'avance que si on le pousse. */
+/**
+ * Minuteur manuel : le temps n'avance que si on le pousse.
+ *
+ * Declencher une echeance **avance l'horloge jusqu'a elle**, comme le ferait un
+ * vrai minuteur. Sans cela, les tests soumettraient des taps annonces a 800 ms
+ * avec une horloge restee a zero — c'est-a-dire exactement la triche que le
+ * runtime doit refuser.
+ */
 class ManualScheduler implements TimerScheduler {
   private readonly timers = new Map<string, { atMs: number; run: () => void }>();
+
+  constructor(private readonly clock: MovableClock) {}
 
   schedule(key: string, atMs: number, run: () => void): void {
     this.timers.set(key, { atMs, run });
@@ -48,6 +57,7 @@ class ManualScheduler implements TimerScheduler {
     const timer = this.timers.get(key);
     if (timer === undefined) return false;
     this.timers.delete(key);
+    this.clock.current = Math.max(this.clock.current, timer.atMs);
     timer.run();
     return true;
   }
@@ -84,8 +94,8 @@ const advanceTo = (phase: string): void => {
 
 beforeEach(() => {
   notifier = new RecordingNotifier();
-  scheduler = new ManualScheduler();
   clock = new MovableClock();
+  scheduler = new ManualScheduler(clock);
   runtime = new MatchRuntime(notifier, scheduler, clock);
   runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS });
 });
@@ -554,6 +564,7 @@ describe('journal — borne et purge des evenements refuses', () => {
     const orbs =
       (notifier.to(SEATS.a, 'recharge:start')[0] as { orbs: { index: number }[] }).orbs ?? [];
     // Beaucoup plus d'envois que ce qu'un match honnete produit.
+    clock.current += 200;
     for (let i = 0; i < 700; i += 1) {
       runtime.submitTaps(MATCH_ID, 'a', [{ atMs: 100, orbIndex: orbs[0]!.index }]);
     }
@@ -576,5 +587,91 @@ describe('journal — borne et purge des evenements refuses', () => {
     expect(record.droppedEvents).toBe(0);
     expect(record.rejectedEvents).toBe(0);
     expect(record.events.length).toBeGreaterThan(3);
+  });
+});
+
+describe('anti-triche — un instant declare doit avoir pu avoir lieu', () => {
+  const orbsOf = (): { index: number }[] =>
+    (notifier.to(SEATS.a, 'recharge:start')[0] as { orbs: { index: number }[] }).orbs;
+
+  beforeEach(() => {
+    scheduler.fire(MATCH_ID); // intro -> recharge
+  });
+
+  it('accepte des taps dont l instant correspond au temps ecoule', () => {
+    const orbs = orbsOf();
+    clock.current += 2_000; // deux secondes de phase se sont ecoulees
+    const taps = orbs.slice(0, 3).map((orb, i) => ({ atMs: (i + 1) * 400, orbIndex: orb.index }));
+    runtime.submitTaps(MATCH_ID, 'a', taps);
+    expect(runtime.phaseOf(MATCH_ID)).toBe('recharge');
+    notifier.clear();
+    scheduler.fire(MATCH_ID);
+    const [start] = notifier.to(SEATS.a, 'choice:start') as [{ ult: number }];
+    expect(start.ult).toBeGreaterThan(0);
+  });
+
+  it('ecarte un tap annonce dans le futur', () => {
+    const orbs = orbsOf();
+    // Le lot arrive 200 ms apres le debut de la phase mais annonce un tap a
+    // 5,8 s : c'est le programme calcule hors ligne du bot.
+    clock.current += 200;
+    runtime.submitTaps(MATCH_ID, 'a', [{ atMs: 5_800, orbIndex: orbs[0]!.index }]);
+
+    notifier.clear();
+    scheduler.fire(MATCH_ID);
+    const [start] = notifier.to(SEATS.a, 'choice:start') as [{ ult: number }];
+    // Rien n'a ete compte : la jauge n'a pas bouge.
+    expect(start.ult).toBe(0);
+  });
+
+  it('ecarte tout un programme calcule d avance', () => {
+    const orbs = orbsOf();
+    clock.current += 100;
+    const programme = orbs.slice(0, 40).map((orb, i) => ({ atMs: i * 140, orbIndex: orb.index }));
+    runtime.submitTaps(MATCH_ID, 'a', programme);
+
+    notifier.clear();
+    scheduler.fire(MATCH_ID);
+    const [start] = notifier.to(SEATS.a, 'choice:start') as [{ ult: number }];
+    // Seuls les tout premiers instants sont plausibles a 100 ms de phase.
+    expect(start.ult).toBeLessThan(40 * BALANCE.recharge.ultimatePerPoint);
+  });
+
+  it('tolere le retard reseau d un joueur honnete', () => {
+    const orbs = orbsOf();
+    // Le joueur tape a 1 000 ms ; son lot arrive a 1 050 ms. Sans tolerance,
+    // ce serait deja considere comme impossible.
+    clock.current += 1_050;
+    runtime.submitTaps(MATCH_ID, 'a', [{ atMs: 1_000, orbIndex: orbs[0]!.index }]);
+    notifier.clear();
+    scheduler.fire(MATCH_ID);
+    const [start] = notifier.to(SEATS.a, 'choice:start') as [{ ult: number }];
+    expect(start.ult).toBeGreaterThan(0);
+  });
+
+  it('remplace un timing impossible par une absence de tap', () => {
+    scheduler.fire(MATCH_ID); // recharge -> choice
+    // Verrouiller 200 ms apres le debut de la phase en annoncant une charge de
+    // quatre secondes : le temps ne s'est pas ecoule.
+    clock.current += 200;
+    runtime.lockChoice(MATCH_ID, 'a', choice(2), 4_000);
+    runtime.lockChoice(MATCH_ID, 'b', choice(2), null);
+
+    const resolved = notifier.to(SEATS.a, 'round:result') as [
+      { sides: { a: { timing: { quality: string } } } },
+    ];
+    expect(resolved[0]?.sides.a.timing.quality).toBe('miss');
+  });
+
+  it('accepte un timing compatible avec le temps ecoule', () => {
+    scheduler.fire(MATCH_ID);
+    clock.current += 4_000;
+    runtime.lockChoice(MATCH_ID, 'a', choice(2), 3_500);
+    runtime.lockChoice(MATCH_ID, 'b', choice(2), null);
+    const resolved = notifier.to(SEATS.a, 'round:result') as [
+      { sides: { a: { timing: { error: number } } } },
+    ];
+    // Un vrai tap : l'ecart n'est pas le pire possible.
+    expect(resolved[0]?.sides.a.timing.error).toBeLessThan(1);
   });
 });

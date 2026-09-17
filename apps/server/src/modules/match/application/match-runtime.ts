@@ -81,6 +81,14 @@ interface LiveMatch {
   rejected: number;
   /** Entrees ecartees faute de place au journal. */
   dropped: number;
+  /**
+   * Instants declares qui n'ont pas pu avoir lieu.
+   *
+   * Conserves comme un compteur : c'est le signal « Latence » du tableau de
+   * detection de docs/06, et sans instant d'arrivee memorise il serait tout
+   * simplement inobservable.
+   */
+  impossibleTaps: number;
 }
 
 const SEATS: readonly Seat[] = ['a', 'b'];
@@ -107,6 +115,27 @@ const DISCONNECT_GRACE_MS = 45_000;
  * pouvoir y arriver en parlant trop.
  */
 const MAX_JOURNAL_ENTRIES = 500;
+
+/**
+ * Tolerances reseau (docs/03-pvp-protocol.md, tableau « Validation serveur »).
+ *
+ * Elles vivent **ici et non dans `@aura/rules`** : une tolerance reseau n'est
+ * pas une regle de jeu, et le moteur doit pouvoir rejouer un match sans jamais
+ * entendre parler de latence. Le moteur dit ce qui est jouable ; le serveur dit
+ * ce qui est arrive a temps.
+ */
+const TAP_TOLERANCE_MS = 400;
+const LOCK_TOLERANCE_MS = 300;
+
+/**
+ * Marge d'horloge accordee a un instant declare par le client.
+ *
+ * Le client mesure ses instants avec `performance.now()` depuis le debut de
+ * phase, le serveur mesure l'arrivee avec la sienne : les deux ne coincident
+ * jamais exactement. La marge absorbe cet ecart — elle ne doit pas absorber
+ * cinq secondes de calcul hors ligne.
+ */
+const CLOCK_ALLOWANCE_MS = 250;
 
 /** Cle du minuteur de deconnexion d'un siege. */
 const disconnectKey = (matchId: string, seat: Seat): string => `${matchId}:disconnect:${seat}`;
@@ -223,6 +252,7 @@ export class MatchRuntime {
       journal: [],
       rejected: 0,
       dropped: 0,
+      impossibleTaps: 0,
     };
     this.matches.set(input.matchId, match);
     this.runEffects(match, step.effects);
@@ -234,10 +264,46 @@ export class MatchRuntime {
     return match === undefined ? null : matchStateFor(seat, match.state, matchId);
   }
 
+  /**
+   * Enregistre des taps, apres avoir ecarte ceux qui n'ont pas pu avoir lieu.
+   *
+   * Un tap annonce a `t = 5800 ms` dans un lot qui arrive 200 ms apres le debut
+   * de la phase pretend s'etre produit dans le futur. Sans cette confrontation
+   * entre l'instant **declare** et l'instant **vecu**, un bot peut rester muet,
+   * recevoir la sequence d'orbes, calculer hors ligne le programme parfait et
+   * l'envoyer d'un coup : le moteur rejoue la scene et n'y voit rien d'anormal
+   * — instants croissants, orbes vivantes, cadence respectee.
+   */
   submitTaps(matchId: string, seat: Seat, taps: readonly RechargeTap[]): void {
     const match = this.matches.get(matchId);
     if (match === undefined) return;
-    this.apply(match, { type: 'RECHARGE_TAPS', seat, taps, atMs: this.clock.now() });
+
+    const arrivedAtMs = this.clock.now();
+    const phaseStartedAtMs = match.state.phaseEndsAtMs - this.config.phases.rechargeMs;
+    const elapsedMs = arrivedAtMs - phaseStartedAtMs;
+    const latest = elapsedMs + TAP_TOLERANCE_MS + CLOCK_ALLOWANCE_MS;
+
+    const plausible = taps.filter((tap) => tap.atMs <= latest);
+    if (plausible.length < taps.length) {
+      match.impossibleTaps += taps.length - plausible.length;
+    }
+    if (plausible.length === 0) return;
+
+    this.apply(match, { type: 'RECHARGE_TAPS', seat, taps: plausible, atMs: arrivedAtMs });
+  }
+
+  /**
+   * Vrai si un tap de timing annonce a `tapAtMs` a pu avoir lieu.
+   *
+   * Meme principe que pour les taps de recharge : verrouiller 200 ms apres le
+   * debut de la phase en declarant une charge de 4 secondes, c'est declarer un
+   * temps qui ne s'est pas ecoule.
+   */
+  private timingIsPlausible(match: LiveMatch, tapAtMs: number | null): boolean {
+    if (tapAtMs === null) return true;
+    const phaseStartedAtMs = match.state.phaseEndsAtMs - this.config.phases.choiceMs;
+    const elapsedMs = this.clock.now() - phaseStartedAtMs;
+    return tapAtMs <= elapsedMs + LOCK_TOLERANCE_MS + CLOCK_ALLOWANCE_MS;
   }
 
   lockChoice(
@@ -250,16 +316,22 @@ export class MatchRuntime {
     const match = this.matches.get(matchId);
     if (match === undefined) return;
 
-    if (cosmetic !== undefined) {
-      match.cosmetics[seat] = cosmetic;
+    // Un timing qui annonce plus de temps qu'il ne s'en est ecoule est
+    // impossible : on le remplace par « pas de tap » plutot que de refuser le
+    // verrouillage, ce qui laisserait le tricheur rejouer indefiniment.
+    const timing = this.timingIsPlausible(match, timingTapAtMs) ? timingTapAtMs : null;
+    if (timing !== timingTapAtMs) {
+      match.impossibleTaps += 1;
     }
 
+    // Le cosmetique n'est retenu que si le verrouillage est accepte : sinon un
+    // choix refuse changerait quand meme l'apparence.
     const before = match.state.pending[seat].locked;
     this.apply(match, {
       type: 'CHOICE_LOCKED',
       seat,
       choice,
-      timingTapAtMs,
+      timingTapAtMs: timing,
       atMs: this.clock.now(),
     });
 
@@ -267,6 +339,9 @@ export class MatchRuntime {
     // seul fait — ni le mouvement, ni le timing, ni le cout.
     const after = this.matches.get(matchId)?.state.pending[seat].locked;
     if (before === null && after !== null && after !== undefined) {
+      if (cosmetic !== undefined) {
+        match.cosmetics[seat] = cosmetic;
+      }
       const opponent = opponentOf(seat);
       this.notifier.send(match.seats[opponent], 'opponent:locked', {
         matchId,
@@ -487,6 +562,7 @@ export class MatchRuntime {
       events: match.journal.map((entry) => ({ atMs: entry.atMs, event: entry.event })),
       rejectedEvents: match.rejected,
       droppedEvents: match.dropped,
+      impossibleTaps: match.impossibleTaps,
     };
 
     void this.repository.save(record).catch(() => {
