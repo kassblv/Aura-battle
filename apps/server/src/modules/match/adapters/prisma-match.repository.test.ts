@@ -77,17 +77,29 @@ class FakePrisma {
           ? Promise.reject(this.failWith ?? new Error('base indisponible'))
           : Promise.resolve({});
       };
-    const findPlayers = (args: { where: { id: { in: string[] } } }): Promise<{ id: string }[]> => {
-      this.calls.push({ target: 'player.findMany', args: { where: args.where } });
-      return Promise.resolve(
-        args.where.id.in.filter((id) => this.players.has(id)).map((id) => ({ id })),
+    /**
+     * `$queryRaw` est appele comme un gabarit tague : on reconstitue le SQL
+     * pour pouvoir affirmer le mode de verrou, et on traite les valeurs
+     * interpolees comme les identifiants demandes.
+     */
+    const queryRaw = (
+      strings: TemplateStringsArray,
+      ...values: unknown[]
+    ): Promise<{ id: string }[]> => {
+      const sql = strings.join('?');
+      const asked = values.flatMap((value) =>
+        value !== null && typeof value === 'object' && 'values' in value
+          ? ((value as { values: unknown[] }).values as string[])
+          : [String(value)],
       );
+      this.calls.push({ target: '$queryRaw', args: { where: { sql, asked } } });
+      return Promise.resolve(asked.filter((id) => this.players.has(id)).map((id) => ({ id })));
     };
     return {
       match: { create: record('match.create') },
       matchSeat: { createMany: record('matchSeat.createMany') },
       matchRound: { createMany: record('matchRound.createMany') },
-      player: { findMany: findPlayers },
+      $queryRaw: queryRaw,
     } as unknown as Prisma.TransactionClient;
   }
 }
@@ -191,7 +203,7 @@ describe('PrismaMatchRepository', () => {
     expect(prisma.transactions).toBe(1);
     expect(prisma.calls.map((call) => call.target)).toEqual([
       'match.create',
-      'player.findMany',
+      '$queryRaw',
       'matchSeat.createMany',
       'matchRound.createMany',
     ]);
@@ -326,7 +338,7 @@ describe('PrismaMatchRepository', () => {
     expect(prisma.transactions).toBe(1);
     expect(prisma.calls.map((call) => call.target)).toEqual([
       'match.create',
-      'player.findMany',
+      '$queryRaw',
       'matchSeat.createMany',
     ]);
     expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({
@@ -352,21 +364,62 @@ describe('PrismaMatchRepository', () => {
       { matchId: 'm_1', seat: 'B', playerId: null },
     ]);
     expect(prisma.callsTo('matchRound.createMany')[0]?.args.data).toHaveLength(2);
+  });
+
+  /**
+   * La cause premiere de ce message est une suppression de compte ou une purge
+   * RGPD. Recopier l'identifiant efface dans un journal applicatif, conserve
+   * selon un calendrier qui n'est pas celui de l'effacement, defait une partie
+   * de ce que la suppression venait de faire.
+   *
+   * La redaction de `logger.ts` n'y peut rien : c'est une interpolation de
+   * chaine, pas un champ structure, et une regle de redaction ne voit que des
+   * cles. Il faut donc ne pas l'ecrire.
+   *
+   * L'identifiant n'apportait rien d'actionnable non plus : le joueur n'existe
+   * plus par definition. `matchId` et le siege suffisent a retrouver la ligne.
+   */
+  /**
+   * Sans verrou, une suppression de joueur glissee entre la lecture et
+   * l'insertion fait echouer la transaction entiere sur `P2003` — c'est-a-dire
+   * **le seul resultat** que `ON DELETE SET NULL` et cette verification
+   * existent tous les deux pour empecher. `FOR KEY SHARE` est exactement le
+   * mode de verrou que Postgres prend lui-meme en validant une cle etrangere :
+   * il bloque un `DELETE` concurrent jusqu'au commit, et reste compatible avec
+   * lui-meme, donc deux matchs partageant un joueur ne se serialisent pas.
+   */
+  it('verrouille les joueurs qu il vient de lire, jusqu au commit', async () => {
+    await repository.save(aRecord());
+
+    const query = prisma.callsTo('$queryRaw')[0]?.args.where as { sql: string; asked: string[] };
+    expect(query.sql).toContain('FOR KEY SHARE');
+    expect(query.asked).toEqual(['p_alice', 'p_bob']);
+  });
+
+  it('ne recopie pas dans le journal l identifiant du joueur disparu', async () => {
+    prisma.players.delete('p_bob');
+
+    await repository.save(aRecord());
+
     const sortie = lines.join('');
-    expect(sortie).toContain('p_bob');
+    expect(sortie).not.toContain('p_bob');
     expect(sortie).not.toContain('p_alice');
+    // Ce qui reste doit suffire a comprendre : le match et le siege en cause.
+    expect(sortie).toContain('m_1');
+    expect(sortie).toContain('B');
   });
 
   it('ne demande a la base que les joueurs qu un siege revendique', async () => {
     await repository.save(aRecord({ seats: { a: 'p_alice', b: null } }));
 
-    expect(prisma.callsTo('player.findMany')[0]?.args.where).toEqual({ id: { in: ['p_alice'] } });
+    const query = prisma.callsTo('$queryRaw')[0]?.args.where as { asked: string[] };
+    expect(query.asked).toEqual(['p_alice']);
   });
 
   it('n interroge pas la base quand aucun siege n est attribue', async () => {
     await repository.save(aRecord({ seats: { a: null, b: null } }));
 
-    expect(prisma.callsTo('player.findMany')).toHaveLength(0);
+    expect(prisma.callsTo('$queryRaw')).toHaveLength(0);
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
       { matchId: 'm_1', seat: 'A', playerId: null },
       { matchId: 'm_1', seat: 'B', playerId: null },

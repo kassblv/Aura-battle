@@ -263,11 +263,36 @@ export class PrismaMatchRepository implements MatchRepository {
    * pour une question d'attribution. `docs/06` veut un journal de litige, pas
    * un nom : on ecrit le siege sans joueur, et on trace la perte.
    *
+   * Ce n'est pas une politique nouvelle, c'est la **meme** que celle que le
+   * schema declare deja : `MatchSeat_playerId_fkey` porte `ON DELETE SET NULL`
+   * (migration initiale, ligne 207). Postgres l'applique quand le joueur part
+   * apres l'ecriture ; rien ne la couvrait quand il etait deja parti avant.
+   * Cette methode ferme cette moitie-la.
+   *
    * Verifier avant d'ecrire plutot que rattraper l'echec : l'erreur de cle
    * etrangere ne dit pas **quel** siege est en cause — les deux partent dans le
    * meme `createMany` — et un rattrapage aveugle desattribuerait aussi le
    * joueur innocent. Une lecture par cle primaire sur au plus deux
    * identifiants, dans la meme transaction, coute moins que cette confusion.
+   *
+   * La lecture **verrouille** les lignes trouvees. Sans cela, une suppression
+   * de joueur glissee entre la lecture et l'insertion ferait echouer la
+   * transaction entiere sur `P2003`, c'est-a-dire le seul resultat que la
+   * politique `ON DELETE SET NULL` et cette verification existent toutes les
+   * deux pour empecher — une fenetre etroite, mais qui ne produit que l'issue
+   * exclue. `FOR KEY SHARE` est precisement le mode que Postgres prend
+   * lui-meme en validant une cle etrangere a l'insertion : il bloque un
+   * `DELETE FROM "Player"` concurrent jusqu'au commit, et reste compatible
+   * avec lui-meme, donc deux matchs partageant un joueur ne s'attendent pas.
+   *
+   * Contrepartie assumee : cette transaction attendra une suppression de
+   * joueur concurrente, dans la limite du `timeout` ci-dessus. Une suppression
+   * de `Player` est rare et cascade deja sur cinq tables — le risque est sans
+   * commune mesure avec celui de perdre un match.
+   *
+   * Prisma n'exprime pas ce verrou via `findMany` : la requete est donc brute,
+   * et c'est sa place — un adaptateur Prisma/Postgres est exactement la couche
+   * qui a le droit de connaitre Postgres (docs/02).
    */
   private async attributableSeats(
     tx: Prisma.TransactionClient,
@@ -277,22 +302,39 @@ export class PrismaMatchRepository implements MatchRepository {
     // Deux sieges de fantomes : rien a verifier, donc rien a demander.
     if (claimed.length === 0) return { a: null, b: null };
 
-    const known = await tx.player.findMany({
-      where: { id: { in: claimed } },
-      select: { id: true },
-    });
+    const known = await tx.$queryRaw<{ id: string }[]>`
+      SELECT id FROM "Player" WHERE id IN (${Prisma.join(claimed)}) FOR KEY SHARE
+    `;
     const alive = new Set(known.map((player) => player.id));
-    const lost = claimed.filter((id) => !alive.has(id));
-    if (lost.length > 0) {
+    const attributed = (id: string | null): string | null =>
+      id !== null && alive.has(id) ? id : null;
+    const seats = { a: attributed(record.seats.a), b: attributed(record.seats.b) };
+
+    /**
+     * On nomme les **sieges** perdus, jamais les joueurs.
+     *
+     * La cause premiere de ce message est une suppression de compte ou une
+     * purge RGPD : recopier l'identifiant efface dans un journal applicatif,
+     * conserve selon un calendrier qui n'est pas celui de l'effacement,
+     * defait une partie de ce que la suppression venait de faire. La redaction
+     * de `logger.ts` n'y peut rien — c'est une interpolation de chaine, et une
+     * regle de redaction ne voit que des cles.
+     *
+     * Rien n'est perdu pour le diagnostic : le joueur n'existe plus par
+     * definition, donc personne ne pourrait aller le consulter. Le match et le
+     * siege suffisent a retrouver la ligne.
+     */
+    const lostSeats = (['a', 'b'] as const).filter(
+      (seat) => record.seats[seat] !== null && seats[seat] === null,
+    );
+    if (lostSeats.length > 0) {
       this.logger.warn(
-        `match ${record.matchId} : siege non attribue, joueur introuvable (${lost.join(', ')})`,
+        `match ${record.matchId} : siege(s) ${lostSeats.map((seat) => SEAT_COLUMN[seat]).join(', ')} non attribue(s), joueur introuvable`,
         'PrismaMatchRepository',
       );
     }
 
-    const attributed = (id: string | null): string | null =>
-      id !== null && alive.has(id) ? id : null;
-    return { a: attributed(record.seats.a), b: attributed(record.seats.b) };
+    return seats;
   }
 
   /**
