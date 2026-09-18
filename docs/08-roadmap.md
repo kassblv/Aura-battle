@@ -63,6 +63,7 @@ Référence : `docs/02-architecture.md`, `docs/03-pvp-protocol.md`, `docs/04-dat
 Référence : prototype, `docs/02-architecture.md`.
 
 - [ ] Vite + React + Three.js récent ; structure `app/ net/ match/ arena/ animation/ audio/ platform/`
+- [ ] **Paysage exclusif** (ADR 0008) : verrouillage d'orientation Capacitor, écran « tourne ton téléphone » en portrait, commandes dans les arcs de pouce, rien d'interactif au centre haut, cibles tactiles ≥ 46 px
 - [ ] Port du rendu 3D du prototype en modules : scène, foule instanciée, rig avec mains, particules, choc, caméra, calque 2D
 - [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains), page `/dev/animation-viewer`
 - [ ] Client réseau : synchronisation d'horloge, reconnexion automatique, reprise de `match:state`
