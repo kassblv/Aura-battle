@@ -4,6 +4,8 @@ import { measureViewport, type Viewport } from './coords.js';
 import { createLighting } from './lighting.js';
 import { ARENA_COLORS } from './palette.js';
 import { createStage, type Stage } from './stage.js';
+import { createCrowd, type Crowd } from './crowd.js';
+import { createFighterRig, type FighterRig, type RigPlacement } from './rig.js';
 import { createToonGradientMap } from './toonGradient.js';
 import type { ArenaTextures } from './textures.js';
 
@@ -35,10 +37,23 @@ export interface ArenaFrame {
   readonly reducedMotion: boolean;
 }
 
+/**
+ * Les deux sieges, nommes comme le moteur les nomme (ADR 0006).
+ *
+ * Le cote de l arene ou chacun est dessine est une decision de rendu : le
+ * client place toujours son propre siege a gauche, quel qu il soit.
+ */
+export interface Fighters {
+  readonly a: FighterRig & { readonly placement: RigPlacement };
+  readonly b: FighterRig & { readonly placement: RigPlacement };
+}
+
 export interface ArenaScene {
   readonly scene: Scene;
   readonly camera: PerspectiveCamera;
   readonly stage: Stage;
+  readonly crowd: Crowd;
+  readonly fighters: Fighters;
   /** Metriques du calque 2D, mises a jour par `setSize`. */
   readonly viewport: Viewport;
   setSize(width: number, height: number): void;
@@ -57,7 +72,29 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
   const gradientMap = createToonGradientMap();
   const lighting = createLighting();
   const stage = createStage({ gradientMap, gridTexture: options.textures.grid }, options.rng);
-  scene.add(lighting.group, stage.group);
+  const crowd = createCrowd({ gradientMap }, options.rng);
+
+  /**
+   * Un trois-quarts, pas un profil.
+   *
+   * De profil on ne voit pas le visage, et le visage porte l expression que le
+   * contenu declare. De face, les poses — pensees en deux dimensions dans un
+   * plan lateral — s ecrasent. Les deux combattants sont donc tournes de part
+   * et d autre, legerement vers la camera.
+   */
+  const placements: Record<'a' | 'b', RigPlacement> = {
+    a: { turn: -0.5, facing: 1 },
+    b: { turn: Math.PI + 0.5, facing: -1 },
+  };
+
+  const fighters: Fighters = {
+    a: Object.assign(createFighterRig({ gradientMap }, placements.a), { placement: placements.a }),
+    b: Object.assign(createFighterRig({ gradientMap }, placements.b), { placement: placements.b }),
+  };
+  fighters.a.root.position.x = -1.45;
+  fighters.b.root.position.x = 1.45;
+
+  scene.add(lighting.group, stage.group, crowd.group, fighters.a.root, fighters.b.root);
 
   const camera = createArenaCamera(1);
   const rig = new ArenaCameraRig(camera);
@@ -69,6 +106,8 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
     scene,
     camera,
     stage,
+    crowd,
+    fighters,
 
     get viewport(): Viewport {
       return viewport;
@@ -83,6 +122,7 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
 
     update(frame: ArenaFrame): void {
       stage.update(frame.elapsed, frame.hype);
+      crowd.update(frame.elapsed, frame.hype);
       rig.update({
         framing: frame.framing,
         elapsed: frame.elapsed,
@@ -98,6 +138,9 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
       }
       disposed = true;
       stage.dispose();
+      crowd.dispose();
+      fighters.a.dispose();
+      fighters.b.dispose();
       lighting.dispose();
       gradientMap.dispose();
       options.textures.grid.dispose();

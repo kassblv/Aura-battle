@@ -6,6 +6,7 @@
  */
 export * from './camera.js';
 export * from './coords.js';
+export * from './crowd.js';
 export * from './events.js';
 export * from './hands.js';
 export * from './lighting.js';
