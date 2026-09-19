@@ -76,6 +76,19 @@ export function animationsFor(move: Move): readonly string[] {
 }
 
 /**
+ * Les identifiants complets disponibles pour un mouvement.
+ *
+ * `animationsFor` rend des slugs, `defaultAnimationFor` un identifiant complet :
+ * comparer l'un a l'autre ne donne jamais d'egalite, et l'appelant se retrouve
+ * a jouer l'animation offerte en croyant jouer le cosmetique equipe. Cette
+ * fonction supprime l'asymetrie plutot que de demander a chacun de s'en
+ * souvenir.
+ */
+export function animationIdsFor(move: Move): readonly string[] {
+  return animationsFor(move).map((slug) => animationId(move, slug));
+}
+
+/**
  * L'animation jouee par defaut pour un mouvement.
  *
  * Elle sert de repli quand le joueur n'a rien equipe, ou quand le cosmetique

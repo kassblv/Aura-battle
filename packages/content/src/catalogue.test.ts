@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   allAnimationIds,
   animationId,
+  animationIdsFor,
   animationsFor,
   defaultAnimationFor,
   MOVE_ANIMATIONS,
@@ -72,6 +73,26 @@ describe('defaultAnimationFor', () => {
     for (const style of STYLES) {
       for (const tier of TIERS) {
         expect(defaultAnimationFor({ style, tier })).toContain(`anim.${style}.t${tier}.`);
+      }
+    }
+  });
+});
+
+describe('animationIdsFor', () => {
+  it('rend des identifiants complets, la ou animationsFor rend des slugs', () => {
+    const move = { style: 'calme', tier: 4 } as const;
+    expect(animationIdsFor(move)).toEqual(['anim.calme.t4.levitate', 'anim.calme.t4.backflip']);
+  });
+
+  /**
+   * Le piege que cette fonction existe pour fermer : compare a la sortie de
+   * `defaultAnimationFor`, une liste de slugs ne donne jamais d'egalite.
+   */
+  it('contient toujours l animation offerte du mouvement', () => {
+    for (const style of STYLES) {
+      for (const tier of TIERS) {
+        const move = { style, tier };
+        expect(animationIdsFor(move)).toContain(defaultAnimationFor(move));
       }
     }
   });
