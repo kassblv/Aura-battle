@@ -173,3 +173,22 @@ export function parseClientMessage(
     ? { success: true, data: { name, data: parsed.data } as ParsedClientMessage }
     : parseFailure(parsed.error);
 }
+
+/**
+ * Valide un message **avant de l'emettre**.
+ *
+ * Jumeau de `serializeServerMessage`, et pour la raison symetrique : valider
+ * l'entrant protege celui qui recoit, valider le sortant protege celui qui
+ * envoie. Un message client malforme serait refuse par le serveur sans que le
+ * client l'apprenne autrement qu'en attendant une reponse qui ne vient jamais
+ * — et une attente muette se diagnostique bien plus mal qu'un refus immediat.
+ */
+export function serializeClientMessage<N extends ClientMessageName>(
+  name: N,
+  payload: ClientMessage<N>,
+): ParseResult<ClientMessage<N>> {
+  const parsed = CLIENT_MESSAGES[name].safeParse(payload);
+  return parsed.success
+    ? { success: true, data: parsed.data as ClientMessage<N> }
+    : parseFailure(parsed.error);
+}

@@ -4,6 +4,7 @@ import {
   CLIENT_MESSAGE_NAMES,
   MAX_TAPS_PER_MESSAGE,
   parseClientMessage,
+  serializeClientMessage,
 } from './client.js';
 
 /**
@@ -223,5 +224,25 @@ describe('ping', () => {
 
   it('refuse un instant qui n est pas un nombre', () => {
     expect(parseClientMessage('ping', { t: '12345' }).success).toBe(false);
+  });
+});
+
+describe('serializeClientMessage', () => {
+  it('laisse passer un message bien forme', () => {
+    expect(serializeClientMessage('ping', { t: 1234 }).success).toBe(true);
+  });
+
+  /**
+   * Le jumeau de `serializeServerMessage` : un message malforme serait refuse
+   * par le serveur sans que le client l'apprenne autrement qu'en attendant une
+   * reponse qui ne vient jamais.
+   */
+  it('refuse un message que le serveur rejetterait', () => {
+    expect(serializeClientMessage('ping', { t: 'maintenant' } as never).success).toBe(false);
+  });
+
+  it('rend la valeur validee, pas la valeur donnee', () => {
+    const result = serializeClientMessage('queue:join', { mode: 'ranked' });
+    expect(result.success && result.data).toEqual({ mode: 'ranked' });
   });
 });
