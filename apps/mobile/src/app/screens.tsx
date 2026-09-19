@@ -24,6 +24,19 @@ export interface HomeProps {
   readonly onWardrobe: () => void;
 }
 
+/**
+ * L accueil.
+ *
+ * La disposition suit celle des jeux mobiles en paysage, pour une raison
+ * d ergonomie et non de mode : chaque zone tombe sous un pouce. La fiche du
+ * joueur est en haut a gauche et **elle-meme cliquable** — on n ouvre pas son
+ * profil depuis une liste de boutons, on touche sa propre tete. Le rail des
+ * menus occupe l arc du pouce gauche, le bouton d action celui du droit, et il
+ * est le plus gros element de l ecran parce qu il est celui qu on cherche.
+ *
+ * Le centre reste vide : c est la que se tient le personnage, et c est aussi la
+ * zone morte entre les deux pouces (ADR 0008).
+ */
 export function HomeScreen({
   profile,
   seasonLabel,
@@ -32,40 +45,55 @@ export function HomeScreen({
   onWardrobe,
 }: HomeProps): JSX.Element {
   return (
-    <div className="menu">
-      <h1 className="brand">
-        Aura Battle
-        <span>{seasonLabel}</span>
-      </h1>
-
-      <div className="card identity">
-        <span className="avatar" aria-hidden="true">
+    <div className="home">
+      <button type="button" className="tag" onClick={onProfile}>
+        <span className="tag__avatar" aria-hidden="true">
           {profile.name.slice(0, 1)}
         </span>
-        <span className="identity__who">
+        <span className="tag__who">
           <b>{profile.name}</b>
-          <small>
-            {profile.league} · {profile.tag}
-          </small>
+          <small>{profile.league}</small>
+          <span className="tag__bar">
+            <i style={{ width: `${(leagueProgress(profile) * 100).toFixed(1)}%` }} />
+          </span>
         </span>
-        <span className="identity__lp">
-          <b>{profile.lp}</b>
-          <small>points de ligue</small>
+        <span className="tag__lp">{profile.lp}</span>
+      </button>
+
+      <div className="wallet">
+        <span className="coin">
+          <b aria-hidden="true">◈</b>
+          {profile.wallet.soft}
         </span>
-        <div className="bar">
-          <i style={{ width: `${(leagueProgress(profile) * 100).toFixed(1)}%` }} />
-        </div>
+        <span className="coin coin--hard">
+          <b aria-hidden="true">◆</b>
+          {profile.wallet.hard}
+        </span>
       </div>
 
-      <button type="button" className="play" onClick={onPlay}>
-        Jouer
-      </button>
-      <div className="menu__row">
-        <button type="button" className="menu__btn" onClick={onProfile}>
+      <nav className="rail" aria-label="Menus">
+        <button type="button" className="rail__btn" onClick={onWardrobe}>
+          <span aria-hidden="true">👕</span>
+          Vestiaire
+        </button>
+        <button type="button" className="rail__btn" onClick={onProfile}>
+          <span aria-hidden="true">📊</span>
           Profil
         </button>
-        <button type="button" className="menu__btn" onClick={onWardrobe}>
-          Vestiaire
+        <button type="button" className="rail__btn" disabled>
+          <span aria-hidden="true">🛒</span>
+          Boutique
+          <small>bientôt</small>
+        </button>
+      </nav>
+
+      <div className="launch">
+        <p className="launch__mode">
+          Solo · contre Nova
+          <small>{seasonLabel}</small>
+        </p>
+        <button type="button" className="launch__btn" onClick={onPlay}>
+          Jouer
         </button>
       </div>
     </div>

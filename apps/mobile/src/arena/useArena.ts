@@ -81,10 +81,23 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
       }
 
       arena.fighters.b.root.visible = !solo;
+
+      /**
+       * Hors match, le joueur revient au centre.
+       *
+       * En duel il tient le siege de gauche ; seul a l ecran, rien ne justifie
+       * qu il reste decale — le vide a droite se lirait comme un adversaire
+       * manquant. Le retour est progressif : une teleportation entre deux
+       * ecrans casserait la continuite de la vitrine.
+       */
+      const restX = solo ? 0 : -1.45;
+      const fighter = arena.fighters.a.root;
+      fighter.position.x += (restX - fighter.position.x) * Math.min(1, delta * 4);
+
       arena.update({
         elapsed,
         delta,
-        framing: solo ? soloFraming(arena.fighters.a.root.position.x) : wideFraming(),
+        framing: solo ? soloFraming(fighter.position.x) : wideFraming(),
         hype: scene?.hype ?? 0.2,
         shake: 0,
         reducedMotion: false,

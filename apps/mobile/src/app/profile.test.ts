@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { leagueProgress, styleShares, summarize, type PlayerProfile } from './profile.js';
+import {
+  canAfford,
+  leagueProgress,
+  styleShares,
+  summarize,
+  type PlayerProfile,
+} from './profile.js';
 
 const profile = (over: Partial<PlayerProfile> = {}): PlayerProfile => ({
   name: 'Kassim',
@@ -12,6 +18,7 @@ const profile = (over: Partial<PlayerProfile> = {}): PlayerProfile => ({
   currentStreak: 3,
   bestStreak: 9,
   roundsByStyle: { calme: 120, hype: 170, provoc: 98 },
+  wallet: { soft: 450, hard: 60 },
   ...over,
 });
 
@@ -77,5 +84,25 @@ describe('styleShares', () => {
   it('rend des parts nulles plutot que des NaN pour un profil vide', () => {
     const shares = styleShares(profile({ roundsByStyle: { calme: 0, hype: 0, provoc: 0 } }));
     for (const share of shares) expect(share.share).toBe(0);
+  });
+});
+
+describe('canAfford', () => {
+  it('laisse acheter ce qu on a les moyens de payer', () => {
+    expect(canAfford(profile({ wallet: { soft: 450, hard: 0 } }), 450)).toBe(true);
+    expect(canAfford(profile({ wallet: { soft: 449, hard: 0 } }), 450)).toBe(false);
+  });
+
+  /**
+   * Ce qui est offert reste accessible meme a zero. La boutique ne vend que de
+   * l apparence (regle d or n°3) : un joueur sans un sou doit pouvoir s habiller.
+   */
+  it('n exige rien pour un objet gratuit', () => {
+    expect(canAfford(profile({ wallet: { soft: 0, hard: 0 } }), 0)).toBe(true);
+  });
+
+  it('refuse un prix negatif plutot que de crediter', () => {
+    // Un prix negatif serait une erreur de donnees, pas une promotion.
+    expect(canAfford(profile(), -100)).toBe(false);
   });
 });

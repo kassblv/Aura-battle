@@ -34,6 +34,17 @@ export interface Palette {
   readonly accentInk: string;
 
   /**
+   * Arete basse des boutons epais.
+   *
+   * Un bouton de jeu a une epaisseur : la lèvre sombre sous sa face donne la
+   * profondeur, et l'appui la fait disparaitre — c'est ce qui fait qu'un
+   * bouton s'enfonce au lieu de clignoter. Purement decoratif : aucun texte ne
+   * se pose dessus, donc aucun seuil de contraste ne s'y applique.
+   */
+  readonly accentDeep: string;
+  readonly chipDeep: string;
+
+  /**
    * Couleurs d'etat, version **decorative** : halos, barres, particules, gros
    * chiffres animes. Elles portent l'identite, pas la lisibilite.
    */
@@ -67,6 +78,8 @@ export const PALETTE_KEYS = [
   'muted',
   'accent',
   'accentInk',
+  'accentDeep',
+  'chipDeep',
   'gold',
   'good',
   'bad',
@@ -84,6 +97,8 @@ export const LIGHT: Palette = Object.freeze({
   muted: '#6a5d8f',
   accent: '#7a3cff',
   accentInk: '#ffffff',
+  accentDeep: '#4a1f9e',
+  chipDeep: '#c9b9ea',
   gold: '#c98c00',
   good: '#138a52',
   bad: '#d2344b',
@@ -103,6 +118,8 @@ export const DARK: Palette = Object.freeze({
   muted: '#a99cd0',
   accent: '#b36bff',
   accentInk: '#150c2e',
+  accentDeep: '#6b3aa6',
+  chipDeep: '#1b1039',
   gold: '#ffcf3f',
   good: '#5be3a0',
   bad: '#ff6b81',

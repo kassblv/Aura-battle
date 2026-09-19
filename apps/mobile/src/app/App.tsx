@@ -32,6 +32,7 @@ const DEMO_PROFILE: PlayerProfile = {
   currentStreak: 3,
   bestStreak: 9,
   roundsByStyle: { calme: 120, hype: 170, provoc: 98 },
+  wallet: { soft: 450, hard: 60 },
 };
 
 export function App(): JSX.Element {

@@ -23,6 +23,25 @@ export interface PlayerProfile {
   readonly currentStreak: number;
   readonly bestStreak: number;
   readonly roundsByStyle: Readonly<Record<Style, number>>;
+  readonly wallet: Wallet;
+}
+
+/**
+ * Les deux monnaies.
+ *
+ * `soft` se gagne en jouant, `hard` s achete. Aucune des deux ne touche un
+ * score : elles n ouvrent que la boutique, qui ne vend que de l apparence
+ * (regle d or n°3).
+ */
+export interface Wallet {
+  readonly soft: number;
+  readonly hard: number;
+}
+
+/** Peut-on payer ce prix ? Un objet offert reste accessible a zero. */
+export function canAfford(profile: PlayerProfile, price: number): boolean {
+  if (price < 0) return false;
+  return profile.wallet.soft >= price;
 }
 
 export interface ProfileStats {
