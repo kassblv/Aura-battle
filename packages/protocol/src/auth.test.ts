@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { parseAuthDeviceRequest, parseAuthRefreshRequest, sessionResponseSchema } from './auth.js';
+import {
+  DISPLAY_NAME_MAX,
+  displayNameSchema,
+  parseAuthDeviceRequest,
+  parseAuthRefreshRequest,
+  parseAuthRenameRequest,
+  sessionResponseSchema,
+} from './auth.js';
 
 const secret = 'a'.repeat(64);
 
@@ -56,5 +63,63 @@ describe('sessionResponse', () => {
 
   it('ne laisse pas fuiter le hache du jeton', () => {
     expect(sessionResponseSchema.safeParse({ ...session, tokenHash: 'abc' }).success).toBe(false);
+  });
+});
+
+describe('displayNameSchema', () => {
+  const ok = (name: string): boolean => displayNameSchema.safeParse(name).success;
+
+  it('accepte un pseudo ordinaire', () => {
+    expect(ok('Kassim')).toBe(true);
+    expect(ok('Nova_7')).toBe(true);
+    expect(ok('Jean-Luc')).toBe(true);
+  });
+
+  it('accepte les accents : un prenom francais est un pseudo valide', () => {
+    expect(ok('Am\u00e9lie')).toBe(true);
+    expect(ok('Zo\u00eb')).toBe(true);
+  });
+
+  it('refuse trop court et trop long', () => {
+    expect(ok('K')).toBe(false);
+    expect(ok('K'.repeat(DISPLAY_NAME_MAX + 1))).toBe(false);
+    expect(ok('K'.repeat(DISPLAY_NAME_MAX))).toBe(true);
+  });
+
+  it('rogne les espaces autour plutot que de refuser', () => {
+    // Un espace colle avant le nom vient du clavier, pas du joueur.
+    expect(displayNameSchema.parse('  Kassim  ')).toBe('Kassim');
+  });
+
+  /**
+   * Deux espaces de suite, ou un nom commencant par une ponctuation, servent a
+   * imiter le nom d'un autre joueur dans une liste — et a passer devant lui.
+   */
+  it('refuse ce qui sert a se faire passer pour un autre', () => {
+    expect(ok('Kas  sim')).toBe(false);
+    expect(ok('_Kassim')).toBe(false);
+    expect(ok('.Nova')).toBe(false);
+  });
+
+  it('refuse le balisage et les caracteres de controle', () => {
+    expect(ok('Kas<b>im')).toBe(false);
+    expect(ok('Kas\u0000im')).toBe(false);
+    expect(ok('Kas\nim')).toBe(false);
+  });
+
+  it('refuse un nom vide ou fait d espaces', () => {
+    expect(ok('')).toBe(false);
+    expect(ok('    ')).toBe(false);
+  });
+});
+
+describe('parseAuthRenameRequest', () => {
+  it('accepte une demande bien formee', () => {
+    expect(parseAuthRenameRequest({ displayName: 'Kassim' }).success).toBe(true);
+  });
+
+  it('refuse un champ surnumeraire', () => {
+    // Un champ en trop trahit un client qui n'est pas celui qu'on croit.
+    expect(parseAuthRenameRequest({ displayName: 'Kassim', admin: true }).success).toBe(false);
   });
 });
