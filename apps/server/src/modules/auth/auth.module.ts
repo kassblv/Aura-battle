@@ -10,6 +10,7 @@ import {
   PrismaPlayerRepository,
   PrismaRefreshTokenRepository,
 } from './adapters/prisma-repositories.js';
+import { ProfileService } from './application/profile.js';
 import { SessionService } from './application/session.js';
 import { SocketAuthenticator } from './application/socket-auth.js';
 
@@ -47,6 +48,18 @@ import { SocketAuthenticator } from './application/socket-auth.js';
     },
     PrismaPlayerRepository,
     PrismaRefreshTokenRepository,
+    {
+      provide: ProfileService,
+      inject: [PrismaPlayerRepository],
+      useFactory: (players: PrismaPlayerRepository) => new ProfileService({ players }),
+    },
+    // Jeton nomme : le controleur depend du **port**, pas de l'implementation
+    // JWT. Remplacer la verification ne demanderait de toucher qu'ici.
+    {
+      provide: 'ACCESS_TOKEN_VERIFIER',
+      inject: [JwtAccessTokenVerifier],
+      useFactory: (verifier: JwtAccessTokenVerifier) => verifier,
+    },
     {
       provide: JwtAccessTokenSigner,
       inject: [JwtService, CONFIG],

@@ -40,6 +40,20 @@
   --display: 'Bungee', Impact, 'Arial Black', sans-serif;
   --body: 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 
+  /**
+   * Zones sures.
+   *
+   * En paysage, l encoche ne passe pas en haut : elle passe sur un **cote** —
+   * exactement la ou vivent les grappes de pouce et les orbes. Et la barre
+   * d accueil mange le bas, c est-a-dire la ligne des commandes. Les insets
+   * sont donc nommes une fois ici, avec un minimum de confort en dessous : un
+   * bouton colle au bord est coupe par l arrondi de l ecran meme sans encoche.
+   */
+  --safe-top: max(10px, env(safe-area-inset-top));
+  --safe-right: max(12px, env(safe-area-inset-right));
+  --safe-bottom: max(10px, env(safe-area-inset-bottom));
+  --safe-left: max(12px, env(safe-area-inset-left));
+
   --d-tap: 90ms;
   --d-chip: 160ms;
   --e-out: cubic-bezier(0.16, 1, 0.3, 1);
@@ -193,8 +207,8 @@ body {
 /* fiche du joueur : on ouvre son profil en touchant sa propre tete */
 .tag {
   position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  left: max(12px, env(safe-area-inset-left));
+  top: var(--safe-top);
+  left: var(--safe-left);
   display: flex;
   align-items: center;
   gap: 9px;
@@ -272,8 +286,8 @@ body {
 /* monnaies : lues, jamais touchees — donc hors des arcs de pouce */
 .wallet {
   position: absolute;
-  top: max(10px, env(safe-area-inset-top));
-  right: max(12px, env(safe-area-inset-right));
+  top: var(--safe-top);
+  right: var(--safe-right);
   display: flex;
   gap: 7px;
 }
@@ -305,8 +319,8 @@ body {
 /* rail : arc du pouce gauche */
 .rail {
   position: absolute;
-  left: max(12px, env(safe-area-inset-left));
-  bottom: max(12px, env(safe-area-inset-bottom));
+  left: var(--safe-left);
+  bottom: var(--safe-bottom);
   display: flex;
   gap: 8px;
 }
@@ -364,8 +378,8 @@ body {
 /* action : arc du pouce droit, et le plus gros element de l ecran */
 .launch {
   position: absolute;
-  right: max(12px, env(safe-area-inset-right));
-  bottom: max(12px, env(safe-area-inset-bottom));
+  right: var(--safe-right);
+  bottom: var(--safe-bottom);
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -420,9 +434,9 @@ body {
 /* --- panneaux profil et vestiaire --- */
 .sheet {
   position: absolute;
-  right: max(14px, env(safe-area-inset-right));
+  right: var(--safe-right);
   top: 14px;
-  bottom: max(12px, env(safe-area-inset-bottom));
+  bottom: var(--safe-bottom);
   width: min(430px, 56%);
   overflow-y: auto;
   border-radius: 18px;
@@ -583,7 +597,9 @@ body {
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 10px;
-  padding: 7px 12px;
+  /* Le contenu s ecarte de l encoche ; le fond, lui, va jusqu au bord, sinon
+     une bande de decor apparait au-dessus du bandeau. */
+  padding: max(6px, env(safe-area-inset-top)) var(--safe-right) 7px var(--safe-left);
   background: var(--hud);
   border-bottom: 1px solid var(--hud-line);
   backdrop-filter: blur(9px);
@@ -631,9 +647,9 @@ body {
 
 .banner {
   position: absolute;
-  top: 46px;
-  left: 0;
-  right: 0;
+  top: calc(var(--safe-top) + 40px);
+  left: var(--safe-left);
+  right: var(--safe-right);
   text-align: center;
   pointer-events: none;
 }
@@ -648,6 +664,26 @@ body {
   margin: 2px 0 0;
   font-size: 12px;
   color: var(--muted);
+}
+
+/**
+ * Terrain des orbes.
+ *
+ * `reach.ts` place les orbes en parts d ecran, sans rien savoir de l appareil.
+ * C est ce cadre qui retire l encoche et la barre d accueil : une orbe posee
+ * dessous serait visible et intapable, ce qui est pire qu une orbe absente.
+ */
+.field {
+  position: absolute;
+  top: calc(var(--safe-top) + 34px);
+  right: var(--safe-right);
+  bottom: var(--safe-bottom);
+  left: var(--safe-left);
+  pointer-events: none;
+}
+
+.field > * {
+  pointer-events: auto;
 }
 
 .orb {
@@ -688,9 +724,9 @@ body {
 
 .gauge {
   position: absolute;
-  left: 10%;
-  right: 10%;
-  bottom: calc(max(10px, env(safe-area-inset-bottom)) + 120px);
+  left: calc(var(--safe-left) + 8%);
+  right: calc(var(--safe-right) + 8%);
+  bottom: calc(var(--safe-bottom) + 120px);
   height: 46px;
   border-radius: 14px;
   overflow: hidden;
@@ -739,7 +775,7 @@ body {
   align-items: flex-end;
   justify-content: space-between;
   gap: 10px;
-  padding: 0 12px max(10px, env(safe-area-inset-bottom));
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
 }
 
 .cluster {
@@ -815,7 +851,7 @@ body {
   position: absolute;
   left: 50%;
   transform: translateX(-50%);
-  bottom: max(10px, env(safe-area-inset-bottom));
+  bottom: var(--safe-bottom);
   border-radius: 999px;
   padding: 6px 14px;
   margin: 0;
@@ -842,6 +878,7 @@ body {
   border-radius: 20px;
   padding: 14px 22px;
   min-width: min(320px, 70vw);
+  max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 24px);
   animation: pop-in var(--d-chip) var(--e-over) both;
 }
 .verdict h2 {

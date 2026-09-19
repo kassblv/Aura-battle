@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import type {
   PlayerRecord,
@@ -51,6 +52,29 @@ export class PrismaPlayerRepository implements PlayerRepository {
       },
       select: { id: true, displayName: true },
     });
+  }
+
+  /**
+   * Renomme, et rend `null` si le joueur a disparu entre-temps.
+   *
+   * Prisma leve `P2025` quand la ligne visee n'existe plus. On le traduit en
+   * `null` plutot que de laisser remonter une erreur d'infrastructure : le
+   * domaine a une reponse pour « ce joueur n'existe pas », il n'en a pas pour
+   * « le moteur de base a leve ».
+   */
+  async rename(playerId: string, displayName: string): Promise<PlayerRecord | null> {
+    try {
+      return await this.prisma.player.update({
+        where: { id: playerId },
+        data: { displayName },
+        select: { id: true, displayName: true },
+      });
+    } catch (cause) {
+      if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2025') {
+        return null;
+      }
+      throw cause;
+    }
   }
 
   async touchLastSeen(playerId: string): Promise<void> {

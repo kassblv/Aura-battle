@@ -29,6 +29,14 @@ class FakePlayers implements PlayerRepository {
     return Promise.resolve(this.byId.get(playerId) ?? null);
   }
 
+  rename(playerId: string, displayName: string): Promise<PlayerRecord | null> {
+    const player = this.byId.get(playerId);
+    if (player === undefined) return Promise.resolve(null);
+    const renamed = { ...player, displayName };
+    this.byId.set(playerId, renamed);
+    return Promise.resolve(renamed);
+  }
+
   createWithDeviceIdentity(input: {
     deviceHash: string;
     displayName: string;

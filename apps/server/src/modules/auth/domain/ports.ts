@@ -30,6 +30,8 @@ export interface PlayerRepository {
     readonly deviceHash: string;
     readonly displayName: string;
   }): Promise<PlayerRecord>;
+  /** Change le nom affiche. Rend `null` si le joueur n existe plus. */
+  rename(playerId: string, displayName: string): Promise<PlayerRecord | null>;
   touchLastSeen(playerId: string): Promise<void>;
 }
 

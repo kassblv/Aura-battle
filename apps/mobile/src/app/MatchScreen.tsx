@@ -131,25 +131,27 @@ export function MatchScreen({ looks, arena, onLeave }: MatchScreenProps): JSX.El
       {state.phase === 'recharge' && context !== null && (
         <>
           <Banner title="Recharge" sub={`${(left / 1000).toFixed(1)} s`} />
-          {liveOrbs(state.pending.a.taps, context.orbs, inPhase).map((slot: LiveOrb) => {
-            const at = reachable(slot.orb.x, slot.orb.y);
-            return (
-              <button
-                key={`${String(slot.slot)}-${String(slot.orb.index)}`}
-                type="button"
-                className={`orb orb--${slot.orb.kind}`}
-                style={{
-                  left: `${(at.left * 100).toFixed(2)}%`,
-                  top: `${(at.top * 100).toFixed(2)}%`,
-                  opacity: 0.4 + slot.remaining * 0.6,
-                }}
-                aria-label={slot.orb.kind === 'golden' ? 'Orbe dorée' : 'Orbe'}
-                onClick={() => {
-                  match.tap([{ atMs: inPhase, orbIndex: slot.orb.index }], now);
-                }}
-              />
-            );
-          })}
+          <div className="field">
+            {liveOrbs(state.pending.a.taps, context.orbs, inPhase).map((slot: LiveOrb) => {
+              const at = reachable(slot.orb.x, slot.orb.y);
+              return (
+                <button
+                  key={`${String(slot.slot)}-${String(slot.orb.index)}`}
+                  type="button"
+                  className={`orb orb--${slot.orb.kind}`}
+                  style={{
+                    left: `${(at.left * 100).toFixed(2)}%`,
+                    top: `${(at.top * 100).toFixed(2)}%`,
+                    opacity: 0.4 + slot.remaining * 0.6,
+                  }}
+                  aria-label={slot.orb.kind === 'golden' ? 'Orbe dorée' : 'Orbe'}
+                  onClick={() => {
+                    match.tap([{ atMs: inPhase, orbIndex: slot.orb.index }], now);
+                  }}
+                />
+              );
+            })}
+          </div>
         </>
       )}
 
