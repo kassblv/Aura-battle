@@ -1,7 +1,8 @@
 import { useCallback, useMemo, useRef, useState, type JSX } from 'react';
-import { useArena } from '../arena/useArena.js';
-import { defaultLook, equip, type LookSlot, type Wardrobe } from './wardrobe.js';
+import { useArena, type ArenaControls } from '../arena/useArena.js';
+import { defaultLook, equip, type Look, type LookSlot, type Wardrobe } from './wardrobe.js';
 import { MatchScreen } from './MatchScreen.jsx';
+import { useSoloMatch } from './useMatch.js';
 import { canLeave, navigate, openingScreen, type Navigation } from './navigation.js';
 import { needsOnboarding } from './onboarding.js';
 import { OnboardingScreen } from './OnboardingScreen.jsx';
@@ -163,7 +164,9 @@ export function App(): JSX.Element {
           />
         )}
 
-        {nav.screen === 'match' && <MatchScreen looks={looks} arena={arena} onLeave={leaveMatch} />}
+        {!showOnboarding && nav.screen === 'match' && (
+          <SoloMatchScreen looks={looks} arena={arena} onLeave={leaveMatch} />
+        )}
 
         {!showOnboarding && nav.screen !== 'home' && canLeave(nav) && nav.screen !== 'match' && (
           <button
@@ -178,5 +181,32 @@ export function App(): JSX.Element {
         )}
       </div>
     </div>
+  );
+}
+
+/**
+ * Le match solo.
+ *
+ * Extrait dans son propre composant parce que `useSoloMatch` demarre une boucle
+ * de rendu : monte au niveau de `App`, elle tournerait meme a l accueil.
+ */
+function SoloMatchScreen({
+  looks,
+  arena,
+  onLeave,
+}: {
+  readonly looks: Readonly<Record<'a' | 'b', Look>>;
+  readonly arena: ArenaControls;
+  readonly onLeave: () => void;
+}): JSX.Element {
+  const session = useSoloMatch(looks, arena);
+  return (
+    <MatchScreen
+      view={session.view}
+      actions={session.actions}
+      nowMs={session.nowMs}
+      opponentName="Nova"
+      onLeave={onLeave}
+    />
   );
 }

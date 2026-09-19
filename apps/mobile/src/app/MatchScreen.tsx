@@ -4,22 +4,20 @@ import {
   type AmplifierLevel,
   type Choice,
   type LiveOrb,
+  type RechargeTap,
   type Style,
   type Tier,
 } from '@aura/rules';
 import { useEffect, useRef, useState, type JSX } from 'react';
-import type { ArenaControls } from '../arena/useArena.js';
-import { present } from '../match/presentation.js';
 import { reachable } from '../match/reach.js';
-import { createSoloMatch, type SoloMatch } from '../match/solo.js';
-import type { Look } from './wardrobe.js';
+import type { MatchView } from '../match/view.js';
 
 /**
  * L ecran de match.
  *
- * Il ne decide rien : le moteur tranche (`solo.ts`), la mise en scene traduit
- * (`presentation.ts`), la zone de pouce est calculee ailleurs (`reach.ts`).
- * Ici on lit une horloge, on dessine, et on transmet des intentions.
+ * Il ne decide rien et ignore contre qui il joue : `view.ts` lui donne une
+ * forme unique pour le solo et l en-ligne, `reach.ts` place les orbes. Ici on
+ * lit une horloge, on dessine, et on transmet des intentions.
  */
 
 const STYLES: readonly { id: Style; icon: string; beats: Style }[] = [
@@ -31,108 +29,94 @@ const STYLES: readonly { id: Style; icon: string; beats: Style }[] = [
 const TIERS: readonly Tier[] = [0, 1, 2, 3, 4];
 const AMPS: readonly AmplifierLevel[] = [0, 1, 2, 3, 4];
 
+/** Delai minimal entre l armement de la jauge et l appui (docs/03). */
+const MIN_CHARGE_MS = 120;
+
+export interface MatchActions {
+  tap(taps: readonly RechargeTap[], inPhaseMs: number): void;
+  /** `chargeAtMs` : instant ou la jauge s est armee. Le protocole veut les deux. */
+  lock(choice: Choice, chargeAtMs: number, tapAtMs: number): boolean;
+}
+
 export interface MatchScreenProps {
-  readonly looks: Readonly<Record<'a' | 'b', Look>>;
-  readonly arena: ArenaControls;
+  readonly view: MatchView;
+  readonly actions: MatchActions;
+  /** Heure locale courante, fournie par la boucle du parent. */
+  readonly nowMs: number;
+  readonly opponentName: string;
   readonly onLeave: () => void;
 }
 
-export function MatchScreen({ looks, arena, onLeave }: MatchScreenProps): JSX.Element {
-  const matchRef = useRef<SoloMatch | null>(null);
-  matchRef.current ??= createSoloMatch({
-    seed: `solo-${String(Date.now())}`,
-    opponent: 'calm',
-    startedAtMs: 0,
-  });
-
-  const startedAt = useRef(performance.now());
-  const [, force] = useState(0);
+export function MatchScreen({
+  view,
+  actions,
+  nowMs,
+  opponentName,
+  onLeave,
+}: MatchScreenProps): JSX.Element {
   const [style, setStyle] = useState<Style | null>(null);
   const [tier, setTier] = useState<Tier>(0);
   const [amplifier, setAmplifier] = useState<AmplifierLevel>(0);
   const [locked, setLocked] = useState(false);
-  const nowRef = useRef(0);
-
-  useEffect(() => {
-    arena.showcase.current = false;
-    let frame = 0;
-    const tick = (): void => {
-      frame = requestAnimationFrame(tick);
-      const match = matchRef.current;
-      if (match === null) return;
-      nowRef.current = performance.now() - startedAt.current;
-      match.advanceTo(nowRef.current);
-      arena.presentation.current = present(match.state, looks, {
-        showOutcome: match.state.phase === 'reveal',
-      });
-      force((n) => n + 1);
-    };
-    frame = requestAnimationFrame(tick);
-    return () => {
-      cancelAnimationFrame(frame);
-      arena.showcase.current = true;
-    };
-  }, [arena, looks]);
-
-  const match = matchRef.current;
-  const state = match.state;
-  const now = nowRef.current;
-  const context = state.roundContext;
-
-  /** Debut de la phase courante : le moteur n annonce que sa fin. */
-  const phaseDurations: Record<string, number> = {
-    intro: BALANCE.phases.introMs,
-    recharge: BALANCE.recharge.durationMs,
-    choice: BALANCE.phases.choiceMs,
-    reveal: BALANCE.phases.revealMs,
-  };
-  const duration = phaseDurations[state.phase] ?? 1;
-  const phaseStart = state.phaseEndsAtMs - duration;
-  const inPhase = Math.max(0, now - phaseStart);
-  const left = Math.max(0, state.phaseEndsAtMs - now);
-
-  const cap = Math.min(BALANCE.maxRoundCost, state.seats.a.energy);
-  const cost = tier + amplifier;
-
-  const lockIn = (): void => {
-    if (locked || style === null || state.phase !== 'choice') return;
-    const choice: Choice = { move: { style, tier }, amplifier, useUltimate: false };
-    if (match.lock(choice, inPhase, now)) setLocked(true);
-  };
+  /** Instant ou la jauge s est armee, c est-a-dire ou un style a ete choisi. */
+  const chargeAt = useRef<number | null>(null);
 
   // Une nouvelle manche remet le choix a zero.
-  const roundRef = useRef(state.round);
-  if (roundRef.current !== state.round) {
-    roundRef.current = state.round;
+  const round = useRef(view.round);
+  useEffect(() => {
+    if (round.current === view.round) return;
+    round.current = view.round;
     setStyle(null);
     setTier(0);
     setAmplifier(0);
     setLocked(false);
-  }
+    chargeAt.current = null;
+  }, [view.round]);
+
+  const phaseStart = view.phaseEndsAtMs - view.phaseDurationMs;
+  const inPhase = Math.max(0, nowMs - phaseStart);
+  const left = Math.max(0, view.phaseEndsAtMs - nowMs);
+  const cap = Math.min(BALANCE.maxRoundCost, view.me.energy ?? BALANCE.maxRoundCost);
+  const cost = tier + amplifier;
+
+  const armed = style !== null && chargeAt.current !== null;
+  const canLock = armed && !locked && inPhase - (chargeAt.current ?? 0) >= MIN_CHARGE_MS;
+
+  const chooseStyle = (next: Style): void => {
+    setStyle(next);
+    // La jauge s arme au premier choix de style, pas au debut de la phase :
+    // c est l instant ou le joueur commence reellement a viser.
+    chargeAt.current ??= inPhase;
+  };
+
+  const lockIn = (): void => {
+    if (!canLock || style === null) return;
+    const choice: Choice = { move: { style, tier }, amplifier, useUltimate: false };
+    if (actions.lock(choice, chargeAt.current ?? 0, inPhase)) setLocked(true);
+  };
 
   return (
     <div className="match">
       <header className="hud">
         <span className="hud__side">
-          <b>Toi</b> <span className="pips">{'●'.repeat(state.seats.a.roundsWon)}</span>
-          <Energy left={state.seats.a.energy} />
+          <b>Toi</b> <Pips won={view.me.roundsWon} />
+          {view.me.energy !== null && <Energy left={view.me.energy} />}
         </span>
-        <span className="hud__round">Manche {state.round}</span>
+        <span className="hud__round">Manche {view.round}</span>
         <span className="hud__side hud__side--right">
-          <Energy left={state.seats.b.energy} />
-          <span className="pips">{'●'.repeat(state.seats.b.roundsWon)}</span> <b>Nova</b>
+          <Pips won={view.opponent.roundsWon} /> <b>{opponentName}</b>
         </span>
         <i
           className="hud__timer"
-          style={{ width: `${((inPhase / duration) * 100).toFixed(1)}%` }}
+          style={{ width: `${((inPhase / view.phaseDurationMs) * 100).toFixed(1)}%` }}
         />
       </header>
 
-      {state.phase === 'recharge' && context !== null && (
+      {view.phase === 'recharge' && (
         <>
           <Banner title="Recharge" sub={`${(left / 1000).toFixed(1)} s`} />
           <div className="field">
-            {liveOrbs(state.pending.a.taps, context.orbs, inPhase).map((slot: LiveOrb) => {
+            {liveOrbs(view.taps, view.orbs, inPhase).map((slot: LiveOrb) => {
               const at = reachable(slot.orb.x, slot.orb.y);
               return (
                 <button
@@ -146,7 +130,7 @@ export function MatchScreen({ looks, arena, onLeave }: MatchScreenProps): JSX.El
                   }}
                   aria-label={slot.orb.kind === 'golden' ? 'Orbe dorée' : 'Orbe'}
                   onClick={() => {
-                    match.tap([{ atMs: inPhase, orbIndex: slot.orb.index }], now);
+                    actions.tap([{ atMs: inPhase, orbIndex: slot.orb.index }], inPhase);
                   }}
                 />
               );
@@ -155,11 +139,32 @@ export function MatchScreen({ looks, arena, onLeave }: MatchScreenProps): JSX.El
         </>
       )}
 
-      {state.phase === 'choice' && context !== null && (
+      {view.phase === 'choice' && (
         <>
-          <Banner title="Choix" sub="Règle ton mouvement, puis touche l’écran au centre" />
-          {!locked && <div className="gauge-hit" role="button" tabIndex={0} onClick={lockIn} />}
-          <Gauge position={gaugePosition(inPhase, context.gauge.periodMs)} dim={style === null} />
+          <Banner
+            title="Choix"
+            sub={
+              view.opponentLocked
+                ? `${opponentName} a verrouillé`
+                : 'Règle ton mouvement, puis touche l’écran au centre'
+            }
+          />
+          {!locked && (
+            <div
+              className="gauge-hit"
+              role="button"
+              tabIndex={0}
+              aria-label="Verrouiller et arrêter la jauge"
+              onClick={lockIn}
+              onKeyDown={(event) => {
+                if (event.key === ' ' || event.key === 'Enter') {
+                  event.preventDefault();
+                  lockIn();
+                }
+              }}
+            />
+          )}
+          <Gauge position={gaugePosition(inPhase, view.meterPeriodMs)} dim={!armed} />
           <div className="controls">
             <div className="cluster">
               <p className="cluster__label">Style</p>
@@ -172,7 +177,7 @@ export function MatchScreen({ looks, arena, onLeave }: MatchScreenProps): JSX.El
                     aria-pressed={style === s.id}
                     disabled={locked}
                     onClick={() => {
-                      setStyle(s.id);
+                      chooseStyle(s.id);
                     }}
                   >
                     <span className="pick__icon">{s.icon}</span>
@@ -226,11 +231,29 @@ export function MatchScreen({ looks, arena, onLeave }: MatchScreenProps): JSX.El
         </>
       )}
 
-      {(state.phase === 'reveal' || state.phase === 'ended') && <Verdict state={state} />}
+      {(view.phase === 'reveal' || view.phase === 'ended') && view.lastRound !== null && (
+        <div className="verdict">
+          <h2 className={view.lastRound.winner === 'moi' ? 'win' : 'lose'}>
+            {view.lastRound.winner === null
+              ? 'Manche nulle'
+              : view.lastRound.winner === 'moi'
+                ? 'Manche gagnée'
+                : 'Manche perdue'}
+          </h2>
+          <p className="verdict__line">
+            <span>Toi</span>
+            <b>{view.lastRound.myScore}</b>
+          </p>
+          <p className="verdict__line">
+            <span>{opponentName}</span>
+            <b>{view.lastRound.opponentScore}</b>
+          </p>
+        </div>
+      )}
 
-      {state.phase === 'ended' && (
-        <button type="button" className="action action--center" onClick={onLeave}>
-          {state.result?.winner === 'a' ? 'Victoire — accueil' : 'Défaite — accueil'}
+      {view.ended !== null && (
+        <button type="button" className="action--center" onClick={onLeave}>
+          {view.ended.winner === 'moi' ? 'Victoire — accueil' : 'Défaite — accueil'}
         </button>
       )}
     </div>
@@ -239,8 +262,18 @@ export function MatchScreen({ looks, arena, onLeave }: MatchScreenProps): JSX.El
 
 /** Onde triangulaire : le curseur va et vient, il ne saute pas. */
 function gaugePosition(inPhaseMs: number, periodMs: number): number {
+  if (periodMs <= 0) return 0;
   const t = (inPhaseMs % periodMs) / periodMs;
   return t < 0.5 ? t * 2 : (1 - t) * 2;
+}
+
+function Pips({ won }: { readonly won: number }): JSX.Element {
+  return (
+    <span className="pips" aria-label={`${String(won)} manche(s) gagnée(s)`}>
+      {'●'.repeat(won)}
+      {'○'.repeat(Math.max(0, 2 - won))}
+    </span>
+  );
 }
 
 function Energy({ left }: { readonly left: number }): JSX.Element {
@@ -275,27 +308,6 @@ function Gauge({
       <i className="gauge__perfect" />
       <i className="gauge__needle" style={{ left: `${(position * 100).toFixed(2)}%` }} />
       <span className="gauge__legend">faible · bon · parfait · bon · faible</span>
-    </div>
-  );
-}
-
-function Verdict({ state }: { readonly state: SoloMatch['state'] }): JSX.Element {
-  const round = state.history.at(-1);
-  if (round === undefined) return <Banner title="Révélation" sub="" />;
-  const won = round.winner === 'a';
-  return (
-    <div className="verdict">
-      <h2 className={won ? 'win' : 'lose'}>
-        {round.winner === null ? 'Manche nulle' : won ? 'Manche gagnée' : 'Manche perdue'}
-      </h2>
-      <p className="verdict__line">
-        <span>Toi</span>
-        <b>{round.seats.a.score}</b>
-      </p>
-      <p className="verdict__line">
-        <span>Nova</span>
-        <b>{round.seats.b.score}</b>
-      </p>
     </div>
   );
 }

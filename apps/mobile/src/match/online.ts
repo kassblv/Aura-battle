@@ -48,6 +48,14 @@ export interface OnlineState {
   /** Seul fait public du choix adverse : il a verrouille. Rien d autre. */
   readonly opponentLocked: boolean;
   readonly orbs: readonly OnlineOrb[];
+  /**
+   * Taps deja declares au serveur.
+   *
+   * Gardes ici parce que ce sont eux qui decident des orbes encore affichees :
+   * l ecran doit dessiner exactement ce que le serveur jugera, et le serveur
+   * ne renvoie rien avant la fin de la recharge.
+   */
+  readonly sentTaps: readonly RechargeTap[];
   readonly meter: OnlineMeter | null;
   readonly lastRound: ServerMessage<'round:result'> | null;
   readonly result: ServerMessage<'match:end'> | null;
@@ -89,6 +97,7 @@ const EMPTY: OnlineState = {
   ultimate: 0,
   opponentLocked: false,
   orbs: [],
+  sentTaps: [],
   meter: null,
   lastRound: null,
   result: null,
@@ -137,6 +146,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       // Une nouvelle manche efface ce qu on savait de la precedente.
       opponentLocked: false,
       orbs: [],
+      sentTaps: [],
       meter: null,
       lastRound: null,
     };
@@ -150,6 +160,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       round: data.round,
       phaseEndsAtMs: toLocal(data.endsAt),
       orbs: data.orbs,
+      sentTaps: [],
     };
   });
 
@@ -209,6 +220,9 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       ultimate: data.ult,
       opponentLocked: data.opponentLocked,
       orbs: data.orbs ?? [],
+      // Le serveur retient les taps deja recus : les nôtres sont a oublier,
+      // sinon une reconnexion les compterait deux fois a l affichage.
+      sentTaps: [],
       meter: data.meter ?? null,
     };
   });
@@ -234,6 +248,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
           .sort((left, right) => left.atMs - right.atMs)
           .map((tap) => ({ orbIndex: tap.orbIndex, t: tap.atMs })),
       });
+      state = { ...state, sentTaps: [...state.sentTaps, ...taps] };
     },
 
     lock(choice, chargeAtMs, tapAtMs) {
