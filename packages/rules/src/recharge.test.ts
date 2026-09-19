@@ -5,6 +5,7 @@ import { createRng } from './rng.js';
 import {
   evaluateRecharge,
   generateOrbSequence,
+  liveOrbs,
   orbSequenceLength,
   type Orb,
   type RechargeTap,
@@ -311,5 +312,72 @@ describe('evaluateRecharge — invariants', () => {
     expect(evaluateRecharge(taps, normalSequence(50))).toEqual(
       evaluateRecharge(taps, normalSequence(50)),
     );
+  });
+});
+
+describe('liveOrbs', () => {
+  const sequence = generateOrbSequence(createRng('creneaux'));
+
+  it('montre trois orbes des le debut', () => {
+    const live = liveOrbs([], sequence, 0);
+    expect(live).toHaveLength(BALANCE.recharge.visibleOrbs);
+    expect(live.map((slot) => slot.orb.index)).toEqual([0, 1, 2]);
+  });
+
+  it('donne a chaque orbe sa part de vie restante', () => {
+    const live = liveOrbs([], sequence, 0);
+    for (const slot of live) {
+      expect(slot.remaining).toBeCloseTo(1, 6);
+      expect(slot.slot).toBeGreaterThanOrEqual(0);
+    }
+  });
+
+  it('remplace une orbe touchee par la suivante de la sequence', () => {
+    const first = sequence[0];
+    if (first === undefined) throw new Error('sequence vide');
+    const live = liveOrbs([{ atMs: 100, orbIndex: first.index }], sequence, 150);
+    expect(live.map((slot) => slot.orb.index)).not.toContain(first.index);
+    expect(live.map((slot) => slot.orb.index)).toContain(3);
+  });
+
+  it('remplace une orbe expiree, sans qu on y touche', () => {
+    const first = sequence[0];
+    if (first === undefined) throw new Error('sequence vide');
+    const live = liveOrbs([], sequence, first.lifetimeMs + 1);
+    expect(live.map((slot) => slot.orb.index)).not.toContain(first.index);
+  });
+
+  /**
+   * Le client dessine ce que le moteur jugera. Si les deux divergeaient, un
+   * joueur taperait une orbe qu il voit et que le serveur a deja retiree —
+   * et le tap lui serait compte comme un coup dans le vide.
+   */
+  it('compte autant de disparitions que l evaluation complete', () => {
+    const taps = [
+      { atMs: 200, orbIndex: 0 },
+      { atMs: 900, orbIndex: 3 },
+    ];
+    const end = BALANCE.recharge.durationMs;
+    const evaluated = evaluateRecharge(taps, sequence);
+    const seen = new Set<number>();
+    for (let t = 0; t <= end; t += 25) {
+      for (const slot of liveOrbs(taps, sequence, t)) seen.add(slot.orb.index);
+    }
+    // Les orbes vues a l ecran sont exactement celles consommees par le moteur :
+    // touchees, expirees, ou encore affichees a la fin.
+    const consumed = evaluated.hits + evaluated.expiredOrbs + BALANCE.recharge.visibleOrbs;
+    expect(seen.size).toBeLessThanOrEqual(consumed);
+    expect(seen.size).toBeGreaterThanOrEqual(evaluated.hits + BALANCE.recharge.visibleOrbs - 1);
+  });
+
+  it('ne montre plus rien une fois la recharge finie', () => {
+    expect(liveOrbs([], sequence, BALANCE.recharge.durationMs + 1)).toEqual([]);
+  });
+
+  it('ignore un tap sur une orbe qui n est pas affichee', () => {
+    // Le moteur le compterait comme un coup dans le vide : l ecran ne doit
+    // surtout pas faire disparaitre une orbe pour autant.
+    const live = liveOrbs([{ atMs: 100, orbIndex: 99 }], sequence, 150);
+    expect(live.map((slot) => slot.orb.index)).toEqual([0, 1, 2]);
   });
 });

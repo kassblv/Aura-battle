@@ -199,3 +199,79 @@ export function evaluateRecharge(
     energyGain: Math.min(Math.floor(points / recharge.pointsPerEnergy), recharge.energyMaxPerRound),
   };
 }
+
+/** Une orbe affichee, et ce qu'il lui reste a vivre. */
+export interface LiveOrb {
+  /** Emplacement occupe, de 0 a `visibleOrbs - 1`. Stable d'une image a l'autre. */
+  readonly slot: number;
+  readonly orb: Orb;
+  /** Part de duree de vie restante, de 1 a 0. */
+  readonly remaining: number;
+}
+
+/**
+ * Les orbes visibles a un instant donne.
+ *
+ * Le client doit dessiner **exactement** ce que le moteur jugera. Recalculer
+ * l'occupation des emplacements dans l'interface serait une seconde
+ * implementation de la regle : le jour ou les deux divergent, un joueur tape
+ * une orbe qu'il voit et que le moteur a deja retiree, et son tap lui est
+ * compte comme un coup dans le vide — sans qu'aucune erreur ne soit visible
+ * nulle part.
+ *
+ * La fonction rejoue donc la meme mecanique d'emplacements que
+ * `evaluateRecharge`, jusqu'a `atMs`. Elle reste pure et ne juge rien : les
+ * points, le combo et les refus restent l'affaire de l'evaluation.
+ */
+export function liveOrbs(
+  taps: readonly RechargeTap[],
+  sequence: readonly Orb[],
+  atMs: number,
+  config: BalanceConfig = BALANCE,
+): readonly LiveOrb[] {
+  const { recharge } = config;
+  if (atMs < 0 || atMs > recharge.durationMs) return [];
+
+  const slots: Slot[] = [];
+  let nextOrb = 0;
+  for (; nextOrb < recharge.visibleOrbs; nextOrb += 1) {
+    slots.push({ orb: sequence[nextOrb] ?? null, spawnedAtMs: 0 });
+  }
+
+  const fillSlot = (slot: Slot, spawnedAtMs: number): void => {
+    slot.orb = sequence[nextOrb] ?? null;
+    slot.spawnedAtMs = spawnedAtMs;
+    nextOrb += 1;
+  };
+
+  const expireUntil = (untilMs: number): void => {
+    for (const slot of slots) {
+      while (slot.orb !== null && slot.spawnedAtMs + slot.orb.lifetimeMs <= untilMs) {
+        fillSlot(slot, slot.spawnedAtMs + slot.orb.lifetimeMs);
+      }
+    }
+  };
+
+  for (const tap of [...taps].sort((left, right) => left.atMs - right.atMs)) {
+    if (tap.atMs < 0 || tap.atMs > atMs) continue;
+    expireUntil(tap.atMs);
+    if (tap.orbIndex === null) continue;
+    // Un tap sur une orbe qui n'est pas affichee ne fait rien disparaitre : le
+    // moteur le compte comme un coup dans le vide, l'ecran doit faire pareil.
+    const hit = slots.find((slot) => slot.orb !== null && slot.orb.index === tap.orbIndex);
+    if (hit !== undefined) fillSlot(hit, tap.atMs);
+  }
+  expireUntil(atMs);
+
+  const live: LiveOrb[] = [];
+  slots.forEach((slot, index) => {
+    if (slot.orb === null) return;
+    const age = atMs - slot.spawnedAtMs;
+    live.push({
+      slot: index,
+      orb: slot.orb,
+      remaining: Math.min(1, Math.max(0, 1 - age / slot.orb.lifetimeMs)),
+    });
+  });
+  return live;
+}
