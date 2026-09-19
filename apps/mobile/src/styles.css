@@ -229,6 +229,7 @@ body {
   text-align: right;
 }
 .identity__lp b {
+  display: block;
   font-family: var(--display);
   font-weight: 400;
   font-size: 17px;
