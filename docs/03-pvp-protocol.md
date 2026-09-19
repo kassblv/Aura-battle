@@ -47,7 +47,7 @@ CREATED ─────────────────────▶ ROUND
 | `match:rejoin` | `{ matchId }` | toutes | Après reconnexion ; réponse `match:state` |
 | `recharge:taps` | `{ matchId, round, seq, taps: { orbIndex, t }[] }` | RECHARGE | Envoi groupé toutes les 500 ms et à la fin |
 | `choice:lock` | `{ matchId, round, seq, move: { style, tier }, amp, ult, cosmetic?: { animationId, effectId }, timing: { chargeAt, tapAt \| null } }` | CHOICE | Un seul verrouillage par manche |
-| `intent:show` | `{ matchId, round, style }` | CHOICE | Seulement si le flag de bulle d'intention est actif |
+| `intent:show` | `{ matchId, round, seq, style }` | CHOICE | Seulement si le flag de bulle d'intention est actif. **Une seule annonce par manche** : la première fait foi, les suivantes sont ignorées, et toute annonce postérieure à `choice:lock` est refusée |
 | `emote:send` | `{ matchId, emoteId }` | toutes | Limité à 1 toutes les 3 s |
 | `match:forfeit` | `{ matchId }` | toutes | |
 
@@ -97,6 +97,7 @@ C'est le **premier** message qui contient les choix de l'adversaire.
 |---|---|
 | `recharge:taps` | Reçu avant `endsAt + 400 ms` ; `t` croissants ; `t ∈ [0, 6000]` ; orbe vivante à `t` selon la séquence ; au plus 12 taps/s ; une orbe ne compte qu'une fois |
 | `choice:lock` | Phase CHOICE, avant `endsAt + 300 ms` ; coût ≤ énergie ; `ult` seulement si jauge pleine ; cosmétique possédé et compatible avec le mouvement, sinon animation par défaut ; `chargeAt ≥ 0` ; `tapAt − chargeAt ∈ [120, 6000]` ms ; `tapAt` cohérent avec l'heure de réception (écart ≤ RTT mesuré + 250 ms) |
+| `intent:show` | Phase CHOICE, avant `choice:lock` du même siège, **une seule annonce par manche et par siège** — sans quoi annoncer les trois styles garantit le bonus de +10 de jauge d'Ultime de `01-game-design.md` §10 |
 | Tout message | Schéma zod, joueur bien assis dans ce match, `seq` non déjà traité, limite de débit par socket |
 
 ## Délais, déconnexions et reconnexion
@@ -109,6 +110,7 @@ C'est le **premier** message qui contient les choix de l'adversaire.
 ## Versions
 
 - `PROTOCOL_VERSION` (semver) dans `@aura/protocol`. Major différent ⇒ `error { code: 'CLIENT_OUTDATED' }` et écran de mise à jour.
+- La charge d'authentification du handshake est elle aussi décrite par un schéma : `handshakeAuthSchema` = `{ token, protocolVersion }`, strict et borné. C'est le seul point d'entrée dont un abus précède toute vérification métier.
 - `rulesVersion` et `contentVersion` sont envoyés dans `match:found`. Le serveur ne mélange jamais deux versions de règles dans un même match.
 
 ## Codes d'erreur

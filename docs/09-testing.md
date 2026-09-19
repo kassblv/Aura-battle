@@ -52,5 +52,31 @@
 | Manches nulles | ≤ 3 % |
 | Matchs en 3 manches | 30–55 % |
 | Avantage d'un bon timeur (60 % vs 20 % de parfaits) | 60–75 % de victoires |
+| **Talent contre budget** | **55–85 % de victoires** |
 
 Chaque ajustement de `balance.ts` s'accompagne d'un rapport de simulation avant/après dans `docs/balance/AAAA-MM-JJ-sujet.md`.
+
+### Mesure du skill
+
+Le tournoi répond à « une façon de dépenser l'énergie domine-t-elle ? ». Il ne répond pas à
+« le talent paie-t-il ? » — un jeu peut avoir cinq stratégies parfaitement équilibrées et ne
+récompenser aucune adresse. `packages/rules/src/sim/skill.ts` pose la seconde question sous
+forme de duels où **une seule variable diffère** entre les deux sièges :
+
+| Duel | Ce qui diffère | Ce qu'on lit |
+|---|---|---|
+| Timing | 60 % de parfaits contre 20 % | Ce que vaut la jauge seule |
+| Lecture | Contrer le dernier style contre le jouer au hasard, face à un adversaire prévisible (75 % du même style) | Ce que vaut le contre |
+| Budget | 8 d'énergie par manche contre 4 | Ce que vaut l'énergie seule |
+| **Talent contre budget** | Lire + viser juste avec 4, contre prévisible + maladroit avec 8 | **Si le jeu prime sur la dépense** |
+
+Les sondes **changent de siège à mi-parcours** : sans cela un biais de siège du moteur serait
+compté comme du talent. Un cinquième duel oppose deux sondes identiques et sert de témoin —
+il doit rester proche de 50 %.
+
+Le seuil « talent contre budget » est le garde-fou chiffré de l'intention produit. Sous 55 %,
+l'énergie excédentaire pèse plus que le jeu. Au-dessus de 85 %, le budget ne décide plus rien
+et l'un des quatre piliers de `docs/00-vision.md` est vide.
+
+Commande : `pnpm sim --matches 10000` (les duels jouent un dixième de ce nombre chacun, car
+ils coûtent cinq matchs là où le tournoi en coûte un ; `--skill N` fixe ce nombre).

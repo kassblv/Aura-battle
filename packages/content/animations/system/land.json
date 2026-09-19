@@ -1,0 +1,41 @@
+{
+  "id": "anim.system.none.land",
+  "version": 1,
+  "name": {
+    "fr": "Atterrissage"
+  },
+  "move": {
+    "style": "system",
+    "tier": null
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 4,
+    "weights": null,
+    "ease": false
+  },
+  "flags": {
+    "expression": "neutral"
+  },
+  "hands": [
+    ["fist", "in"],
+    ["fist", "in"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [3, -134],
+        "neck": [0, -118],
+        "hip": [0, -68],
+        "le": [-16, -98],
+        "lh": [-12, -76],
+        "re": [16, -98],
+        "rh": [14, -76],
+        "lk": [-18, -36],
+        "lf": [-22, 0],
+        "rk": [18, -36],
+        "rf": [22, 0]
+      }
+    }
+  ]
+}

@@ -1,0 +1,61 @@
+{
+  "id": "anim.provoc.t3.lfront",
+  "version": 1,
+  "name": {
+    "fr": "L sur le front"
+  },
+  "move": {
+    "style": "provoc",
+    "tier": 3
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 1.2,
+    "weights": null,
+    "ease": false
+  },
+  "flags": {
+    "expression": "smug"
+  },
+  "emit": ["L"],
+  "hands": [
+    ["relax", "in"],
+    ["L", "back"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [-2, -150],
+        "neck": [-1, -132],
+        "hip": [0, -80],
+        "le": [-18, -108],
+        "lh": [-8, -84],
+        "re": [10, -148],
+        "rh": [7, -168],
+        "lk": [-10, -40],
+        "lf": [-18, 0],
+        "rk": [10, -40],
+        "rf": [18, 0]
+      },
+      "rot": 0.08,
+      "hy": -0.25
+    },
+    {
+      "joints": {
+        "head": [-4, -148],
+        "neck": [-2, -131],
+        "hip": [0, -78],
+        "le": [-18, -107],
+        "lh": [-8, -83],
+        "re": [12, -146],
+        "rh": [10, -167],
+        "lk": [-10, -38],
+        "lf": [-18, 0],
+        "rk": [10, -38],
+        "rf": [18, 0]
+      },
+      "rot": -0.08,
+      "hy": -0.1
+    }
+  ]
+}

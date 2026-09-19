@@ -1,0 +1,242 @@
+// Modele de donnees d'Aura Battle (docs/04-data-model.md).
+//
+// Une note sur les sieges : docs/04 esquissait `enum Seat { LEFT RIGHT }`, mais
+// l'ADR 0006 tranche pour `a` et `b`. « Gauche » et « droite » decrivent une
+// position a l'ecran, relative au spectateur ; un siege est une identite, et
+// elle doit rester lisible dans un journal relu six mois plus tard.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 : l'URL de connexion ne vit plus dans le schema. Elle est declaree
+// dans `prisma.config.ts` pour les commandes de migration, et passee au client
+// via un adaptateur de driver (voir src/shared/prisma.service.ts).
+datasource db {
+  provider = "postgresql"
+}
+
+/// Un joueur. Cree sans inscription : le premier lancement suffit.
+model Player {
+  id           String    @id @default(uuid())
+  displayName  String
+  createdAt    DateTime  @default(now())
+  lastSeenAt   DateTime  @default(now())
+  softCurrency Int       @default(0)
+  hardCurrency Int       @default(0)
+  bannedUntil  DateTime?
+
+  identities    AuthIdentity[]
+  refreshTokens RefreshToken[]
+  ratings       Rating[]
+  inventory     InventoryItem[]
+  loadout       Loadout?
+  matchSeats    MatchSeat[]
+}
+
+/// Une facon de prouver qu'on est ce joueur.
+///
+/// Un compte invite n'est pas un compte au rabais : c'est une identite DEVICE.
+/// Lier plus tard Apple ou Google ajoute une ligne ici, sans rien deplacer —
+/// le joueur garde son historique, son classement et ses achats.
+model AuthIdentity {
+  id        String       @id @default(uuid())
+  playerId  String
+  provider  AuthProvider
+  /// Identifiant d'appareil, `sub` Apple ou `sub` Google. Stocke hache pour DEVICE.
+  subject   String
+  createdAt DateTime     @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  @@index([playerId])
+}
+
+enum AuthProvider {
+  DEVICE
+  APPLE
+  GOOGLE
+}
+
+/// Jeton de rafraichissement, stocke hache et revocable.
+///
+/// On ne garde jamais le jeton lui-meme : une base lue par un tiers ne doit pas
+/// livrer de quoi se connecter. La rotation a chaque usage rend un vol
+/// detectable — un jeton deja consomme qui revient signale une copie.
+model RefreshToken {
+  id         String    @id @default(uuid())
+  playerId   String
+  tokenHash  String    @unique
+  createdAt  DateTime  @default(now())
+  expiresAt  DateTime
+  revokedAt  DateTime?
+  /// Renseigne quand ce jeton a ete remplace par rotation.
+  replacedBy String?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, expiresAt])
+}
+
+model Season {
+  id       String   @id @default(uuid())
+  number   Int      @unique
+  startsAt DateTime
+  endsAt   DateTime
+
+  ratings Rating[]
+}
+
+model Rating {
+  playerId     String
+  seasonId     String
+  mmr          Float  @default(1000)
+  /// Deviation de classement, si Glicko-2 (decision au jalon M5).
+  rd           Float  @default(350)
+  leaguePoints Int    @default(0)
+  league       League @default(SANS_AURA)
+  placements   Int    @default(0)
+  wins         Int    @default(0)
+  losses       Int    @default(0)
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id])
+
+  @@id([playerId, seasonId])
+  @@index([seasonId, leaguePoints])
+}
+
+enum League {
+  SANS_AURA
+  NAISSANTE
+  STABLE
+  RAYONNANTE
+  LEGENDAIRE
+  INFINIE
+}
+
+model Match {
+  id             String      @id @default(uuid())
+  mode           MatchMode
+  rulesVersion   String
+  contentVersion String
+  /// Graine du match : rejouer le meme match demande cette valeur et rien d'autre.
+  seed           String
+  status         MatchStatus @default(IN_PROGRESS)
+  endReason      String?
+  winnerSeat     Seat?
+  isGhost        Boolean     @default(false)
+  startedAt      DateTime    @default(now())
+  endedAt        DateTime?
+  /// Journal compact des evenements, pour rejouer un match en cas de litige.
+  events         Json?
+
+  seats  MatchSeat[]
+  rounds MatchRound[]
+
+  @@index([startedAt])
+}
+
+enum MatchMode {
+  RANKED
+  CASUAL
+  INVITE
+  SOLO
+}
+
+enum MatchStatus {
+  IN_PROGRESS
+  ENDED
+  ABORTED
+}
+
+/// Sieges d'un match. Voir ADR 0006 : une identite, pas une position a l'ecran.
+enum Seat {
+  A
+  B
+}
+
+model MatchSeat {
+  matchId   String
+  seat      Seat
+  /// Null pour un fantome (rejeu d'un enregistrement, jalon M5).
+  playerId  String?
+  ghostOfId String?
+  mmrBefore Float?
+  mmrAfter  Float?
+  lpDelta   Int?
+
+  match  Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player Player? @relation(fields: [playerId], references: [id])
+
+  @@id([matchId, seat])
+  @@index([playerId])
+}
+
+model MatchRound {
+  matchId String
+  round   Int
+  /// `RoundResult` de @aura/rules, tel quel.
+  result  Json
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@id([matchId, round])
+}
+
+model GhostRecording {
+  id           String   @id @default(uuid())
+  playerId     String
+  mmr          Float
+  rulesVersion String
+  /// Choix, timings et profils de recharge, manche par manche.
+  rounds       Json
+  createdAt    DateTime @default(now())
+
+  @@index([rulesVersion, mmr])
+}
+
+/// Un cosmetique achetable. L'identifiant est celui du fichier de contenu.
+model CosmeticItem {
+  id            String       @id
+  kind          CosmeticKind
+  rarity        String
+  priceSoft     Int?
+  priceHard     Int?
+  availableFrom DateTime?
+  availableTo   DateTime?
+
+  inventory InventoryItem[]
+}
+
+enum CosmeticKind {
+  ANIMATION
+  AURA_EFFECT
+  AURA_COLOR
+  OUTFIT
+  HAIR
+  EMOTE
+  BANNER
+}
+
+model InventoryItem {
+  playerId   String
+  itemId     String
+  acquiredAt DateTime @default(now())
+  /// shop, pass, challenge, gift
+  source     String
+
+  player Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  item   CosmeticItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, itemId])
+}
+
+model Loadout {
+  playerId String @id
+  /// Animation equipee par mouvement, effet par amplificateur, tenue, coiffure.
+  data     Json
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+}

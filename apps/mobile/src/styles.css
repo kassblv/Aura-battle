@@ -1,0 +1,1089 @@
+/**
+ * Feuille de style du client.
+ *
+ * Les jetons viennent de `src/ui/theme.ts`, qui est la source testee : leurs
+ * contrastes y sont verifies. On les recopie ici parce que le CSS ne peut pas
+ * importer un module TypeScript — la duplication est encadree par le test de
+ * parite, pas laissee au hasard.
+ */
+/**
+ * Le client assume un seul monde visuel : la nuit.
+ *
+ * `stage.ts` peint une salle en violet nuit quel que soit le reglage du
+ * telephone — une arene de combat n a pas de mode clair. L interface est posee
+ * en verre par-dessus : la faire suivre le theme du systeme ecrivait du bleu
+ * nuit sur du bleu nuit, et la moitie des libelles disparaissait pour qui n a
+ * pas active le mode sombre.
+ *
+ * Les valeurs sont celles de la palette sombre de `src/ui/theme.ts`, dont les
+ * contrastes sont verifies par test.
+ */
+:root {
+  color-scheme: dark;
+
+  --bg: #150c2e;
+  --surface: #221545;
+  --chip: #2a1b55;
+  --chip-deep: #1b1039;
+  --line: #453380;
+  --ink: #f3ecff;
+  --muted: #a99cd0;
+  --accent: #b36bff;
+  --accent-ink: #150c2e;
+  --accent-deep: #6b3aa6;
+  --gold-ink: #ffcf3f;
+  --good-ink: #5be3a0;
+  --bad-ink: #ff6b81;
+  --hud: rgba(21, 12, 46, 0.76);
+  --hud-line: rgba(243, 236, 255, 0.17);
+
+  --display: 'Bungee', Impact, 'Arial Black', sans-serif;
+  --body: 'Rubik', system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+
+  /**
+   * Zones sures.
+   *
+   * En paysage, l encoche ne passe pas en haut : elle passe sur un **cote** —
+   * exactement la ou vivent les grappes de pouce et les orbes. Et la barre
+   * d accueil mange le bas, c est-a-dire la ligne des commandes. Les insets
+   * sont donc nommes une fois ici, avec un minimum de confort en dessous : un
+   * bouton colle au bord est coupe par l arrondi de l ecran meme sans encoche.
+   */
+  --safe-top: max(10px, env(safe-area-inset-top));
+  --safe-right: max(12px, env(safe-area-inset-right));
+  --safe-bottom: max(10px, env(safe-area-inset-bottom));
+  --safe-left: max(12px, env(safe-area-inset-left));
+
+  --d-tap: 90ms;
+  --d-chip: 160ms;
+  --e-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --e-over: cubic-bezier(0.34, 1.56, 0.64, 1);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--body);
+  font-size: 16px;
+  line-height: 1.5;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+
+/* --- garde portrait (ADR 0008) --- */
+.rotate {
+  display: none;
+  height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  text-align: center;
+  padding: 30px;
+}
+
+.rotate__phone {
+  width: 58px;
+  height: 96px;
+  border: 3px solid var(--ink);
+  border-radius: 11px;
+  animation: tilt 2.4s var(--e-out) infinite;
+}
+
+@keyframes tilt {
+  0%,
+  36% {
+    transform: rotate(0deg);
+  }
+  58%,
+  92% {
+    transform: rotate(-90deg);
+  }
+  100% {
+    transform: rotate(0deg);
+  }
+}
+
+.rotate h2 {
+  font-family: var(--display);
+  font-weight: 400;
+  margin: 0;
+}
+
+.rotate p {
+  margin: 0;
+  color: var(--muted);
+  max-width: 30ch;
+}
+
+@media (orientation: portrait) and (pointer: coarse) {
+  .rotate {
+    display: flex;
+  }
+  .stage {
+    display: none;
+  }
+}
+
+/* --- scene --- */
+.stage {
+  position: relative;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  user-select: none;
+}
+
+.stage__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* --- accueil ---------------------------------------------------------
+   Disposition en paysage : fiche joueur en haut a gauche, monnaies en haut
+   a droite, rail des menus dans l arc du pouce gauche, bouton d action dans
+   celui du droit. Le centre reste vide : personnage, et zone morte entre les
+   deux pouces (ADR 0008). */
+
+.home {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.home > * {
+  pointer-events: auto;
+}
+
+/**
+ * Bouton epais.
+ *
+ * La lèvre sombre sous la face donne l epaisseur ; l appui la fait disparaitre,
+ * et le bouton s enfonce au lieu de clignoter. C est ce qui separe un bouton de
+ * jeu d un lien.
+ */
+.btn3d {
+  font: inherit;
+  border: 0;
+  cursor: pointer;
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow:
+    0 5px 0 var(--accent-deep),
+    0 12px 20px -8px rgba(0, 0, 0, 0.5);
+  transition:
+    transform var(--d-tap) var(--e-out),
+    box-shadow var(--d-tap) var(--e-out);
+}
+
+.btn3d:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 var(--accent-deep),
+    0 4px 10px -8px rgba(0, 0, 0, 0.5);
+}
+
+.btn3d:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* fiche du joueur : on ouvre son profil en touchant sa propre tete */
+.tag {
+  position: absolute;
+  top: var(--safe-top);
+  left: var(--safe-left);
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 7px 14px 7px 7px;
+  border: 1px solid var(--hud-line);
+  border-radius: 999px;
+  background: var(--hud);
+  backdrop-filter: blur(11px);
+  -webkit-backdrop-filter: blur(11px);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: transform var(--d-tap) var(--e-out);
+}
+
+.tag:active {
+  transform: scale(0.97);
+}
+
+.tag__avatar {
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: var(--accent-ink);
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 16px;
+}
+
+.tag__who {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 96px;
+}
+
+.tag__who b {
+  font-size: 13px;
+  line-height: 1.1;
+}
+
+.tag__who small {
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.tag__bar {
+  display: block;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.tag__bar i {
+  display: block;
+  height: 100%;
+  background: var(--accent);
+}
+
+.tag__lp {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* monnaies : lues, jamais touchees — donc hors des arcs de pouce */
+.wallet {
+  position: absolute;
+  top: var(--safe-top);
+  right: var(--safe-right);
+  display: flex;
+  gap: 7px;
+}
+
+.coin {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 7px 13px;
+  border: 1px solid var(--hud-line);
+  border-radius: 999px;
+  background: var(--hud);
+  backdrop-filter: blur(11px);
+  -webkit-backdrop-filter: blur(11px);
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.coin b {
+  font-size: 15px;
+  color: var(--gold-ink);
+}
+
+.coin--hard b {
+  color: var(--accent);
+}
+
+/* rail : arc du pouce gauche */
+.rail {
+  position: absolute;
+  left: var(--safe-left);
+  bottom: var(--safe-bottom);
+  display: flex;
+  gap: 8px;
+}
+
+.rail__btn {
+  font: inherit;
+  border: 0;
+  cursor: pointer;
+  min-width: 82px;
+  min-height: 74px;
+  padding: 9px 10px;
+  border-radius: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--chip);
+  box-shadow:
+    0 5px 0 var(--chip-deep),
+    0 12px 20px -8px rgba(0, 0, 0, 0.45);
+  transition:
+    transform var(--d-tap) var(--e-out),
+    box-shadow var(--d-tap) var(--e-out);
+}
+
+.rail__btn span {
+  font-size: 22px;
+  line-height: 1;
+}
+
+.rail__btn small {
+  font-size: 9px;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.rail__btn:active {
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 var(--chip-deep),
+    0 4px 10px -8px rgba(0, 0, 0, 0.45);
+}
+
+.rail__btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* action : arc du pouce droit, et le plus gros element de l ecran */
+.launch {
+  position: absolute;
+  right: var(--safe-right);
+  bottom: var(--safe-bottom);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 7px;
+  text-align: center;
+}
+
+.launch__mode {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.launch__mode small {
+  display: block;
+  font-weight: 500;
+  font-size: 10px;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.launch__btn {
+  font: inherit;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(20px, 3.4vw, 28px);
+  letter-spacing: 0.02em;
+  border: 0;
+  cursor: pointer;
+  min-width: clamp(180px, 26vw, 250px);
+  min-height: 74px;
+  padding: 0 28px;
+  border-radius: 20px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow:
+    0 6px 0 var(--accent-deep),
+    0 16px 26px -10px rgba(0, 0, 0, 0.55);
+  transition:
+    transform var(--d-tap) var(--e-out),
+    box-shadow var(--d-tap) var(--e-out);
+}
+
+.launch__btn:active {
+  transform: translateY(5px);
+  box-shadow:
+    0 1px 0 var(--accent-deep),
+    0 5px 12px -10px rgba(0, 0, 0, 0.55);
+}
+
+/* --- panneaux profil et vestiaire --- */
+.sheet {
+  position: absolute;
+  right: var(--safe-right);
+  top: 14px;
+  bottom: var(--safe-bottom);
+  width: min(430px, 56%);
+  overflow-y: auto;
+  border-radius: 18px;
+  padding: 13px 15px;
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+}
+
+.sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sheet h2,
+.sheet h3 {
+  font-family: var(--display);
+  font-weight: 400;
+  margin: 0;
+}
+.sheet h2 {
+  font-size: 17px;
+}
+.sheet h3 {
+  font-size: 13px;
+}
+.sheet__ident b {
+  display: block;
+}
+.sheet__ident small,
+.sheet__note {
+  color: var(--muted);
+  font-size: 11px;
+}
+.sheet__ident,
+.sheet__note {
+  margin: 0;
+}
+
+.stats {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin: 0;
+}
+.stat {
+  text-align: center;
+}
+.stat dt {
+  font-size: 9.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+  order: 2;
+}
+.stat dd {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 19px;
+  font-variant-numeric: tabular-nums;
+}
+.stat {
+  display: flex;
+  flex-direction: column-reverse;
+}
+
+.split,
+.ward__items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+.split {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.split__row {
+  display: grid;
+  grid-template-columns: 82px 1fr 42px;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+.split__track {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--line);
+  overflow: hidden;
+}
+.split__track i {
+  display: block;
+  height: 100%;
+}
+.split__pct {
+  text-align: right;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.ward__items {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.ward__item {
+  font: inherit;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 6px 9px;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.ward__item[aria-pressed='true'] {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.ward__item:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ward__item small {
+  color: var(--gold-ink);
+  font-variant-numeric: tabular-nums;
+}
+.ward__swatch {
+  width: 16px;
+  height: 16px;
+  border-radius: 5px;
+  border: 1px solid var(--hud-line);
+  flex: none;
+}
+
+/* --- inscription --- */
+.onboard {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: var(--safe-top) var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.onboard__panel {
+  width: min(430px, 100%);
+  max-height: 100%;
+  overflow-y: auto;
+  background: var(--hud);
+  border: 1px solid var(--hud-line);
+  border-radius: 22px;
+  padding: 18px 20px;
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.onboard__title {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 26px;
+  margin: 0;
+}
+
+.onboard__lede {
+  margin: 0;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.onboard__lede b {
+  color: var(--ink);
+  font-weight: 500;
+}
+
+.onboard__form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.onboard__label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.onboard__input {
+  font: inherit;
+  font-size: 17px;
+  color: var(--ink);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  /* 48px : la hauteur en dessous de laquelle un champ se rate au pouce. */
+  min-height: 48px;
+  padding: 0 14px;
+}
+
+.onboard__input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.onboard__count {
+  margin: 0;
+  text-align: right;
+  font-size: 10px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.onboard__count.near {
+  color: var(--gold-ink);
+}
+
+.onboard__hint,
+.onboard__error {
+  margin: 0;
+  font-size: 12px;
+}
+
+.onboard__hint {
+  color: var(--muted);
+}
+
+.onboard__error {
+  color: var(--bad-ink);
+}
+
+.onboard__go {
+  font: inherit;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 18px;
+  border: 0;
+  border-radius: 16px;
+  min-height: 54px;
+  margin-top: 4px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow:
+    0 5px 0 var(--accent-deep),
+    0 12px 20px -8px rgba(0, 0, 0, 0.5);
+  transition:
+    transform var(--d-tap) var(--e-out),
+    box-shadow var(--d-tap) var(--e-out);
+}
+
+.onboard__go:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow:
+    0 1px 0 var(--accent-deep),
+    0 4px 10px -8px rgba(0, 0, 0, 0.5);
+}
+
+.onboard__go:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.onboard__skip {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  padding: 6px;
+  cursor: pointer;
+}
+
+/* --- match --- */
+.match {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.match > * {
+  pointer-events: auto;
+}
+
+.hud {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 10px;
+  /* Le contenu s ecarte de l encoche ; le fond, lui, va jusqu au bord, sinon
+     une bande de decor apparait au-dessus du bandeau. */
+  padding: max(6px, env(safe-area-inset-top)) var(--safe-right) 7px var(--safe-left);
+  background: var(--hud);
+  border-bottom: 1px solid var(--hud-line);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  font-size: 12px;
+}
+.hud__side {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.hud__side--right {
+  justify-content: flex-end;
+}
+.hud__round {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.hud__timer {
+  position: absolute;
+  left: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent);
+}
+.pips {
+  color: var(--gold-ink);
+  letter-spacing: 2px;
+}
+.energy {
+  display: flex;
+  gap: 2px;
+}
+.energy i {
+  width: 4px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--accent);
+}
+.energy i.spent {
+  background: var(--line);
+}
+
+.banner {
+  position: absolute;
+  top: calc(var(--safe-top) + 40px);
+  left: var(--safe-left);
+  right: var(--safe-right);
+  text-align: center;
+  pointer-events: none;
+}
+.banner h2 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(16px, 2.6vw, 22px);
+  margin: 0;
+  text-shadow: 0 2px 14px var(--bg);
+}
+.banner p {
+  margin: 2px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+/**
+ * Terrain des orbes.
+ *
+ * `reach.ts` place les orbes en parts d ecran, sans rien savoir de l appareil.
+ * C est ce cadre qui retire l encoche et la barre d accueil : une orbe posee
+ * dessous serait visible et intapable, ce qui est pire qu une orbe absente.
+ */
+.field {
+  position: absolute;
+  top: calc(var(--safe-top) + 34px);
+  right: var(--safe-right);
+  bottom: var(--safe-bottom);
+  left: var(--safe-left);
+  pointer-events: none;
+}
+
+.field > * {
+  pointer-events: auto;
+}
+
+.orb {
+  position: absolute;
+  width: 58px;
+  height: 58px;
+  margin: -29px 0 0 -29px;
+  border: 0;
+  border-radius: 50%;
+  cursor: pointer;
+  background: radial-gradient(circle at 34% 30%, #ffffff 0%, var(--accent) 62%);
+  box-shadow: 0 0 22px var(--accent);
+  animation: orb-in var(--d-chip) var(--e-over) both;
+}
+.orb--golden {
+  width: 50px;
+  height: 50px;
+  margin: -25px 0 0 -25px;
+  background: radial-gradient(circle at 34% 30%, #fff6d8 0%, #ffcf3f 62%);
+  box-shadow: 0 0 22px #ffcf3f;
+}
+.orb:active {
+  transform: scale(0.9);
+}
+
+@keyframes orb-in {
+  from {
+    transform: scale(0.2);
+    opacity: 0;
+  }
+}
+
+.gauge-hit {
+  position: absolute;
+  inset: 0;
+  cursor: pointer;
+}
+
+.gauge {
+  position: absolute;
+  left: calc(var(--safe-left) + 8%);
+  right: calc(var(--safe-right) + 8%);
+  bottom: calc(var(--safe-bottom) + 120px);
+  height: 46px;
+  border-radius: 14px;
+  overflow: hidden;
+}
+.gauge__good,
+.gauge__perfect,
+.gauge__needle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+}
+.gauge__good {
+  left: 30%;
+  right: 30%;
+  background: color-mix(in srgb, var(--good-ink) 24%, transparent);
+}
+.gauge__perfect {
+  left: 45.5%;
+  right: 45.5%;
+  background: color-mix(in srgb, var(--gold-ink) 40%, transparent);
+}
+.gauge__needle {
+  width: 4px;
+  margin-left: -2px;
+  border-radius: 2px;
+  background: var(--ink);
+}
+.gauge__legend {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 4px;
+  text-align: center;
+  font-size: 9.5px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+}
+
+.cluster {
+  border-radius: 16px;
+  padding: 7px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  max-width: 40%;
+}
+.cluster__label {
+  font-size: 9.5px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 0 0 1px 3px;
+}
+.row {
+  display: flex;
+  gap: 5px;
+}
+
+.pick {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  min-width: 46px;
+  min-height: 46px;
+  padding: 5px 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition:
+    background var(--d-tap) var(--e-out),
+    transform var(--d-tap) var(--e-out);
+}
+.pick--tight {
+  min-width: 42px;
+  padding: 4px;
+}
+.pick__icon {
+  font-size: 17px;
+}
+.pick small {
+  font-size: 9.5px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.pick:active {
+  transform: scale(0.94);
+}
+.pick[aria-pressed='true'] {
+  background: var(--accent);
+  color: var(--accent-ink);
+  border-color: var(--accent);
+}
+.pick[aria-pressed='true'] small {
+  color: var(--accent-ink);
+  opacity: 0.85;
+}
+.pick:disabled {
+  opacity: 0.32;
+  cursor: not-allowed;
+}
+
+.budget {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: var(--safe-bottom);
+  border-radius: 999px;
+  padding: 6px 14px;
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+.budget b {
+  font-family: var(--display);
+  font-weight: 400;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.budget b.over {
+  color: var(--bad-ink);
+}
+
+.verdict {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  border-radius: 20px;
+  padding: 14px 22px;
+  min-width: min(320px, 70vw);
+  max-width: calc(100vw - var(--safe-left) - var(--safe-right) - 24px);
+  animation: pop-in var(--d-chip) var(--e-over) both;
+}
+.verdict h2 {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 24px;
+  margin: 0 0 8px;
+}
+.verdict h2.win {
+  color: var(--good-ink);
+}
+.verdict h2.lose {
+  color: var(--bad-ink);
+}
+.verdict__line {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0;
+  padding: 4px 0;
+  border-top: 1px solid var(--hud-line);
+  font-size: 13px;
+}
+.verdict__line b {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 18px;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.9);
+  }
+}
+
+.action--center {
+  position: absolute;
+  left: 50%;
+  bottom: 16%;
+  transform: translateX(-50%);
+  font: inherit;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 17px;
+  border: 0;
+  border-radius: 999px;
+  padding: 14px 26px;
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+
+:where(button, [tabindex]):focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+  }
+}

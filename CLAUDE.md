@@ -89,8 +89,41 @@ Si une commande n'existe pas encore, c'est qu'elle fait partie d'un jalon à con
 
 ## Pièges connus
 
+### Outillage et versions
+
+- **`latest` n'est pas « stable ».** `pnpm add prisma` installe une *release candidate* de la v8 ; le dépôt est épinglé sur **7.10.0** (ADR 0007). Même logique pour TypeScript : **TS 6**, parce que typescript-eslint refuse TS 7 et qu'on perdrait toutes les règles typées qui protègent l'architecture (ADR 0004).
+- **Prisma 7 :** l'URL de connexion ne vit plus dans `schema.prisma` mais dans `prisma.config.ts`, et le client se construit avec un **adaptateur de driver** (`PrismaPg`). Le CLI ne lit plus `.env` tout seul — `prisma.config.ts` le charge via `process.loadEnvFile`.
+- **pnpm 11** exige une décision explicite pour chaque dépendance qui veut exécuter du code à l'installation : clé `allowBuilds` dans `pnpm-workspace.yaml`, valeur `true` ou `false`. pnpm réécrit lui-même le fichier avec un `set this to true or false` s'il manque une entrée.
+- **NestJS + tsx :** esbuild **n'émet pas `emitDecoratorMetadata`**. Sans `design:paramtypes`, Nest injecte `undefined` en silence, et la panne n'apparaît qu'au premier appel. Tout paramètre de constructeur injecté doit porter un `@Inject(Token)` explicite.
+- **`nestjs-pino` est incompatible** avec l'injecteur de Nest 12 : pino est câblé directement dans `shared/logger.ts`.
+
+### Développement local
+
+- **Un PostgreSQL natif occupe déjà `127.0.0.1:5432`** sur la machine de développement. Notre conteneur publie donc sur **5433**. Piège : `docker compose ps` affiche fièrement `0.0.0.0:5432->5432/tcp` alors que `localhost` ne l'atteint jamais — macOS résout vers l'installation locale en premier.
+
+### Journalisation
+
+- **`JSON.stringify(new Error('x'))` rend `{}`** : `message` et `stack` ne sont pas énumérables. Un adaptateur de logger naïf avale donc toutes les erreurs en silence, ce qui est pire que pas de journal. `PinoLoggerService` traite les `Error` explicitement.
+- La rédaction couvre les secrets **et l'état de match confidentiel** (`choice`, `timing`, `taps`) : un `logger.debug({ choice })` posé pendant un débogage est exactement le genre de fuite qui survit au débogage.
+
+### Anti-triche
+
+- **Un compteur de suspicion se compte par siège, jamais par match.** `docs/06` sanctionne un *joueur*, et ses premières sanctions sont automatiques, avant toute revue humaine. Un compteur commun aux deux sièges attribue à un innocent les mensonges de son adversaire — un tricheur prolifique empoisonnerait le score de chaque personne qu'il croise.
+- **Un instant déclaré par le client doit être confronté à son instant d'arrivée.** Sans cela, un bot peut rester muet, recevoir la séquence d'orbes, calculer le programme optimal hors ligne et l'envoyer d'un coup : le moteur rejoue la scène sans rien voir d'anormal. Les tolérances réseau (400 ms sur les taps, 300 ms sur le verrouillage, 250 ms d'horloge) vivent **côté serveur**, jamais dans `@aura/rules` — le moteur doit pouvoir rejouer un match sans entendre parler de latence.
+- **Le protocole borne un message, pas la somme des messages.** Un schéma qui accepte 72 taps par paquet ne dit rien du nombre de paquets. Chaque accumulation côté serveur a besoin de sa propre borne.
+
+### Tests temps réel
+
+- **Poser un écouteur au moment où l'on s'intéresse à un message arrive trop tard.** Une phase de match dure quelques dizaines de millisecondes en test : il faut enregistrer avec `onAny` dès la connexion et lire le journal ensuite.
+- **Un résultat de tâche mis en cache ment** quand des agents écrivent en parallèle : Turbo peut servir un typecheck calculé avant la dernière édition. `--force` avant de conclure qu'un agent s'est trompé.
+- **Chaque scénario doit utiliser des identifiants de joueur distincts.** Le notifier indexe les sockets par joueur et une nouvelle socket remplace l'ancienne — c'est le comportement voulu pour une reconnexion, mais deux tests qui partagent une identité se volent leurs messages.
+
+### Rendu 3D
+
 - **Horloges :** ne compare jamais une heure client à une heure serveur sans l'offset mesuré par `ping/pong`. Les timings du client sont exprimés **en millisecondes relatives au début de phase**, mesurées avec `performance.now()`.
-- **Three.js récent vs prototype (r128) :** `THREE.LuminanceFormat` n'existe plus, utiliser `RedFormat` pour la texture de dégradé toon ; `setUsage` et `InstancedMesh.setColorAt` restent valides.
+- **Three.js récent vs prototype (r128) :** `THREE.LuminanceFormat` n'existe plus, utiliser `RedFormat` pour la texture de dégradé toon. Cette texture exige aussi `minFilter` **et** `magFilter` à `NearestFilter` — sans quoi l'interpolation lisse les paliers et l'effet toon disparaît — et doit rester en `NoColorSpace` (c'est une donnée, pas une couleur). `DataTexture` pose déjà ces trois valeurs par défaut : les écrire quand même, **un défaut n'est pas un contrat**. Les textures de couleur peintes au canvas, elles, se marquent `SRGBColorSpace`. `setUsage` et `InstancedMesh.setColorAt` restent valides.
+- **Lumières ponctuelles r128 → récent :** `physicallyCorrectLights` a disparu (r155) et l'atténuation en inverse du carré est désormais **permanente**. Le `PointLight(0xffffff, 1, 3.4, 2)` du rig du prototype doit être réétalonné, pas recopié : avec `decay: 2`, le halo sera bien plus violent de près et éteint au-delà d'un mètre. Les lumières **directionnelles et hémisphériques sont inchangées** — vérifié dans les deux versions, ne perdez pas de temps à les « corriger ».
+- **Trois.js ne fournit pas ses types** en 0.186 : `@types/three` est nécessaire, à la même version.
 - **iOS WebView :** l'`AudioContext` ne démarre qu'après un geste ; la vibration passe par `@capacitor/haptics`, pas `navigator.vibrate`.
 - **Mise en arrière-plan mobile :** l'app peut être suspendue en plein match ; la reconnexion doit reprendre l'état via `match:state`.
 - **Noms de danses :** ne pas utiliser de nom de personne réelle, de chanson ou de marque dans le contenu publié (voir `docs/07-content-pipeline.md`).

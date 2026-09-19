@@ -1,0 +1,41 @@
+{
+  "id": "anim.system.none.stagger",
+  "version": 1,
+  "name": {
+    "fr": "Titubement"
+  },
+  "move": {
+    "style": "system",
+    "tier": null
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 4,
+    "weights": null,
+    "ease": false
+  },
+  "flags": {
+    "expression": "hurt"
+  },
+  "hands": [
+    ["open", "fwd"],
+    ["open", "fwd"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [-12, -145],
+        "neck": [-7, -129],
+        "hip": [0, -80],
+        "le": [2, -114],
+        "lh": [14, -126],
+        "re": [12, -110],
+        "rh": [30, -116],
+        "lk": [-12, -40],
+        "lf": [-24, 0],
+        "rk": [10, -40],
+        "rf": [16, 0]
+      }
+    }
+  ]
+}

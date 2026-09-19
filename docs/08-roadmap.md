@@ -8,61 +8,62 @@ Phase 1 (M0 → M6) : **PvP jouable sur mobile, en ligne, classé**. C'est la pr
 
 ## M0 — Monorepo et outillage
 
-- [ ] pnpm workspaces + Turborepo ; scripts racine `dev`, `build`, `test`, `lint`, `typecheck`, `sim`
-- [ ] TypeScript strict partagé (`tsconfig.base.json`), ESM, alias de chemins
-- [ ] ESLint (typescript-eslint) + Prettier, config partagée
-- [ ] Vitest dans chaque package et app, avec un test d'exemple vert
-- [ ] `docker-compose.yml` : Postgres 16, Redis 7 ; `.env.example`
-- [ ] CI GitHub Actions : install avec cache, lint, typecheck, test
-- [ ] Packages `@aura/rules`, `@aura/protocol`, `@aura/content` et apps `server`, `mobile` créés et compilables
+- [x] pnpm workspaces + Turborepo ; scripts racine `dev`, `build`, `test`, `lint`, `typecheck`, `sim`
+- [x] TypeScript strict partagé (`tsconfig.base.json`), ESM, alias de chemins
+- [x] ESLint (typescript-eslint) + Prettier, config partagée
+- [x] Vitest dans chaque package et app, avec un test d'exemple vert
+- [x] `docker-compose.yml` : Postgres 16, Redis 7 ; `.env.example`
+- [x] CI GitHub Actions : install avec cache, lint, typecheck, test
+- [x] Packages `@aura/rules`, `@aura/protocol`, `@aura/content` et apps `server`, `mobile` créés et compilables
 
 ## M1 — `@aura/rules` : moteur de règles pur *(critique)*
 
 Référence : `docs/01-game-design.md`, `docs/02-architecture.md` (forme attendue).
 
-- [ ] `balance.ts` avec toutes les valeurs du game design, typées et gelées
-- [ ] RNG seedé déterministe + tests de reproductibilité
-- [ ] Génération de la séquence d'orbes et des paramètres de jauge à partir d'une graine
-- [ ] Évaluation de la recharge : validation des taps, combos, orbes dorées, plafond 12/s, gains (boost, Ultime, énergie)
-- [ ] Évaluation du timing : position du curseur, qualité, écart
-- [ ] Résolution d'une manche : coûts, répétition, Ultime, contres, contre bloqué, score, départage
-- [ ] Machine d'état du match (`reduce`) : phases, échéances, actions par défaut, forfait, fin de match et départage
-- [ ] IA solo (4 profils du prototype adaptés aux nouvelles règles)
-- [ ] Tests unitaires (couverture lignes ≥ 95 %) + tests de propriétés : score ≥ 1, énergie jamais négative, déterminisme (même graine + mêmes événements ⇒ même résultat), aucun état où les deux joueurs gagnent
-- [ ] CLI `pnpm sim` : N matchs entre stratégies (aléatoire, glouton, contre-picker, économe, tout-sur-une-manche), rapport JSON + résumé console
+- [x] `balance.ts` avec toutes les valeurs du game design, typées et gelées
+- [x] RNG seedé déterministe + tests de reproductibilité
+- [x] Génération de la séquence d'orbes et des paramètres de jauge à partir d'une graine
+- [x] Évaluation de la recharge : validation des taps, combos, orbes dorées, plafond 12/s, gains (boost, Ultime, énergie)
+- [x] Évaluation du timing : position du curseur, qualité, écart
+- [x] Résolution d'une manche : coûts, répétition, Ultime, contres, contre bloqué, score, départage
+- [x] Machine d'état du match (`reduce`) : phases, échéances, actions par défaut, forfait, fin de match et départage
+- [x] IA solo (4 profils du prototype adaptés aux nouvelles règles)
+- [x] Tests unitaires (couverture lignes ≥ 95 %) + tests de propriétés : score ≥ 1, énergie jamais négative, déterminisme (même graine + mêmes événements ⇒ même résultat), aucun état où les deux joueurs gagnent
+- [x] CLI `pnpm sim` : N matchs entre stratégies (aléatoire, glouton, contre-picker, économe, tout-sur-une-manche), rapport JSON + résumé console
 
 ## M2 — `@aura/protocol` et `@aura/content`
 
 Références : `docs/03-pvp-protocol.md`, `docs/07-content-pipeline.md`.
 
-- [ ] Schémas zod de tous les messages client→serveur et serveur→client, types inférés exportés
-- [ ] `PROTOCOL_VERSION` et codes d'erreur
-- [ ] Tests : chaque exemple du doc de protocole est accepté ; charges invalides rejetées
-- [ ] Schéma JSON des animations dans `packages/content`, validateur CLI (`validate`)
-- [ ] Port des 21 poses et des 5 animations système (charge, atterrissage, titubement, victoire, défaite) du prototype en JSON (skill `/port-prototype animations`), toutes valides
-- [ ] Index : animation par défaut par mouvement, liste des skins par mouvement
-- [ ] Catalogue initial des effets d'aura, couleurs, tenues, coiffures
+- [x] Schémas zod de tous les messages client→serveur et serveur→client, types inférés exportés
+- [x] `PROTOCOL_VERSION` et codes d'erreur
+- [x] Tests : chaque exemple du doc de protocole est accepté ; charges invalides rejetées
+- [x] Schéma JSON des animations dans `packages/content`, validateur CLI (`validate`)
+- [x] Port des 21 poses et des 5 animations système (charge, atterrissage, titubement, victoire, défaite) du prototype en JSON (skill `/port-prototype animations`), toutes valides
+- [x] Index : animation par défaut par mouvement, liste des skins par mouvement
+- [x] Catalogue initial des effets d'aura, couleurs, tenues, coiffures
 
 ## M3 — Serveur de match en ligne
 
 Référence : `docs/02-architecture.md`, `docs/03-pvp-protocol.md`, `docs/04-data-model.md`.
 
-- [ ] NestJS hexagonal, config typée, logger pino, healthcheck
-- [ ] Prisma : schéma initial, migrations, seed (saison 1, catalogue)
-- [ ] Auth invité : `POST /auth/device` → JWT d'accès + refresh ; garde WebSocket
-- [ ] Gateway Socket.IO : validation zod entrante et sortante, limite de débit, `ping/pong`
-- [ ] Module match : création, `match:ready`, phases et timers pilotés par `@aura/rules`, envois ciblés sans fuite d'information
-- [ ] Invitations par code (`invite:create` / `invite:join`)
-- [ ] Déconnexion, reconnexion (`match:rejoin` → `match:state`), forfait
-- [ ] Persistance du match, des manches et du journal d'événements
-- [ ] Tests e2e (Testcontainers) avec deux clients Socket.IO : match complet, timeout de choix, reconnexion en pleine manche, choix trop cher refusé, message d'une manche passée ignoré
-- [ ] Relecture `security-reviewer` sans point bloquant
+- [x] NestJS hexagonal, config typée, logger pino, healthcheck
+- [x] Prisma : schéma initial, migrations, seed (saison 1, catalogue)
+- [x] Auth invité : `POST /auth/device` → JWT d'accès + refresh ; garde WebSocket
+- [x] Gateway Socket.IO : validation zod entrante et sortante, limite de débit, `ping/pong`
+- [x] Module match : création, `match:ready`, phases et timers pilotés par `@aura/rules`, envois ciblés sans fuite d'information
+- [x] Invitations par code (`invite:create` / `invite:join`)
+- [x] Déconnexion, reconnexion (`match:rejoin` → `match:state`), forfait — le match continue sans le joueur déconnecté, forfait au bout de 45 s s'il ne revient pas
+- [x] Persistance du match, des manches et du journal d'événements
+- [x] Tests e2e : deux clients Socket.IO jouent un match complet, timeout de choix, reconnexion en pleine manche, double verrouillage refusé, message hors match ignoré — plus un test d'intégration contre une vraie base Postgres. *Testcontainers reste à ajouter pour la CI, qui est bloquée pour facturation.*
+- [x] Relecture `security-reviewer` sans point bloquant — 7 défauts trouvés et corrigés (3 dénis de service, 1 triche sans violation de règle, granularité des compteurs anti-triche, journal effaçable, squelette de rejeu)
 
 ## M4 — Client jouable en ligne
 
 Référence : prototype, `docs/02-architecture.md`.
 
 - [ ] Vite + React + Three.js récent ; structure `app/ net/ match/ arena/ animation/ audio/ platform/`
+- [ ] **Paysage exclusif** (ADR 0008) : verrouillage d'orientation Capacitor, écran « tourne ton téléphone » en portrait, commandes dans les arcs de pouce, rien d'interactif au centre haut, cibles tactiles ≥ 46 px
 - [ ] Port du rendu 3D du prototype en modules : scène, foule instanciée, rig avec mains, particules, choc, caméra, calque 2D
 - [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains), page `/dev/animation-viewer`
 - [ ] Client réseau : synchronisation d'horloge, reconnexion automatique, reprise de `match:state`

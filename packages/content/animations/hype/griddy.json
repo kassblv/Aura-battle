@@ -1,0 +1,58 @@
+{
+  "id": "anim.hype.t3.griddy",
+  "version": 1,
+  "name": {
+    "fr": "Griddy"
+  },
+  "move": {
+    "style": "hype",
+    "tier": 3
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 0.62,
+    "weights": null,
+    "ease": false
+  },
+  "flags": {
+    "expression": "neutral"
+  },
+  "hands": [
+    ["fist", "in"],
+    ["fist", "in"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [2, -149],
+        "neck": [1, -131],
+        "hip": [0, -78],
+        "le": [-14, -104],
+        "lh": [-6, -122],
+        "re": [14, -106],
+        "rh": [20, -88],
+        "lk": [-10, -44],
+        "lf": [-4, -14],
+        "rk": [14, -38],
+        "rf": [26, -2]
+      },
+      "rot": 0.18
+    },
+    {
+      "joints": {
+        "head": [2, -152],
+        "neck": [1, -134],
+        "hip": [0, -82],
+        "le": [-14, -104],
+        "lh": [-22, -88],
+        "re": [14, -106],
+        "rh": [26, -124],
+        "lk": [-6, -38],
+        "lf": [-18, 0],
+        "rk": [10, -44],
+        "rf": [16, -14]
+      },
+      "rot": -0.18
+    }
+  ]
+}

@@ -56,12 +56,19 @@ La première animation de chaque case est offerte à tous. Les autres sont des c
 | Niveau | Multiplicateur | Coût | Effet visuel par défaut |
 |---|---|---|---|
 | A0 | ×1,00 | 0 | Lueur |
-| A1 | ×1,25 | 1 | Étincelles |
-| A2 | ×1,50 | 2 | Éclairs |
-| A3 | ×1,80 | 3 | Vortex |
-| A4 | ×2,20 | 4 | Galaxie |
+| A1 | ×1,12 | 1 | Étincelles |
+| A2 | ×1,25 | 2 | Éclairs |
+| A3 | ×1,40 | 3 | Vortex |
+| A4 | ×1,55 | 4 | Galaxie |
 
 Les autres effets du prototype (Flammes, Onde de choc, Aura noire) deviennent des skins cosmétiques d'un niveau.
+
+**Pourquoi ces multiplicateurs sont resserrés.** Le palier sature à un coût de 4 : deux
+joueurs qui dépensent 8 et 4 jouent tous les deux au palier 4. Tout l'écart de budget passe
+donc par l'amplificateur, et lui seul décide de ce que vaut l'énergie excédentaire. Le talent
+réuni — contre gagné (×1,35) et timing parfait (×1,50) — vaut ×2,03 ; l'amplificateur maximal
+doit rester en dessous, sinon le budget l'emporte sur le jeu. Mesures et méthode dans
+`docs/balance/2026-09-17-talent-contre-budget.md`.
 
 Coût total d'une manche = coût du palier + coût de l'amplificateur (8 maximum). Un choix dont le coût dépasse l'énergie restante est refusé par le serveur.
 
@@ -71,7 +78,8 @@ Coût total d'une manche = coût du palier + coût de l'amplificateur (8 maximum
 - Le serveur génère la séquence d'orbes à partir d'une graine : position (x, y normalisés 0–1), instant d'apparition, durée de vie, type.
 - **3 orbes** visibles en permanence ; une orbe touchée ou expirée est remplacée par la suivante de la séquence.
 - Orbe normale : 1 point, durée de vie 1 600 ms. Orbe dorée : 3 points, durée de vie 950 ms, probabilité 13 %.
-- Combo : taper dans le vide ou laisser expirer une orbe remet le combo à 0. À partir de **10 d'affilée**, chaque orbe rapporte **+1**.
+- Combo : taper dans le vide ou laisser expirer une orbe remet le combo à 0. À partir de **10 d'affilée**, chaque orbe rapporte **+1**. Le bonus s'applique **dès la 10e orbe** (10 d'affilée rapportent donc 11 points).
+- Un tap **rejeté** (orbe déjà morte, ou au-delà du plafond de 12 taps/s) est ignoré : il ne rapporte rien, mais **ne casse pas le combo**. Un tap rejeté n'a pas eu lieu, il n'est pas un échec — cela protège le joueur dont la latence fait taper une orbe encore affichée chez lui mais déjà expirée côté serveur.
 - Gains :
   - **Boost d'aura** de la manche : +1 % par point, **25 % maximum**.
   - **Jauge d'Ultime** : +2,5 par point, **40 maximum** par recharge.

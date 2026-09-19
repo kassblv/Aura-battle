@@ -1,0 +1,167 @@
+import { BALANCE, type BalanceConfig } from './balance.js';
+import type { TimingResult } from './timing.js';
+import type { Choice, Move, Seat } from './types.js';
+
+/**
+ * Resolution d'une manche (docs/01-game-design.md §7).
+ *
+ * Aucun aleatoire ici : a choix identiques et timings identiques, le resultat
+ * est toujours le meme. Le hasard du jeu se limite a la generation des orbes et
+ * de la jauge, qui sont communes aux deux joueurs.
+ */
+
+export interface RoundSeatInput {
+  readonly choice: Choice;
+  readonly timing: TimingResult;
+  /** Boost gagne a la recharge, en pourcentage (0 a 25). */
+  readonly boostPercent: number;
+  /** Mouvements deja joues par ce siege dans le match, pour detecter la repetition. */
+  readonly previousMoves: readonly Move[];
+}
+
+export interface RoundSeatOutcome {
+  /** Score final, contres compris. C'est lui qui designe le vainqueur. */
+  readonly score: number;
+  /**
+   * Score avant application des contres.
+   *
+   * Le client s'en sert pour mettre en scene la revelation : on montre d'abord
+   * ce que valait l'aura, puis l'effet du contre. Le calculer ici evite au
+   * serveur de refaire le produit de son cote.
+   */
+  readonly base: number;
+  /** Qualite et ecart du timing, repris tels quels pour `round:result`. */
+  readonly timing: TimingResult;
+  readonly repeated: boolean;
+  /** A contre l'adversaire et touche le bonus. */
+  readonly countered: boolean;
+  /** A subi le contre adverse. */
+  readonly wasCountered: boolean;
+  /** Avait le style gagnant, mais l'Ultime adverse a annule son contre. */
+  readonly counterBlocked: boolean;
+  readonly energySpent: number;
+  /** Jauge d'Ultime gagnee a l'issue de la manche. */
+  readonly ultimateGain: number;
+}
+
+export interface RoundResult {
+  /** Vainqueur de la manche, ou `null` si elle est nulle. */
+  readonly winner: Seat | null;
+  readonly seats: Readonly<Record<Seat, RoundSeatOutcome>>;
+}
+
+/**
+ * Precision a laquelle on rabat le produit avant d'arrondir.
+ *
+ * Le score est un produit de six facteurs flottants : `30 x 1,50 x 0,70` donne
+ * `31,499999999999996`, qui s'arrondit a 31 au lieu de 32. Un point entier de
+ * score se perd sur une erreur de 3,5e-15, et ce point peut decider de la
+ * manche. On rabat donc sur 1e-9 : largement au-dessus du bruit accumule,
+ * largement en dessous de toute difference de score qui a un sens.
+ */
+const SCORE_PRECISION = 1e9;
+
+/** Arrondit un score au plus proche entier, a l'abri du bruit flottant. */
+function roundScore(value: number): number {
+  return Math.round(Math.round(value * SCORE_PRECISION) / SCORE_PRECISION);
+}
+
+/** Cout en energie d'un choix. L'Ultime se paie en jauge, pas en energie. */
+export function choiceCost(choice: Choice, config: BalanceConfig = BALANCE): number {
+  return config.tierCost[choice.move.tier] + config.amplifierCost[choice.amplifier];
+}
+
+/** Un choix est jouable si l'energie restante en couvre le cout. */
+export function isChoiceAffordable(
+  choice: Choice,
+  energy: number,
+  config: BalanceConfig = BALANCE,
+): boolean {
+  return choiceCost(choice, config) <= energy;
+}
+
+/** Vrai si ce mouvement exact (style et palier) a deja ete joue dans le match. */
+function isRepeat(move: Move, previousMoves: readonly Move[]): boolean {
+  return previousMoves.some((played) => played.style === move.style && played.tier === move.tier);
+}
+
+export function resolveRound(
+  inputs: Readonly<Record<Seat, RoundSeatInput>>,
+  config: BalanceConfig = BALANCE,
+): RoundResult {
+  const { a, b } = inputs;
+
+  const aBeatsB = config.styleBeats[a.choice.move.style] === b.choice.move.style;
+  const bBeatsA = config.styleBeats[b.choice.move.style] === a.choice.move.style;
+
+  // L'Ultime rend son porteur impossible a contrer : le contre adverse est
+  // annule, et celui qui le perd ne subit pas de malus pour autant (§6).
+  const aCounters = aBeatsB && !b.choice.useUltimate;
+  const bCounters = bBeatsA && !a.choice.useUltimate;
+
+  const outcomeFor = (
+    seat: RoundSeatInput,
+    counters: boolean,
+    isCountered: boolean,
+    counterBlocked: boolean,
+  ): Omit<RoundSeatOutcome, 'ultimateGain'> => {
+    const repeated = isRepeat(seat.choice.move, seat.previousMoves);
+    const base =
+      config.tierPower[seat.choice.move.tier] *
+      config.amplifierMultiplier[seat.choice.amplifier] *
+      seat.timing.multiplier *
+      (repeated ? config.repeatMultiplier : 1) *
+      (seat.choice.useUltimate ? config.ultimate.multiplier : 1) *
+      (1 + seat.boostPercent / 100);
+    const final =
+      base *
+      (counters ? config.counter.winnerMultiplier : 1) *
+      (isCountered ? config.counter.loserMultiplier : 1);
+
+    return {
+      score: roundScore(final),
+      base: roundScore(base),
+      timing: seat.timing,
+      repeated,
+      countered: counters,
+      wasCountered: isCountered,
+      counterBlocked,
+      energySpent: choiceCost(seat.choice, config),
+    };
+  };
+
+  const aOutcome = outcomeFor(a, aCounters, bCounters, aBeatsB && b.choice.useUltimate);
+  const bOutcome = outcomeFor(b, bCounters, aCounters, bBeatsA && a.choice.useUltimate);
+
+  const winner: Seat | null =
+    aOutcome.score !== bOutcome.score
+      ? aOutcome.score > bOutcome.score
+        ? 'a'
+        : 'b'
+      : a.timing.delta !== b.timing.delta
+        ? a.timing.delta < b.timing.delta
+          ? 'a'
+          : 'b'
+        : null;
+
+  /** Gains de jauge : parfait, contre reussi, manche perdue (§6). Ils se cumulent. */
+  const ultimateGainFor = (
+    seat: RoundSeatInput,
+    outcome: Omit<RoundSeatOutcome, 'ultimateGain'>,
+    thisSeat: Seat,
+  ): number => {
+    let gain = 0;
+    if (seat.timing.quality === 'perfect') gain += config.ultimate.gainOnPerfect;
+    if (outcome.countered) gain += config.ultimate.gainOnCounter;
+    if (winner !== null && winner !== thisSeat) gain += config.ultimate.gainOnRoundLost;
+    return Math.min(gain, config.ultimate.gaugeMax);
+  };
+
+  return {
+    winner,
+    seats: {
+      a: { ...aOutcome, ultimateGain: ultimateGainFor(a, aOutcome, 'a') },
+      b: { ...bOutcome, ultimateGain: ultimateGainFor(b, bOutcome, 'b') },
+    },
+  };
+}
