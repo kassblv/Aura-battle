@@ -49,7 +49,16 @@ const MAX_ORB_INDEX =
   );
 
 const tapSchema = z.strictObject({
-  orbIndex: z.number().int().nonnegative().max(MAX_ORB_INDEX),
+  /**
+   * Orbe visee, ou `null` pour un tap dans le vide.
+   *
+   * `null` n'est pas une commodite : `docs/01` fait du tap dans le vide une
+   * **regle de jeu** — il remet le combo a zero, au meme titre qu'une orbe
+   * laissee expirer. Sans cette valeur, le client ne peut pas declarer le
+   * geste, le serveur ne le voit jamais, et la regle cesse simplement d'exister
+   * en ligne : un joueur qui martele l'ecran garderait son combo intact.
+   */
+  orbIndex: z.number().int().nonnegative().max(MAX_ORB_INDEX).nullable(),
   /** Millisecondes depuis le debut de la phase, mesurees avec `performance.now()`. */
   t: z.number().min(0).max(BALANCE.recharge.durationMs),
 });

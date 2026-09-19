@@ -246,3 +246,30 @@ describe('serializeClientMessage', () => {
     expect(result.success && result.data).toEqual({ mode: 'ranked' });
   });
 });
+
+describe('tap dans le vide', () => {
+  const taps = (list: unknown) =>
+    parseClientMessage('recharge:taps', {
+      matchId: 'm_1',
+      round: 1,
+      seq: 0,
+      taps: list,
+    }).success;
+
+  /**
+   * `docs/01` : taper dans le vide remet le combo a zero. La regle n'existe
+   * qu'a condition que le geste puisse etre declare — sinon le serveur ne le
+   * voit jamais et marteler l'ecran devient gratuit.
+   */
+  it('accepte un tap sans orbe', () => {
+    expect(taps([{ orbIndex: null, t: 120 }])).toBe(true);
+  });
+
+  it('accepte un tap sur une orbe', () => {
+    expect(taps([{ orbIndex: 3, t: 120 }])).toBe(true);
+  });
+
+  it('refuse un indice d orbe negatif', () => {
+    expect(taps([{ orbIndex: -1, t: 120 }])).toBe(false);
+  });
+});
