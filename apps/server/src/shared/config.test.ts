@@ -32,3 +32,30 @@ describe('loadConfig', () => {
     expect(Object.isFrozen(loadConfig(validEnv))).toBe(true);
   });
 });
+
+describe('corsOrigins', () => {
+  const base = {
+    DATABASE_URL: 'postgresql://a',
+    REDIS_URL: 'redis://a',
+    JWT_SECRET: 'un-secret-assez-long',
+  };
+
+  it('n autorise aucune origine etrangere par defaut', () => {
+    // Le bon reglage quand le client est servi par le meme hote que l'API.
+    expect(loadConfig({ ...base }).corsOrigins).toEqual([]);
+  });
+
+  it('lit une liste separee par des virgules', () => {
+    expect(
+      loadConfig({ ...base, CORS_ORIGINS: 'https://aura.app,https://staging.aura.app' })
+        .corsOrigins,
+    ).toEqual(['https://aura.app', 'https://staging.aura.app']);
+  });
+
+  it('tolere les espaces et les virgules en trop', () => {
+    // Une variable d'environnement se recopie a la main : elle arrive sale.
+    expect(
+      loadConfig({ ...base, CORS_ORIGINS: ' https://a.app , , https://b.app ,' }).corsOrigins,
+    ).toEqual(['https://a.app', 'https://b.app']);
+  });
+});

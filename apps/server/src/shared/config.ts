@@ -16,6 +16,27 @@ const configSchema = z.object({
   jwtSecret: z.string().min(16, 'JWT_SECRET doit faire au moins 16 caracteres'),
   jwtAccessTtl: z.coerce.number().int().positive().default(900),
   jwtRefreshTtl: z.coerce.number().int().positive().default(2_592_000),
+  /**
+   * Origines autorisees a appeler l'API depuis un navigateur.
+   *
+   * Liste separee par des virgules, vide par defaut. Vide veut dire « aucune
+   * origine etrangere » : c'est le bon reglage quand le client est servi par le
+   * meme hote que l'API, et c'est le cas en production.
+   *
+   * En developpement, le client de Vite tourne sur un autre port — et sur une
+   * autre adresse quand on ouvre le jeu depuis un telephone du reseau local.
+   * Enumerer ces origines a l'avance est impossible : `loadConfig` laisse donc
+   * `main.ts` refleter l'origine appelante hors production.
+   */
+  corsOrigins: z
+    .string()
+    .default('')
+    .transform((raw) =>
+      raw
+        .split(',')
+        .map((origin) => origin.trim())
+        .filter((origin) => origin.length > 0),
+    ),
 });
 
 export type ServerConfig = Readonly<z.infer<typeof configSchema>>;
@@ -46,6 +67,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     jwtSecret: env.JWT_SECRET,
     jwtAccessTtl: env.JWT_ACCESS_TTL,
     jwtRefreshTtl: env.JWT_REFRESH_TTL,
+    corsOrigins: env.CORS_ORIGINS,
   });
 
   if (!parsed.success) {

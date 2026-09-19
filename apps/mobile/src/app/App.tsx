@@ -3,7 +3,10 @@ import { useArena } from '../arena/useArena.js';
 import { defaultLook, equip, type LookSlot, type Wardrobe } from './wardrobe.js';
 import { MatchScreen } from './MatchScreen.jsx';
 import { canLeave, navigate, openingScreen, type Navigation } from './navigation.js';
+import { needsOnboarding } from './onboarding.js';
+import { OnboardingScreen } from './OnboardingScreen.jsx';
 import type { PlayerProfile } from './profile.js';
+import { useSession } from './useSession.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
 /**
@@ -38,12 +41,33 @@ const DEMO_PROFILE: PlayerProfile = {
 export function App(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const arena = useArena(canvasRef);
+  const session = useSession();
+
+  /**
+   * L inscription est facultative et **ne se represente pas**.
+   *
+   * Une fois passee — nommee ou remise a plus tard — on ne la remontre pas a
+   * chaque lancement : un jeu qui redemande la meme chose a chaque ouverture
+   * apprend a son joueur a fermer la fenetre sans lire.
+   */
+  const [greeted, setGreeted] = useState(false);
+  const showOnboarding = !greeted && session.phase === 'ready' && needsOnboarding(session.identity);
 
   const [nav, setNav] = useState<Navigation>(openingScreen);
   const [wardrobe, setWardrobe] = useState<Wardrobe>(() => ({
     look: defaultLook(),
     owned: new Set<string>(),
   }));
+
+  const profile: PlayerProfile = useMemo(
+    () => ({
+      ...DEMO_PROFILE,
+      // Le nom vient du serveur des qu il repond ; le reste est encore fictif
+      // et le restera jusqu a ce que M5 apporte un vrai classement.
+      name: session.identity?.displayName ?? DEMO_PROFILE.name,
+    }),
+    [session.identity],
+  );
 
   const looks = useMemo(
     () => ({
@@ -88,9 +112,25 @@ export function App(): JSX.Element {
       <div className="stage">
         <canvas ref={canvasRef} className="stage__canvas" />
 
-        {nav.screen === 'home' && (
+        {showOnboarding && session.identity !== null && (
+          <OnboardingScreen
+            guestName={session.identity.displayName}
+            busy={session.busy}
+            error={session.error}
+            onSubmit={(displayName) => {
+              void session.rename(displayName).then((done) => {
+                if (done) setGreeted(true);
+              });
+            }}
+            onSkip={() => {
+              setGreeted(true);
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'home' && (
           <HomeScreen
-            profile={DEMO_PROFILE}
+            profile={profile}
             seasonLabel="Saison 1 · démonstration"
             onPlay={() => {
               go('match');
@@ -104,16 +144,16 @@ export function App(): JSX.Element {
           />
         )}
 
-        {nav.screen === 'profile' && (
+        {!showOnboarding && nav.screen === 'profile' && (
           <ProfileScreen
-            profile={DEMO_PROFILE}
+            profile={profile}
             onClose={() => {
               go('home');
             }}
           />
         )}
 
-        {nav.screen === 'wardrobe' && (
+        {!showOnboarding && nav.screen === 'wardrobe' && (
           <WardrobeScreen
             wardrobe={wardrobe}
             onEquip={onEquip}
@@ -125,7 +165,7 @@ export function App(): JSX.Element {
 
         {nav.screen === 'match' && <MatchScreen looks={looks} arena={arena} onLeave={leaveMatch} />}
 
-        {nav.screen !== 'home' && canLeave(nav) && nav.screen !== 'match' && (
+        {!showOnboarding && nav.screen !== 'home' && canLeave(nav) && nav.screen !== 'match' && (
           <button
             type="button"
             className="mini mini--corner"
