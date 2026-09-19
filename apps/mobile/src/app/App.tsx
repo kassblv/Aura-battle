@@ -6,7 +6,10 @@ import { useSoloMatch } from './useMatch.js';
 import { canLeave, navigate, openingScreen, type Navigation } from './navigation.js';
 import { needsOnboarding } from './onboarding.js';
 import { OnboardingScreen } from './OnboardingScreen.jsx';
-import type { PlayerProfile } from './profile.js';
+import { defaultEmotes, equipEmote, type EmoteLoadout } from './emotes.js';
+import { newProfile, type PlayerProfile } from './profile.js';
+import { buy, type ShopState } from './shop.js';
+import { ShopScreen } from './ShopScreen.jsx';
 import { useSession } from './useSession.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
@@ -18,26 +21,6 @@ import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
  * match, elle devient une vitrine — un seul personnage, camera rapprochee —
  * ce qui donne au vestiaire une raison d exister : on voit ce qu on change.
  */
-
-/**
- * Profil de demonstration.
- *
- * Il viendra du serveur au jalon M5 ; en attendant, ces chiffres sont
- * explicitement fictifs et ne sont jamais presentes comme reels.
- */
-const DEMO_PROFILE: PlayerProfile = {
-  name: 'Kassim',
-  tag: 'KAS#4417',
-  league: 'Or II',
-  lp: 1240,
-  lpForNextLeague: 1500,
-  matches: 128,
-  wins: 79,
-  currentStreak: 3,
-  bestStreak: 9,
-  roundsByStyle: { calme: 120, hype: 170, provoc: 98 },
-  wallet: { soft: 450, hard: 60 },
-};
 
 export function App(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
@@ -59,16 +42,35 @@ export function App(): JSX.Element {
     look: defaultLook(),
     owned: new Set<string>(),
   }));
+  const [emotes, setEmotes] = useState<EmoteLoadout>(() => ({
+    slots: defaultEmotes(),
+    owned: new Set<string>(),
+  }));
+  /**
+   * La bourse et les possessions vivent ici en attendant le jalon M5.
+   *
+   * Elles partiront du serveur : un inventaire tenu par le client est un
+   * inventaire qu'on s'offre soi-meme.
+   */
+  const [shop, setShop] = useState<ShopState>(() => ({
+    wallet: { soft: 0, hard: 0 },
+    owned: new Set<string>(),
+  }));
 
-  const profile: PlayerProfile = useMemo(
-    () => ({
-      ...DEMO_PROFILE,
-      // Le nom vient du serveur des qu il repond ; le reste est encore fictif
-      // et le restera jusqu a ce que M5 apporte un vrai classement.
-      name: session.identity?.displayName ?? DEMO_PROFILE.name,
-    }),
-    [session.identity],
-  );
+  /**
+   * Le profil.
+   *
+   * Tout a zero tant que le serveur n'envoie pas de statistiques (jalon M5).
+   * Montrer des chiffres inventes a un joueur qui vient de s'inscrire lui
+   * apprendrait, des le premier ecran, a ne pas croire ce que le jeu affiche.
+   */
+  const profile: PlayerProfile = useMemo(() => {
+    const fresh = newProfile(
+      session.identity?.displayName ?? 'Invité',
+      session.identity?.playerId ?? 'anonyme',
+    );
+    return { ...fresh, wallet: shop.wallet };
+  }, [session.identity, shop.wallet]);
 
   const looks = useMemo(
     () => ({
@@ -141,6 +143,35 @@ export function App(): JSX.Element {
             }}
             onWardrobe={() => {
               go('wardrobe');
+            }}
+            onShop={() => {
+              go('shop');
+            }}
+            emotes={emotes.slots}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'shop' && (
+          <ShopScreen
+            state={shop}
+            emotes={emotes}
+            onBuy={(id) => {
+              setShop((current) => {
+                const next = buy(current, id);
+                // Ce qu'on vient d'acheter devient portable sur-le-champ : la
+                // boutique et le vestiaire partagent la meme liste.
+                if (next !== current) {
+                  setWardrobe((w) => ({ ...w, owned: next.owned }));
+                  setEmotes((e) => ({ ...e, owned: next.owned }));
+                }
+                return next;
+              });
+            }}
+            onEquipEmote={(slot, id) => {
+              setEmotes((current) => equipEmote(current, slot, id));
+            }}
+            onClose={() => {
+              go('home');
             }}
           />
         )}

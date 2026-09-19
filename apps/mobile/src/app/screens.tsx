@@ -1,3 +1,4 @@
+import { EMOTES } from '@aura/content';
 import type { JSX } from 'react';
 import { leagueProgress, styleShares, summarize, type PlayerProfile } from './profile.js';
 import { isOwned, wardrobeSections, type LookSlot, type Wardrobe } from './wardrobe.js';
@@ -12,6 +13,8 @@ import { isOwned, wardrobeSections, type LookSlot, type Wardrobe } from './wardr
  */
 
 const STYLE_ICONS = { calme: '🧊', hype: '🔥', provoc: '😏' } as const;
+
+const glyphOfEmote = (id: string): string => EMOTES.find((emote) => emote.id === id)?.glyph ?? '·';
 const STYLE_COLORS = { calme: '#4fc3f7', hype: '#ff8a3d', provoc: '#c97bff' } as const;
 
 const percent = (value: number): string => `${(value * 100).toFixed(1).replace('.', ',')} %`;
@@ -19,9 +22,12 @@ const percent = (value: number): string => `${(value * 100).toFixed(1).replace('
 export interface HomeProps {
   readonly profile: PlayerProfile;
   readonly seasonLabel: string;
+  /** Roue d emotes equipee, montree a l accueil comme un rappel. */
+  readonly emotes: readonly string[];
   readonly onPlay: () => void;
   readonly onProfile: () => void;
   readonly onWardrobe: () => void;
+  readonly onShop: () => void;
 }
 
 /**
@@ -40,9 +46,11 @@ export interface HomeProps {
 export function HomeScreen({
   profile,
   seasonLabel,
+  emotes,
   onPlay,
   onProfile,
   onWardrobe,
+  onShop,
 }: HomeProps): JSX.Element {
   return (
     <div className="home">
@@ -80,12 +88,19 @@ export function HomeScreen({
           <span aria-hidden="true">📊</span>
           Profil
         </button>
-        <button type="button" className="rail__btn" disabled>
+        <button type="button" className="rail__btn" onClick={onShop}>
           <span aria-hidden="true">🛒</span>
           Boutique
-          <small>bientôt</small>
         </button>
       </nav>
+
+      {/* La roue equipee, visible sans ouvrir un menu : on doit savoir ce
+          qu'on a sous le pouce avant d'entrer en match. */}
+      <ul className="home__emotes" aria-label="Émotes équipées">
+        {emotes.map((id) => (
+          <li key={id}>{glyphOfEmote(id)}</li>
+        ))}
+      </ul>
 
       <div className="launch">
         <p className="launch__mode">

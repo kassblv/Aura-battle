@@ -38,6 +38,20 @@ describe('navigate', () => {
     expect(navigate(during, 'wardrobe')).toBe(during);
   });
 
+  /**
+   * La boutique se ferme aussi pendant une manche, et pour la meme raison :
+   * on n achete pas un cosmetique au milieu d un duel, et le panneau
+   * recouvrirait les commandes.
+   */
+  it('refuse d ouvrir la boutique pendant une manche', () => {
+    const during = at('match', true);
+    expect(navigate(during, 'shop')).toBe(during);
+  });
+
+  it('ouvre la boutique depuis l accueil', () => {
+    expect(navigate(at('home'), 'shop').screen).toBe('shop');
+  });
+
   it('laisse le vestiaire ouvert depuis l accueil et le profil', () => {
     expect(navigate(at('home'), 'wardrobe').screen).toBe('wardrobe');
     expect(navigate(at('profile'), 'wardrobe').screen).toBe('wardrobe');

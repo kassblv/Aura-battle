@@ -8,6 +8,8 @@ import {
   OUTFITS,
   SKIN_TONES,
   type AmplifierLevel,
+  EMOTES,
+  EMOTE_SLOTS,
 } from './cosmetics.js';
 
 const LEVELS: readonly AmplifierLevel[] = [0, 1, 2, 3, 4];
@@ -85,5 +87,43 @@ describe('catalogues', () => {
   it('gele les catalogues', () => {
     expect(Object.isFrozen(AURA_EFFECTS)).toBe(true);
     expect(Object.isFrozen(OUTFITS)).toBe(true);
+  });
+});
+
+describe('EMOTES', () => {
+  it('offre de quoi se saluer sans rien acheter', () => {
+    const free = EMOTES.filter((emote) => emote.price === 0);
+    expect(free.length).toBeGreaterThanOrEqual(EMOTE_SLOTS);
+  });
+
+  it('donne un symbole a chacune : une emote se lit, elle ne se dechiffre pas', () => {
+    for (const emote of EMOTES) {
+      expect(emote.glyph.length).toBeGreaterThan(0);
+      expect(emote.name.fr.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('n attribue pas deux fois le meme identifiant', () => {
+    expect(new Set(EMOTES.map((e) => e.id)).size).toBe(EMOTES.length);
+  });
+
+  /**
+   * Regle d'or n°3. Une emote ne porte aucune valeur de jeu — et surtout pas
+   * le style joue : `intent:show` existe pour l'annoncer, et il se paie en
+   * jauge d'Ultime. Une emote qui dirait la meme chose rendrait ce cout nul.
+   */
+  it('ne porte aucune valeur de jeu', () => {
+    for (const emote of EMOTES) {
+      const keys = Object.keys(emote);
+      expect(keys).not.toContain('style');
+      expect(keys).not.toContain('power');
+      expect(keys).not.toContain('multiplier');
+      expect(keys).not.toContain('energy');
+    }
+  });
+
+  it('garde assez d emotes gratuites pour remplir la roue', () => {
+    // Un joueur sans un sou doit pouvoir equiper ses quatre emplacements.
+    expect(EMOTES.filter((e) => e.price === 0)).toHaveLength(EMOTE_SLOTS);
   });
 });

@@ -93,3 +93,52 @@ export function styleShares(profile: PlayerProfile): readonly StyleShare[] {
     return { style, rounds, share: total > 0 ? rounds / total : 0 };
   });
 }
+
+/**
+ * Le profil d'un joueur qui vient d'arriver.
+ *
+ * Tout a zero, sans exception. Montrer des chiffres inventes a quelqu'un qui
+ * n'a pas encore joue n'est pas une coquetterie d'affichage : c'est une valeur
+ * fausse presentee comme la sienne, et la premiere chose que le jeu lui
+ * apprendrait serait de ne pas croire ce qu'il affiche.
+ */
+export function newProfile(name: string, playerId: string): PlayerProfile {
+  return {
+    name,
+    tag: playerTag(name, playerId),
+    league: 'Non classé',
+    lp: 0,
+    // Le premier palier de classement : il donne une cible des la premiere partie.
+    lpForNextLeague: 100,
+    matches: 0,
+    wins: 0,
+    currentStreak: 0,
+    bestStreak: 0,
+    roundsByStyle: { calme: 0, hype: 0, provoc: 0 },
+    wallet: { soft: 0, hard: 0 },
+  };
+}
+
+/**
+ * Le tag affichable d'un joueur, du type `KAS#4417`.
+ *
+ * Les noms ne sont pas uniques — c'est un choix, pas un oubli (voir
+ * `ProfileService.rename`). Le tag est ce qui distingue deux Kassim, et il est
+ * derive de l'identifiant : stable d'une session a l'autre, et different pour
+ * deux joueurs de meme nom.
+ */
+export function playerTag(name: string, playerId: string): string {
+  const letters =
+    name
+      .toUpperCase()
+      .replace(/[^A-Z]/g, '')
+      .slice(0, 3) || 'AUR';
+
+  // Somme de controle simple : on ne cherche ni unicite ni resistance, juste
+  // un nombre stable que le serveur pourra remplacer par le vrai au jalon M5.
+  let hash = 0;
+  for (const character of playerId) {
+    hash = (hash * 31 + character.charCodeAt(0)) % 10_000;
+  }
+  return `${letters}#${String(hash).padStart(4, '0')}`;
+}

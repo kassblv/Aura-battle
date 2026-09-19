@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   canAfford,
+  newProfile,
+  playerTag,
   leagueProgress,
   styleShares,
   summarize,
@@ -104,5 +106,57 @@ describe('canAfford', () => {
   it('refuse un prix negatif plutot que de crediter', () => {
     // Un prix negatif serait une erreur de donnees, pas une promotion.
     expect(canAfford(profile(), -100)).toBe(false);
+  });
+});
+
+describe('newProfile', () => {
+  /**
+   * Un joueur qui vient de s'inscrire n'a rien gagne.
+   *
+   * Montrer 128 matchs et 1 240 points a quelqu'un qui n'a pas encore joue
+   * n'est pas une coquetterie d'affichage : c'est un chiffre faux presente
+   * comme le sien, et la premiere chose que le jeu lui apprend est qu'il ne
+   * faut pas croire ce qu'il affiche.
+   */
+  it('part de zero, partout', () => {
+    const fresh = newProfile('Kassim', 'p_abc');
+    expect(fresh.matches).toBe(0);
+    expect(fresh.wins).toBe(0);
+    expect(fresh.lp).toBe(0);
+    expect(fresh.currentStreak).toBe(0);
+    expect(fresh.bestStreak).toBe(0);
+    expect(fresh.wallet).toEqual({ soft: 0, hard: 0 });
+    expect(fresh.roundsByStyle).toEqual({ calme: 0, hype: 0, provoc: 0 });
+  });
+
+  it('ne divise pas par zero pour ce profil-la', () => {
+    const stats = summarize(newProfile('Kassim', 'p_abc'));
+    expect(stats.winRate).toBe(0);
+    expect(leagueProgress(newProfile('Kassim', 'p_abc'))).toBeGreaterThanOrEqual(0);
+  });
+
+  it('porte le nom qu on lui donne', () => {
+    expect(newProfile('Nova', 'p_1').name).toBe('Nova');
+  });
+});
+
+describe('playerTag', () => {
+  it('derive un tag stable de l identifiant', () => {
+    // Stable : le meme joueur doit se reconnaitre d'une session a l'autre.
+    expect(playerTag('Kassim', 'p_abc')).toBe(playerTag('Kassim', 'p_abc'));
+  });
+
+  it('distingue deux joueurs de meme nom', () => {
+    // C'est precisement ce a quoi sert un tag : les noms ne sont pas uniques.
+    expect(playerTag('Kassim', 'p_1')).not.toBe(playerTag('Kassim', 'p_2'));
+  });
+
+  it('suit la forme NOM#1234', () => {
+    expect(playerTag('Kassim', 'p_abc')).toMatch(/^[A-Z]{1,3}#\d{4}$/);
+  });
+
+  it('supporte un nom court ou accentue', () => {
+    expect(playerTag('Zo\u00eb', 'p_1')).toMatch(/^[A-Z]{1,3}#\d{4}$/);
+    expect(playerTag('Al', 'p_1')).toMatch(/^[A-Z]{1,2}#\d{4}$/);
   });
 });

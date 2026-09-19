@@ -719,6 +719,72 @@ body {
   cursor: pointer;
 }
 
+.home__emotes {
+  position: absolute;
+  left: max(12px, env(safe-area-inset-left));
+  /* Juste au-dessus du rail : c est un rappel, pas une commande. */
+  bottom: calc(var(--safe-bottom) + 84px);
+  display: flex;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.home__emotes li {
+  width: 34px;
+  height: 34px;
+  border-radius: 11px;
+  background: var(--hud);
+  border: 1px solid var(--hud-line);
+  display: grid;
+  place-items: center;
+  font-size: 17px;
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+
+/* --- boutique et roue d emotes --- */
+.purse {
+  margin-left: auto;
+  margin-right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 13px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.purse b {
+  color: var(--gold-ink);
+  font-size: 15px;
+}
+
+.wheel {
+  display: flex;
+  gap: 8px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.wheel__slot {
+  width: 52px;
+  height: 52px;
+  border-radius: 16px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  display: grid;
+  place-items: center;
+  font-size: 24px;
+}
+
+.ward__glyph {
+  font-size: 18px;
+  line-height: 1;
+}
+
 /* --- file d attente --- */
 .queue {
   position: absolute;
@@ -943,11 +1009,25 @@ body {
 }
 
 .gauge {
+  /**
+   * Compacte et centree, entre les deux grappes de pouce.
+   *
+   * La difficulte de cette jauge est **temporelle** : la zone « parfait » vaut
+   * 9 % de la course, soit une soixantaine de millisecondes, et cette fenetre
+   * ne depend pas de la largeur. Etaler la course sur tout l ecran n ajoute
+   * donc aucune precision — seulement du trajet pour l oeil, a suivre en
+   * peripherie pendant que les pouces sont dans les coins.
+   *
+   * La cible d appui, elle, reste l ecran entier : on ne perd rien a viser.
+   */
   position: absolute;
-  left: calc(var(--safe-left) + 8%);
-  right: calc(var(--safe-right) + 8%);
-  bottom: calc(var(--safe-bottom) + 120px);
-  height: 46px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(420px, 52%);
+  /* Au-dessus de la grappe la plus haute : celle de droite porte deux rangees
+     et monte a 131 px. Mordre dessus cacherait la moitie des amplificateurs. */
+  bottom: calc(var(--safe-bottom) + 142px);
+  height: 52px;
   border-radius: 14px;
   overflow: hidden;
 }

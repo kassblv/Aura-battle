@@ -6,7 +6,7 @@
  * `onClick`, et une regle eparpillee est une regle qu on oublie.
  */
 
-export type Screen = 'home' | 'profile' | 'wardrobe' | 'match';
+export type Screen = 'home' | 'profile' | 'wardrobe' | 'shop' | 'match';
 
 export interface Navigation {
   readonly screen: Screen;
@@ -39,7 +39,8 @@ export function navigate(state: Navigation, to: Screen): Navigation {
    * porte au moment ou la question pourrait se poser. Accessoirement, un
    * panneau de vestiaire en pleine manche recouvrirait les commandes.
    */
-  if (to === 'wardrobe' && state.matchRunning) return state;
+  // Le vestiaire et la boutique restent fermes pendant une manche.
+  if ((to === 'wardrobe' || to === 'shop') && state.matchRunning) return state;
 
   if (to === 'match') return { screen: 'match', matchRunning: true };
   return { screen: to, matchRunning: false };
