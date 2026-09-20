@@ -123,6 +123,45 @@ viennent pas de la page. Le signe qui ne trompe pas est le **nombre d'images
 capturées** : 22 secondes de fenêtre doivent en rendre environ 1 320. Nettement
 moins, et c'est la machine qu'on mesure, pas le client.
 
+### Niveaux de qualité : comment on vérifie qu'une descente descend
+
+Le budget ci-dessus est tenu sur la machine de développement. Les **paliers de
+qualité** (`apps/mobile/src/platform/quality.ts`) sont là pour les appareils
+qu'on n'a pas mesurés — et le ralenti ×4 de Chrome ne les simule pas : il
+ralentit le **processeur**, alors que la foule, les particules et le rapport de
+pixels coûtent surtout du **remplissage**. Un téléphone d'entrée de gamme peut
+passer la mesure ci-dessus et couler quand même.
+
+La décision est donc pure et se teste sans carte graphique : `quality.test.ts`
+lui donne des fenêtres d'images fabriquées et vérifie le verdict. Trois
+propriétés `fast-check` tiennent les invariants qui comptent — la qualité ne
+remonte jamais sans le joueur, `record` ne change jamais le palier appliqué
+(seul `commit` le fait), et un palier choisi à la main est toujours celui qui
+est dessiné.
+
+Ce que les tests **ne** peuvent pas voir, et qu'il faut regarder à l'œil :
+
+1. Ouvrir les Réglages (4ᵉ bouton du rail) et choisir **Fluide**. Le public
+   doit s'éclaircir immédiatement — et le **premier cercle**, les grandes
+   silhouettes proches, doit rester. S'il disparaît en premier, le tri de
+   `buildSeats` a été perdu.
+2. Recharger la page. Le palier choisi doit revenir coché.
+3. Repasser en **Automatique**, puis jouer une manche. Rien ne doit changer
+   *pendant* la jauge — c'est la seule règle non négociable de ce réglage.
+
+**Piège de mesure.** La boucle d'animation borne son écart d'image à 250 ms
+pour ne pas faire traverser l'arène aux personnages après un retour au premier
+plan. Le gouverneur, lui, lit l'écart **brut** : mesurer la valeur bornée
+rendrait une mise en arrière-plan de dix secondes indistinguable d'une image
+lente, et ferait chuter la qualité de quelqu'un qui a simplement répondu à un
+message.
+
+**Un seul rapport de pixels.** Le rendu dimensionne son tampon et la scène y
+convertit la taille des particules : les deux lisent `effectivePixelRatio`. Le
+plafond vivait auparavant dans `renderer.ts` pendant que `scene.setSize`
+recevait le rapport brut — sur un écran à 3× plafonné à 1,75, les particules
+étaient une fois et demie trop grosses.
+
 ## Banc de charge : 500 matchs sur un nœud
 
 Le critère M7 est chiffré : **500 matchs simultanés, p95 de traitement d'un message entrant

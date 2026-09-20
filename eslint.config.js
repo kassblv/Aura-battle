@@ -11,6 +11,9 @@ export default tseslint.config(
       'prototype/**',
       'node_modules/**',
       '.claude/**',
+      // Fichiers de travail des greffons, hors du depot (voir .gitignore) :
+      // ils ne sont dans aucun tsconfig, et ESLint refuse alors de les lire.
+      '.remember/**',
     ],
   },
 
