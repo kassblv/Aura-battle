@@ -2,10 +2,14 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Choice, RechargeTap } from '@aura/rules';
 import { createGameClient, type GameClient } from '../net/client.js';
 import { createSocketTransport } from '../net/socketTransport.js';
-import { createOnlineMatch, type OnlineMatch } from '../match/online.js';
+import { createOnlineMatch, type OnlineMatch, type OnlinePhase } from '../match/online.js';
+import { presentOnline } from '../match/onlinePresentation.js';
 import { viewOfOnline, type MatchView } from '../match/view.js';
 import { resolveServerUrl } from '../net/serverUrl.js';
 import type { ConnectionStatus } from '../net/connection.js';
+import type { ArenaControls } from '../arena/useArena.js';
+import type { Seat } from '@aura/rules';
+import type { Look } from './wardrobe.js';
 import type { MatchActions } from './MatchScreen.jsx';
 
 /**
@@ -16,6 +20,16 @@ import type { MatchActions } from './MatchScreen.jsx';
  * tenir ces objets en vie le temps d un montage React et donner a l ecran une
  * image rafraichie a chaque image.
  */
+
+/**
+ * Delai entre le debut de la revelation et le verdict.
+ *
+ * Basculer sur la joie et l encaissement des la premiere image de `reveal`
+ * escamoterait la danse : le joueur verrait le resultat sans avoir vu ce qui l
+ * a produit, et la manche perdrait son moment. On laisse donc les deux
+ * mouvements se jouer, puis le verdict tombe.
+ */
+const VERDICT_AFTER_MS = 1_400;
 
 /** Rythme des `ping` : assez souvent pour suivre la derive, assez rare pour ne rien couter. */
 const PING_EVERY_MS = 5_000;
@@ -35,13 +49,29 @@ export interface OnlineSession {
   readonly ready: () => void;
 }
 
-export function useOnlineMatch(accessToken: string | null): OnlineSession {
+export function useOnlineMatch(
+  accessToken: string | null,
+  looks: Readonly<Record<Seat, Look>>,
+  arena: ArenaControls,
+): OnlineSession {
   const clientRef = useRef<GameClient | null>(null);
   const matchRef = useRef<OnlineMatch | null>(null);
   const [, force] = useState(0);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const nowRef = useRef(0);
+
+  /**
+   * Les tenues traversent la boucle par une reference, pas par la dependance
+   * de l effet : reconstruire la socket parce que le joueur a change de veste
+   * couperait le duel en cours.
+   */
+  const looksRef = useRef(looks);
+  looksRef.current = looks;
+
+  /** Debut de la phase courante, en heure locale, pour dater la choregraphie. */
+  const phaseRef = useRef<OnlinePhase>('idle');
+  const phaseStartedAt = useRef(0);
 
   useEffect(() => {
     if (accessToken === null) return;
@@ -77,12 +107,37 @@ export function useOnlineMatch(accessToken: string | null): OnlineSession {
     const tick = (): void => {
       frame = requestAnimationFrame(tick);
       nowRef.current = performance.now();
+
+      /**
+       * L arene suit le duel en ligne comme elle suit le solo.
+       *
+       * C est le pendant de `useSoloMatch` : sans lui, l arene reste la
+       * vitrine de l accueil — un seul combattant, fige dans sa pose — pendant
+       * que le HUD, lui, joue le match. Les deux modes produisent la meme
+       * scene ou le duel en ligne se joue a un autre jeu que l entrainement.
+       */
+      const state = match.state;
+      if (state.phase !== phaseRef.current) {
+        phaseRef.current = state.phase;
+        phaseStartedAt.current = nowRef.current;
+      }
+      const live = state.phase !== 'idle';
+      arena.showcase.current = !live;
+      if (live) {
+        const intoPhase = nowRef.current - phaseStartedAt.current;
+        arena.presentation.current = presentOnline(state, looksRef.current, {
+          showOutcome:
+            state.phase === 'ended' || (state.phase === 'reveal' && intoPhase >= VERDICT_AFTER_MS),
+        });
+      }
+
       force((n) => n + 1);
     };
     frame = requestAnimationFrame(tick);
 
     return () => {
       cancelAnimationFrame(frame);
+      arena.showcase.current = true;
       clearInterval(ping);
       offInvite();
       offError();
@@ -91,7 +146,7 @@ export function useOnlineMatch(accessToken: string | null): OnlineSession {
       clientRef.current = null;
       matchRef.current = null;
     };
-  }, [accessToken]);
+  }, [accessToken, arena]);
 
   const actions: MatchActions = {
     tap: useCallback((taps: readonly RechargeTap[]) => {

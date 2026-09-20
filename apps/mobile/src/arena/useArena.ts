@@ -1,4 +1,4 @@
-import { useEffect, useRef, type RefObject } from 'react';
+import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import { createPoseSmoother, breatheInto } from '../animation/smooth.js';
 import { samplePose } from '../animation/sample.js';
 import { ANIMATIONS } from '../content/animations.js';
@@ -115,5 +115,13 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
     };
   }, [canvasRef]);
 
-  return { presentation, showcase };
+  /**
+   * Une identite stable, pas un objet neuf a chaque rendu.
+   *
+   * Les refs, elles, ne changent jamais ; c est l enveloppe qui trahissait.
+   * Un appelant qui met `arena` dans ses dependances relancait son effet a
+   * chaque rendu — anodin pour une boucle d animation, fatal pour celui qui
+   * tient la socket du duel.
+   */
+  return useMemo(() => ({ presentation, showcase }), []);
 }

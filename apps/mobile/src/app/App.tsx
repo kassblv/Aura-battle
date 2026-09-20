@@ -28,6 +28,20 @@ export function App(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const arena = useArena(canvasRef);
   const session = useSession();
+
+  const [wardrobe, setWardrobe] = useState<Wardrobe>(() => ({
+    look: defaultLook(),
+    owned: new Set<string>(),
+  }));
+
+  const looks = useMemo(
+    () => ({
+      a: wardrobe.look,
+      b: { ...defaultLook(), outfit: 'outfit.rouge', hair: 'hair.pics', aura: '#ffcf3f' },
+    }),
+    [wardrobe.look],
+  );
+
   /**
    * Le lien de jeu vit aussi longtemps que l application.
    *
@@ -35,7 +49,7 @@ export function App(): JSX.Element {
    * couperait la socket entre la creation d un code et l arrivee de
    * l adversaire — c est-a-dire exactement pendant l attente.
    */
-  const online = useOnlineMatch(session.accessToken);
+  const online = useOnlineMatch(session.accessToken, looks, arena);
 
   /** Le serveur a ouvert un match : on quitte l ecran d invitation pour l arene. */
   const inDuel = online.view.phase !== 'idle';
@@ -51,10 +65,6 @@ export function App(): JSX.Element {
   const showOnboarding = !greeted && session.phase === 'ready' && needsOnboarding(session.identity);
 
   const [nav, setNav] = useState<Navigation>(openingScreen);
-  const [wardrobe, setWardrobe] = useState<Wardrobe>(() => ({
-    look: defaultLook(),
-    owned: new Set<string>(),
-  }));
   const [emotes, setEmotes] = useState<EmoteLoadout>(() => ({
     slots: defaultEmotes(),
     owned: new Set<string>(),
@@ -85,16 +95,15 @@ export function App(): JSX.Element {
     return { ...fresh, wallet: shop.wallet };
   }, [session.identity, shop.wallet]);
 
-  const looks = useMemo(
-    () => ({
-      a: wardrobe.look,
-      b: { ...defaultLook(), outfit: 'outfit.rouge', hair: 'hair.pics', aura: '#ffcf3f' },
-    }),
-    [wardrobe.look],
-  );
-
-  // Hors match, l arene montre le personnage du joueur, habille en direct.
-  if (nav.screen !== 'match') {
+  /**
+   * Hors match, l arene montre le personnage du joueur, habille en direct.
+   *
+   * « Hors match » se juge sur ce qui se joue, pas sur le nom de l ecran : un
+   * duel en ligne tourne sur l ecran d invitation, et n y penser qu a travers
+   * `nav.screen` remettait la vitrine par-dessus le duel a chaque rendu — un
+   * seul combattant a l ecran pendant que le HUD jouait la manche.
+   */
+  if (nav.screen !== 'match' && !inDuel) {
     arena.presentation.current = {
       fighters: {
         a: { animationId: 'anim.system.none.victory', look: looks.a },
