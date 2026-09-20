@@ -39,6 +39,14 @@ export interface RoundSeatOutcome {
   readonly wasCountered: boolean;
   /** Avait le style gagnant, mais l'Ultime adverse a annule son contre. */
   readonly counterBlocked: boolean;
+  /**
+   * A depense son Ultime dans cette manche.
+   *
+   * Le multiplicateur le dit deja, mais seulement a qui refait le calcul. La
+   * mise en scene a besoin du fait lui-meme : le deduire d'un produit de six
+   * facteurs reviendrait a redecouvrir une regle depuis son effet.
+   */
+  readonly usedUltimate: boolean;
   readonly energySpent: number;
   /** Jauge d'Ultime gagnee a l'issue de la manche. */
   readonly ultimateGain: number;
@@ -126,6 +134,7 @@ export function resolveRound(
       countered: counters,
       wasCountered: isCountered,
       counterBlocked,
+      usedUltimate: seat.choice.useUltimate,
       energySpent: choiceCost(seat.choice, config),
     };
   };

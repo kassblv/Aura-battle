@@ -4,6 +4,8 @@ import type { ArenaControls } from '../arena/useArena.js';
 import { present } from '../match/presentation.js';
 import { createSoloMatch, type SoloMatch } from '../match/solo.js';
 import { viewOfSolo, type MatchView } from '../match/view.js';
+import { cuesForTransition } from '../audio/matchCues.js';
+import type { AudioControls } from './useAudio.js';
 import type { MatchActions } from './MatchScreen.jsx';
 import type { Look } from './wardrobe.js';
 
@@ -23,6 +25,7 @@ export interface MatchSession {
 export function useSoloMatch(
   looks: Readonly<Record<'a' | 'b', Look>>,
   arena: ArenaControls,
+  audio: AudioControls,
 ): MatchSession {
   const matchRef = useRef<SoloMatch | null>(null);
   matchRef.current ??= createSoloMatch({
@@ -33,6 +36,15 @@ export function useSoloMatch(
 
   const startedAt = useRef(performance.now());
   const [nowMs, setNow] = useState(0);
+
+  /**
+   * Derniere vue deja sonnee.
+   *
+   * Le solo passe par exactement la meme fonction que le duel en ligne. C est
+   * le point : l arene avait deja ete pilotee par un seul des deux modes, et le
+   * duel en ligne s etait retrouve sans adversaire a l ecran.
+   */
+  const soundedRef = useRef<MatchView | null>(null);
 
   useEffect(() => {
     arena.showcase.current = false;
@@ -46,6 +58,15 @@ export function useSoloMatch(
       arena.presentation.current = present(match.state, looks, {
         showOutcome: match.state.phase === 'reveal',
       });
+
+      const seen = viewOfSolo(match);
+      if (soundedRef.current !== null) {
+        for (const cue of cuesForTransition(soundedRef.current, seen)) {
+          audio.engine.cue(cue);
+        }
+      }
+      soundedRef.current = seen;
+
       setNow(now);
     };
     frame = requestAnimationFrame(tick);
@@ -53,7 +74,7 @@ export function useSoloMatch(
       cancelAnimationFrame(frame);
       arena.showcase.current = true;
     };
-  }, [arena, looks]);
+  }, [arena, audio, looks]);
 
   const actions: MatchActions = {
     tap: useCallback((taps: readonly RechargeTap[], inPhaseMs: number) => {

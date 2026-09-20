@@ -1,4 +1,4 @@
-import { BALANCE, type Orb, type RechargeTap } from '@aura/rules';
+import { BALANCE, type Orb, type RechargeTap, type TimingQuality } from '@aura/rules';
 import type { OnlineMatch } from './online.js';
 import type { SoloMatch } from './solo.js';
 
@@ -27,9 +27,23 @@ export interface SideView {
 }
 
 export interface RoundView {
+  /**
+   * Numero de la manche decrite.
+   *
+   * Le resultat d une manche survit a sa manche : sans ce numero, un
+   * consommateur ne peut pas distinguer « le resultat vient d arriver » de
+   * « c est encore celui d avant », et rejouerait la revelation precedente.
+   */
+  readonly round: number;
   readonly winner: 'moi' | 'adversaire' | null;
   readonly myScore: number;
   readonly opponentScore: number;
+  /** Qualite du timing du joueur local. Publique une fois la manche revelee. */
+  readonly myQuality: TimingQuality;
+  /** Le joueur local a depense son Ultime. */
+  readonly myUltimate: boolean;
+  /** L un des deux a contre l autre : la manche s est jouee sur les styles. */
+  readonly countered: boolean;
 }
 
 export interface MatchView {
@@ -82,9 +96,13 @@ export function viewOfSolo(match: SoloMatch): MatchView {
       last === undefined
         ? null
         : {
+            round: state.history.length,
             winner: last.winner === null ? null : last.winner === 'a' ? 'moi' : 'adversaire',
             myScore: last.seats.a.score,
             opponentScore: last.seats.b.score,
+            myQuality: last.seats.a.timing.quality,
+            myUltimate: last.seats.a.usedUltimate,
+            countered: last.seats.a.countered || last.seats.b.countered,
           },
     ended:
       state.result === null
@@ -121,9 +139,13 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
       last === null
         ? null
         : {
+            round: last.round,
             winner: last.winner === null ? null : last.winner === seat ? 'moi' : 'adversaire',
             myScore: last.sides[seat].final,
             opponentScore: last.sides[other].final,
+            myQuality: last.sides[seat].timing.quality,
+            myUltimate: last.sides[seat].ult,
+            countered: last.sides.a.counter || last.sides.b.counter,
           },
     ended:
       state.result === null

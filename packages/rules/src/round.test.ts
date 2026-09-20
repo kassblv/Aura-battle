@@ -459,3 +459,25 @@ describe('resolveRound — ce que le serveur doit pouvoir annoncer', () => {
     expect(result.seats.a.timing.delta).toBe(0.07);
   });
 });
+
+describe('usedUltimate', () => {
+  /**
+   * L'Ultime se lisait jusqu'ici dans le score et nulle part ailleurs.
+   *
+   * Or la mise en scene en a besoin telle quelle : le client doit savoir qu'il
+   * doit sonner et montrer un Ultime, et le deduire du multiplicateur
+   * reviendrait a redecouvrir une regle depuis son effet — exactement ce que la
+   * regle d'or n°1 interdit.
+   */
+  it('rapporte qui a depense son Ultime', () => {
+    const result = resolveRound(
+      {
+        a: seat({ style: 'calme', tier: 2, useUltimate: true }),
+        b: seat({ style: 'calme', tier: 2 }),
+      },
+      BALANCE,
+    );
+    expect(result.seats.a.usedUltimate).toBe(true);
+    expect(result.seats.b.usedUltimate).toBe(false);
+  });
+});

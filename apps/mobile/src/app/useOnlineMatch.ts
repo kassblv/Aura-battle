@@ -4,10 +4,12 @@ import { createGameClient, type GameClient } from '../net/client.js';
 import { createSocketTransport } from '../net/socketTransport.js';
 import { createOnlineMatch, type OnlineMatch, type OnlinePhase } from '../match/online.js';
 import { presentOnline } from '../match/onlinePresentation.js';
+import { cuesForTransition } from '../audio/matchCues.js';
 import { viewOfOnline, type MatchView } from '../match/view.js';
 import { resolveServerUrl } from '../net/serverUrl.js';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { ArenaControls } from '../arena/useArena.js';
+import type { AudioControls } from './useAudio.js';
 import type { Seat } from '@aura/rules';
 import type { Look } from './wardrobe.js';
 import type { MatchActions } from './MatchScreen.jsx';
@@ -53,6 +55,7 @@ export function useOnlineMatch(
   accessToken: string | null,
   looks: Readonly<Record<Seat, Look>>,
   arena: ArenaControls,
+  audio: AudioControls,
 ): OnlineSession {
   const clientRef = useRef<GameClient | null>(null);
   const matchRef = useRef<OnlineMatch | null>(null);
@@ -72,6 +75,9 @@ export function useOnlineMatch(
   /** Debut de la phase courante, en heure locale, pour dater la choregraphie. */
   const phaseRef = useRef<OnlinePhase>('idle');
   const phaseStartedAt = useRef(0);
+
+  /** Derniere vue deja sonnee : le son se declenche sur un bord, pas sur un etat. */
+  const soundedRef = useRef<MatchView>(EMPTY_VIEW);
 
   useEffect(() => {
     if (accessToken === null) return;
@@ -121,6 +127,20 @@ export function useOnlineMatch(
         phaseRef.current = state.phase;
         phaseStartedAt.current = nowRef.current;
       }
+      /**
+       * Le son suit le meme fil que l image, et depuis le meme instantane.
+       *
+       * Les deux partent donc du meme fait serveur : ils ne peuvent pas
+       * raconter deux histoires differentes. `cuesForTransition` compare l etat
+       * precedent au courant — sonner l etat rejouerait le meme fracas a
+       * chaque image.
+       */
+      const seen = viewOfOnline(match);
+      for (const cue of cuesForTransition(soundedRef.current, seen)) {
+        audio.engine.cue(cue);
+      }
+      soundedRef.current = seen;
+
       const live = state.phase !== 'idle';
       arena.showcase.current = !live;
       if (live) {
@@ -146,7 +166,7 @@ export function useOnlineMatch(
       clientRef.current = null;
       matchRef.current = null;
     };
-  }, [accessToken, arena]);
+  }, [accessToken, arena, audio]);
 
   const actions: MatchActions = {
     tap: useCallback((taps: readonly RechargeTap[]) => {

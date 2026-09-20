@@ -1,5 +1,6 @@
 import { useCallback, useMemo, useRef, useState, type JSX } from 'react';
 import { useArena, type ArenaControls } from '../arena/useArena.js';
+import { useAudio, type AudioControls } from './useAudio.js';
 import { defaultLook, equip, type Look, type LookSlot, type Wardrobe } from './wardrobe.js';
 import { MatchScreen } from './MatchScreen.jsx';
 import { useSoloMatch } from './useMatch.js';
@@ -27,6 +28,14 @@ import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 export function App(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const arena = useArena(canvasRef);
+  /**
+   * Le son vit aussi longtemps que l application, comme l arene.
+   *
+   * Il se deverrouille au premier geste du joueur, ou qu il soit : le monter a
+   * l entree du match arriverait apres ce geste-la, et iOS resterait muet tout
+   * le premier duel.
+   */
+  const audio = useAudio();
   const session = useSession();
 
   const [wardrobe, setWardrobe] = useState<Wardrobe>(() => ({
@@ -49,7 +58,7 @@ export function App(): JSX.Element {
    * couperait la socket entre la creation d un code et l arrivee de
    * l adversaire — c est-a-dire exactement pendant l attente.
    */
-  const online = useOnlineMatch(session.accessToken, looks, arena);
+  const online = useOnlineMatch(session.accessToken, looks, arena, audio);
 
   /** Le serveur a ouvert un match : on quitte l ecran d invitation pour l arene. */
   const inDuel = online.view.phase !== 'idle';
@@ -246,7 +255,7 @@ export function App(): JSX.Element {
         )}
 
         {!showOnboarding && nav.screen === 'match' && (
-          <SoloMatchScreen looks={looks} arena={arena} onLeave={leaveMatch} />
+          <SoloMatchScreen looks={looks} arena={arena} audio={audio} onLeave={leaveMatch} />
         )}
 
         {!showOnboarding && nav.screen !== 'home' && canLeave(nav) && nav.screen !== 'match' && (
@@ -274,13 +283,15 @@ export function App(): JSX.Element {
 function SoloMatchScreen({
   looks,
   arena,
+  audio,
   onLeave,
 }: {
   readonly looks: Readonly<Record<'a' | 'b', Look>>;
   readonly arena: ArenaControls;
+  readonly audio: AudioControls;
   readonly onLeave: () => void;
 }): JSX.Element {
-  const session = useSoloMatch(looks, arena);
+  const session = useSoloMatch(looks, arena, audio);
   return (
     <MatchScreen
       view={session.view}

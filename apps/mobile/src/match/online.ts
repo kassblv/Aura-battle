@@ -85,7 +85,14 @@ export interface OnlineMatch {
  */
 export type OnlineOptions = Record<string, never>;
 
-const EMPTY: OnlineState = {
+/**
+ * Aucun match : l etat d avant toute connexion.
+ *
+ * Exporte parce qu il sert aussi de point de depart aux comparaisons d un
+ * consommateur — le son, par exemple, se declenche sur un bord entre deux
+ * instantanes et a besoin d un premier terme qui ne sonne rien.
+ */
+export const EMPTY_ONLINE_STATE: OnlineState = {
   matchId: null,
   seat: null,
   opponentName: null,
@@ -104,7 +111,7 @@ const EMPTY: OnlineState = {
 };
 
 export function createOnlineMatch(client: GameClient): OnlineMatch {
-  let state: OnlineState = EMPTY;
+  let state: OnlineState = EMPTY_ONLINE_STATE;
   /** Compteur d actions, croissant : il rend les renvois idempotents. */
   let seq = 0;
 
@@ -114,7 +121,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
 
   client.on('match:found', (data) => {
     state = {
-      ...EMPTY,
+      ...EMPTY_ONLINE_STATE,
       matchId: data.matchId,
       seat: data.seat,
       opponentName: data.opponent.displayName,
@@ -208,7 +215,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
    */
   client.on('match:state', (data) => {
     state = {
-      ...EMPTY,
+      ...EMPTY_ONLINE_STATE,
       matchId: data.matchId,
       seat: data.seat,
       opponentName: state.opponentName,
