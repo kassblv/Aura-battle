@@ -4,6 +4,7 @@ import type { ArenaControls } from '../arena/useArena.js';
 import { present } from '../match/presentation.js';
 import { createSoloMatch, type SoloMatch } from '../match/solo.js';
 import { viewOfSolo, type MatchView } from '../match/view.js';
+import { renderKey } from '../ui/renderKey.js';
 import { cuesForTransition } from '../audio/matchCues.js';
 import type { AudioControls } from './useAudio.js';
 import type { MatchActions } from './MatchScreen.jsx';
@@ -20,6 +21,14 @@ export interface MatchSession {
   readonly view: MatchView;
   readonly actions: MatchActions;
   readonly nowMs: number;
+  /**
+   * Horloge vive du match.
+   *
+   * L ecran la lit a chaque image pour peindre l aiguille, les orbes et le
+   * compte a rebours, et a chaque geste pour le dater. `nowMs` ne vaut plus
+   * que pour le premier rendu : entre deux rendus, il ne bouge plus.
+   */
+  readonly clock: () => number;
   /**
    * Relance une partie, sur une nouvelle graine.
    *
@@ -46,7 +55,21 @@ export function useSoloMatch(
   });
 
   const startedAt = useRef(performance.now());
-  const [nowMs, setNow] = useState(0);
+
+  /** Horloge du match : `performance.now()` moins le debut de la partie. */
+  const clock = useCallback((): number => performance.now() - startedAt.current, []);
+
+  /**
+   * Dernier etat deja dessine par React.
+   *
+   * La boucle appelait `setNow(now)` a chaque image : un rendu complet de
+   * l ecran de match soixante fois par seconde, c est-a-dire trente boutons
+   * redessines pour deplacer une aiguille. `MatchScreen` peint desormais ce
+   * qui bouge dans sa propre boucle ; ici on ne redessine que quand la vue
+   * change vraiment de contenu.
+   */
+  const drawn = useRef('');
+  const [, force] = useState(0);
 
   /**
    * Derniere vue deja sonnee.
@@ -88,7 +111,11 @@ export function useSoloMatch(
       }
       soundedRef.current = seen;
 
-      setNow(now);
+      const key = renderKey(seen);
+      if (key !== drawn.current) {
+        drawn.current = key;
+        force((count) => count + 1);
+      }
     };
     frame = requestAnimationFrame(tick);
     return () => {
@@ -132,9 +159,12 @@ export function useSoloMatch(
     // Et rien de la partie precedente ne doit sonner : le dernier resultat vu
     // est celui d un match qui n existe plus.
     soundedRef.current = null;
-    setNow(0);
+    // La vue de la partie precedente n a plus rien a voir avec la nouvelle :
+    // on oublie la cle pour que le premier etat de la revanche se dessine.
+    drawn.current = '';
+    force((count) => count + 1);
   }, []);
 
   const match = matchRef.current;
-  return { view: viewOfSolo(match), actions, nowMs, restart };
+  return { view: viewOfSolo(match), actions, nowMs: clock(), clock, restart };
 }

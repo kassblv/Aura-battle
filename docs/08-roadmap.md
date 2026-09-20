@@ -87,7 +87,7 @@ Référence : `docs/05-matchmaking-ranking.md`.
   match classé. **Non fait : la réinitialisation douce de fin de saison, et le MMR caché
   séparé de la partie rapide** (`docs/05` les documente déjà, hors périmètre de ce jalon).
 - [ ] Enregistrement des fantômes et rejeu serveur ; LP réduits ; drapeau `ghost` — **non fait ; le drapeau est toujours `false`, et la bascule vers un fantôme après 25 s / 12 s n'existe pas**
-- [ ] Écrans : partie classée, partie rapide, profil (ligue, historique), classement — **non fait : le client n'émet pas encore `queue:join`**
+- [ ] Écrans : partie classée ✅ et partie rapide ✅ (choix sur l'accueil, `queue:join` émis avec le mode), profil affichant la ligue ✅ — **historique et classement : non faits**
 - [ ] Tests : appariement par MMR ✅, élargissement ✅, entrée/sortie de file et tickets fantômes ✅ (e2e à deux clients) — **bascule vers fantôme et calcul des LP : non faits**
 
 ## M6 — Application mobile

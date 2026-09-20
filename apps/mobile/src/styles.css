@@ -407,10 +407,29 @@ body {
   text-align: center;
 }
 
+/* Le mode est un bouton, pas une etiquette : il se touche pour changer. */
 .launch__mode {
   margin: 0;
+  padding: 5px 14px;
+  border-radius: 13px;
+  border: 1px solid var(--hud-line);
+  background: var(--hud);
+  color: var(--ink);
+  font: inherit;
   font-size: 12px;
   font-weight: 700;
+  cursor: pointer;
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+
+/* Classé se distingue d'un coup d'oeil : c'est le mode ou l'on risque. */
+.launch__mode[aria-pressed='true'] {
+  border-color: var(--gold-ink);
+}
+
+.launch__mode[aria-pressed='true'] b {
+  color: var(--gold-ink);
 }
 
 .launch__mode small {
@@ -1604,6 +1623,37 @@ body {
    * entre les deux grappes — c est-a-dire sur la jauge, l endroit le plus
    * naturel ou viser, et celui qu ADR 0008 veut le plus large possible.
    */
+  pointer-events: none;
+
+  /**
+   * Elle est montee tout le match et **se montre** a la phase de choix.
+   *
+   * La monter au moment ou la phase s ouvre coutait deux images pleines — la
+   * disposition et la peinture de trente boutons — a l instant precis ou la
+   * jauge apparait. Disposee d avance, elle ne change plus que d opacite, ce
+   * que le compositeur fait sans rien remesurer.
+   *
+   * `MatchScreen` la marque `inert` quand elle est cachee : la transparence
+   * ne suffirait pas, les grappes attraperaient les orbes de la recharge, qui
+   * vivent dans les memes arcs de pouce.
+   *
+   * `prefers-reduced-motion` ramene la duree a 0,01 ms par la regle globale.
+   */
+  transition: opacity var(--d-chip) var(--e-out);
+}
+
+.controls[data-shown='false'] {
+  opacity: 0;
+}
+
+/**
+ * Ceinture et bretelles.
+ *
+ * `inert` suffit sur les moteurs qui le connaissent. Sur les autres, la bande
+ * resterait tapable et ses deux grappes voleraient les orbes de la recharge —
+ * un defaut invisible a l oeil, puisque la bande est transparente.
+ */
+.controls[inert] .cluster {
   pointer-events: none;
 }
 

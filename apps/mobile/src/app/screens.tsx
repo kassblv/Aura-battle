@@ -22,6 +22,9 @@ const percent = (value: number): string => `${(value * 100).toFixed(1).replace('
 export interface HomeProps {
   readonly profile: PlayerProfile;
   readonly seasonLabel: string;
+  /** Mode que lancera le gros bouton. */
+  readonly mode: 'ranked' | 'casual';
+  readonly onToggleMode: () => void;
   /** Le meme actuellement joue par le personnage au centre. */
   readonly meme: MemeCard;
   /** Parcourt la galerie : -1 precedent, +1 suivant. */
@@ -58,6 +61,8 @@ export interface HomeProps {
 export function HomeScreen({
   profile,
   seasonLabel,
+  mode,
+  onToggleMode,
   meme,
   onStepMeme,
   memeOwned,
@@ -173,10 +178,24 @@ export function HomeScreen({
       </div>
 
       <div className="launch">
-        <p className="launch__mode">
-          Solo · contre Nova
-          <small>{seasonLabel}</small>
-        </p>
+        {/*
+          Le mode se choisit ici, pas dans un menu.
+
+          Classé et rapide se jouent exactement pareil — seul compte ce qu'on
+          risque. Enterrer ce choix dans un ecran d'options ferait jouer la
+          moitie des gens dans le mode qu'ils n'ont pas choisi.
+        */}
+        <button
+          type="button"
+          className="launch__mode"
+          onClick={onToggleMode}
+          aria-pressed={mode === 'ranked'}
+        >
+          <b>{mode === 'ranked' ? 'Classé' : 'Partie rapide'}</b>
+          <small>
+            {mode === 'ranked' ? 'Ta ligue bouge' : 'Rien à perdre'} · {seasonLabel}
+          </small>
+        </button>
         <div className="launch__row">
           {/*
             Un seul gros bouton, et il cherche un adversaire.

@@ -166,6 +166,15 @@ export function App(): JSX.Element {
   const [trying, setTrying] = useState<string | null>(null);
 
   /**
+   * Classe ou partie rapide.
+   *
+   * Les deux se jouent exactement pareil : seul change ce qu'on risque. Le
+   * client demandait `casual` en dur a trois endroits, donc la ligue d'un
+   * joueur ne pouvait jamais bouger, quoi qu'il gagne.
+   */
+  const [mode, setMode] = useState<'ranked' | 'casual'>('ranked');
+
+  /**
    * La ligue, telle que le serveur l'a annoncee au dernier match fini.
    *
    * Le client ne la calcule jamais : il la reçoit dans `match:end` et la
@@ -278,6 +287,10 @@ export function App(): JSX.Element {
           <HomeScreen
             profile={profile}
             seasonLabel="Saison 1 · démonstration"
+            mode={mode}
+            onToggleMode={() => {
+              setMode((current) => (current === 'ranked' ? 'casual' : 'ranked'));
+            }}
             onPlay={() => {
               go('match');
             }}
@@ -292,7 +305,7 @@ export function App(): JSX.Element {
             }}
             onOnline={() => {
               go('queue');
-              online.joinQueue('casual');
+              online.joinQueue(mode);
             }}
             onInvite={() => {
               go('invite');
@@ -380,7 +393,7 @@ export function App(): JSX.Element {
             onRematch={() => {
               // En ligne, « rejouer » c est se remettre en file : l adversaire
               // precedent n a aucune raison d etre encore la.
-              online.joinQueue('casual');
+              online.joinQueue(mode);
             }}
             rematchLabel="Rejouer"
           />
@@ -413,7 +426,7 @@ export function App(): JSX.Element {
               // celui qui avait donne le code n a pas forcement envie d'un
               // second duel, et l attendre laisserait le joueur devant rien.
               go('queue');
-              online.joinQueue('casual');
+              online.joinQueue(mode);
             }}
             rematchLabel="Rejouer"
           />
