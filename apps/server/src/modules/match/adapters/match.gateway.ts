@@ -69,6 +69,21 @@ interface SocketState {
 }
 
 /**
+ * La socket a-t-elle fini son authentification ?
+ *
+ * `socket.data` vaut `{}` depuis l'ouverture de la socket jusqu'a la fin du
+ * handshake. Le filtre entrant est pose avant cette fin — a dessein — et doit
+ * donc savoir distinguer les deux. Un predicat de type plutot qu'un cast :
+ * c'est le compilateur qui garantit ensuite qu'on ne lit pas un `bucket`
+ * absent.
+ */
+function isAuthenticated(data: unknown): data is SocketState {
+  if (typeof data !== 'object' || data === null) return false;
+  const state = data as Partial<SocketState>;
+  return typeof state.playerId === 'string' && state.bucket !== undefined;
+}
+
+/**
  * Le nom affiche est une propriete de la **session**, pas du match.
  *
  * Le resoudre ici — dans le seul endroit qui attend deja, pour
@@ -187,89 +202,41 @@ export class MatchGateway implements OnGatewayConnection {
   }
 
   async handleConnection(socket: Socket): Promise<void> {
-    const result = await this.auth.authenticate(socket.handshake.auth);
-    if (!result.ok) {
-      this.emit(socket, 'error', {
-        code: result.code,
-        message: result.message,
-        retryable: result.code === 'UNAUTHORIZED',
-      });
-      socket.disconnect(true);
-      return;
-    }
-
-    const state: SocketState = {
-      playerId: result.playerId,
-      bucket: new TokenBucket(RATE_LIMIT),
-      rateLimitReplies: 0,
-    };
-    socket.data = state;
-
     /**
-     * Debut de la mesure : **avant** tout filtre (jalon M7).
+     * Un seul point de passage pour tout l'entrant — **pose avant la premiere
+     * attente de la methode**.
      *
-     * `onAny` se declenche au decodage du paquet, avant les intergiciels de
-     * Socket.IO. C'est le bon instant : la limite de debit et la validation de
-     * schema font partie du traitement d'un message, et une mesure qui
-     * commencerait au gestionnaire ne verrait pas le cout d'un refus.
+     * La limite de debit et la validation de schema s'appliquent a chaque
+     * evenement, y compris ceux qu'on ajoutera plus tard : rien ne peut les
+     * contourner par oubli. Et rien ne peut les contourner par vitesse non
+     * plus : NestJS branche les `@SubscribeMessage` pendant que
+     * `handleConnection` est encore suspendue, donc tout ce qui est installe
+     * APRES un `await` laisse une fenetre ou un paquet atteindrait un
+     * gestionnaire sans identite, sans limite de debit et sans schema.
      *
-     * L'ecouteur n'est pose que si l'on mesure. Un `if` de plus dans le
-     * rappel n'aurait pas suffi : des qu'un ecouteur attrape-tout existe,
-     * Socket.IO **recopie sa liste a chaque paquet recu** (`_anyListeners.slice()`).
-     * C'est une allocation par message entrant, en permanence, pour un banc
-     * qu'on lance quatre fois par an.
+     * Aujourd'hui cette fenetre est vide par accident : `authenticate` ne fait
+     * aucune entree-sortie — `verifyAsync` travaille sur un secret HMAC — donc
+     * elle se referme dans les microtaches du meme tour, avant qu'aucun paquet
+     * d'une lecture reseau suivante n'arrive. Mesure a l'appui, un client qui
+     * colle ses trames voit meme Socket.IO fermer sa connexion.
+     *
+     * Mais c'est un accident d'ordonnancement, pas une defense. Le jour ou la
+     * verification consultera une liste de revocation dans Redis ou une base,
+     * l'attente traversera plusieurs tours de boucle et la fenetre s'ouvrira,
+     * sans que rien dans ce fichier n'ait change. L'ordre ci-dessous est donc
+     * la garantie, et le refus explicite en tete du filtre en est la preuve.
      */
-    if (this.metrics.enabled) {
-      socket.onAny((event: string) => {
-        this.metrics.received(socket, event);
-      });
-    }
-
-    socket.on('disconnect', () => {
-      // Rien ne doit survivre a la socket, pas meme une mesure en attente.
-      this.metrics.forget(socket);
-
-      /**
-       * Une fermeture ne vaut deconnexion que si c'etait la socket **courante**.
-       *
-       * `register` ferme la socket precedente, et Socket.IO emet `disconnect`
-       * synchroniquement dans la meme pile : ce handler se declenche donc au
-       * beau milieu d'une reconnexion parfaitement legitime. Armer un abandon
-       * et vider la file a ce moment-la punirait le joueur qui revient. Cela
-       * fonctionnait jusqu'ici par chance d'ordonnancement — la ligne suivante
-       * annulait le minuteur juste apres ; on ne depend plus de cet ordre.
-       */
-      if (!this.notifier.unregister(state.playerId, socket)) return;
-
-      // Le match continue sans lui ; il a quarante-cinq secondes pour revenir.
-      this.runtime.notePlayerDisconnected(state.playerId);
-
-      /**
-       * Le ticket quitte la file, mais n'est pas detruit.
-       *
-       * Un ticket qui reste appariable sans son joueur offre a son adversaire
-       * un `match:found` contre personne, puis un forfait : il doit sortir de
-       * la file sur-le-champ — le worker ecarte deja les absents a chaque
-       * tour, ceci ferme la fenetre de 500 ms entre les deux.
-       *
-       * Le detruire serait excessif pour autant. `docs/03` demande au client de
-       * **fermer proprement sa socket** quand l'application passe en
-       * arriere-plan, et accorde 45 s pour revenir dans un match : la file n'a
-       * aucune raison d'etre plus severe. Le ticket est donc gare le temps de
-       * la meme grace, et `resume` le remet en jeu si le joueur revient.
-       */
-      void this.queue.park(state.playerId, Date.now()).catch((cause: unknown) => {
-        this.logger.warn(
-          `sortie de file impossible pour ${state.playerId} : ${describeCause(cause)}`,
-          'MatchGateway',
-        );
-      });
-    });
-
-    // Un seul point de passage pour tout l'entrant : la limite de debit et la
-    // validation de schema s'appliquent a chaque evenement, y compris ceux
-    // qu'on ajoutera plus tard. Rien ne peut les contourner par oubli.
     socket.use((packet, next) => {
+      /**
+       * Rien ne passe tant que la socket n'est pas authentifiee.
+       *
+       * L'etat est relu a chaque paquet plutot que capture : le filtre est
+       * pose avant que `socket.data` existe, et c'est justement le but.
+       */
+      const data: unknown = socket.data;
+      if (!isAuthenticated(data)) return;
+      const state = data;
+
       // Socket.IO type un paquet comme un tuple ouvert : on le lit sans
       // supposer qu'il porte bien deux elements.
       const event = String(packet[0]);
@@ -323,13 +290,108 @@ export class MatchGateway implements OnGatewayConnection {
       next();
     });
 
+    const result = await this.auth.authenticate(socket.handshake.auth);
+    if (!result.ok) {
+      this.emit(socket, 'error', {
+        code: result.code,
+        message: result.message,
+        retryable: result.code === 'UNAUTHORIZED',
+      });
+      socket.disconnect(true);
+      return;
+    }
+
+    const state: SocketState = {
+      playerId: result.playerId,
+      bucket: new TokenBucket(RATE_LIMIT),
+      rateLimitReplies: 0,
+    };
+    socket.data = state;
+
     /**
-     * Le nom et la ligue sont lus **apres** avoir pose le filtre entrant, en
-     * parallele — deux lectures independantes, aucune raison de les serialiser.
+     * Debut de la mesure : **avant** tout filtre (jalon M7).
      *
-     * C'est la seule attente de cette methode, et rien ne doit pouvoir en
-     * profiter : tant que `socket.use` n'est pas installe, un client presse
-     * enverrait ses messages sans limite de debit ni validation de schema.
+     * `onAny` se declenche au decodage du paquet, avant les intergiciels de
+     * Socket.IO. C'est le bon instant : la limite de debit et la validation de
+     * schema font partie du traitement d'un message, et une mesure qui
+     * commencerait au gestionnaire ne verrait pas le cout d'un refus.
+     *
+     * L'ecouteur n'est pose que si l'on mesure. Un `if` de plus dans le
+     * rappel n'aurait pas suffi : des qu'un ecouteur attrape-tout existe,
+     * Socket.IO **recopie sa liste a chaque paquet recu** (`_anyListeners.slice()`).
+     * C'est une allocation par message entrant, en permanence, pour un banc
+     * qu'on lance quatre fois par an.
+     */
+    if (this.metrics.enabled) {
+      socket.onAny((event: unknown) => {
+        /**
+         * `String(event)`, et pas un parametre type `string`.
+         *
+         * `socket.io-parser` accepte un nom d'evenement NUMERIQUE : le client
+         * peut emettre `42[7,{}]`. `onAny` livre alors le nombre `7` tel quel,
+         * pendant que le filtre entrant fait `String(packet[0])` et solde
+         * `"7"`. `7 === "7"` est faux, donc la fenetre ne se soldait jamais :
+         * elle gonflait `unmatched`, que le relevé documente comme devant
+         * rester a zero, et restait en file jusqu'a l'eviction. Un client
+         * pouvait ainsi rendre illisibles les deux temoins de fiabilite d'un
+         * banc de charge.
+         */
+        this.metrics.received(socket, String(event));
+      });
+    }
+
+    socket.on('disconnect', () => {
+      // Rien ne doit survivre a la socket, pas meme une mesure en attente.
+      this.metrics.forget(socket);
+
+      /**
+       * Une fermeture ne vaut deconnexion que si c'etait la socket **courante**.
+       *
+       * `register` ferme la socket precedente, et Socket.IO emet `disconnect`
+       * synchroniquement dans la meme pile : ce handler se declenche donc au
+       * beau milieu d'une reconnexion parfaitement legitime. Armer un abandon
+       * et vider la file a ce moment-la punirait le joueur qui revient. Cela
+       * fonctionnait jusqu'ici par chance d'ordonnancement — la ligne suivante
+       * annulait le minuteur juste apres ; on ne depend plus de cet ordre.
+       */
+      if (!this.notifier.unregister(state.playerId, socket)) return;
+
+      // Le match continue sans lui ; il a quarante-cinq secondes pour revenir.
+      this.runtime.notePlayerDisconnected(state.playerId);
+
+      /**
+       * Le ticket quitte la file, mais n'est pas detruit.
+       *
+       * Un ticket qui reste appariable sans son joueur offre a son adversaire
+       * un `match:found` contre personne, puis un forfait : il doit sortir de
+       * la file sur-le-champ — le worker ecarte deja les absents a chaque
+       * tour, ceci ferme la fenetre de 500 ms entre les deux.
+       *
+       * Le detruire serait excessif pour autant. `docs/03` demande au client de
+       * **fermer proprement sa socket** quand l'application passe en
+       * arriere-plan, et accorde 45 s pour revenir dans un match : la file n'a
+       * aucune raison d'etre plus severe. Le ticket est donc gare le temps de
+       * la meme grace, et `resume` le remet en jeu si le joueur revient.
+       */
+      void this.queue.park(state.playerId, Date.now()).catch((cause: unknown) => {
+        this.logger.warn(
+          `sortie de file impossible pour ${state.playerId} : ${describeCause(cause)}`,
+          'MatchGateway',
+        );
+      });
+    });
+
+    // Un seul point de passage pour tout l'entrant : la limite de debit et la
+    // validation de schema s'appliquent a chaque evenement, y compris ceux
+    // qu'on ajoutera plus tard. Rien ne peut les contourner par oubli.
+
+    /**
+     * Le nom et la ligue sont lus en parallele : deux lectures independantes,
+     * aucune raison de les serialiser.
+     *
+     * Ce n'est pas la seule attente de la methode — `authenticate` en est une
+     * autre, et elle vient avant. Le commentaire qui l'affirmait etait faux, et
+     * c'est exactement ce que le filtre pose en tete rend sans consequence.
      */
     const [displayName, league] = await Promise.all([
       this.displayNameOf(state.playerId),
