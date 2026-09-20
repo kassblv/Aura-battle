@@ -77,3 +77,33 @@ describe('canLeave', () => {
     expect(canLeave(at('match', false))).toBe(true);
   });
 });
+
+describe('file d attente', () => {
+  it('ouvre la recherche d adversaire depuis l accueil', () => {
+    expect(navigate(openingScreen(), 'queue').screen).toBe('queue');
+  });
+
+  /**
+   * Chercher un adversaire n est pas jouer.
+   *
+   * Tant que le serveur n a apparie personne, le joueur doit pouvoir annuler
+   * et revenir : marquer la recherche comme un match en cours l enfermerait
+   * dans un ecran d attente dont rien ne le sortirait.
+   */
+  it('ne compte pas la recherche comme un match en cours', () => {
+    const searching = navigate(openingScreen(), 'queue');
+    expect(searching.matchRunning).toBe(false);
+    expect(canLeave(searching)).toBe(true);
+  });
+
+  it('laisse revenir a l accueil depuis la file', () => {
+    const searching = navigate(openingScreen(), 'queue');
+    expect(navigate(searching, 'home').screen).toBe('home');
+  });
+
+  /** Une fois le match ouvert, la file n est plus un endroit ou revenir. */
+  it('refuse de rouvrir la file pendant une manche', () => {
+    const playing = navigate(openingScreen(), 'match');
+    expect(navigate(playing, 'queue')).toBe(playing);
+  });
+});

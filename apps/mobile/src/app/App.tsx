@@ -21,6 +21,7 @@ import { newProfile, type PlayerProfile } from './profile.js';
 import { buy, type ShopState } from './shop.js';
 import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
+import { QueueScreen } from './QueueScreen.jsx';
 import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
 import { memeGallery, stepMeme } from './memes.js';
@@ -255,6 +256,10 @@ export function App(): JSX.Element {
               go('shop');
             }}
             onOnline={() => {
+              go('queue');
+              online.joinQueue('casual');
+            }}
+            onInvite={() => {
               go('invite');
             }}
             meme={meme}
@@ -315,6 +320,28 @@ export function App(): JSX.Element {
             onClose={() => {
               go('home');
             }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'queue' && !inDuel && (
+          <QueueScreen
+            status={online.status}
+            elapsedMs={online.queue?.elapsedMs ?? 0}
+            searchRange={online.queue?.searchRange ?? 0}
+            onCancel={() => {
+              online.leaveQueue();
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'queue' && inDuel && (
+          <MatchScreen
+            view={online.view}
+            actions={online.actions}
+            nowMs={online.nowMs}
+            opponentName={online.opponentName}
+            onLeave={leaveMatch}
           />
         )}
 

@@ -36,7 +36,10 @@ export interface HomeProps {
   readonly onProfile: () => void;
   readonly onWardrobe: () => void;
   readonly onShop: () => void;
+  /** Cherche un adversaire : c est le chemin normal vers un duel. */
   readonly onOnline: () => void;
+  /** Jouer avec quelqu un qu on connait, par code. */
+  readonly onInvite: () => void;
 }
 
 /**
@@ -65,6 +68,7 @@ export function HomeScreen({
   onWardrobe,
   onShop,
   onOnline,
+  onInvite,
 }: HomeProps): JSX.Element {
   return (
     <div className="home">
@@ -174,13 +178,25 @@ export function HomeScreen({
           <small>{seasonLabel}</small>
         </p>
         <div className="launch__row">
-          {/* Le duel d abord : c est le mode que le jeu existe pour offrir. */}
+          {/*
+            Un seul gros bouton, et il cherche un adversaire.
+
+            C'est le mode que le jeu existe pour offrir, et il ne doit rien
+            demander : un joueur seul devant son telephone appuie et joue. Le
+            code d'invitation et le solo restent accessibles, mais en second —
+            ce sont des detours, pas le chemin.
+          */}
           <button type="button" className="launch__btn" onClick={onOnline}>
             Duel
           </button>
-          <button type="button" className="launch__solo" onClick={onPlay}>
-            Solo
-          </button>
+          <div className="launch__side">
+            <button type="button" className="launch__alt" onClick={onInvite}>
+              Code
+            </button>
+            <button type="button" className="launch__alt" onClick={onPlay}>
+              Solo
+            </button>
+          </div>
         </div>
       </div>
     </div>

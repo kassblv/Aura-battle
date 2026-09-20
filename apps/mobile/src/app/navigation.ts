@@ -6,7 +6,7 @@
  * `onClick`, et une regle eparpillee est une regle qu on oublie.
  */
 
-export type Screen = 'home' | 'profile' | 'wardrobe' | 'shop' | 'invite' | 'match';
+export type Screen = 'home' | 'profile' | 'wardrobe' | 'shop' | 'queue' | 'invite' | 'match';
 
 export interface Navigation {
   readonly screen: Screen;
@@ -41,6 +41,16 @@ export function navigate(state: Navigation, to: Screen): Navigation {
    */
   // Le vestiaire et la boutique restent fermes pendant une manche.
   if ((to === 'wardrobe' || to === 'shop') && state.matchRunning) return state;
+
+  /**
+   * On ne cherche pas d adversaire quand on en a deja un.
+   *
+   * Chercher n est pas jouer — la recherche ne compte donc pas comme un match
+   * en cours, et on peut l annuler. Mais une fois la manche ouverte, la file
+   * n est plus un endroit ou revenir : y retourner laisserait le joueur devant
+   * un compte a rebours pendant que sa partie se joue sans lui.
+   */
+  if ((to === 'queue' || to === 'invite') && state.matchRunning) return state;
 
   if (to === 'match') return { screen: 'match', matchRunning: true };
   return { screen: to, matchRunning: false };

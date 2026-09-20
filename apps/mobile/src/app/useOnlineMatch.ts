@@ -45,6 +45,20 @@ export interface OnlineSession {
   /** Code d invitation cree par ce joueur, quand il en a demande un. */
   readonly inviteCode: string | null;
   readonly error: string | null;
+  /**
+   * Recherche en cours, ou `null`.
+   *
+   * Les deux nombres viennent du serveur et ne sont jamais estimes ici :
+   * montrer une fourchette qui s elargit explique pourquoi l attente dure, et
+   * une fourchette inventee mentirait sur ce que le serveur cherche vraiment.
+   */
+  readonly queue: {
+    readonly mode: 'ranked' | 'casual';
+    readonly elapsedMs: number;
+    readonly searchRange: number;
+  } | null;
+  readonly joinQueue: (mode: 'ranked' | 'casual') => void;
+  readonly leaveQueue: () => void;
   readonly createInvite: () => void;
   readonly joinInvite: (code: string) => void;
   /** Annonce qu on est pret : le serveur n ouvre la manche que quand les deux le sont. */
@@ -79,6 +93,7 @@ export function useOnlineMatch(
   const matchRef = useRef<OnlineMatch | null>(null);
   const [, force] = useState(0);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
+  const [queue, setQueue] = useState<OnlineSession['queue']>(null);
   const [error, setError] = useState<string | null>(null);
   const nowRef = useRef(0);
 
@@ -111,6 +126,13 @@ export function useOnlineMatch(
     });
     const offError = client.on('error', (data) => {
       setError(data.message);
+      // Un refus d entree en file laisse le joueur devant un compte a rebours
+      // qui ne mene nulle part : on referme la recherche avec le message.
+      if (data.code === 'ALREADY_IN_QUEUE' || data.code === 'ALREADY_IN_MATCH') setQueue(null);
+    });
+
+    const offQueue = client.on('queue:status', (data) => {
+      setQueue({ mode: data.mode, elapsedMs: data.elapsedMs, searchRange: data.searchRange });
     });
     /**
      * Le match trouve efface le code : le garder afficherait une invitation
@@ -118,6 +140,7 @@ export function useOnlineMatch(
      */
     const offFound = client.on('match:found', () => {
       setInviteCode(null);
+      setQueue(null);
       setError(null);
       client.send('match:ready', { matchId: match.state.matchId ?? '' });
     });
@@ -188,6 +211,7 @@ export function useOnlineMatch(
       clearInterval(ping);
       offInvite();
       offError();
+      offQueue();
       offFound();
       client.close();
       clientRef.current = null;
@@ -206,6 +230,24 @@ export function useOnlineMatch(
       return true;
     }, []),
   };
+
+  const joinQueue = useCallback((mode: 'ranked' | 'casual') => {
+    setError(null);
+    /**
+     * L attente s affiche des l envoi, pas au premier `queue:status`.
+     *
+     * Le serveur repond en quelques dizaines de millisecondes, mais un ecran
+     * qui ne bouge pas tant qu il n a pas repondu se lit comme un bouton mort —
+     * et le joueur appuie une seconde fois.
+     */
+    setQueue({ mode, elapsedMs: 0, searchRange: 0 });
+    clientRef.current?.send('queue:join', { mode });
+  }, []);
+
+  const leaveQueue = useCallback(() => {
+    setQueue(null);
+    clientRef.current?.send('queue:leave', {});
+  }, []);
 
   const createInvite = useCallback(() => {
     setError(null);
@@ -233,6 +275,9 @@ export function useOnlineMatch(
     opponentName: match?.state.opponentName ?? 'Adversaire',
     inviteCode,
     error,
+    queue,
+    joinQueue,
+    leaveQueue,
     createInvite,
     joinInvite,
     ready,

@@ -54,8 +54,28 @@
   --safe-bottom: max(10px, env(safe-area-inset-bottom));
   --safe-left: max(12px, env(safe-area-inset-left));
 
+  /**
+   * Bande de commandes.
+   *
+   * Miroir de `src/ui/layout.ts`, dont les tests verifient a la fois ces
+   * nombres et l invariant qui les justifie : le cadrage large pose les
+   * combattants entre 28,8 % et 78,7 % de la hauteur, et la bande doit tenir
+   * sous eux. Toute valeur changee ici se change la-bas, sinon le test tombe.
+   */
+  --touch: 46px;
+  --pick-w: 52px;
+  --pick-h: 50px;
+  --pick-tight-w: 52px;
+  --pick-tight-h: 46px;
+  --band-gap: 10px;
+  --gauge-track: 20px;
+  --gauge-legend: 10px;
+  --gauge-h: 45px;
+  --bet-h: 24px;
+
   --d-tap: 90ms;
   --d-chip: 160ms;
+  --d-panel: 240ms;
   --e-out: cubic-bezier(0.16, 1, 0.3, 1);
   --e-over: cubic-bezier(0.34, 1.56, 0.64, 1);
 }
@@ -408,24 +428,43 @@ body {
   align-items: stretch;
 }
 
-/* Le solo reste accessible mais discret : il se joue, il ne se cherche pas. */
-.launch__solo {
+/*
+  Les deux detours, empiles a cote du bouton principal.
+
+  Le code d'invitation et le solo restent accessibles mais ne se disputent pas
+  la place : ce sont des chemins de cote. Empiles, ils tiennent la hauteur du
+  gros bouton sans lui prendre de largeur.
+*/
+.launch__side {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  justify-content: stretch;
+}
+
+.launch__alt {
+  flex: 1;
   font: inherit;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 700;
+  letter-spacing: 0.04em;
   color: var(--ink);
   background: var(--chip);
   border: 1px solid var(--line);
-  border-radius: 20px;
-  min-width: 74px;
+  border-radius: 14px;
+  /* Cible tactile : deux boutons empiles restent au-dessus du minimum de
+     l'ADR 0008 une fois l'espacement retire. */
+  min-width: 72px;
+  min-height: 34px;
+  padding: 0 12px;
   cursor: pointer;
-  box-shadow: 0 5px 0 var(--chip-deep);
+  box-shadow: 0 3px 0 var(--chip-deep);
   transition: transform var(--d-tap) var(--e-out);
 }
 
-.launch__solo:active {
-  transform: translateY(4px);
-  box-shadow: 0 1px 0 var(--chip-deep);
+.launch__alt:active {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 var(--chip-deep);
 }
 
 .launch__btn {
@@ -745,29 +784,114 @@ body {
   cursor: pointer;
 }
 
-.home__emotes {
+/*
+  La galerie de memes.
+
+  Au centre-bas, sous le personnage : c'est lui le sujet, la galerie n'est que
+  la legende de ce qu'il joue. Elle ne s'etend pas sur toute la largeur — les
+  deux arcs de pouce (ADR 0008) appartiennent au rail a gauche et aux boutons
+  de lancement a droite.
+*/
+.memes {
   position: absolute;
-  left: max(12px, env(safe-area-inset-left));
-  /* Juste au-dessus du rail : c est un rappel, pas une commande. */
-  bottom: calc(var(--safe-bottom) + 84px);
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 10px);
   display: flex;
+  align-items: center;
   gap: 6px;
-  list-style: none;
-  margin: 0;
-  padding: 0;
+  max-width: min(320px, 46vw);
 }
 
-.home__emotes li {
-  width: 34px;
-  height: 34px;
-  border-radius: 11px;
-  background: var(--hud);
+.memes__arrow {
+  flex: none;
+  width: 38px;
+  height: 38px;
+  border-radius: 12px;
   border: 1px solid var(--hud-line);
-  display: grid;
-  place-items: center;
-  font-size: 17px;
+  background: var(--hud);
+  color: var(--ink);
+  font-size: 21px;
+  line-height: 1;
+  cursor: pointer;
   backdrop-filter: blur(9px);
   -webkit-backdrop-filter: blur(9px);
+}
+
+.memes__arrow:active {
+  background: var(--chip-deep);
+}
+
+.memes__card {
+  flex: 1 1 auto;
+  min-width: 0;
+  margin: 0;
+  padding: 5px 12px;
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  border-radius: 12px;
+  border: 1px solid var(--hud-line);
+  background: var(--hud);
+  display: grid;
+  gap: 1px;
+  text-align: center;
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+}
+
+/* Le nom porte ; il peut etre long (« Haussement d'epaules ») sans pousser
+   les fleches hors de portee du pouce. */
+.memes__name {
+  font-weight: 700;
+  font-size: 14px;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.memes__meta {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+
+/* Deja equipe : plus rien a faire, donc plus rien a toucher. */
+.memes__card:disabled {
+  cursor: default;
+}
+
+/* Ce qu'on ne possede pas reste LISIBLE : c'est une vitrine, pas une porte
+   fermee. Le prix dit pourquoi on ne peut pas l'equiper. */
+.memes__card[data-owned='false'] .memes__name {
+  color: var(--muted);
+}
+
+.memes__state {
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--chip-deep);
+  color: var(--good-ink);
+  letter-spacing: 0.06em;
+}
+
+/* Un mème qui ne s'offre pas se signale ici, pas au moment de le jouer. */
+.memes__price {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--chip-deep);
+  color: var(--gold-ink);
+  letter-spacing: 0.06em;
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- boutique et roue d emotes --- */
@@ -1093,64 +1217,217 @@ body {
   cursor: pointer;
 }
 
+/**
+ * La fente de la jauge.
+ *
+ * Elle occupe la colonne du milieu qu il y ait une jauge ou non. La jauge, elle,
+ * n apparait qu une fois le mouvement choisi : avant, son horloge n a pas
+ * commence et son curseur ne voudrait rien dire. Sans fente, son arrivee
+ * pousserait les deux grappes — donc dix boutons — a l instant precis ou le
+ * pouce vient d en toucher un.
+ */
+.gauge-slot {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: 420px;
+  height: var(--gauge-h);
+}
+.gauge-slot--empty {
+  border: 1px dashed color-mix(in srgb, var(--line) 70%, transparent);
+  border-radius: 14px;
+}
+
 .gauge {
   /**
-   * Compacte et centree, entre les deux grappes de pouce.
+   * Troisieme colonne de la bande, entre les deux grappes de pouce.
    *
-   * La difficulte de cette jauge est **temporelle** : la zone « parfait » vaut
-   * 9 % de la course, soit une soixantaine de millisecondes, et cette fenetre
-   * ne depend pas de la largeur. Etaler la course sur tout l ecran n ajoute
-   * donc aucune precision — seulement du trajet pour l oeil, a suivre en
-   * peripherie pendant que les pouces sont dans les coins.
+   * Elle etait posee en absolu au milieu de l ecran : a cette hauteur, elle
+   * barrait les deux combattants en travers de la poitrine. Ici elle est un
+   * element de la bande, donc elle ne peut ni monter sur les personnages, ni
+   * recouvrir un bouton — elle prend la place que les grappes laissent, et
+   * seulement celle-la.
    *
-   * La cible d appui, elle, reste l ecran entier : on ne perd rien a viser.
+   * Elle ne perd rien a retrecir : la difficulte de cette jauge est
+   * **temporelle**. La zone « parfait » vaut 8 % de la course, soit une
+   * soixantaine de millisecondes, et cette fenetre ne depend pas de la
+   * largeur. La cible d appui, elle, reste l ecran entier.
    */
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  width: min(420px, 52%);
-  /* Au-dessus de la grappe la plus haute : celle de droite porte deux rangees
-     et monte a 131 px. Mordre dessus cacherait la moitie des amplificateurs. */
-  bottom: calc(var(--safe-bottom) + 142px);
-  height: 52px;
+  width: 100%;
+  height: 100%;
+
+  /**
+   * Panneau opaque, et pas un voile.
+   *
+   * La jauge est posee au milieu de l ecran, donc sur la foule 3D : un decor
+   * anime dont on ne connait ni la couleur ni la luminosite a l image suivante.
+   * Aucune bande translucide n y a de contraste garanti — c est ce qui rendait
+   * la version precedente illisible. Le fond est donc plein, et les rapports
+   * de contraste des trois zones sont verifies par `ui/gauge.test.ts`.
+   */
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 14px;
-  overflow: hidden;
+  padding: 5px;
+  box-shadow:
+    0 10px 28px rgba(0, 0, 0, 0.45),
+    inset 0 1px 0 rgba(243, 236, 255, 0.07);
+
+  /**
+   * Elle se deplie, elle n apparait pas.
+   *
+   * C est le signal « maintenant, vise » : le seul instant de la phase ou
+   * l interface demande un geste precis. Le depli couvre aussi les 120 ms de
+   * `MIN_CHARGE_MS` pendant lesquelles un appui serait refuse — le joueur ne
+   * tape pas dans une jauge encore en mouvement.
+   *
+   * `prefers-reduced-motion` la fait apparaitre d un coup : la regle globale en
+   * bas de fichier ramene toutes les durees a 0,01 ms.
+   */
+  animation: gauge-in var(--d-panel) var(--e-over) both;
 }
-.gauge__good,
-.gauge__perfect,
-.gauge__needle {
+
+@keyframes gauge-in {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scaleY(0.55);
+  }
+}
+
+/**
+ * La piste : le seul repere de la jauge.
+ *
+ * Zones et curseur sont ses enfants absolus, donc cales sur sa largeur tous
+ * les trois. C est ce qui rend un desalignement impossible a ecrire :
+ * il n y a plus deux largeurs de reference a garder d accord.
+ */
+.gauge__track {
+  position: relative;
+  height: var(--gauge-track);
+  border-radius: 9px;
+  overflow: hidden;
+  background: var(--chip-deep);
+  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.55);
+}
+.gauge__band {
   position: absolute;
   top: 0;
   bottom: 0;
 }
-.gauge__good {
-  left: 30%;
-  right: 30%;
-  background: color-mix(in srgb, var(--good-ink) 24%, transparent);
+/* « Faible », c est le fond de la piste : on ne peint que ce qui rapporte. */
+.gauge__band--good {
+  background: color-mix(in srgb, var(--good-ink) 50%, var(--chip-deep));
 }
-.gauge__perfect {
-  left: 45.5%;
-  right: 45.5%;
-  background: color-mix(in srgb, var(--gold-ink) 40%, transparent);
-}
-.gauge__needle {
-  width: 4px;
-  margin-left: -2px;
-  border-radius: 2px;
-  background: var(--ink);
-}
-.gauge__legend {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: 4px;
-  text-align: center;
-  font-size: 9.5px;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--muted);
+.gauge__band--perfect {
+  background: var(--gold-ink);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gold-ink) 55%, transparent);
+  animation: gauge-perfect 1.6s var(--e-out) infinite;
 }
 
+/**
+ * Le curseur porte son propre contraste.
+ *
+ * Un trait blanc sur la zone doree tombe a 1,3:1 — invisible precisement la ou
+ * il compte. Le liseré sombre le detache de l or, le coeur clair le detache du
+ * reste de la piste : sur chaque zone, l un des deux tient les 3:1.
+ */
+.gauge__needle {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  width: 3px;
+  margin-left: -1.5px;
+  border-radius: 2px;
+  background: var(--ink);
+  box-shadow:
+    0 0 0 1.5px var(--bg),
+    0 0 10px var(--ink);
+  /* Le curseur arrive une fois la piste depliee : sinon on le voit glisser
+     dans une boite qui se deforme encore. */
+  animation: needle-in var(--d-chip) var(--e-out) var(--d-panel) both;
+}
+
+@keyframes needle-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/**
+ * Compacte par necessite.
+ *
+ * La jauge descend a 150 px de large sur le plus etroit des ecrans vises,
+ * catalogue de styles plein. La legende doit y tenir sans se couper : trois
+ * mots de neuf pixels et trois pastilles font 126 px, et c est ce qui fixe ces
+ * valeurs. `ui/layout.test.ts` tient la promesse de largeur.
+ */
+.gauge__legend {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 3px 0 0;
+  height: var(--gauge-legend);
+  overflow: hidden;
+  font-size: 9px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+/**
+ * Une legende, pas des etiquettes posees sur les zones.
+ *
+ * Les bandes font 22 % et 8 % d une piste de 420 px, soit 92 px et 34 px : le
+ * mot « parfait » n y tient pas. La couleur, elle, y tient toujours — c est
+ * elle qui dit ou est quoi, et la legende n apprend la correspondance qu une
+ * fois. Aucun mot n est donc cale sur une position, donc aucun ne peut deriver.
+ */
+.gauge__key {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  white-space: nowrap;
+}
+.gauge__key::before {
+  content: '';
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+}
+.gauge__key--miss {
+  color: var(--muted);
+}
+.gauge__key--miss::before {
+  background: var(--chip-deep);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.gauge__key--good {
+  color: var(--good-ink);
+}
+.gauge__key--good::before {
+  background: color-mix(in srgb, var(--good-ink) 50%, var(--chip-deep));
+}
+.gauge__key--perfect {
+  color: var(--gold-ink);
+}
+.gauge__key--perfect::before {
+  background: var(--gold-ink);
+}
+
+@keyframes gauge-perfect {
+  50% {
+    box-shadow: 0 0 18px color-mix(in srgb, var(--gold-ink) 85%, transparent);
+  }
+}
+
+/**
+ * La bande de commandes : styles a gauche, jauge au milieu, palier a droite.
+ *
+ * Les grappes gardent leur taille naturelle et la jauge absorbe le reste. Une
+ * grappe qui gagne une colonne retire donc de la largeur a la jauge, jamais a
+ * sa voisine — et rien ne peut se chevaucher, faute de position absolue.
+ */
 .controls {
   position: absolute;
   left: 0;
@@ -1158,21 +1435,46 @@ body {
   bottom: 0;
   display: flex;
   align-items: flex-end;
-  justify-content: space-between;
-  gap: 10px;
+  gap: var(--band-gap);
   padding: 0 var(--safe-right) var(--safe-bottom) var(--safe-left);
+
+  /**
+   * La bande laisse passer l appui, seules les grappes le prennent.
+   *
+   * Sous elle s etend `.gauge-hit`, qui couvre l ecran : c est lui qui
+   * verrouille. Une bande opaque aux evenements avalerait tout appui pose
+   * entre les deux grappes — c est-a-dire sur la jauge, l endroit le plus
+   * naturel ou viser, et celui qu ADR 0008 veut le plus large possible.
+   */
+  pointer-events: none;
 }
 
+/**
+ * Une grappe est un panneau, pas des boutons poses sur la foule.
+ *
+ * Les boutons etaient opaques, mais le libelle et l en-tete de mise ne l
+ * etaient pas : du texte pose directement sur un decor 3D anime, donc sans
+ * contraste garanti — le meme defaut que la jauge avant son panneau.
+ */
 .cluster {
+  pointer-events: auto;
+  flex: none;
+  background: var(--surface);
+  border: 1px solid var(--line);
   border-radius: 16px;
-  padding: 7px;
+  padding: 6px;
   display: flex;
   flex-direction: column;
   gap: 5px;
-  max-width: 40%;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
 }
 .cluster__label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
   font-size: 9.5px;
+  line-height: 1;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--muted);
@@ -1183,6 +1485,15 @@ body {
   gap: 5px;
 }
 
+/**
+ * Boutons de choix.
+ *
+ * Taille **fixe**, pas deduite du texte. « Apogée » et « Étincelles » n ont pas
+ * la meme largeur : un bouton qui suit son contenu ferait retrecir la jauge le
+ * jour ou un nom s allonge, sans que rien ne le signale. Ici la boite est
+ * connue — `ui/layout.ts` calcule la bande avec ces nombres — et c est le texte
+ * qui s y plie.
+ */
 .pick {
   font: inherit;
   font-size: 12px;
@@ -1191,28 +1502,120 @@ body {
   background: var(--chip);
   border: 1px solid var(--line);
   border-radius: 12px;
-  min-width: 46px;
-  min-height: 46px;
-  padding: 5px 7px;
+  flex: none;
+  width: var(--pick-w);
+  height: var(--pick-h);
+  min-width: var(--touch);
+  min-height: var(--touch);
+  padding: 4px 3px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
+  gap: 1px;
+  overflow: hidden;
+  position: relative;
   cursor: pointer;
   transition:
     background var(--d-tap) var(--e-out),
     transform var(--d-tap) var(--e-out);
 }
+/* Resserre la boite, jamais la cible : ADR 0008 fixe 46 px, et ces dix boutons
+   sont ceux qu on regle le plus vite. */
 .pick--tight {
-  min-width: 42px;
-  padding: 4px;
+  width: var(--pick-tight-w);
+  height: var(--pick-tight-h);
+  padding: 3px 2px;
+}
+
+/**
+ * Le cran de l echelle.
+ *
+ * Une barre au fond du bouton, dont la hauteur monte avec le niveau : les cinq
+ * boutons d une rangee dessinent alors un escalier, et la rangee se lit comme
+ * une progression au lieu d une liste. Elle est **derriere** le texte et
+ * s arrete a 26 % d opacite : le contraste du nom et du chiffre ne bouge pas,
+ * ce que `ui/bet.test.ts` verifie.
+ */
+.pick__rung {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  border-radius: 0 0 11px 11px;
+  opacity: 0.26;
+  pointer-events: none;
+  transition: height var(--d-chip) var(--e-out);
+}
+.pick__rung--tier {
+  background: var(--accent);
+}
+.pick__rung--amplifier {
+  background: var(--gold-ink);
+}
+/**
+ * Ni sur un cran choisi, ni sur un cran hors budget.
+ *
+ * Le bouton choisi est deja pleinement accentue — l echelle n a plus rien a y
+ * dire. Le bouton hors budget, lui, n est pas un cran qu on peut gravir, et
+ * retirer sa rampe rend au cout rouge son fond franc, donc son contraste.
+ */
+.pick[aria-pressed='true'] .pick__rung,
+.pick[data-afford='false'] .pick__rung {
+  opacity: 0;
+}
+
+/**
+ * Le nom porte, le chiffre accompagne.
+ *
+ * « 42 » et « ×1,40 » sont les chiffres du moteur : ils disent la puissance et
+ * le cout, donc ils restent. Mais c est « Orage » et « Éclairs » que le joueur
+ * retient et raconte, et c est donc le nom qui prend la premiere ligne et le
+ * plein contraste.
+ */
+.pick__name {
+  font-size: 9.5px;
+  font-weight: 600;
+  line-height: 1.05;
+  letter-spacing: -0.01em;
+}
+/* Les noms longs — « Étincelles » — se resserrent plutot que de se couper. */
+.pick__name--long {
+  font-size: 8px;
+  letter-spacing: -0.02em;
+}
+.pick__value {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 11px;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Rien ne deborde de sa boite : au pire, un nom s abrege. */
+.pick > span,
+.pick > small {
+  position: relative;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .pick__icon {
-  font-size: 17px;
+  font-size: 16px;
+  line-height: 1.05;
 }
+/**
+ * Le cout, en clair et non en gris.
+ *
+ * Il se pose sur le cran de l echelle, qui eclaircit le fond du bouton : un
+ * gris secondaire y tombait a 3,2:1 sur la rampe doree. La hierarchie tient
+ * par la taille — 8,5 px sous les 11 px du chiffre — pas par le contraste.
+ */
 .pick small {
-  font-size: 9.5px;
-  color: var(--muted);
+  font-size: 8.5px;
+  line-height: 1.05;
+  color: var(--ink);
   font-variant-numeric: tabular-nums;
 }
 .pick:active {
@@ -1232,25 +1635,135 @@ body {
   cursor: not-allowed;
 }
 
-.budget {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: var(--safe-bottom);
-  border-radius: 999px;
-  padding: 6px 14px;
-  margin: 0;
-  font-size: 12px;
-  color: var(--muted);
-  white-space: nowrap;
+/**
+ * Hors budget, et ca se voit sans soustraction.
+ *
+ * Un bouton simplement « desactive » se lit comme inerte : le joueur ne sait
+ * pas s il est trop cher, deja joue, ou casse. Celui-ci reste lisible, son
+ * cout passe au rouge et son contour avec : la raison est sur le bouton.
+ */
+.pick:disabled[data-afford='false'] {
+  opacity: 0.62;
+  border-color: color-mix(in srgb, var(--bad-ink) 50%, var(--line));
 }
-.budget b {
+.pick[data-afford='false'] small {
+  color: var(--bad-ink);
+  font-weight: 600;
+}
+
+/**
+ * L en-tete de mise.
+ *
+ * « Mise » est le bon mot : palier et amplificateur ne sont pas deux champs a
+ * remplir, ce sont deux crans d une meme enchere, payee sur une seule reserve.
+ * Le plus gros chiffre de la grappe est donc la puissance misee, et les huit
+ * points d energie disent ce qu elle coute — ceux que le joueur n a pas
+ * compris, barres plutot qu absents.
+ */
+.bet {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  height: var(--bet-h);
+  margin: 0 0 1px;
+  padding: 0 2px;
+}
+.bet__left {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+}
+.bet__power {
   font-family: var(--display);
   font-weight: 400;
+  font-size: 19px;
+  line-height: 1;
+  color: var(--gold-ink);
+  font-variant-numeric: tabular-nums;
+  animation: bet-pop var(--d-chip) var(--e-over) both;
+}
+.bet__names {
+  font-size: 8.5px;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+@keyframes bet-pop {
+  from {
+    transform: scale(0.72);
+  }
+}
+
+/**
+ * Les huit points d energie du tour.
+ *
+ * Le palier les prend en premier, l amplificateur ensuite : la repartition se
+ * lit dans la couleur, sans legende. `locked` est ce que la reserve ne couvre
+ * pas — une information qu il fallait jusqu ici deduire d une soustraction.
+ */
+.bet__pips {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  flex: none;
+}
+.bet__pip {
+  width: 4px;
+  height: 11px;
+  border-radius: 2px;
+  background: var(--chip-deep);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+.bet__pip--tier {
+  background: var(--accent);
+  box-shadow: none;
+}
+/**
+ * Plus court, et pas seulement dore.
+ *
+ * Le violet du palier et l or de l amplificateur ne sont separes que de 2,2:1
+ * en luminance : distincts a l oeil par leur teinte, mais pas pour qui la
+ * percoit mal. La hauteur porte donc la meme information une seconde fois.
+ */
+.bet__pip--amplifier {
+  background: var(--gold-ink);
+  box-shadow: none;
+  height: 7px;
+  align-self: flex-end;
+}
+.bet__pip--locked {
+  background: repeating-linear-gradient(
+    -45deg,
+    transparent 0 2px,
+    color-mix(in srgb, var(--bad-ink) 60%, transparent) 2px 3px
+  );
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--bad-ink) 45%, var(--line));
+}
+
+/**
+ * Le cout se lit dans le libelle de la grappe qu il contraint.
+ *
+ * Il vivait en pastille flottante au bas du centre — c est-a-dire la ou vit
+ * maintenant la jauge. Le poser ici ne coute aucune hauteur a la bande, et le
+ * rapproche des dix boutons dont il est le budget.
+ */
+.budget {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 11px;
+  letter-spacing: 0;
   color: var(--ink);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
-.budget b.over {
+.budget.over {
   color: var(--bad-ink);
 }
 
