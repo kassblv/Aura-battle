@@ -93,3 +93,35 @@ describe('viewOfSolo', () => {
     expect(viewOfSolo(solo()).opponentLocked).toBe(false);
   });
 });
+
+describe('jauge d Ultime', () => {
+  /**
+   * L Ultime etait invisible et inutilisable.
+   *
+   * La vue ne portait pas la jauge et l ecran envoyait `useUltimate: false` en
+   * dur : le joueur ne pouvait ni la voir se remplir, ni s en servir. C est
+   * pourtant la mecanique qui decide d une manche — ×1,5 et **impossible a
+   * contrer** (`docs/01` §6).
+   */
+  it('montre au joueur sa propre jauge', () => {
+    const match = solo();
+    runTo(match, 'recharge');
+    const vue = viewOfSolo(match);
+    expect(vue.me.ultimate).toBeGreaterThanOrEqual(0);
+    expect(vue.me.ultimate).toBeLessThanOrEqual(BALANCE.ultimate.gaugeMax);
+  });
+
+  /**
+   * Regle d or n°4 : celle de l adversaire ne sort jamais.
+   *
+   * Le protocole refuse deja un `round:intro` qui porterait l `ult` adverse —
+   * un test de `@aura/protocol` le verrouille. L afficher en solo, ou le client
+   * fait tourner le moteur et pourrait donc la lire, apprendrait au joueur a
+   * compter sur une information qui disparait des qu il joue en ligne.
+   */
+  it('cache celle de l adversaire, toujours', () => {
+    const match = solo();
+    runTo(match, 'choice');
+    expect(viewOfSolo(match).opponent.ultimate).toBeNull();
+  });
+});

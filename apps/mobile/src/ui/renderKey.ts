@@ -57,6 +57,9 @@ export function renderKey(view: KeyedView): string {
     view.phaseEndsAtMs,
     view.phaseDurationMs,
     tag(view.me.energy),
+    // La jauge d Ultime decide d un bouton : sans elle dans la cle, le joueur
+    // verrait son Ultime rester inerte alors qu il est pret.
+    tag(view.me.ultimate),
     view.me.roundsWon,
     view.opponent.roundsWon,
     view.opponentLocked,

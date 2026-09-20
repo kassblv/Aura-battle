@@ -1605,6 +1605,73 @@ body {
  * grappe qui gagne une colonne retire donc de la largeur a la jauge, jamais a
  * sa voisine — et rien ne peut se chevaucher, faute de position absolue.
  */
+/*
+  L'Ultime.
+
+  Il ne se paie pas en energie mais en jauge, donc il ne rentre pas dans la
+  grappe palier/amplificateur qui affiche un budget — mais il se decide au meme
+  instant, alors il se touche au meme endroit. Eteint tant que la jauge n'est
+  pas pleine : le serveur refuserait le choix, et laisser le bouton vif ferait
+  croire a un refus arbitraire.
+*/
+.ultimate {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  bottom: calc(var(--safe-bottom) + 64px);
+  display: grid;
+  gap: 1px;
+  /* Cible tactile : au-dessus du minimum de 46 px de l'ADR 0008. */
+  min-height: 46px;
+  padding: 4px 18px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  text-align: center;
+  cursor: pointer;
+  transition:
+    border-color var(--d-tap) var(--e-out),
+    transform var(--d-tap) var(--e-out);
+}
+
+.ultimate b {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 15px;
+  letter-spacing: 0.03em;
+}
+
+.ultimate small {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+/* Pret : la jauge est pleine, le bouton s'allume. */
+.ultimate:not(:disabled) {
+  color: var(--ink);
+  border-color: var(--gold-ink);
+}
+
+/* Arme : la manche partira avec, et ca doit se voir sans relire. */
+.ultimate[aria-pressed='true'] {
+  background: var(--gold-ink);
+  border-color: var(--gold-ink);
+  color: var(--bg);
+}
+
+.ultimate:disabled {
+  cursor: default;
+  opacity: 0.55;
+}
+
+.ultimate:not(:disabled):active {
+  transform: translateX(-50%) translateY(2px);
+}
+
 .controls {
   position: absolute;
   left: 0;

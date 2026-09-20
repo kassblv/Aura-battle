@@ -69,6 +69,9 @@ const FALLBACK_ICON = '✨';
 const STYLE_ROWS: readonly (readonly Style[])[] = chunkEvenly(BALANCE.styles, STYLE_COLUMNS);
 
 /** Delai minimal entre l armement de la jauge et l appui (docs/03). */
+/** Jauge pleine : en deca, le serveur refuse l activation (`docs/01` §6). */
+const ULTIMATE_FULL = BALANCE.ultimate.gaugeMax;
+
 const MIN_CHARGE_MS = 120;
 
 export interface MatchActions {
@@ -140,6 +143,15 @@ function MatchScreenBody({
   const [tier, setTier] = useState<Tier>(0);
   const [amplifier, setAmplifier] = useState<AmplifierLevel>(0);
   const [locked, setLocked] = useState(false);
+  /**
+   * L Ultime, arme pour cette manche.
+   *
+   * Il etait envoye a `false` en dur : la jauge se remplissait et ne servait
+   * jamais. C est pourtant la mecanique qui decide d une manche — ×1,5 et
+   * **impossible a contrer** (`docs/01` §6) — et la depenser au bon moment est
+   * la decision la plus interessante du jeu.
+   */
+  const [ultimate, setUltimate] = useState(false);
   /** Instant ou la jauge s est armee, c est-a-dire ou un style a ete choisi. */
   const chargeAt = useRef<number | null>(null);
 
@@ -192,6 +204,9 @@ function MatchScreenBody({
     setTier(0);
     setAmplifier(0);
     setLocked(false);
+    // L Ultime se rearme a chaque manche : l activation vide la jauge, et le
+    // garder arme ferait croire qu on le relance avec une jauge vide.
+    setUltimate(false);
     chargeAt.current = null;
   }, [view.round]);
 
@@ -298,7 +313,7 @@ function MatchScreenBody({
     // Le delai minimal se juge a l instant de l appui, pas au dernier rendu :
     // c est le meme ecart que le serveur recalculera.
     if (at - chargeAt.current < MIN_CHARGE_MS) return;
-    const choice: Choice = { move: { style, tier }, amplifier, useUltimate: false };
+    const choice: Choice = { move: { style, tier }, amplifier, useUltimate: ultimate };
     if (actions.lock(choice, chargeAt.current, at)) setLocked(true);
   };
 
@@ -416,6 +431,11 @@ function MatchScreenBody({
           meterZoneWidth={view.meterZoneWidth}
           meterPerfectWidth={view.meterPerfectWidth}
           needleRef={needleRef}
+          ultimate={ultimate}
+          ultimateReady={(view.me.ultimate ?? 0) >= ULTIMATE_FULL}
+          onUltimate={() => {
+            setUltimate((current) => !current);
+          }}
           onStyle={chooseStyle}
           onTier={setTier}
           onAmplifier={setAmplifier}
@@ -539,6 +559,9 @@ const ControlBand = memo(function ControlBand({
   meterZoneWidth,
   meterPerfectWidth,
   needleRef,
+  ultimate,
+  ultimateReady,
+  onUltimate,
   onStyle,
   onTier,
   onAmplifier,
@@ -552,6 +575,11 @@ const ControlBand = memo(function ControlBand({
   readonly meterZoneWidth: number | undefined;
   readonly meterPerfectWidth: number | undefined;
   readonly needleRef: RefObject<HTMLElement | null>;
+  /** L Ultime est arme pour cette manche. */
+  readonly ultimate: boolean;
+  /** La jauge est pleine : sans cela le serveur refuserait le choix. */
+  readonly ultimateReady: boolean;
+  readonly onUltimate: () => void;
   readonly onStyle: (next: Style) => void;
   readonly onTier: (next: Tier) => void;
   readonly onAmplifier: (next: AmplifierLevel) => void;
@@ -560,6 +588,29 @@ const ControlBand = memo(function ControlBand({
   const bet = betFor(tier, amplifier, cap);
   return (
     <>
+      {/*
+        L'Ultime, a cote du reste de la mise.
+
+        Il ne coute pas d'energie — il se paie en jauge — donc il ne rentre pas
+        dans la grappe palier/amplificateur, qui affiche un budget. Mais il se
+        decide au meme instant, alors il se touche au meme endroit.
+      */}
+      <button
+        type="button"
+        className="ultimate"
+        disabled={!ultimateReady || locked}
+        aria-pressed={ultimate}
+        onClick={onUltimate}
+        aria-label={
+          ultimateReady
+            ? 'Ultime : ×1,5 et impossible à contrer'
+            : 'Ultime : jauge pas encore pleine'
+        }
+      >
+        <b>Ultime</b>
+        <small>{ultimateReady ? '×1,5 · incontrable' : 'jauge à remplir'}</small>
+      </button>
+
       <div className="cluster">
         <p className="cluster__label">Style</p>
         {STYLE_ROWS.map((row) => (

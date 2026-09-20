@@ -7,8 +7,8 @@ const base: MatchView = {
   round: 1,
   phaseEndsAtMs: 15_000,
   phaseDurationMs: 15_000,
-  me: { energy: 8, roundsWon: 0 },
-  opponent: { energy: null, roundsWon: 0 },
+  me: { energy: 8, ultimate: 0, roundsWon: 0 },
+  opponent: { energy: null, ultimate: null, roundsWon: 0 },
   orbs: [],
   taps: [],
   meterPeriodMs: 1_700,
@@ -37,9 +37,9 @@ describe('renderKey', () => {
   });
 
   it('change quand l ecran a quelque chose de neuf a afficher', () => {
-    expect(key({ me: { energy: 7, roundsWon: 0 } })).not.toBe(key());
-    expect(key({ me: { energy: 8, roundsWon: 1 } })).not.toBe(key());
-    expect(key({ opponent: { energy: null, roundsWon: 1 } })).not.toBe(key());
+    expect(key({ me: { energy: 7, ultimate: 0, roundsWon: 0 } })).not.toBe(key());
+    expect(key({ me: { energy: 8, ultimate: 0, roundsWon: 1 } })).not.toBe(key());
+    expect(key({ opponent: { energy: null, ultimate: null, roundsWon: 1 } })).not.toBe(key());
     expect(key({ opponentLocked: true })).not.toBe(key());
     expect(key({ meterPeriodMs: 1_500 })).not.toBe(key());
   });
@@ -50,9 +50,20 @@ describe('renderKey', () => {
    * les confondrait laisserait un joueur a court d energie devant des paliers
    * encore affiches comme payables.
    */
+  /**
+   * L Ultime commande un bouton : s il n entre pas dans la cle, la
+   * memoisation fige l ecran et le joueur voit son Ultime rester inerte alors
+   * qu il vient de se remplir.
+   */
+  it('redessine quand la jauge d Ultime bouge', () => {
+    expect(key({ me: { energy: 8, ultimate: 60, roundsWon: 0 } })).not.toBe(
+      key({ me: { energy: 8, ultimate: 100, roundsWon: 0 } }),
+    );
+  });
+
   it('distingue une energie nulle d une energie absente', () => {
-    expect(key({ me: { energy: 0, roundsWon: 0 } })).not.toBe(
-      key({ me: { energy: null, roundsWon: 0 } }),
+    expect(key({ me: { energy: 0, ultimate: 0, roundsWon: 0 } })).not.toBe(
+      key({ me: { energy: null, ultimate: 0, roundsWon: 0 } }),
     );
   });
 

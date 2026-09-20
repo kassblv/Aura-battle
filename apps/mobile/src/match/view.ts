@@ -23,6 +23,14 @@ export interface SideView {
    * qui disparait des qu il joue en ligne.
    */
   readonly energy: number | null;
+  /**
+   * Jauge d Ultime, 0 a 100. `null` pour l adversaire, **toujours**.
+   *
+   * Meme discipline que l energie, et le protocole la tient deja : un test de
+   * `@aura/protocol` refuse un `round:intro` qui porterait l `ult` adverse.
+   * Savoir que l autre est pret a lacher son Ultime changerait tout au bluff.
+   */
+  readonly ultimate: number | null;
   readonly roundsWon: number;
 }
 
@@ -83,9 +91,13 @@ export function viewOfSolo(match: SoloMatch): MatchView {
     round: state.round,
     phaseEndsAtMs: state.phaseEndsAtMs,
     phaseDurationMs: DURATIONS[state.phase],
-    me: { energy: state.seats.a.energy, roundsWon: state.seats.a.roundsWon },
+    me: {
+      energy: state.seats.a.energy,
+      ultimate: state.seats.a.ultimateGauge,
+      roundsWon: state.seats.a.roundsWon,
+    },
     // Volontairement `null` : voir `SideView.energy`.
-    opponent: { energy: null, roundsWon: state.seats.b.roundsWon },
+    opponent: { energy: null, ultimate: null, roundsWon: state.seats.b.roundsWon },
     orbs: context?.orbs ?? [],
     taps: state.pending.a.taps,
     meterPeriodMs: context?.gauge.periodMs ?? 0,
@@ -129,8 +141,8 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
     round: state.round,
     phaseEndsAtMs: state.phaseEndsAtMs,
     phaseDurationMs: DURATIONS[state.phase],
-    me: { energy: state.energy, roundsWon: state.roundsWon[seat] },
-    opponent: { energy: null, roundsWon: state.roundsWon[other] },
+    me: { energy: state.energy, ultimate: state.ultimate, roundsWon: state.roundsWon[seat] },
+    opponent: { energy: null, ultimate: null, roundsWon: state.roundsWon[other] },
     orbs: state.orbs,
     taps: state.sentTaps,
     meterPeriodMs: state.meter?.period ?? 0,
