@@ -1,6 +1,7 @@
 import { BALANCE, type BalanceConfig } from '../balance.js';
 import type { Orb, RechargeTap } from '../recharge.js';
 import type { Rng } from '../rng.js';
+import { choiceCost, isChoiceAffordable } from '../round.js';
 import type { GaugeParams } from '../timing.js';
 import type { AmplifierLevel, Choice, Move, Style, Tier } from '../types.js';
 
@@ -87,6 +88,33 @@ export interface TimingSkill {
 }
 
 /**
+ * Instant de tap qui reproduit un ecart donne sur cette jauge.
+ *
+ * C'est l'inverse de `evaluateTiming` : celle-ci lit un instant et en rend un
+ * ecart, celle-ci part de l'ecart voulu et remonte a l'instant. On vise la
+ * **premiere** montee du curseur, celle qui part de zero — toutes les suivantes
+ * donnent le meme ecart, et la premiere est la seule qui tienne toujours sous
+ * `maxChargeMs`.
+ *
+ * L'ecart demande est ramene a ce que la jauge peut produire. Un curseur qui
+ * parcourt `[0, 1]` ne s'ecarte jamais de son centre de plus de
+ * `max(centre, 1 - centre)` : un ecart enregistre sur une jauge decentree n'est
+ * pas toujours atteignable sur une jauge centree. Rabattre vaut mieux que
+ * rendre un instant qui produirait un tout autre ecart.
+ */
+export function tapAtMsForDelta(
+  delta: number,
+  gauge: GaugeParams,
+  config: BalanceConfig = BALANCE,
+): number {
+  const reachable = Math.max(gauge.center, 1 - gauge.center);
+  const bounded = Math.min(Math.max(0, delta), reachable);
+  const position = gauge.center + bounded <= 1 ? gauge.center + bounded : gauge.center - bounded;
+  const tapAtMs = (Math.max(0, position) * gauge.periodMs) / 2;
+  return Math.min(tapAtMs, config.timing.maxChargeMs);
+}
+
+/**
  * Trouve un instant de tap qui produit la qualite voulue.
  *
  * On tire d'abord la qualite visee, puis on inverse l'onde triangulaire pour
@@ -110,9 +138,7 @@ export function timingTapForSkill(
         ? perfectEdge + JUST_OUTSIDE + rng.nextFloat() * (goodEdge - perfectEdge - JUST_OUTSIDE)
         : goodEdge + JUST_OUTSIDE + rng.nextFloat() * (0.5 - goodEdge);
 
-  const position = gauge.center + delta <= 1 ? gauge.center + delta : gauge.center - delta;
-  const tapAtMs = (Math.max(0, position) * gauge.periodMs) / 2;
-  return Math.min(tapAtMs, config.timing.maxChargeMs);
+  return tapAtMsForDelta(delta, gauge, config);
 }
 
 /**
@@ -179,27 +205,31 @@ function beaterOf(style: Style, config: BalanceConfig): Style {
 const alreadyPlayed = (move: Move, previousMoves: readonly Move[]): boolean =>
   previousMoves.some((played) => played.style === move.style && played.tier === move.tier);
 
-export function decideChoice(context: AiChoiceContext, config: BalanceConfig = BALANCE): Choice {
-  const { profile, rng, energy, previousMoves, opponentStyles } = context;
-
-  const lastOpponentStyle = opponentStyles.at(-1);
-  const style: Style =
-    lastOpponentStyle !== undefined && rng.chance(profile.read)
-      ? beaterOf(lastOpponentStyle, config)
-      : rng.pick(config.styles);
-
-  // Budget de la manche : une IA agressive brule son energie tot, une prudente
-  // la garde pour la belle.
-  const budget = Math.min(energy, Math.round(config.maxRoundCost * profile.aggression));
-  const spend = budget <= 0 ? 0 : rng.nextInt(Math.ceil(budget / 2), budget);
-  const desiredTier = Math.min(TIERS.length - 1, spend) as Tier;
-
+/**
+ * Mouvement et amplificateur qui tiennent dans un budget, au plus pres du
+ * palier vise.
+ *
+ * **La politique d'adaptation du jeu simule vit ici, une fois.** L'IA solo s'en
+ * sert pour depenser son budget de manche ; le rejeu d'un fantome s'en sert
+ * pour rabattre un choix enregistre devenu impayable (`affordableChoice`,
+ * docs/05 § « Fantomes » : « avec la meme politique que l'IA solo »). Deux
+ * copies de cette politique divergeraient, et l'une des deux finirait par
+ * proposer un choix que le moteur refuse.
+ *
+ * Rejouer le meme mouvement coute 30 % du score : on decale d'abord le palier,
+ * puis le style, et on ne se repete qu'une fois toutes les options epuisees.
+ */
+function fitChoice(
+  style: Style,
+  desiredTier: Tier,
+  spend: number,
+  previousMoves: readonly Move[],
+  config: BalanceConfig,
+): { readonly move: Move; readonly amplifier: AmplifierLevel } {
   const affordableTier = (candidate: Tier): boolean => config.tierCost[candidate] <= spend;
   const fresh = (candidateStyle: Style, candidateTier: Tier): boolean =>
     !alreadyPlayed({ style: candidateStyle, tier: candidateTier }, previousMoves);
 
-  // Rejouer le meme mouvement coute 30 % du score : on decale d'abord le palier,
-  // puis le style, et on ne se repete qu'une fois toutes les options epuisees.
   const sameStyleAlternatives = TIERS.filter(
     (candidate) => affordableTier(candidate) && fresh(style, candidate),
   ).sort((left, right) => Math.abs(left - desiredTier) - Math.abs(right - desiredTier));
@@ -219,7 +249,79 @@ export function decideChoice(context: AiChoiceContext, config: BalanceConfig = B
       ? { style, tier: sameStyleAlternatives[0] }
       : (otherStyleAlternatives[0] ?? { style, tier: desiredTier });
 
-  const amplifier = Math.min(4, Math.max(0, spend - config.tierCost[move.tier])) as AmplifierLevel;
+  return {
+    move,
+    amplifier: Math.min(4, Math.max(0, spend - config.tierCost[move.tier])) as AmplifierLevel,
+  };
+}
+
+/** Ce qu'il faut savoir d'un siege pour savoir ce qu'il peut encore jouer. */
+export interface AffordabilityContext {
+  readonly energy: number;
+  readonly ultimateGauge: number;
+  /** Mouvements deja joues, pour eviter la penalite de repetition. */
+  readonly previousMoves: readonly Move[];
+}
+
+/**
+ * Rabat un choix voulu sur ce que le siege peut reellement payer.
+ *
+ * Sert au rejeu d'un fantome (docs/05) : un enregistrement est une suite de
+ * choix joues dans **une autre** partie, ou l'energie n'a pas suivi le meme
+ * chemin. Le choix d'origine peut donc etre impayable ici. Plutot que de le
+ * refuser — le fantome jouerait alors le choix par defaut, c'est-a-dire rien —
+ * on le ramene dans le budget avec la politique de l'IA solo : meme style, le
+ * palier le plus proche que l'energie couvre, et le reste en amplificateur.
+ *
+ * L'Ultime suit la meme logique : il n'est conserve que si la jauge est pleine,
+ * exactement comme le moteur l'exigerait (`ULTIMATE_NOT_READY`).
+ *
+ * Le repli final n'est pas de la ceinture-bretelles : `fitChoice` rend le
+ * palier vise quand plus aucune option fraiche n'existe, et ce palier peut
+ * depasser le budget. Un choix refuse par le moteur ne serait pas un mauvais
+ * choix, ce serait **aucun** choix.
+ */
+export function affordableChoice(
+  desired: Choice,
+  context: AffordabilityContext,
+  config: BalanceConfig = BALANCE,
+): Choice {
+  const spend = Math.min(context.energy, choiceCost(desired, config));
+  const fitted = fitChoice(
+    desired.move.style,
+    desired.move.tier,
+    spend,
+    context.previousMoves,
+    config,
+  );
+
+  const choice: Choice = {
+    move: fitted.move,
+    amplifier: fitted.amplifier,
+    useUltimate: desired.useUltimate && context.ultimateGauge >= config.ultimate.gaugeMax,
+  };
+
+  return isChoiceAffordable(choice, context.energy, config)
+    ? choice
+    : { move: { style: desired.move.style, tier: 0 }, amplifier: 0, useUltimate: false };
+}
+
+export function decideChoice(context: AiChoiceContext, config: BalanceConfig = BALANCE): Choice {
+  const { profile, rng, energy, previousMoves, opponentStyles } = context;
+
+  const lastOpponentStyle = opponentStyles.at(-1);
+  const style: Style =
+    lastOpponentStyle !== undefined && rng.chance(profile.read)
+      ? beaterOf(lastOpponentStyle, config)
+      : rng.pick(config.styles);
+
+  // Budget de la manche : une IA agressive brule son energie tot, une prudente
+  // la garde pour la belle.
+  const budget = Math.min(energy, Math.round(config.maxRoundCost * profile.aggression));
+  const spend = budget <= 0 ? 0 : rng.nextInt(Math.ceil(budget / 2), budget);
+  const desiredTier = Math.min(TIERS.length - 1, spend) as Tier;
+
+  const { move, amplifier } = fitChoice(style, desiredTier, spend, previousMoves, config);
 
   return {
     move,

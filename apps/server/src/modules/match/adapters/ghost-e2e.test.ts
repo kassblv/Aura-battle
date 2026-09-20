@@ -1,5 +1,5 @@
 import { PROTOCOL_VERSION, type ServerMessage } from '@aura/protocol';
-import { BALANCE, type BalanceConfig } from '@aura/rules';
+import { BALANCE, RULES_VERSION, type BalanceConfig } from '@aura/rules';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { IoAdapter } from '@nestjs/platform-socket.io';
 import { Test } from '@nestjs/testing';
@@ -7,11 +7,13 @@ import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { MessageMetrics } from '../../../shared/metrics.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { GhostNotifier } from '../../matchmaking/adapters/ghost-notifier.js';
 import { MemoryGhostStore } from '../../matchmaking/adapters/memory-ghost.store.js';
 import { GhostRecorderService } from '../../matchmaking/application/ghost-recorder.service.js';
 import { GHOST_DISPLAY_NAME, isGhostSeatId } from '../../matchmaking/domain/ghost.js';
+import { buildSeedGhosts } from '../../matchmaking/domain/ghost-seeding.js';
 import { InviteService } from '../application/invites.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { matchmakingTestProviders, TEST_GHOST_FALLBACK_MS } from '../application/testing-wiring.js';
@@ -198,6 +200,9 @@ beforeAll(async () => {
       InviteService,
       TimeoutScheduler,
       SystemMatchClock,
+      // Mesure de charge eteinte : la passerelle en depend, aucun scenario
+      // d'ici ne la lit. `metrics-e2e.test.ts` est celui qui l'allume.
+      { provide: MessageMetrics, useFactory: () => new MessageMetrics(false) },
       {
         provide: PinoLoggerService,
         useValue: new PinoLoggerService(createLogger(serverConfig)),
@@ -255,6 +260,16 @@ beforeAll(async () => {
   await app.listen(0, '127.0.0.1');
   url = (await app.getUrl()).replace('[::1]', '127.0.0.1');
   ghosts = app.get(MemoryGhostStore);
+
+  /**
+   * La reserve d'amorcage est en place **avant** le premier client, comme le
+   * seed la pose avant le premier joueur. Sans elle, la suite ci-dessous
+   * testerait un serveur qui n'existe pas : en production, une base fraiche
+   * n'est jamais vide de fantomes.
+   */
+  for (const recording of buildSeedGhosts(RULES_VERSION)) {
+    await ghosts.save({ ...recording, atMs: Date.parse('2020-01-01T00:00:00Z') });
+  }
 });
 
 afterAll(async () => {
@@ -262,6 +277,38 @@ afterAll(async () => {
 });
 
 describe('fantomes — un joueur seul ne reste pas devant une file vide', () => {
+  /**
+   * **Le jour du lancement.** Aucun match humain n'a encore ete joue nulle
+   * part : le seul vivier disponible est celui d'amorcage. C'est le scenario
+   * qui a manque a la premiere livraison — la fonctionnalite qui existe pour
+   * empecher une file vide ne marchait pas quand la file etait vide.
+   */
+  it('donne un adversaire au tout premier joueur, avant tout match humain', async () => {
+    const premier = await record();
+    premier.socket.emit('queue:join', { mode: 'ranked' });
+
+    const found = await premier.first<ServerMessage<'match:found'>>('match:found');
+    expect(found.ghost).toBe(true);
+    expect(found.opponent.displayName).toBe(GHOST_DISPLAY_NAME);
+
+    close(premier);
+  });
+
+  /** Un fantome amorce reste un fantome **annonce** : l'honnetete ne depend pas de l'origine. */
+  it('annonce un fantome amorce exactement comme un fantome humain', async () => {
+    const premier = await record();
+    premier.socket.emit('queue:join', { mode: 'casual' });
+
+    const found = await premier.first<ServerMessage<'match:found'>>('match:found');
+    expect(found.ghost).toBe(true);
+
+    premier.socket.emit('match:rejoin', { matchId: found.matchId });
+    const snapshot = await premier.first<ServerMessage<'match:state'>>('match:state');
+    expect(snapshot.ghost).toBe(true);
+
+    close(premier);
+  });
+
   /**
    * Le scenario complet, dans l'ordre : deux humains jouent un match classe,
    * leur jeu est retenu, puis un troisieme joueur arrive seul et le rejoue.

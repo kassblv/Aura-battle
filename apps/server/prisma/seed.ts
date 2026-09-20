@@ -1,11 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { allAnimationIds, AURA_COLORS, AURA_EFFECTS, HAIRSTYLES, OUTFITS } from '@aura/content';
+import { RULES_VERSION } from '@aura/rules';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { PrismaClient, type CosmeticKind } from '@prisma/client';
+import { Prisma, PrismaClient, type CosmeticKind } from '@prisma/client';
+import { SEED_GHOST_PREFIX } from '../src/modules/matchmaking/domain/ghost.js';
+import { buildSeedGhosts } from '../src/modules/matchmaking/domain/ghost-seeding.js';
 
 /**
- * Donnees de depart : saison 1 et catalogue de cosmetiques.
+ * Donnees de depart : saison 1, catalogue de cosmetiques, vivier de fantomes.
  *
  * Idempotent — on peut le relancer sans dupliquer quoi que ce soit. Un seed qui
  * ne peut etre joue qu'une fois est un seed qu'on n'ose plus lancer.
@@ -91,10 +94,58 @@ async function seedCosmetics(): Promise<number> {
   return items.length;
 }
 
+/**
+ * Date d'ecriture des enregistrements amorces, volontairement dans le passe.
+ *
+ * `PrismaGhostStore.candidates` rapatrie les plus **recents** d'abord, dans une
+ * limite bornee : dater l'amorcage d'hier suffit a ce que tout enregistrement
+ * reel passe devant, et a ce que les amorces sortent d'eux-memes de la fenetre
+ * de candidats des que le vivier reel est fourni. C'est le premier des deux
+ * mecanismes de retrait ; le second, qui est la vraie garantie, vit dans
+ * `selectGhost` — un fantome amorce n'est jamais prefere a un fantome humain.
+ */
+const SEED_GHOST_CREATED_AT = new Date('2020-01-01T00:00:00Z');
+
+/**
+ * Vivier de fantomes de depart (docs/05 § « Fantomes »).
+ *
+ * Sans lui, la fonctionnalite qui existe pour empecher une file vide ne marche
+ * pas le jour du lancement, quand la file est vide : un enregistrement ne nait
+ * que d'un match classe entre humains, et il n'y en a encore aucun.
+ *
+ * Le contenu est **calcule**, pas ecrit a la main : `buildSeedGhosts` fait
+ * jouer les profils de l'IA solo par le vrai moteur. Remplacer toute la
+ * reserve a chaque passage garde le seed idempotent et rend la mise a jour
+ * apres un changement de `RULES_VERSION` triviale — c'est la meme commande.
+ */
+async function seedGhosts(): Promise<number> {
+  const recordings = buildSeedGhosts(RULES_VERSION);
+
+  await prisma.$transaction([
+    // Les amorces d'une version precedente n'ont plus d'usage : `selectGhost`
+    // exige l'egalite des versions, elles ne seraient plus jamais choisies.
+    prisma.ghostRecording.deleteMany({ where: { playerId: { startsWith: SEED_GHOST_PREFIX } } }),
+    prisma.ghostRecording.createMany({
+      data: recordings.map((recording) => ({
+        playerId: recording.playerId,
+        mmr: recording.mmr,
+        rulesVersion: recording.rulesVersion,
+        rounds: recording.rounds as unknown as Prisma.InputJsonValue,
+        createdAt: SEED_GHOST_CREATED_AT,
+      })),
+    }),
+  ]);
+
+  return recordings.length;
+}
+
 async function main(): Promise<void> {
   await seedSeason();
   const count = await seedCosmetics();
-  console.log(`[seed] saison 1 et ${count} cosmetiques en place`);
+  const ghosts = await seedGhosts();
+  console.log(
+    `[seed] saison 1, ${count} cosmetiques et ${ghosts} fantomes d'amorcage (regles ${RULES_VERSION}) en place`,
+  );
   await prisma.$disconnect();
 }
 

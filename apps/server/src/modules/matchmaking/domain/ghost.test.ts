@@ -159,10 +159,52 @@ describe('selectGhost — lequel opposer', () => {
     expect(selectGhost([recording({ id: 'seul' })], recent, now, RULES_VERSION)?.id).toBe('seul');
   });
 
-  it('tranche une egalite d ecart par l identifiant, donc sans hasard', () => {
+  /**
+   * A egalite parfaite, c'est l'horloge qui tranche — et l'ordre dans lequel la
+   * base a rendu ses lignes n'y change rien. Sans ce tri canonique, la rotation
+   * ci-dessous dependrait d'un `ORDER BY` et cesserait d'etre reproductible.
+   */
+  it('rend le meme enregistrement quel que soit l ordre des candidats', () => {
     const candidats = [recording({ id: 'b', mmr: 1050 }), recording({ id: 'a', mmr: 950 })];
-    expect(selectGhost(candidats, waiting, now, RULES_VERSION)?.id).toBe('a');
-    expect(selectGhost([...candidats].reverse(), waiting, now, RULES_VERSION)?.id).toBe('a');
+    const direct = selectGhost(candidats, waiting, now, RULES_VERSION);
+    const inverse = selectGhost([...candidats].reverse(), waiting, now, RULES_VERSION);
+    expect(inverse?.id).toBe(direct?.id);
+  });
+
+  /**
+   * Le defaut que cette rotation ferme : la selection etant deterministe, un
+   * joueur seul au lancement rencontrait **le meme** enregistrement a chaque
+   * recherche, et rejouait les memes trois manches en boucle.
+   */
+  it('fait tourner entre des candidats strictement equivalents', () => {
+    const candidats = [
+      recording({ id: 'un', mmr: 1000 }),
+      recording({ id: 'deux', mmr: 1000 }),
+      recording({ id: 'trois', mmr: 1000 }),
+    ];
+    const vus = new Set(
+      [0, 1, 2, 3, 4, 5].map((pas) => selectGhost(candidats, waiting, now + pas, RULES_VERSION)?.id),
+    );
+    expect(vus.size).toBeGreaterThan(1);
+  });
+
+  /** Deux appels au meme instant rendent la meme chose : la fonction reste pure. */
+  it('rend la meme chose deux fois au meme instant', () => {
+    const candidats = [
+      recording({ id: 'un', mmr: 1000 }),
+      recording({ id: 'deux', mmr: 1000 }),
+    ];
+    expect(selectGhost(candidats, waiting, now, RULES_VERSION)?.id).toBe(
+      selectGhost(candidats, waiting, now, RULES_VERSION)?.id,
+    );
+  });
+
+  /** Un ecart plus court l'emporte toujours sur la rotation. */
+  it('ne fait pas tourner entre des candidats d ecarts differents', () => {
+    const candidats = [recording({ id: 'proche', mmr: 1010 }), recording({ id: 'loin', mmr: 1200 })];
+    for (const pas of [0, 1, 2, 3, 500, 1_337]) {
+      expect(selectGhost(candidats, waiting, now + pas, RULES_VERSION)?.id).toBe('proche');
+    }
   });
 
   it('ne trouve rien dans une reserve vide', () => {

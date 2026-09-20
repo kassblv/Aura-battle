@@ -6,11 +6,13 @@ import { choiceCost } from '../round.js';
 import { evaluateTiming, generateGaugeParams } from '../timing.js';
 import type { Style } from '../types.js';
 import {
+  affordableChoice,
   AI_PROFILES,
   AI_PROFILE_IDS,
   decideChoice,
   decideRechargeTaps,
   decideTimingTap,
+  tapAtMsForDelta,
   type AiProfileId,
 } from './profiles.js';
 
@@ -274,5 +276,90 @@ describe('decideChoice — determinisme', () => {
     const decision = (): unknown =>
       decideChoice({ ...baseContext, profile: AI_PROFILES.mystery, rng: createRng('meme') });
     expect(decision()).toEqual(decision());
+  });
+});
+
+describe('tapAtMsForDelta — reproduire un ecart sur une autre jauge', () => {
+  it('rend un instant qui produit exactement l ecart demande', () => {
+    for (const graine of ['a', 'b', 'c', 'd', 'e']) {
+      const params = generateGaugeParams(createRng(graine));
+      for (const cible of [0, 0.02, 0.05, 0.11, 0.3]) {
+        const tapAtMs = tapAtMsForDelta(cible, params);
+        expect(evaluateTiming(tapAtMs, params).delta).toBeCloseTo(cible, 9);
+      }
+    }
+  });
+
+  it('rabat un ecart que la jauge ne peut pas produire', () => {
+    // Centre a 0,5 : le curseur ne s'en ecarte jamais de plus de 0,5.
+    const params = { periodMs: 1_600, center: 0.5, zoneWidth: 0.22, perfectWidth: 0.08 };
+    expect(evaluateTiming(tapAtMsForDelta(0.9, params), params).delta).toBeCloseTo(0.5, 9);
+  });
+
+  it('ne rend jamais un instant au-dela de la charge maximale', () => {
+    const params = { periodMs: 1_900, center: 0.7, zoneWidth: 0.22, perfectWidth: 0.08 };
+    expect(tapAtMsForDelta(0.3, params)).toBeLessThanOrEqual(BALANCE.timing.maxChargeMs);
+  });
+
+  it('retrouve la qualite enregistree sur une jauge differente', () => {
+    const enregistree = generateGaugeParams(createRng('jauge-enregistree'));
+    const rejouee = generateGaugeParams(createRng('jauge-rejouee'));
+    const tapOrigine = 640;
+    const origine = evaluateTiming(tapOrigine, enregistree);
+
+    const rejeu = evaluateTiming(tapAtMsForDelta(origine.delta, rejouee), rejouee);
+    expect(rejeu.quality).toBe(origine.quality);
+    expect(rejeu.delta).toBeCloseTo(origine.delta, 9);
+  });
+});
+
+describe('affordableChoice — rabattre un choix impayable', () => {
+  const contexte = { energy: 14, ultimateGauge: 0, previousMoves: [] };
+
+  it('rend le choix tel quel quand l energie le couvre', () => {
+    const voulu = { move: { style: 'hype', tier: 3 }, amplifier: 2, useUltimate: false } as const;
+    expect(affordableChoice(voulu, contexte)).toEqual(voulu);
+  });
+
+  it('garde le style et rabat le palier quand l energie manque', () => {
+    const voulu = { move: { style: 'provoc', tier: 4 }, amplifier: 4, useUltimate: false } as const;
+    const rabattu = affordableChoice(voulu, { ...contexte, energy: 2 });
+    expect(rabattu.move.style).toBe('provoc');
+    expect(choiceCost(rabattu)).toBeLessThanOrEqual(2);
+  });
+
+  it('ne rend jamais un choix que le moteur refuserait', () => {
+    const styles: readonly Style[] = BALANCE.styles;
+    for (const style of styles) {
+      for (const tier of [0, 1, 2, 3, 4] as const) {
+        for (const amplifier of [0, 1, 2, 3, 4] as const) {
+          for (const energy of [0, 1, 2, 3, 5, 8, 14]) {
+            const rabattu = affordableChoice(
+              { move: { style, tier }, amplifier, useUltimate: false },
+              { ...contexte, energy },
+            );
+            expect(choiceCost(rabattu)).toBeLessThanOrEqual(energy);
+          }
+        }
+      }
+    }
+  });
+
+  it('abandonne l Ultime quand la jauge n est pas pleine', () => {
+    const voulu = { move: { style: 'calme', tier: 1 }, amplifier: 0, useUltimate: true } as const;
+    expect(affordableChoice(voulu, { ...contexte, ultimateGauge: 99 }).useUltimate).toBe(false);
+    expect(
+      affordableChoice(voulu, { ...contexte, ultimateGauge: BALANCE.ultimate.gaugeMax })
+        .useUltimate,
+    ).toBe(true);
+  });
+
+  it('evite de rejouer un mouvement deja joue', () => {
+    const voulu = { move: { style: 'calme', tier: 2 }, amplifier: 0, useUltimate: false } as const;
+    const rabattu = affordableChoice(voulu, {
+      ...contexte,
+      previousMoves: [{ style: 'calme', tier: 2 }],
+    });
+    expect(rabattu.move).not.toEqual({ style: 'calme', tier: 2 });
   });
 });

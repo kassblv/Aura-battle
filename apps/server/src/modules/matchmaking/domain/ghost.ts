@@ -55,6 +55,24 @@ export const GHOST_SEAT_PREFIX = 'ghost:';
  */
 export const GHOST_DISPLAY_NAME = 'Aura en differe';
 
+/**
+ * Prefixe des enregistrements **amorces** — produits hors ligne a partir des
+ * profils de l'IA solo, et non d'un match joue (`domain/ghost-seeding.ts`).
+ *
+ * Il vit ici, a cote de `GhostRecording`, parce que c'est une propriete de
+ * l'enregistrement et pas de sa fabrication : `selectGhost` doit pouvoir la
+ * lire sans rien savoir de la facon dont la reserve de depart est construite.
+ *
+ * `GhostRecording.playerId` ne porte aucune cle etrangere (docs/04), et
+ * `Player.id` est un UUID : la collision avec un joueur reel est impossible.
+ */
+export const SEED_GHOST_PREFIX = 'seed:';
+
+/** Vrai si cet enregistrement vient de l'amorcage et non d'un match joue. */
+export function isSeedGhost(playerId: string): boolean {
+  return playerId.startsWith(SEED_GHOST_PREFIX);
+}
+
 /** Identifiant de siege pour ce rejeu. `nonce` le rend unique par match. */
 export function ghostSeatId(recordingId: string, nonce: string): string {
   return `${GHOST_SEAT_PREFIX}${recordingId}:${nonce}`;
@@ -144,11 +162,27 @@ export function shouldFallBackToGhost(
  *   comme la fenetre s'ouvre avec l'attente, un joueur isole finit toujours par
  *   trouver, sans qu'on ait a inventer un second bareme.
  *
- * Parmi ce qui reste, on preferera un adversaire pas rencontre recemment, puis
- * le MMR le plus proche, puis l'identifiant — exactement la politique de
- * `pairTickets`. Une rencontre recente n'est pas interdite, seulement reportee :
- * refuser le seul enregistrement disponible ramenerait la file vide qu'on
- * cherche precisement a supprimer.
+ * Parmi ce qui reste, l'ordre des preferences est le suivant :
+ *
+ * 1. **un enregistrement humain avant un enregistrement amorce.** Un fantome
+ *    d'IA est moins bon qu'un fantome humain ; le preferer plafonnerait la
+ *    qualite de ce que rencontre un joueur isole. Les enregistrements de depart
+ *    (`isSeedGhost`) sont donc un **dernier recours**, et c'est aussi ce qui les
+ *    retire d'eux-memes a mesure que le vivier reel se remplit — sans travail
+ *    de nettoyage, et sans les supprimer, ce qui rouvrirait le trou le jour
+ *    d'un changement de `RULES_VERSION` ;
+ * 2. **un adversaire pas rencontre recemment**, comme dans `pairTickets`. Une
+ *    rencontre recente n'est pas interdite, seulement reportee : refuser le
+ *    seul enregistrement disponible ramenerait la file vide qu'on cherche
+ *    precisement a supprimer ;
+ * 3. **le MMR le plus proche**. La fenetre autorise un ecart, elle ne le
+ *    recherche pas ;
+ * 4. **a egalite parfaite, l'horloge tranche.** Sans cela la fonction rendrait
+ *    eternellement le meme enregistrement au meme joueur — deterministe, donc
+ *    identique a chaque recherche — et un joueur seul au lancement rejouerait
+ *    les memes trois manches en boucle. Ce n'est pas du hasard cache :
+ *    `nowMs` est un parametre, la liste est triee canoniquement avant d'etre
+ *    parcourue, et deux appels au meme instant rendent la meme chose.
  */
 export function selectGhost(
   candidates: readonly GhostRecording[],
@@ -158,25 +192,39 @@ export function selectGhost(
 ): GhostRecording | null {
   const range = searchRange(nowMs - ticket.enqueuedAtMs);
 
-  const eligible = candidates.filter(
+  const ranked = candidates
+    .filter(
+      (candidate) =>
+        candidate.rulesVersion === rulesVersion &&
+        candidate.playerId !== ticket.playerId &&
+        candidate.rounds.length > 0 &&
+        Math.abs(candidate.mmr - ticket.mmr) <= range,
+    )
+    .map((recording) => ({
+      recording,
+      seeded: isSeedGhost(recording.playerId) ? 1 : 0,
+      recent: ticket.recentOpponents.includes(recording.playerId) ? 1 : 0,
+      gap: Math.abs(recording.mmr - ticket.mmr),
+    }))
+    .sort(
+      (left, right) =>
+        left.seeded - right.seeded ||
+        left.recent - right.recent ||
+        left.gap - right.gap ||
+        // Tri canonique : c'est lui qui rend la rotation ci-dessous
+        // independante de l'ordre dans lequel la base a rendu ses lignes.
+        (left.recording.id < right.recording.id ? -1 : +(left.recording.id > right.recording.id)),
+    );
+
+  const best = ranked[0];
+  if (best === undefined) return null;
+
+  const tied = ranked.filter(
     (candidate) =>
-      candidate.rulesVersion === rulesVersion &&
-      candidate.playerId !== ticket.playerId &&
-      candidate.rounds.length > 0 &&
-      Math.abs(candidate.mmr - ticket.mmr) <= range,
+      candidate.seeded === best.seeded &&
+      candidate.recent === best.recent &&
+      candidate.gap === best.gap,
   );
 
-  let best: { recording: GhostRecording; gap: number; recent: boolean } | null = null;
-  for (const recording of eligible) {
-    const gap = Math.abs(recording.mmr - ticket.mmr);
-    const recent = ticket.recentOpponents.includes(recording.playerId);
-    const better =
-      best === null ||
-      (!recent && best.recent) ||
-      (recent === best.recent &&
-        (gap < best.gap || (gap === best.gap && recording.id < best.recording.id)));
-    if (better) best = { recording, gap, recent };
-  }
-
-  return best?.recording ?? null;
+  return tied[Math.abs(Math.trunc(nowMs)) % tied.length]!.recording;
 }

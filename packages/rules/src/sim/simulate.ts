@@ -1,9 +1,23 @@
-import { rechargeTapsForCount, timingTapForSkill, type TimingSkill } from '../ai/profiles.js';
+import {
+  decideChoice,
+  rechargeTapsForCount,
+  timingTapForSkill,
+  type AiProfile,
+  type TimingSkill,
+} from '../ai/profiles.js';
 import { BALANCE, type BalanceConfig } from '../balance.js';
-import { createMatch, reduce, type MatchResult, type MatchState } from '../match.js';
+import {
+  createMatch,
+  reduce,
+  type MatchEvent,
+  type MatchResult,
+  type MatchState,
+} from '../match.js';
+import type { RechargeResult } from '../recharge.js';
 import { createRng, deriveSeed, type Rng } from '../rng.js';
 import type { RoundResult } from '../round.js';
-import type { Move, Seat, Style, Tier } from '../types.js';
+import type { TimingResult } from '../timing.js';
+import type { Choice, Move, Seat, Style, Tier } from '../types.js';
 import { STRATEGIES, STRATEGY_IDS, type ChoicePolicy, type StrategyId } from './strategies.js';
 
 /**
@@ -20,11 +34,40 @@ const SEATS: readonly Seat[] = ['a', 'b'];
 /** Adresse au timing par defaut : un joueur correct, ni expert ni debutant. */
 const DEFAULT_SKILL: TimingSkill = { perfect: 0.3, good: 0.5 };
 
+/**
+ * Ce qu'un siege a joue dans une manche, tel que le moteur l'a vu.
+ *
+ * `RoundResult` dit ce que la manche a **donne** ; ceci dit ce qui a ete
+ * **joue**. La difference compte des qu'on veut rejouer un comportement
+ * ailleurs : le resultat depend des orbes et de la jauge de cette manche-la,
+ * le comportement non.
+ *
+ * Preleve au moment ou la manche se resout, parce que c'est le seul ou
+ * l'information existe encore : la manche suivante remet `pending` a zero.
+ */
+export interface PlayedRound {
+  readonly choice: Choice;
+  readonly timing: TimingResult;
+  /** Evaluation de la recharge, ou `null` si la phase n'a rien produit. */
+  readonly recharge: RechargeResult | null;
+  /** Nombre de taps retenus par le moteur pour cette recharge. */
+  readonly rechargeTaps: number;
+}
+
 export interface MatchSimulation {
   readonly result: MatchResult;
   readonly rounds: readonly RoundResult[];
   readonly finalEnergy: Readonly<Record<Seat, number>>;
   readonly moves: Readonly<Record<Seat, readonly Move[]>>;
+  /**
+   * Ce que chaque siege a joue, manche par manche.
+   *
+   * Sert a produire des enregistrements de fantome a partir d'un profil d'IA
+   * (docs/05 § « Fantomes ») : le vivier de depart doit exister avant le
+   * premier match humain, sinon la fonctionnalite qui empeche une file vide ne
+   * marche pas le jour ou la file est vide.
+   */
+  readonly played: Readonly<Record<Seat, readonly PlayedRound[]>>;
 }
 
 export interface SimulateOptions {
@@ -53,6 +96,41 @@ export function simulateMatch(
 
   let step = createMatch(seed, { config });
   let transitions = 0;
+  const played: Record<Seat, PlayedRound[]> = { a: [], b: [] };
+
+  /**
+   * Applique un evenement, et preleve la manche si elle vient de se resoudre.
+   *
+   * Le prelevement se fait **ici** et pas apres la boucle : quand
+   * `ROUND_RESOLVED` est emis, `pending` porte encore les choix et la recharge
+   * de la manche ; la transition suivante les efface. C'est le meme instant, et
+   * pour la meme raison, que celui ou le serveur lit sa trace de fantome.
+   */
+  const advance = (state: MatchState, event: MatchEvent): void => {
+    step = reduce(state, event, config);
+    if (!step.effects.some((effect) => effect.type === 'ROUND_RESOLVED')) return;
+
+    for (const seat of SEATS) {
+      const pending = step.state.pending[seat];
+      const resolved = step.state.history.at(-1);
+      if (resolved === undefined) continue;
+      /**
+       * Sans verrouillage, le moteur a joue l'action par defaut : palier 0
+       * d'un style tire par la graine (§9). On lit ce qu'il **a** joue —
+       * `moves` vient d'etre alimente par la resolution — plutot que de
+       * refabriquer ce choix ici, ce qui serait reimplementer la regle.
+       */
+      const move = step.state.seats[seat].moves.at(-1);
+      if (move === undefined) continue;
+
+      played[seat].push({
+        choice: pending.locked?.choice ?? { move, amplifier: 0, useUltimate: false },
+        timing: resolved.seats[seat].timing,
+        recharge: pending.recharge,
+        rechargeTaps: pending.taps.length,
+      });
+    }
+  };
 
   while (step.state.phase !== 'ended' && transitions < MAX_TRANSITIONS) {
     transitions += 1;
@@ -61,27 +139,23 @@ export function simulateMatch(
     switch (state.phase) {
       case 'intro':
       case 'reveal':
-        step = reduce(state, { type: 'PHASE_TIMEOUT', atMs: state.phaseEndsAtMs }, config);
+        advance(state, { type: 'PHASE_TIMEOUT', atMs: state.phaseEndsAtMs });
         break;
 
       case 'recharge': {
         const orbs = state.roundContext?.orbs ?? [];
         for (const seat of SEATS) {
           const taps = rechargeTapsForCount(rng[seat].nextInt(minTaps, maxTaps), orbs, config);
-          step = reduce(step.state, { type: 'RECHARGE_TAPS', seat, taps, atMs: 0 }, config);
+          advance(step.state, { type: 'RECHARGE_TAPS', seat, taps, atMs: 0 });
         }
-        step = reduce(
-          step.state,
-          { type: 'PHASE_TIMEOUT', atMs: step.state.phaseEndsAtMs },
-          config,
-        );
+        advance(step.state, { type: 'PHASE_TIMEOUT', atMs: step.state.phaseEndsAtMs });
         break;
       }
 
       case 'choice': {
         const gauge = state.roundContext?.gauge;
         if (gauge === undefined) {
-          step = reduce(state, { type: 'PHASE_TIMEOUT', atMs: state.phaseEndsAtMs }, config);
+          advance(state, { type: 'PHASE_TIMEOUT', atMs: state.phaseEndsAtMs });
           break;
         }
         for (const seat of SEATS) {
@@ -101,35 +175,27 @@ export function simulateMatch(
             },
             config,
           );
-          step = reduce(
-            current,
-            {
-              type: 'CHOICE_LOCKED',
-              seat,
-              choice,
-              timingTapAtMs: timingTapForSkill(skill[seat], gauge, rng[seat], config),
-              atMs: current.phaseEndsAtMs - 1_000,
-            },
-            config,
-          );
+          advance(current, {
+            type: 'CHOICE_LOCKED',
+            seat,
+            choice,
+            timingTapAtMs: timingTapForSkill(skill[seat], gauge, rng[seat], config),
+            atMs: current.phaseEndsAtMs - 1_000,
+          });
           // Un choix refuse laisserait le siege bloque : on retombe sur le
           // mouvement gratuit plutot que de tourner en rond.
           if (step.effects.some((effect) => effect.type === 'CHOICE_REJECTED')) {
-            step = reduce(
-              step.state,
-              {
-                type: 'CHOICE_LOCKED',
-                seat,
-                choice: {
-                  move: { style: choice.move.style, tier: 0 },
-                  amplifier: 0,
-                  useUltimate: false,
-                },
-                timingTapAtMs: timingTapForSkill(skill[seat], gauge, rng[seat], config),
-                atMs: current.phaseEndsAtMs - 1_000,
+            advance(step.state, {
+              type: 'CHOICE_LOCKED',
+              seat,
+              choice: {
+                move: { style: choice.move.style, tier: 0 },
+                amplifier: 0,
+                useUltimate: false,
               },
-              config,
-            );
+              timingTapAtMs: timingTapForSkill(skill[seat], gauge, rng[seat], config),
+              atMs: current.phaseEndsAtMs - 1_000,
+            });
           }
         }
         break;
@@ -150,7 +216,46 @@ export function simulateMatch(
     rounds: final.history,
     finalEnergy: { a: final.seats.a.energy, b: final.seats.b.energy },
     moves: { a: final.seats.a.moves, b: final.seats.b.moves },
+    played: { a: played.a, b: played.b },
   };
+}
+
+/**
+ * Fait jouer un profil d'IA contre lui-meme, un match entier.
+ *
+ * Sert a produire des enregistrements de fantome **avant** qu'un seul match
+ * humain ait ete joue (docs/05 § « Fantomes »). Le miroir n'est pas une
+ * facilite : les deux sieges suivent la meme courbe d'energie et la meme
+ * adresse, donc le jeu enregistre est celui de ce niveau-la, et pas celui d'un
+ * joueur qu'un adversaire plus fort aurait etrangle.
+ *
+ * Toute la difference entre profils passe par le **comportement** — adresse au
+ * timing, cadence de recharge, agressivite, usage de l'Ultime — jamais par les
+ * regles : ils affrontent la meme jauge et la meme sequence d'orbes que
+ * n'importe qui (docs/01 §11).
+ *
+ * Deterministe : meme graine, meme profil, meme match. Un vivier de depart doit
+ * pouvoir etre regenere a l'identique.
+ */
+export function simulateProfileMatch(
+  seed: string,
+  profile: AiProfile,
+  config: BalanceConfig = BALANCE,
+): MatchSimulation {
+  const policy: ChoicePolicy = {
+    decideChoice: (context, overrides) =>
+      decideChoice({ ...context, profile }, overrides ?? config),
+  };
+
+  return simulateMatch(
+    seed,
+    { a: policy, b: policy },
+    {
+      config,
+      skill: { a: profile.skill, b: profile.skill },
+      rechargeTaps: profile.rechargeTaps,
+    },
+  );
 }
 
 export interface TournamentOptions {

@@ -1,9 +1,12 @@
 import { randomUUID } from 'node:crypto';
+import { RULES_VERSION } from '@aura/rules';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import type { PrismaService } from '../../../shared/prisma.service.js';
-import type { GhostRound } from '../domain/ghost.js';
+import { isSeedGhost, selectGhost, type GhostRound } from '../domain/ghost.js';
+import { seedGhostCoverage, SEED_GHOST_MMR_STEP } from '../domain/ghost-seeding.js';
+import { DEFAULT_MMR, DEFAULT_REGION } from '../domain/ticket.js';
 import { PrismaGhostStore } from './prisma-ghost.store.js';
 
 /**
@@ -201,5 +204,94 @@ describe.skipIf(!reachable)('PrismaGhostStore — reserve reelle', () => {
     expect(found.map((recording) => recording.playerId)).not.toContain(playerId);
 
     await cleanUp(playerId);
+  });
+});
+
+/**
+ * Le vivier d'amorcage, tel que `pnpm --filter server seed` l'a pose.
+ *
+ * Lecture seule : cette suite ne touche a rien: elle verifie que la base de
+ * developpement est dans l'etat ou sera une base de production le jour du
+ * lancement, et qu'un joueur neuf y trouve un adversaire. Elle se saute si le
+ * seed n'a pas ete joue — ce n'est pas un echec, c'est une base vierge.
+ */
+describe.skipIf(!reachable)('vivier d amorcage en base', () => {
+  const store = (): PrismaGhostStore => new PrismaGhostStore(prisma as unknown as PrismaService);
+
+  const seededCount = async (): Promise<number> =>
+    prisma!.ghostRecording.count({
+      where: { playerId: { startsWith: 'seed:' }, rulesVersion: RULES_VERSION },
+    });
+
+  it('contient des enregistrements pour la version des regles en cours', async () => {
+    const count = await seededCount();
+    if (count === 0) {
+      console.warn("[integration] seed non joue : `pnpm --filter server seed` pour ce scenario");
+      return;
+    }
+    expect(count).toBeGreaterThan(0);
+  });
+
+  /**
+   * Le chemin reel, bout a bout : la requete que le serveur envoie, puis la
+   * selection qu'il applique. C'est ce qui a manque au premier essai de bout en
+   * bout — la logique d'attente tournait, la reserve etait vide.
+   */
+  it('rend un adversaire a un joueur neuf qui attend seul', async () => {
+    if ((await seededCount()) === 0) return;
+
+    const candidates = await store().candidates({
+      rulesVersion: RULES_VERSION,
+      mmr: DEFAULT_MMR,
+      range: 400,
+      limit: 32,
+    });
+
+    const chosen = selectGhost(
+      candidates,
+      {
+        playerId: 'p_nouveau',
+        mode: 'ranked',
+        mmr: DEFAULT_MMR,
+        enqueuedAtMs: 0,
+        region: DEFAULT_REGION,
+        recentOpponents: [],
+      },
+      25_000,
+      RULES_VERSION,
+    );
+
+    expect(chosen).not.toBeNull();
+    expect(chosen!.rounds.length).toBeGreaterThan(0);
+    expect(Math.abs(chosen!.mmr - DEFAULT_MMR)).toBeLessThanOrEqual(SEED_GHOST_MMR_STEP / 2);
+  });
+
+  it('couvre les deux extremites de la plage annoncee', async () => {
+    if ((await seededCount()) === 0) return;
+    const coverage = seedGhostCoverage();
+
+    for (const mmr of [Math.max(0, coverage.min), coverage.max]) {
+      const candidates = await store().candidates({
+        rulesVersion: RULES_VERSION,
+        mmr,
+        range: 400,
+        limit: 32,
+      });
+      const chosen = selectGhost(
+        candidates,
+        {
+          playerId: 'p_extreme',
+          mode: 'ranked',
+          mmr,
+          enqueuedAtMs: 0,
+          region: DEFAULT_REGION,
+          recentOpponents: [],
+        },
+        25_000,
+        RULES_VERSION,
+      );
+      expect(chosen, `aucun fantome pour un joueur a ${String(mmr)} de MMR`).not.toBeNull();
+      expect(isSeedGhost(chosen!.playerId)).toBe(true);
+    }
   });
 });

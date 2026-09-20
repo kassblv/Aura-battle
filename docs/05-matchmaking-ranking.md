@@ -135,6 +135,35 @@ Objectif : aucune file vide au lancement, sans faire croire à un faux humain en
 - **Transparence :** `match:found.ghost = true`. Le client affiche discrètement « Adversaire en différé ». Un match contre un fantôme rapporte 50 % des LP habituels.
 - Un fantôme ne réagit pas à l'adversaire en direct. C'est acceptable, car les choix sont simultanés.
 
+### Précisions d'implémentation (jalon M5)
+
+Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste laissait ouvert.
+
+- **Le vivier doit être amorcé.** Un enregistrement ne naît que d'un match classé entre humains :
+  le jour du lancement il n'y en a aucun, donc la fonctionnalité qui existe pour empêcher une file
+  vide ne marche pas quand la file est vide. Le seed pose donc une **réserve de départ** produite
+  hors ligne en faisant jouer les quatre profils de l'IA solo par le vrai moteur
+  (`domain/ghost-seeding.ts`) : 13 niveaux de MMR de 200 à 2600, par pas de 200, trois
+  enregistrements chacun. Le pas est dicté par la fenêtre de recherche — ±350 au premier instant de
+  bascule en partie rapide, ±400 en classé — et garantit un adversaire dès la première tentative
+  pour tout joueur entre −150 et 2950 de MMR.
+- **La règle d'enregistrement ne change pas** : un rejeu ne sert jamais de modèle, sinon le niveau
+  de la file dériverait de copie en copie.
+- **Le profil joué suit le MMR annoncé** (débutant sous 800, mystérieux jusqu'à 1200, calme jusqu'à
+  1800, intouchable au-delà). Un enregistrement de débutant portant un MMR élevé serait une victoire
+  offerte, et fausserait le classement de qui le croise.
+- **Les enregistrements amorcés sont reconnaissables** au préfixe `seed:` de leur `playerId` — qui ne
+  porte aucune clé étrangère (docs/04) et ne peut donc pas entrer en collision avec un joueur réel.
+  On les retrouve tels quels dans `MatchSeat.ghostOfId`.
+- **Ils ne sont jamais supprimés, et jamais préférés.** `selectGhost` place un enregistrement humain
+  avant un enregistrement amorcé : celui-ci n'est joué que si aucun humain ne convient, ce qui le
+  retire de fait dès que le vivier réel se remplit. Les supprimer rouvrirait le trou le jour d'un
+  changement de `rulesVersion`, où tous les enregistrements existants deviennent inéligibles d'un
+  coup — le seed est à rejouer à ce moment-là, et il est idempotent pour cela.
+- **À égalité parfaite, l'horloge tranche** entre les candidats. Sans cela la sélection, déterministe,
+  rendrait le même enregistrement à chaque recherche, et un joueur seul rejouerait les mêmes manches
+  en boucle.
+
 ## Invitations
 
 - `invite:create` renvoie un code de 6 caractères (sans caractères ambigus) et un lien `https://<domaine>/duel/<code>` qui ouvre l'app (universal links iOS, app links Android) ou la page web de téléchargement.
