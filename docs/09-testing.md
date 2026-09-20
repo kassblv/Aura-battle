@@ -32,6 +32,43 @@
 6. Taps impossibles (orbe morte, 30 taps/s) : ignorés et signalés.
 7. Client d'une version majeure différente : `CLIENT_OUTDATED`.
 
+## Test manuel : un duel à deux navigateurs
+
+Automatisable en partie, mais pas entièrement : ce qui se vérifie ici est ce
+qu'aucun test ne voit — le cadrage, la lisibilité, le ressenti. À rejouer avant
+chaque livraison.
+
+**Le piège qui fait perdre le plus de temps :** deux onglets du même navigateur
+sur la même origine partagent `localStorage`, donc le **même secret d'appareil**,
+donc le **même joueur**. On ne peut pas rejoindre sa propre invitation, et le
+symptôme (« le code ne marche pas ») n'a rien à voir avec la cause. Il faut donc
+deux **origines** distinctes, pas deux onglets.
+
+```bash
+docker compose up -d                    # Postgres sur 5433, Redis sur 6379
+pnpm dev                                # serveur :3000, client :5173
+pnpm --filter mobile exec vite --port 5174 --host   # seconde origine
+```
+
+Ouvrir `http://localhost:5173` et `http://192.168.64.1:5174` (l'adresse de la
+seconde origine dépend de la machine : `ipconfig getifaddr en0` sur macOS).
+Redimensionner les deux à **844×390** — le format cible, en paysage.
+
+| # | Geste | Ce qu'on vérifie |
+|---|---|---|
+| 1 | Choisir un nom différent sur chaque origine | Le renommage passe par le serveur et survit au rechargement |
+| 2 | « Duel » puis « Créer une partie » sur A | Un code à 6 caractères s'affiche |
+| 3 | Entrer ce code sur B | Les DEUX entrent en match |
+| 4 | Lire le bandeau des deux côtés | Chacun voit le nom de l'**adversaire**, pas le sien, pas « Adversaire » |
+| 5 | Regarder l'arène | **Deux** combattants, face à face, animés |
+| 6 | Jouer une manche complète | La jauge est lisible, la danse se joue avant le verdict |
+| 7 | Couper le réseau de B pendant la recharge, le rétablir | B reprend la manche en cours, sans information cachée |
+
+**Ce qui a déjà été pris ici, et que les tests ne voyaient pas :** le nom de
+l'adversaire codé en dur côté serveur ; un seul combattant affiché en ligne ;
+la jauge qui peignait ses zones à une position différente de celle que le moteur
+jugeait. Aucun de ces trois défauts n'a fait échouer un test.
+
 ## Équilibrage par simulation
 
 `pnpm sim` fait jouer des stratégies entre elles et produit :

@@ -71,7 +71,7 @@ Référence : prototype, `docs/02-architecture.md`.
 - [x] Recharge et timing mesurés avec `performance.now()` et envoyés selon le protocole
 - [x] Moteur audio du prototype porté ; musique et effets activables — 23 sons synthétisés, aucun fichier embarqué ; déverrouillé au premier geste (sans quoi iOS reste muet en silence)
 - [x] Solo contre IA fonctionnel hors ligne (même `@aura/rules`)
-- [ ] Test manuel documenté : le scénario a été joué plusieurs fois (deux origines, `localhost:5173` et `192.168.64.1:5174` — même origine = même identité en localStorage, on ne peut pas rejoindre sa propre invitation) mais **il n'est pas encore écrit dans `docs/09-testing.md`**
+- [x] Test manuel documenté : `docs/09-testing.md`, § « Test manuel : un duel à deux navigateurs » — sept étapes, avec le piège des deux onglets d'une même origine qui partagent la même identité
 
 ## M5 — Classé, matchmaking et fantômes
 
@@ -85,7 +85,7 @@ Référence : `docs/05-matchmaking-ranking.md`.
 
 ## M6 — Application mobile
 
-- [ ] Capacitor iOS et Android, icônes, splash, orientation portrait
+- [ ] Capacitor iOS et Android, icônes, splash, **verrouillage en paysage** (ADR 0008 ; cette ligne disait « orientation portrait », écrite avant l'ADR)
 - [ ] Haptique (`@capacitor/haptics`), cycle de vie (arrière-plan ⇒ fermeture et reconnexion)
 - [ ] Deep links et universal/app links pour les invitations
 - [ ] Niveaux de qualité graphique automatiques (foule, doigts, particules, pixel ratio) et réglage manuel
