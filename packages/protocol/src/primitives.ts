@@ -99,16 +99,46 @@ export type ParseResult<T> =
  * aucune donnee, donc ce resultat s'assigne a n'importe quel `ParseResult<T>`.
  * C'est ce qui permet d'analyser un registre heterogene sans transtypage.
  */
+/**
+ * Longueur maximale d'un message d'erreur d'analyse.
+ *
+ * Un message d'erreur n'est pas qu'une aide au debogage : c'est une chaine que
+ * **le client remplit**. `unrecognized_keys` de zod recopie le nom de chaque
+ * cle inattendue, donc un message par ailleurs valide accompagne de milliers
+ * de cles inconnues produit une erreur proportionnelle a l'envoi — mesure a
+ * 148 918 caracteres pour 5 000 cles, et rien n'empeche d'en envoyer plus.
+ *
+ * Cette chaine part dans trois journaux. En developpement, la donnee du client
+ * y atterrit ; en production, le litteral gabarit qui la porte est concatene
+ * **avant** que pino ne teste le niveau, donc le serveur paie l'allocation
+ * sans meme ecrire de ligne.
+ *
+ * La borne vit ici, et pas dans chaque appelant : trois journaux aujourd'hui,
+ * un quatrieme demain, et il suffirait d'en oublier un.
+ */
+export const MAX_PARSE_ERROR_LENGTH = 400;
+
+/** Longueur maximale du texte d'une anomalie prise isolement. */
+const MAX_ISSUE_MESSAGE_LENGTH = 120;
+
+/** Coupe une chaine sans mentir sur le fait qu'elle est coupee. */
+function clamp(text: string, max: number): string {
+  return text.length <= max ? text : `${text.slice(0, max - 1)}…`;
+}
+
 export function parseFailure(error: {
   readonly issues: readonly z.core.$ZodIssue[];
 }): ParseResult<never> {
   const issues = error.issues.map((issue) => ({
     path: issue.path.join('.'),
-    message: issue.message,
+    message: clamp(issue.message, MAX_ISSUE_MESSAGE_LENGTH),
   }));
   return {
     success: false,
-    error: issues.map((issue) => `${issue.path || '(racine)'} : ${issue.message}`).join(' ; '),
+    error: clamp(
+      issues.map((issue) => `${issue.path || '(racine)'} : ${issue.message}`).join(' ; '),
+      MAX_PARSE_ERROR_LENGTH,
+    ),
     issues,
   };
 }

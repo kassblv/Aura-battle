@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { parseClientMessage } from './client.js';
+import { MAX_PARSE_ERROR_LENGTH } from './primitives.js';
 import { parseHandshake } from './handshake.js';
 import { parseServerMessage } from './server.js';
 
@@ -218,5 +219,58 @@ describe('handshake — le seul point d entree qui porte le jeton', () => {
     expect(
       parseHandshake({ token: 'jwt', protocolVersion: '1.0.0', playerId: 'p_1' }).success,
     ).toBe(false);
+  });
+});
+
+/**
+ * Le message d'erreur d'analyse est-il, lui aussi, une charge utile ?
+ *
+ * Relecture de securite du banc de charge. `unrecognized_keys` de zod recopie
+ * **les noms de toutes les cles inattendues**. Un message par ailleurs valide,
+ * accompagne de milliers de cles inconnues, fabrique donc une chaine d'erreur
+ * proportionnelle a ce que le client a envoye — mesure a 58 918 caracteres
+ * pour 2 000 cles, et rien n'empeche d'en envoyer bien plus.
+ *
+ * Cette chaine part ensuite dans trois journaux : le `debug` de la passerelle,
+ * `reportInvalid` du notifier, et le notifier de fantome. En developpement la
+ * donnee du client y atterrit ; en production le litteral gabarit la
+ * concatene **avant** que pino ne teste le niveau, donc le serveur paie
+ * l'allocation sans meme produire de ligne.
+ *
+ * La borne vit ici plutot que dans chaque appelant : trois journaux
+ * aujourd'hui, un quatrieme demain, et il suffit d'en oublier un.
+ */
+describe('un message d erreur ne se laisse pas remplir par le client', () => {
+  const avecCles = (combien: number): Record<string, unknown> => {
+    const charge: Record<string, unknown> = { matchId: 'm_01' };
+    for (let i = 0; i < combien; i += 1) charge[`cle_inattendue_numero_${i}`] = 1;
+    return charge;
+  };
+
+  it('borne la chaine d erreur quoi que le client envoie', () => {
+    const parsed = parseClientMessage('match:ready', avecCles(2_000));
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error.length).toBeLessThanOrEqual(MAX_PARSE_ERROR_LENGTH);
+  });
+
+  /**
+   * La borne ne doit pas dependre de la taille de l'envoi : deux charges
+   * separees par un facteur dix doivent produire la meme longueur bornee,
+   * sinon ce n'est pas une borne.
+   */
+  it('ne grandit pas avec la charge', () => {
+    const petit = parseClientMessage('match:ready', avecCles(500));
+    const gros = parseClientMessage('match:ready', avecCles(5_000));
+    if (petit.success || gros.success) throw new Error('les deux devraient echouer');
+    expect(gros.error.length).toBe(petit.error.length);
+  });
+
+  /** Borner ne doit pas rendre le message inutile : le chemin reste lisible. */
+  it('garde le chemin du champ fautif', () => {
+    const parsed = parseClientMessage('recharge:taps', { matchId: 'm_01', round: 1, taps: 'non' });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    expect(parsed.error).toContain('taps');
   });
 });

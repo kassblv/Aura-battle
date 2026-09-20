@@ -442,6 +442,18 @@ export class MessageMetrics {
    * inverse de leur arrivee. Chercher le nom rend la mesure juste dans les
    * deux cas, et la file est bornee a trente-deux entrees : le parcours coute
    * moins que le `hrtime` qui l'encadre.
+   *
+   * **Ce que l'appariement par nom ne sait pas faire**, et qu'il faut savoir
+   * en lisant un relevé : deux messages de MEME nom en vol simultanement sont
+   * bien soldes tous les deux, mais dans l'ordre d'arrivee. Le plus rapide
+   * herite donc de la duree du plus lent, et reciproquement. Les comptes
+   * restent justes, la somme aussi — seuls les percentiles s'en trouvent
+   * brouilles, et seulement entre ces deux mesures-la.
+   *
+   * Corriger demanderait un identifiant par paquet, que Socket.IO ne fournit
+   * pas : il faudrait l'inventer, donc modifier le protocole pour un besoin
+   * de mesure. La limite de debit rend le cas rare (`RATE_LIMIT`), et le
+   * connaitre suffit a ne pas tirer de conclusion d'une p999 isolee.
    */
   private settle(connection: object, event: string, handled: boolean): void {
     if (!this.enabled) return;

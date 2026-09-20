@@ -84,6 +84,24 @@ function isAuthenticated(data: unknown): data is SocketState {
 }
 
 /**
+ * Taille maximale d'un message entrant.
+ *
+ * Le defaut d'engine.io est **un mega-octet**, ce qui n'a aucun rapport avec
+ * ce que ce protocole echange : le plus gros message legitime est
+ * `recharge:taps`, borne a `MAX_TAPS_PER_MESSAGE` entrees de deux nombres —
+ * quelques kilo-octets. Seize mille octets laissent donc un facteur cinq de
+ * marge tout en divisant par soixante ce qu'un client peut faire analyser a
+ * chaque message.
+ *
+ * Ce n'est pas une optimisation : c'est la borne qui manquait en amont de
+ * toutes les autres. Un message par ailleurs valide accompagne d'un mega-octet
+ * de cles inconnues faisait travailler zod, puis fabriquait un message
+ * d'erreur proportionnel — les deux sont bornes maintenant, mais borner la
+ * source coute moins cher que borner chaque consequence.
+ */
+const MAX_MESSAGE_BYTES = 16_000;
+
+/**
  * Le nom affiche est une propriete de la **session**, pas du match.
  *
  * Le resoudre ici — dans le seul endroit qui attend deja, pour
@@ -97,7 +115,11 @@ function isAuthenticated(data: unknown): data is SocketState {
  */
 
 @Injectable()
-@WebSocketGateway({ cors: { origin: true }, transports: ['websocket'] })
+@WebSocketGateway({
+  cors: { origin: true },
+  transports: ['websocket'],
+  maxHttpBufferSize: MAX_MESSAGE_BYTES,
+})
 export class MatchGateway implements OnGatewayConnection {
   constructor(
     @Inject(SocketAuthenticator) private readonly auth: SocketAuthenticator,
