@@ -90,7 +90,13 @@ export function App(): JSX.Element {
    * couperait la socket entre la creation d un code et l arrivee de
    * l adversaire — c est-a-dire exactement pendant l attente.
    */
-  const online = useOnlineMatch(session.accessToken, looks, arena, audio);
+  const online = useOnlineMatch(
+    session.accessToken,
+    session.identity?.displayName ?? null,
+    looks,
+    arena,
+    audio,
+  );
 
   /** Le serveur a ouvert un match : on quitte l ecran d invitation pour l arene. */
   const inDuel = online.view.phase !== 'idle';

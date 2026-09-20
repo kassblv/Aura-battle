@@ -53,6 +53,24 @@ export interface OnlineSession {
 
 export function useOnlineMatch(
   accessToken: string | null,
+  /**
+   * Nom affiche du joueur.
+   *
+   * Il n'est pas envoye — le serveur ne croit rien de ce que le client raconte
+   * de lui-meme. Il sert de **cle de session** : le serveur resout le nom au
+   * moment ou la socket se connecte, donc un renommage posterieur laisserait
+   * une socket qui s'annonce sous l'ancien nom. Le changer refait le lien.
+   *
+   * Le parcours de premiere partie tombe pile dedans : le client se connecte
+   * des que la session est prete, et l'ecran d'inscription ne s'affiche
+   * qu'ensuite. Sans cette dependance, tout premier duel annoncerait
+   * « Invite 7603 » a l'adversaire.
+   *
+   * Refaire la socket coupe un match en cours : le renommage ne doit donc
+   * rester joignable que hors match, ce qui est le cas aujourd'hui (il n'existe
+   * que dans l'ecran d'inscription).
+   */
+  displayName: string | null,
   looks: Readonly<Record<Seat, Look>>,
   arena: ArenaControls,
   audio: AudioControls,
@@ -175,7 +193,7 @@ export function useOnlineMatch(
       clientRef.current = null;
       matchRef.current = null;
     };
-  }, [accessToken, arena, audio]);
+  }, [accessToken, displayName, arena, audio]);
 
   const actions: MatchActions = {
     tap: useCallback((taps: readonly RechargeTap[]) => {
