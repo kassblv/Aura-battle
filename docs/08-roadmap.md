@@ -67,7 +67,7 @@ Référence : prototype, `docs/02-architecture.md`.
 - [ ] Port du rendu 3D du prototype en modules : scène ✅, foule instanciée ✅, rig avec mains ✅, caméra ✅, calque 2D ✅ — **particules et choc : en cours**
 - [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains) ✅ — **page `/dev/animation-viewer` : non faite** (la galerie de mèmes de l'accueil la remplace pour l'usage courant, pas pour le débogage image par image)
 - [x] Client réseau : synchronisation d'horloge, reconnexion automatique, reprise de `match:state`
-- [ ] Écrans : accueil ✅ (avec galerie de mèmes jouée par le personnage), créer/rejoindre une invitation ✅, attente ✅, match ✅, résultat ✅ — **revanche : non faite**
+- [x] Écrans : accueil ✅ (avec galerie de mèmes jouée par le personnage), créer/rejoindre une invitation ✅, attente ✅, match ✅, résultat ✅, revanche ✅ — en solo elle relance une partie sur une nouvelle graine, en ligne elle remet en file (l'adversaire précédent n'a aucune raison d'être encore là)
 - [x] Recharge et timing mesurés avec `performance.now()` et envoyés selon le protocole
 - [x] Moteur audio du prototype porté ; musique et effets activables — 23 sons synthétisés, aucun fichier embarqué ; déverrouillé au premier geste (sans quoi iOS reste muet en silence)
 - [x] Solo contre IA fonctionnel hors ligne (même `@aura/rules`)

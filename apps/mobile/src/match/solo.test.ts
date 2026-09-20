@@ -202,3 +202,37 @@ describe('instant de timing', () => {
     expect(lockAt(500, 9_000)).not.toBe('miss');
   });
 });
+
+describe('revanche', () => {
+  /**
+   * Rejouer, c est une NOUVELLE partie, pas la meme remise a zero.
+   *
+   * Deux revanches sur la meme graine rejoueraient la meme sequence d orbes et
+   * la meme jauge : le joueur apprendrait le tirage au lieu d apprendre le
+   * jeu, et l IA ferait les memes choix. Ce test verrouille la seule chose qui
+   * l en empeche — la graine change.
+   */
+  it('rejoue une sequence differente d une partie a l autre', () => {
+    const premiere = createSoloMatch({ seed: 'partie-1', opponent: 'calm', startedAtMs: 0 });
+    const seconde = createSoloMatch({ seed: 'partie-2', opponent: 'calm', startedAtMs: 0 });
+    runTo(premiere, 'recharge');
+    runTo(seconde, 'recharge');
+
+    const orbes = (match: SoloMatch): string =>
+      (match.state.roundContext?.orbs ?? [])
+        .map((orb) => `${orb.x},${orb.y},${orb.kind}`)
+        .join('|');
+
+    expect(orbes(premiere)).not.toBe('');
+    expect(orbes(premiere)).not.toBe(orbes(seconde));
+  });
+
+  /** La meme graine, elle, rejoue exactement la meme partie : c est la regle d or n°2. */
+  it('reste deterministe a graine egale', () => {
+    const a = createSoloMatch({ seed: 'meme', opponent: 'calm', startedAtMs: 0 });
+    const b = createSoloMatch({ seed: 'meme', opponent: 'calm', startedAtMs: 0 });
+    runTo(a, 'recharge');
+    runTo(b, 'recharge');
+    expect(a.state.roundContext?.orbs).toEqual(b.state.roundContext?.orbs);
+  });
+});

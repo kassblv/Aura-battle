@@ -20,7 +20,18 @@ export interface MatchSession {
   readonly view: MatchView;
   readonly actions: MatchActions;
   readonly nowMs: number;
+  /**
+   * Relance une partie, sur une nouvelle graine.
+   *
+   * Une NOUVELLE partie, pas la meme remise a zero : rejouer la meme graine
+   * rendrait la sequence d orbes et la jauge identiques, et le joueur
+   * apprendrait le tirage au lieu d apprendre le jeu.
+   */
+  readonly restart: () => void;
 }
+
+/** Une graine par partie. L horloge suffit : rien ici n a besoin d etre secret. */
+const freshSeed = (): string => `solo-${String(Date.now())}-${String(Math.random()).slice(2, 8)}`;
 
 export function useSoloMatch(
   looks: Readonly<Record<'a' | 'b', Look>>,
@@ -29,7 +40,7 @@ export function useSoloMatch(
 ): MatchSession {
   const matchRef = useRef<SoloMatch | null>(null);
   matchRef.current ??= createSoloMatch({
-    seed: `solo-${String(Date.now())}`,
+    seed: freshSeed(),
     opponent: 'calm',
     startedAtMs: 0,
   });
@@ -109,6 +120,21 @@ export function useSoloMatch(
     }, []),
   };
 
+  const restart = useCallback(() => {
+    matchRef.current = createSoloMatch({
+      seed: freshSeed(),
+      opponent: 'calm',
+      startedAtMs: 0,
+    });
+    // L horloge de phase repart avec la partie : sans cela, la premiere phase
+    // de la revanche se croirait deja finie et defilerait d un coup.
+    startedAt.current = performance.now();
+    // Et rien de la partie precedente ne doit sonner : le dernier resultat vu
+    // est celui d un match qui n existe plus.
+    soundedRef.current = null;
+    setNow(0);
+  }, []);
+
   const match = matchRef.current;
-  return { view: viewOfSolo(match), actions, nowMs };
+  return { view: viewOfSolo(match), actions, nowMs, restart };
 }

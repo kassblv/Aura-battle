@@ -92,6 +92,15 @@ export interface MatchScreenProps {
   readonly nowMs: number;
   readonly opponentName: string;
   readonly onLeave: () => void;
+  /**
+   * Rejouer tout de suite.
+   *
+   * Ce que le mot recouvre depend du mode — relancer une partie solo, ou se
+   * remettre en file — et l ecran n a pas a le savoir : il sait seulement que
+   * c est le geste le plus probable juste apres un resultat.
+   */
+  readonly onRematch: () => void;
+  readonly rematchLabel: string;
 }
 
 export function MatchScreen({
@@ -100,6 +109,8 @@ export function MatchScreen({
   nowMs,
   opponentName,
   onLeave,
+  onRematch,
+  rematchLabel,
 }: MatchScreenProps): JSX.Element {
   const [style, setStyle] = useState<Style | null>(null);
   const [tier, setTier] = useState<Tier>(0);
@@ -370,9 +381,30 @@ export function MatchScreen({
       )}
 
       {view.ended !== null && (
-        <button type="button" className="action--center" onClick={onLeave}>
-          {view.ended.winner === 'moi' ? 'Victoire — accueil' : 'Défaite — accueil'}
-        </button>
+        <div className="outcome">
+          {/*
+            Le verdict d'abord, puis le geste le plus probable.
+
+            Un ecran de fin qui n'offre que « accueil » renvoie le joueur au
+            menu au moment precis ou il veut rejouer — et c'est ce moment-la
+            qui decide s'il lance une seconde partie ou s'il ferme le jeu.
+          */}
+          <p className="outcome__verdict" data-won={view.ended.winner === 'moi'}>
+            {view.ended.winner === 'moi'
+              ? 'Victoire'
+              : view.ended.winner === null
+                ? 'Égalité'
+                : 'Défaite'}
+          </p>
+          <div className="outcome__row">
+            <button type="button" className="outcome__again" onClick={onRematch}>
+              {rematchLabel}
+            </button>
+            <button type="button" className="outcome__home" onClick={onLeave}>
+              Accueil
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

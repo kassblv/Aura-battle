@@ -342,6 +342,12 @@ export function App(): JSX.Element {
             nowMs={online.nowMs}
             opponentName={online.opponentName}
             onLeave={leaveMatch}
+            onRematch={() => {
+              // En ligne, « rejouer » c est se remettre en file : l adversaire
+              // precedent n a aucune raison d etre encore la.
+              online.joinQueue('casual');
+            }}
+            rematchLabel="Rejouer"
           />
         )}
 
@@ -367,6 +373,14 @@ export function App(): JSX.Element {
             onLeave={() => {
               go('home');
             }}
+            onRematch={() => {
+              // Depuis une invitation aussi, « rejouer » passe par la file :
+              // celui qui avait donne le code n a pas forcement envie d'un
+              // second duel, et l attendre laisserait le joueur devant rien.
+              go('queue');
+              online.joinQueue('casual');
+            }}
+            rematchLabel="Rejouer"
           />
         )}
 
@@ -415,6 +429,8 @@ function SoloMatchScreen({
       nowMs={session.nowMs}
       opponentName="Nova"
       onLeave={onLeave}
+      onRematch={session.restart}
+      rematchLabel="Rejouer"
     />
   );
 }
