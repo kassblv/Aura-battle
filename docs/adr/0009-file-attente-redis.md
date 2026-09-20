@@ -57,6 +57,10 @@ d'arrière-plan, la reconnexion et le `queue:join` du client partent ensemble, c
 file où l'autre n'a pas fini d'écrire, et le joueur perd l'ancienneté qu'on venait de lui
 préserver. Une chaîne de promesses par joueur — pas un verrou global, deux joueurs différents
 n'ont aucune raison de s'attendre — rend l'ordre déterministe sans rien demander au rangement.
+En contrepartie, un bloc sérialisé ne doit jamais rappeler une méthode publique du service pour
+le même joueur : il s'attendrait lui-même, pour toujours, sans exception ni journal. L'invariant
+est détecté à l'exécution (contexte asynchrone) plutôt que seulement documenté, parce que sa
+violation serait silencieuse et définitive pour le joueur concerné.
 
 **Le câblage NestJS de la file vit dans `MatchModule`**, pas dans un module à part. La
 passerelle doit traiter `queue:join` — il n'y a qu'une socket authentifiée, donc qu'une

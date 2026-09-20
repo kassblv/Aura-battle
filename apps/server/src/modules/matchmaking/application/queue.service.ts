@@ -1,3 +1,4 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
 import { describeCause } from '../../../shared/describe-cause.js';
 import { pairTickets, searchRange, type QueuePair } from '../domain/pairing.js';
 import type {
@@ -72,6 +73,16 @@ interface ParkedTicket {
   readonly ticket: QueueTicket;
   readonly expiresAtMs: number;
 }
+
+/**
+ * Joueur dont une ecriture serialisee est en cours **dans ce contexte-ci**.
+ *
+ * Un contexte asynchrone suit les `await` de son propre bloc sans deborder sur
+ * ceux d'a cote : c'est ce qui permet de distinguer une re-entree — le bloc
+ * qui se rappellerait lui-meme, et s'attendrait pour toujours — d'un appel
+ * concurrent venu d'ailleurs, qui doit simplement prendre la file.
+ */
+const serializedFor = new AsyncLocalStorage<string>();
 
 /**
  * Referme une promesse : ce qui s'est passe dedans ne regarde pas la chaine.
@@ -373,10 +384,34 @@ export class MatchmakingQueue {
    * a propager une panne. Sans cela, une ecriture qui echoue bloquerait toutes
    * les suivantes pour ce joueur, et son rejet, que personne n'ecoute, ferait
    * tomber le processus.
+   *
+   * **Invariant : un bloc serialise n'appelle aucune methode publique de cette
+   * classe pour le meme joueur.** Il s'attendrait lui-meme : le maillon
+   * exterieur ne peut se regler qu'apres son propre `work`, qui attend le
+   * maillon interieur, qui attend le maillon exterieur. La promesse ne se
+   * reglerait **jamais** — pas d'exception, pas de journal, pas de test qui
+   * echoue, et ce joueur ne pourrait plus faire une seule operation de file
+   * pour la duree de vie du processus. Les methodes internes (`parkTicket`,
+   * `sendStatus`) sont la pour ca : elles ne serialisent pas.
+   *
+   * L'invariant n'est pas seulement ecrit, il est **detecte** : le contexte
+   * ci-dessous suit le joueur a travers les `await`, et une re-entree se
+   * solde par un rejet bruyant plutot que par une attente eternelle. Un
+   * commentaire aurait protege la prochaine lecture ; ceci protege aussi la
+   * prochaine distraction.
    */
   private serialize<T>(playerId: string, work: () => Promise<T>): Promise<T> {
+    if (serializedFor.getStore() === playerId) {
+      return Promise.reject(
+        new Error(
+          `ecriture de file re-entrante pour ${playerId} : un bloc serialise ne doit pas rappeler ce service`,
+        ),
+      );
+    }
+
     const previous = this.writes.get(playerId) ?? Promise.resolve();
-    const result = previous.then(work, work);
+    const guarded = (): Promise<T> => serializedFor.run(playerId, work);
+    const result = previous.then(guarded, guarded);
     const link = result.then(settle, settle);
 
     this.writes.set(playerId, link);
@@ -437,6 +472,33 @@ export class MatchmakingQueue {
     // reviendrait a offrir un forfait a son adversaire.
     const present: QueueTicket[] = [];
     for (const ticket of waiting) {
+      if (this.cancelled.has(ticket.playerId)) {
+        /**
+         * Annulation **en vol**.
+         *
+         * `cancel` inscrit l'annulation sur-le-champ, mais le retrait du
+         * ticket part au bout de la chaine d'ecriture du joueur — derriere le
+         * `queue:join` en cours, aller-retour en base compris. Un tour qui
+         * tombe dans cet intervalle voit un ticket bien present, un joueur
+         * connecte et libre, et l'apparierait : `match:found` sur une
+         * recherche annulee, client deja parti de l'ecran, et en classe une
+         * defaite au MMR sans consentement. C'est le meme defaut que dans
+         * `requeue`, par une autre porte.
+         *
+         * Le retrait est relance **sans etre attendu** : si le precedent avait
+         * echoue, le ticket resterait la jusqu'a ce que la memoire de
+         * l'annulation s'efface, et serait apparie une minute plus tard.
+         * L'attendre ferait au contraire dependre tout l'appariement de la
+         * lenteur d'une seule ecriture.
+         */
+        void this.leave(ticket.playerId).catch((cause: unknown) => {
+          this.log?.warn(
+            `retrait d'un ticket annule impossible pour ${ticket.playerId} : ${describeCause(cause)}`,
+          );
+        });
+        continue;
+      }
+
       if (availability.isBusy(ticket.playerId)) {
         // Assis a un duel : son ticket n'a plus d'objet, et le lui rendre a la
         // prochaine reconnexion le remettrait a chercher un adversaire en

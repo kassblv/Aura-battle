@@ -54,7 +54,9 @@ Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste l
   rien à retirer, et le remettre en file le rendrait appariable alors que son client a quitté
   l'écran de recherche. Il encaisserait le `match:found` suivant sans le jouer, c'est-à-dire
   une défaite classée sur une recherche annulée. L'annulation reste donc opposable pendant une
-  minute, et un nouveau `queue:join` l'efface. Celui qui s'est **déconnecté** pendant ce
+  minute, et un nouveau `queue:join` l'efface. Le **tour d'appariement** la consulte lui aussi :
+  l'annulation est inscrite tout de suite, mais le retrait du ticket part derrière l'écriture en
+  cours — un tour qui tombe dans cet intervalle apparierait un joueur qui vient de renoncer. Celui qui s'est **déconnecté** pendant ce
   temps-là, lui, voit son ticket garé comme n'importe quelle déconnexion : ni en file, ni
   perdu.
 - **« Déconnecté » et « déjà en duel » ne se répondent pas par le même booléen.** Le premier

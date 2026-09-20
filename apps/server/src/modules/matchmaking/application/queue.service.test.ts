@@ -59,6 +59,22 @@ class FixedRatings implements RatingReader {
  * premier merite qu'on lui garde sa place, le second n'a plus rien a faire en
  * file — et un seul booleen ne permet pas de les distinguer.
  */
+/**
+ * Porte de derriere sur la serialisation, pour eprouver son invariant.
+ *
+ * `serialize` est prive, et doit le rester : rien en production n'a de raison
+ * de l'appeler directement. Le seul moyen de verifier qu'une re-entree est
+ * refusee est donc de la provoquer d'ici.
+ */
+const serializeOf = (
+  target: MatchmakingQueue,
+): ((playerId: string, work: () => Promise<unknown>) => Promise<unknown>) => {
+  const reachable = target as unknown as {
+    serialize: (playerId: string, work: () => Promise<unknown>) => Promise<unknown>;
+  };
+  return reachable.serialize.bind(reachable);
+};
+
 const TOUS_DISPONIBLES: PlayerAvailability = {
   isConnected: () => true,
   isBusy: () => false,
@@ -441,6 +457,44 @@ describe('retour en file apres un match non ouvert', () => {
     expect(notifier.statusesFor('p1')).toHaveLength(0);
   });
 
+  /**
+   * L'annulation en vol, c'est-a-dire l'autre porte du meme defaut.
+   *
+   * `cancel` inscrit l'annulation tout de suite, mais le retrait du ticket,
+   * lui, part au bout de la chaine d'ecriture du joueur — donc derriere le
+   * `queue:join` en cours, aller-retour en base compris. Un tour
+   * d'appariement qui tombe dans cet intervalle voit un ticket bien present,
+   * un joueur connecte et libre, et l'apparie : `match:found` sur une
+   * recherche annulee, client deja parti de l'ecran, et en classe une defaite
+   * au MMR sans consentement.
+   */
+  it('n apparie pas un joueur dont l annulation n a pas fini de s ecrire', async () => {
+    await queue.join('adversaire', 'ranked', 1_000);
+    await queue.join('hesitant', 'ranked', 1_000);
+
+    // Le retrait du ticket part au bout de la chaine d'ecriture du joueur : il
+    // est donc encore en vol quand le tour suivant lit la file. Un rangement
+    // qui repond en differe reproduit exactement cet intervalle.
+    let release: () => void = () => {
+      throw new Error('jamais appele : remplace par la promesse ci-dessous');
+    };
+    const honest = store.remove.bind(store);
+    store.remove = async (playerId: string) => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return honest(playerId);
+    };
+
+    const cancelling = queue.cancel('hesitant', 1_500);
+
+    expect(await queue.tick(2_000, TOUS_DISPONIBLES)).toHaveLength(0);
+
+    release();
+    await cancelling;
+    expect(await queue.isQueued('hesitant')).toBe(false);
+  });
+
   /** L'annulation ne vaut que pour elle-meme : redemander efface tout. */
   it('remet en file un joueur qui a annule puis redemande un duel', async () => {
     await queue.join('p1', 'ranked', 1_000);
@@ -479,6 +533,62 @@ describe('retour en file apres un match non ouvert', () => {
     await queue.requeue(ticket, 9_500);
 
     expect((await store.get('p1'))?.mode).toBe('casual');
+  });
+});
+
+describe('ecritures serialisees', () => {
+  /**
+   * L'invariant qui ne pardonne pas : un bloc serialise ne rappelle pas ce
+   * service pour le meme joueur.
+   *
+   * Il s'attendrait lui-meme — le maillon exterieur attend son `work`, qui
+   * attend le maillon interieur, qui attend le maillon exterieur — et la
+   * promesse ne se reglerait **jamais**. Pas d'exception, pas de journal, et
+   * ce joueur ne pourrait plus rien faire en file pour la duree de vie du
+   * processus. Le rejet vaut mille fois cette attente-la.
+   *
+   * Ce que fait ce test est precisement ce que le code de production ne doit
+   * jamais faire : c'est pour cela qu'il passe par la porte de derriere.
+   */
+  it('refuse une ecriture re-entrante au lieu de s attendre elle-meme', async () => {
+    const reentrant = serializeOf(queue)('p1', async () => {
+      await queue.leave('p1');
+    });
+
+    await expect(reentrant).rejects.toThrow(/re-entrante/);
+  });
+
+  /** Deux appels venus d'ailleurs, eux, doivent simplement prendre la file. */
+  it('laisse passer deux ecritures concurrentes du meme joueur', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+
+    await expect(
+      Promise.all([queue.join('p1', 'ranked', 2_000), queue.leave('p1')]),
+    ).resolves.toBeDefined();
+  });
+
+  /** Un joueur ne fait pas attendre un autre : le verrou est par joueur. */
+  it('n attend pas la chaine d un autre joueur', async () => {
+    let release: () => void = () => {
+      throw new Error('jamais appele : remplace par la promesse ci-dessous');
+    };
+    const honest = store.add.bind(store);
+    store.add = async (ticket) => {
+      if (ticket.playerId === 'lent') {
+        await new Promise<void>((resolve) => {
+          release = resolve;
+        });
+      }
+      return honest(ticket);
+    };
+
+    const lent = queue.join('lent', 'ranked', 1_000);
+    await queue.join('rapide', 'ranked', 1_000);
+
+    expect(await queue.isQueued('rapide')).toBe(true);
+
+    release();
+    await lent;
   });
 });
 
