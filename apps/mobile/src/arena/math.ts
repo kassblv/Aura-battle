@@ -19,3 +19,8 @@ export function damp(rate: number, dt: number): number {
 export function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
+
+/** Depart franc, arrivee amortie : l ouverture d une onde de choc. */
+export function easeOut(t: number): number {
+  return 1 - Math.pow(1 - t, 3);
+}

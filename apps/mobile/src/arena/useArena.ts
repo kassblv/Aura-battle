@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
+import type { Seat } from '@aura/rules';
 import { createPoseSmoother, breatheInto } from '../animation/smooth.js';
 import { samplePose } from '../animation/sample.js';
 import { ANIMATIONS } from '../content/animations.js';
 import type { Presentation } from '../match/presentation.js';
+import { watchReducedMotion } from '../platform/reducedMotion.js';
 import { soloFraming, wideFraming } from './camera.js';
 import { createArenaRenderer } from './renderer.js';
 import { createArenaScene } from './scene.js';
@@ -21,16 +23,44 @@ import { createArenaTextures } from './textures.js';
  * une seconde de chargement par phase.
  */
 
+/**
+ * Aura demandee pour un siege.
+ *
+ * `color` vaut `null` tant que l appelant ne l impose pas : l arene reprend
+ * alors la couleur d aura de la tenue affichee, pour que la vitrine suive le
+ * vestiaire sans que personne ait a les recopier l une dans l autre.
+ */
+export interface AuraRequest {
+  readonly effectId: string;
+  readonly color: string | null;
+  readonly intensity: number;
+}
+
+/** Au repos : l effet offert, discret, a la couleur de la tenue. */
+export const RESTING_AURA: AuraRequest = Object.freeze({
+  effectId: 'fx.glow',
+  color: null,
+  intensity: 0.35,
+});
+
 export interface ArenaControls {
   /** Ce que l arene doit montrer, relu a chaque image. */
   readonly presentation: RefObject<Presentation | null>;
   /** Vrai hors match : un seul personnage, camera rapprochee. */
   readonly showcase: RefObject<boolean>;
+  /**
+   * Change l aura d un siege. Seuls les champs fournis sont remplaces.
+   *
+   * Prise en compte a l image suivante, et sans effet de bord : un effet
+   * inconnu retombe sur la Lueur au lieu de lever.
+   */
+  setAura(seat: Seat, request: Partial<AuraRequest>): void;
 }
 
 export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaControls {
   const presentation = useRef<Presentation | null>(null);
   const showcase = useRef(true);
+  const auras = useRef<Record<Seat, AuraRequest>>({ a: RESTING_AURA, b: RESTING_AURA });
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -44,10 +74,14 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
     const arena = createArenaScene({ textures, rng: Math.random });
     const smoothers = { a: createPoseSmoother(), b: createPoseSmoother() };
 
+    const motion = watchReducedMotion();
+
     const resize = (): void => {
       const { clientWidth, clientHeight } = canvas;
-      arena.setSize(clientWidth, clientHeight);
       renderer.setSize(clientWidth, clientHeight, window.devicePixelRatio);
+      // La taille d un point depend du rapport de pixels reellement retenu par
+      // le rendu, pas de celui que l appareil annonce.
+      arena.setSize(clientWidth, clientHeight, renderer.renderer.getPixelRatio());
     };
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
@@ -78,6 +112,13 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
         const offset = seat === 'a' ? 0 : 1.7;
         const target = breatheInto(samplePose(animation, elapsed, offset), elapsed, offset);
         fighter.pose(smoothers[seat].step(target, delta), animation, elapsed, delta);
+
+        const request = auras.current[seat];
+        arena.setAura(seat, {
+          effectId: request.effectId,
+          color: request.color ?? shown.look.aura,
+          intensity: request.intensity,
+        });
       }
 
       arena.fighters.b.root.visible = !solo;
@@ -100,7 +141,7 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
         framing: solo ? soloFraming(fighter.position.x) : wideFraming(),
         hype: scene?.hype ?? 0.2,
         shake: 0,
-        reducedMotion: false,
+        reducedMotion: motion.reduced,
       });
       renderer.renderer.render(arena.scene, arena.camera);
     };
@@ -110,6 +151,7 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      motion.dispose();
       arena.dispose();
       renderer.dispose();
     };
@@ -123,5 +165,14 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
    * chaque rendu — anodin pour une boucle d animation, fatal pour celui qui
    * tient la socket du duel.
    */
-  return useMemo(() => ({ presentation, showcase }), []);
+  return useMemo(
+    () => ({
+      presentation,
+      showcase,
+      setAura(seat: Seat, request: Partial<AuraRequest>): void {
+        auras.current = { ...auras.current, [seat]: { ...auras.current[seat], ...request } };
+      },
+    }),
+    [],
+  );
 }
