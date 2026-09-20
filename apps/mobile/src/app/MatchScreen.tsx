@@ -1,16 +1,13 @@
 import { AMPLIFIER_LEVELS, amplifierName, styleName, tierName, TIERS } from '@aura/content';
 import {
   BALANCE,
-  liveOrbs,
   type AmplifierLevel,
   type Choice,
-  type LiveOrb,
   type RechargeTap,
   type Style,
   type Tier,
 } from '@aura/rules';
-import { useEffect, useRef, useState, type JSX } from 'react';
-import { reachable } from '../match/reach.js';
+import { memo, useCallback, useEffect, useRef, useState, type JSX, type RefObject } from 'react';
 import type { MatchView } from '../match/view.js';
 import {
   chargeClock,
@@ -20,6 +17,8 @@ import {
   resolveZones,
   type MeterZones,
 } from '../ui/gauge.js';
+import { countdownLabel, orbPaint, ORB_SLOTS, phaseClock, progressTransform } from '../ui/frame.js';
+import { renderKey, type MeterZonesView } from '../ui/renderKey.js';
 import { betFor, levelFill, type Bet } from '../ui/bet.js';
 import { chunkEvenly, pickNameClass, STYLE_COLUMNS } from '../ui/layout.js';
 
@@ -29,6 +28,25 @@ import { chunkEvenly, pickNameClass, STYLE_COLUMNS } from '../ui/layout.js';
  * Il ne decide rien et ignore contre qui il joue : `view.ts` lui donne une
  * forme unique pour le solo et l en-ligne, `reach.ts` place les orbes. Ici on
  * lit une horloge, on dessine, et on transmet des intentions.
+ *
+ * **Deux rythmes, deux mecaniques.** L aiguille, les orbes et le compte a
+ * rebours suivent l horloge ; les boutons, les paliers, l energie et le
+ * bandeau ne bougent qu au doigt du joueur ou a un message du serveur. Tout
+ * passait par le meme rendu React soixante fois par seconde : deplacer
+ * l aiguille redessinait trente boutons, et la phase de choix tombait a 25 i/s
+ * sous ralenti x4. Depuis :
+ *
+ * - React ne redessine que quand `renderKey` change (`ui/renderKey.ts`) ;
+ * - une boucle d animation ecrit les styles mobiles sur des references, a
+ *   partir des fonctions pures de `ui/frame.ts`.
+ *
+ * **Qui possede quoi.** Une propriete appartient a React **ou** a la boucle,
+ * jamais aux deux : une valeur ecrite hors React sur une propriete que React
+ * rend aussi serait effacee au rendu suivant, et le symptome serait un
+ * tremblement, pas une erreur. La boucle possede `transform` de la barre de
+ * phase, le texte du compte a rebours, `left`/`top`/`opacity`/`data-live`/
+ * `data-kind` des orbes et `left` de l aiguille. React ne rend aucune de ces
+ * proprietes.
  */
 
 /**
@@ -70,26 +88,31 @@ export interface MatchActions {
   lock(choice: Choice, chargeAtMs: number, tapAtMs: number): boolean;
 }
 
-/**
- * Geometrie de la jauge tiree par le moteur, sous les noms plats de `view.ts`.
- *
- * `MatchView` ne publie pour l instant que `meterPeriodMs`, alors que le moteur
- * tire aussi un **centre** par manche (entre 0,30 et 0,70) et que le serveur
- * l envoie dans `choice:start`. Tant que ces trois champs manquent, la jauge se
- * rabat sur une zone centree — un dessin, pas la verite. Le jour ou `view.ts`
- * les porte, la jauge les prend sans qu une ligne change ici.
- */
-export interface MeterZonesView {
-  readonly meterCenter: number;
-  readonly meterZoneWidth: number;
-  readonly meterPerfectWidth: number;
-}
+export type { MeterZonesView };
 
 export interface MatchScreenProps {
   readonly view: MatchView & Partial<MeterZonesView>;
   readonly actions: MatchActions;
-  /** Heure locale courante, fournie par la boucle du parent. */
+  /**
+   * Heure locale au dernier rendu, dans le repere de `view.phaseEndsAtMs`.
+   *
+   * Elle ne sert plus a dessiner — la boucle lit `clock` — mais a **caler** le
+   * repere : l ecran en deduit l ecart avec `performance.now()` quand le parent
+   * ne fournit pas d horloge vive.
+   */
   readonly nowMs: number;
+  /**
+   * Horloge vive du parent, lue a chaque image et a chaque geste.
+   *
+   * Sans elle, l ecran se rabat sur `nowMs` plus l ecart mesure au dernier
+   * rendu. Le repli est exact tant que l ecart est constant — c est le cas du
+   * solo, dont l horloge est `performance.now()` moins un debut fixe — mais il
+   * vieillit des que le parent decale son repere. La fournir supprime la
+   * question, et elle est **indispensable pour dater un geste** : un tap et un
+   * verrouillage sont confrontes cote serveur a leur instant d arrivee
+   * (docs/06), et une horloge figee au dernier rendu les daterait faux.
+   */
+  readonly clock?: () => number;
   readonly opponentName: string;
   readonly onLeave: () => void;
   /**
@@ -103,10 +126,11 @@ export interface MatchScreenProps {
   readonly rematchLabel: string;
 }
 
-export function MatchScreen({
+function MatchScreenBody({
   view,
   actions,
   nowMs,
+  clock,
   opponentName,
   onLeave,
   onRematch,
@@ -118,6 +142,46 @@ export function MatchScreen({
   const [locked, setLocked] = useState(false);
   /** Instant ou la jauge s est armee, c est-a-dire ou un style a ete choisi. */
   const chargeAt = useRef<number | null>(null);
+
+  /**
+   * La vue que la boucle doit peindre.
+   *
+   * La boucle vit hors du rendu : elle ne peut pas fermer sur `view`, qui
+   * serait celle du montage. `renderKey` garantit en retour qu aucun champ lu
+   * ici ne peut changer sans rendu.
+   */
+  const viewRef = useRef(view);
+  viewRef.current = view;
+
+  /**
+   * Horloge vive, ou son repli.
+   *
+   * `performance.now()` et `nowMs` ne comptent pas depuis le meme instant : on
+   * mesure l ecart au rendu, et on le rejoue entre deux rendus.
+   */
+  const offset = useRef(0);
+  if (clock === undefined) offset.current = nowMs - performance.now();
+  const now = useRef<() => number>(() => 0);
+  now.current = clock ?? ((): number => performance.now() + offset.current);
+
+  /**
+   * Temps ecoule dans la phase, a l instant precis ou on le demande.
+   *
+   * Stable d un rendu a l autre — elle ne lit que des references —, pour que
+   * les gestes qu elle date puissent l etre aussi.
+   */
+  const inPhaseNow = useCallback((): number => {
+    const current = viewRef.current;
+    return phaseClock(current.phaseEndsAtMs, current.phaseDurationMs, now.current()).inPhaseMs;
+  }, []);
+
+  // Elements peints par la boucle. Aucun ne recoit de style de React.
+  const timerRef = useRef<HTMLElement | null>(null);
+  const countdownRef = useRef<HTMLParagraphElement | null>(null);
+  const needleRef = useRef<HTMLElement | null>(null);
+  const orbRefs = useRef<(HTMLButtonElement | null)[]>([]);
+  /** Orbe posee sur chaque emplacement : c est elle que le clic vise. */
+  const orbOn = useRef<(number | null)[]>(Array.from({ length: ORB_SLOTS }, () => null));
 
   // Une nouvelle manche remet le choix a zero.
   const round = useRef(view.round);
@@ -131,32 +195,111 @@ export function MatchScreen({
     chargeAt.current = null;
   }, [view.round]);
 
-  const phaseStart = view.phaseEndsAtMs - view.phaseDurationMs;
-  const inPhase = Math.max(0, nowMs - phaseStart);
-  const left = Math.max(0, view.phaseEndsAtMs - nowMs);
+  /**
+   * La boucle de peinture.
+   *
+   * Elle est montee une fois pour toute la duree de l ecran et ne depend de
+   * rien : tout ce qu elle lit passe par une reference. Elle n alloue rien
+   * d autre que le tableau des orbes pendant la recharge, et n ecrit une
+   * propriete que si sa valeur a change.
+   */
+  useEffect(() => {
+    let frame = 0;
+    let countdownNode: Element | null = null;
+    let countdownText = '';
+
+    const paint = (): void => {
+      frame = requestAnimationFrame(paint);
+      const current = viewRef.current;
+      const phase = phaseClock(current.phaseEndsAtMs, current.phaseDurationMs, now.current());
+
+      const timer = timerRef.current;
+      if (timer !== null) timer.style.transform = progressTransform(phase.progress);
+
+      const countdown = countdownRef.current;
+      if (countdown !== null) {
+        const label = countdownLabel(phase.leftMs);
+        // Le noeud change quand le bandeau est remonte : la chaine deja posee
+        // ne dit alors rien de ce que porte le nouveau.
+        if (label !== countdownText || countdown !== countdownNode) {
+          countdown.textContent = label;
+          countdownText = label;
+          countdownNode = countdown;
+        }
+      }
+
+      if (current.phase === 'recharge') {
+        const slots = orbPaint(current.taps, current.orbs, phase.inPhaseMs);
+        for (let slot = 0; slot < ORB_SLOTS; slot += 1) {
+          const node = orbRefs.current[slot];
+          const paintSlot = slots[slot];
+          if (node === null || node === undefined || paintSlot === undefined) continue;
+
+          if (paintSlot.orbIndex !== orbOn.current[slot]) {
+            orbOn.current[slot] = paintSlot.orbIndex;
+            node.dataset.live = paintSlot.orbIndex === null ? 'false' : 'true';
+            node.dataset.kind = paintSlot.golden ? 'golden' : 'normal';
+            node.setAttribute('aria-label', paintSlot.label);
+            if (paintSlot.orbIndex !== null) replay(node);
+          }
+          if (paintSlot.orbIndex === null) continue;
+
+          node.style.left = paintSlot.left;
+          node.style.top = paintSlot.top;
+          node.style.opacity = paintSlot.opacity;
+        }
+      }
+
+      const needle = needleRef.current;
+      if (needle !== null) {
+        const since = chargeClock(phase.inPhaseMs, chargeAt.current);
+        if (since !== null) {
+          needle.style.left = percent(needlePosition(since, current.meterPeriodMs));
+        }
+      }
+    };
+
+    frame = requestAnimationFrame(paint);
+    return () => {
+      cancelAnimationFrame(frame);
+    };
+  }, []);
+
   const cap = Math.min(BALANCE.maxRoundCost, view.me.energy ?? BALANCE.maxRoundCost);
+  const armed = style !== null;
 
   /**
-   * Temps ecoule depuis l armement, ou `null` tant que rien n est arme.
-   *
-   * C est l horloge de la jauge : celle que le serveur utilisera pour noter.
+   * Stable d un rendu a l autre : c est ce qui permet a `ControlBand` de se
+   * reconnaitre. Une fonction recreee a chaque rendu suffirait a lui faire
+   * redessiner ses trente boutons.
    */
-  const sinceCharge = chargeClock(inPhase, chargeAt.current);
-  const armed = style !== null && sinceCharge !== null;
-  const canLock = armed && !locked && (sinceCharge ?? 0) >= MIN_CHARGE_MS;
-  const bet = betFor(tier, amplifier, cap);
+  const chooseStyle = useCallback(
+    (next: Style): void => {
+      setStyle(next);
+      // La jauge s arme au premier choix de style, pas au debut de la phase :
+      // c est l instant ou le joueur commence reellement a viser.
+      chargeAt.current ??= inPhaseNow();
+    },
+    [inPhaseNow],
+  );
 
-  const chooseStyle = (next: Style): void => {
-    setStyle(next);
-    // La jauge s arme au premier choix de style, pas au debut de la phase :
-    // c est l instant ou le joueur commence reellement a viser.
-    chargeAt.current ??= inPhase;
+  const tapSlot = (slot: number): void => {
+    const orbIndex = orbOn.current[slot];
+    // Un emplacement vide n est pas tapable : la feuille de style le masque et
+    // ce garde-fou evite qu un appui retarde ne parte quand meme.
+    if (orbIndex === null || orbIndex === undefined) return;
+    const at = inPhaseNow();
+    actions.tap([{ atMs: at, orbIndex }], at);
   };
 
   const lockIn = (): void => {
-    if (!canLock || style === null) return;
+    if (locked || style === null || chargeAt.current === null) return;
+    const at = inPhaseNow();
+    // Le delai minimal se juge a l instant de l appui, pas au dernier rendu :
+    // c est le meme ecart que le serveur recalculera.
+    if (at - chargeAt.current < MIN_CHARGE_MS) return;
     const choice: Choice = { move: { style, tier }, amplifier, useUltimate: false };
-    if (actions.lock(choice, chargeAt.current ?? 0, inPhase)) setLocked(true);
+    if (actions.lock(choice, chargeAt.current, at)) setLocked(true);
   };
 
   return (
@@ -170,35 +313,33 @@ export function MatchScreen({
         <span className="hud__side hud__side--right">
           <Pips won={view.opponent.roundsWon} /> <b>{opponentName}</b>
         </span>
-        <i
-          className="hud__timer"
-          style={{ width: `${((inPhase / view.phaseDurationMs) * 100).toFixed(1)}%` }}
-        />
+        <i className="hud__timer" ref={timerRef} />
       </header>
 
       {view.phase === 'recharge' && (
         <>
-          <Banner title="Recharge" sub={`${(left / 1000).toFixed(1)} s`} />
+          <Banner title="Recharge" subRef={countdownRef} />
+          {/*
+            Les emplacements sont montes une fois pour toute la recharge.
+            Auparavant chaque orbe etait un element neuf, remonte des qu elle
+            changeait : React reconstruisait alors trois noeuds par image. Ici
+            les trois boutons vivent le temps de la phase et la boucle les
+            deplace — l orbe qu ils portent est une donnee, plus une identite.
+          */}
           <div className="field">
-            {liveOrbs(view.taps, view.orbs, inPhase).map((slot: LiveOrb) => {
-              const at = reachable(slot.orb.x, slot.orb.y);
-              return (
-                <button
-                  key={`${String(slot.slot)}-${String(slot.orb.index)}`}
-                  type="button"
-                  className={`orb orb--${slot.orb.kind}`}
-                  style={{
-                    left: `${(at.left * 100).toFixed(2)}%`,
-                    top: `${(at.top * 100).toFixed(2)}%`,
-                    opacity: 0.4 + slot.remaining * 0.6,
-                  }}
-                  aria-label={slot.orb.kind === 'golden' ? 'Orbe dorée' : 'Orbe'}
-                  onClick={() => {
-                    actions.tap([{ atMs: inPhase, orbIndex: slot.orb.index }], inPhase);
-                  }}
-                />
-              );
-            })}
+            {Array.from({ length: ORB_SLOTS }, (_, slot) => (
+              <button
+                key={slot}
+                type="button"
+                className="orb"
+                ref={(node) => {
+                  orbRefs.current[slot] = node;
+                }}
+                onClick={() => {
+                  tapSlot(slot);
+                }}
+              />
+            ))}
           </div>
         </>
       )}
@@ -238,127 +379,48 @@ export function MatchScreen({
               }}
             />
           )}
-          {/*
-            La jauge vit **dans** la bande de commandes, pas au-dessus d elle.
-            Posee en absolu au milieu de l ecran, elle barrait les deux
-            combattants a hauteur de poitrine ; ici elle occupe l espace que
-            les deux grappes laissent entre elles, dans le dernier cinquieme de
-            la hauteur que le cadrage large garde libre. Elle ne peut donc plus
-            couvrir ni un personnage ni un bouton : c est la mise en page qui
-            l en empeche, pas un reglage.
-          */}
-          <div className="controls">
-            <div className="cluster">
-              <p className="cluster__label">Style</p>
-              {STYLE_ROWS.map((row) => (
-                <div className="row" key={row.join('-')}>
-                  {row.map((id) => (
-                    <button
-                      key={id}
-                      type="button"
-                      className="pick"
-                      aria-pressed={style === id}
-                      aria-label={`${styleName(id).fr}, bat ${styleName(BALANCE.styleBeats[id]).fr}`}
-                      disabled={locked}
-                      onClick={() => {
-                        chooseStyle(id);
-                      }}
-                    >
-                      <span className="pick__icon">{STYLE_ICONS[id] ?? FALLBACK_ICON}</span>
-                      <span className={pickNameClass(styleName(id).fr)}>{styleName(id).fr}</span>
-                      {/* Le contre en pictogramme : « bat Provoc » double la largeur du
-                          bouton pour une information que l icone donne d un coup d oeil. */}
-                      <small>bat {STYLE_ICONS[BALANCE.styleBeats[id]] ?? FALLBACK_ICON}</small>
-                    </button>
-                  ))}
-                </div>
-              ))}
-            </div>
-
-            {/*
-              La fente garde sa place vide.
-              Faire apparaitre la jauge en poussant les deux grappes ferait
-              bouger dix boutons sous le pouce du joueur, a l instant precis ou
-              il vient d en toucher un.
-            */}
-            <div className={armed ? 'gauge-slot' : 'gauge-slot gauge-slot--empty'}>
-              {armed && sinceCharge !== null && (
-                <Gauge
-                  zones={resolveZones({
-                    center: view.meterCenter,
-                    zoneWidth: view.meterZoneWidth,
-                    perfectWidth: view.meterPerfectWidth,
-                  })}
-                  position={needlePosition(sinceCharge, view.meterPeriodMs)}
-                />
-              )}
-            </div>
-
-            <div className="cluster">
-              <BetHeader
-                bet={bet}
-                cap={cap}
-                names={`${tierName(tier).fr} · ${amplifierName(amplifier).fr}`}
-              />
-              <div className="row">
-                {TIERS.map((t) => {
-                  const name = tierName(t).fr;
-                  const affordable = t + amplifier <= cap;
-                  return (
-                    <button
-                      key={t}
-                      type="button"
-                      className="pick pick--tight"
-                      aria-pressed={tier === t}
-                      aria-label={`${name}, puissance ${String(BALANCE.tierPower[t])}, ${
-                        t === 0 ? 'gratuit' : `coûte ${String(t)} d’énergie`
-                      }`}
-                      data-afford={String(affordable)}
-                      disabled={locked || !affordable}
-                      onClick={() => {
-                        setTier(t);
-                      }}
-                    >
-                      <Rung fill={levelFill(t, TIERS.length)} tone="tier" />
-                      <span className={pickNameClass(name)}>{name}</span>
-                      <span className="pick__value">{BALANCE.tierPower[t]}</span>
-                      <small>{t === 0 ? 'libre' : `−${String(t)}`}</small>
-                    </button>
-                  );
-                })}
-              </div>
-              <div className="row">
-                {AMPLIFIER_LEVELS.map((a) => {
-                  const name = amplifierName(a).fr;
-                  const multiplier = BALANCE.amplifierMultiplier[a].toFixed(2).replace('.', ',');
-                  const affordable = a + tier <= cap;
-                  return (
-                    <button
-                      key={a}
-                      type="button"
-                      className="pick pick--tight"
-                      aria-pressed={amplifier === a}
-                      aria-label={`${name}, multiplicateur ${multiplier}, ${
-                        a === 0 ? 'gratuit' : `coûte ${String(a)} d’énergie`
-                      }`}
-                      data-afford={String(affordable)}
-                      disabled={locked || !affordable}
-                      onClick={() => {
-                        setAmplifier(a);
-                      }}
-                    >
-                      <Rung fill={levelFill(a, AMPLIFIER_LEVELS.length)} tone="amplifier" />
-                      <span className={pickNameClass(name)}>{name}</span>
-                      <span className="pick__value">×{multiplier}</span>
-                      <small>{a === 0 ? 'libre' : `−${String(a)}`}</small>
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          </div>
         </>
       )}
+
+      {/*
+        La bande de commandes vit le match entier, meme hors de la phase de
+        choix.
+
+        C est trente boutons, une echelle de crans et huit pastilles : les
+        monter au passage en phase de choix coutait deux images — 45 ms puis
+        67 ms, mesurees au ralenti x4 — a l instant **precis** ou la jauge
+        apparait et ou le joueur doit commencer a viser. Le pire endroit du
+        match pour une saccade. Montee une fois pour toutes, la bande est
+        disposee et peinte pendant l intro, ou rien ne se joue ; la montrer
+        n est plus qu un changement d opacite, que le compositeur absorbe.
+
+        Cachee, elle est `inert` : ni tapable, ni focalisable, ni lue a voix
+        haute. Sans cela les deux grappes avaleraient les orbes de la recharge,
+        qui vivent exactement dans les memes arcs de pouce (ADR 0008).
+
+        La jauge, elle, reste conditionnelle : c est trois elements, et son
+        apparition est un evenement qui doit se voir.
+      */}
+      <div
+        className="controls"
+        data-shown={view.phase === 'choice'}
+        inert={view.phase !== 'choice'}
+      >
+        <ControlBand
+          style={style}
+          tier={tier}
+          amplifier={amplifier}
+          locked={locked}
+          cap={cap}
+          meterCenter={view.meterCenter}
+          meterZoneWidth={view.meterZoneWidth}
+          meterPerfectWidth={view.meterPerfectWidth}
+          needleRef={needleRef}
+          onStyle={chooseStyle}
+          onTier={setTier}
+          onAmplifier={setAmplifier}
+        />
+      </div>
 
       {(view.phase === 'reveal' || view.phase === 'ended') && view.lastRound !== null && (
         <div className="verdict">
@@ -410,6 +472,206 @@ export function MatchScreen({
   );
 }
 
+/**
+ * Rejoue l animation d entree d un element.
+ *
+ * Les emplacements d orbes ne sont plus remontes a chaque orbe — c est tout
+ * l interet — donc le depli, qui partait du montage, ne repartirait plus.
+ * `prefers-reduced-motion` reste respecte : la duree vient de la feuille de
+ * style, que la regle globale ramene a 0,01 ms.
+ */
+function replay(node: Element): void {
+  for (const animation of node.getAnimations()) {
+    animation.cancel();
+    animation.play();
+  }
+}
+
+/**
+ * Deux images de suite ne changent pas l arbre : on ne le redessine pas.
+ *
+ * `nowMs` est volontairement absent — c est **le** point : l heure change a
+ * chaque image et ne decide plus rien de ce que React dessine. Le reste des
+ * proprietes est compare par identite, `view` par sa cle de rendu.
+ *
+ * Un parent qui recree `onRematch` ou `onLeave` a chaque image annule cette
+ * protection. Le vrai remede est en amont — `useMatch` et `useOnlineMatch` ne
+ * doivent plus provoquer de rendu par image — et cette barriere reste la pour
+ * que l ecran tienne son budget quoi qu il arrive au-dessus de lui.
+ */
+function sameFrame(previous: MatchScreenProps, next: MatchScreenProps): boolean {
+  return (
+    renderKey(previous.view) === renderKey(next.view) &&
+    previous.actions.tap === next.actions.tap &&
+    previous.actions.lock === next.actions.lock &&
+    previous.clock === next.clock &&
+    previous.opponentName === next.opponentName &&
+    previous.rematchLabel === next.rematchLabel &&
+    previous.onLeave === next.onLeave &&
+    previous.onRematch === next.onRematch
+  );
+}
+
+export const MatchScreen = memo(MatchScreenBody, sameFrame);
+
+/**
+ * La bande de commandes : style a gauche, jauge au milieu, mise a droite.
+ *
+ * Memoisee, et c est la seule raison de son existence separee. Elle compte une
+ * trentaine de boutons, et chaque changement de phase — trois par manche —
+ * faisait reconcilier tout ce sous-arbre par React alors que rien n y
+ * changeait. Mesure : 45 ms puis 67 ms au ralenti x4, a l instant precis ou la
+ * jauge apparait.
+ *
+ * Ses proprietes sont donc toutes primitives, ou stables par construction :
+ * `onStyle` est un `useCallback`, `onTier` et `onAmplifier` sont les
+ * modificateurs d etat de React, `needleRef` une reference. La geometrie de la
+ * jauge arrive en trois nombres plutot qu en objet — un objet recree a chaque
+ * rendu annulerait la memoisation sans rien changer a l ecran.
+ */
+const ControlBand = memo(function ControlBand({
+  style,
+  tier,
+  amplifier,
+  locked,
+  cap,
+  meterCenter,
+  meterZoneWidth,
+  meterPerfectWidth,
+  needleRef,
+  onStyle,
+  onTier,
+  onAmplifier,
+}: {
+  readonly style: Style | null;
+  readonly tier: Tier;
+  readonly amplifier: AmplifierLevel;
+  readonly locked: boolean;
+  readonly cap: number;
+  readonly meterCenter: number | undefined;
+  readonly meterZoneWidth: number | undefined;
+  readonly meterPerfectWidth: number | undefined;
+  readonly needleRef: RefObject<HTMLElement | null>;
+  readonly onStyle: (next: Style) => void;
+  readonly onTier: (next: Tier) => void;
+  readonly onAmplifier: (next: AmplifierLevel) => void;
+}): JSX.Element {
+  const armed = style !== null;
+  const bet = betFor(tier, amplifier, cap);
+  return (
+    <>
+      <div className="cluster">
+        <p className="cluster__label">Style</p>
+        {STYLE_ROWS.map((row) => (
+          <div className="row" key={row.join('-')}>
+            {row.map((id) => (
+              <button
+                key={id}
+                type="button"
+                className="pick"
+                aria-pressed={style === id}
+                aria-label={`${styleName(id).fr}, bat ${styleName(BALANCE.styleBeats[id]).fr}`}
+                disabled={locked}
+                onClick={() => {
+                  onStyle(id);
+                }}
+              >
+                <span className="pick__icon">{STYLE_ICONS[id] ?? FALLBACK_ICON}</span>
+                <span className={pickNameClass(styleName(id).fr)}>{styleName(id).fr}</span>
+                {/* Le contre en pictogramme : « bat Provoc » double la largeur du
+                          bouton pour une information que l icone donne d un coup d oeil. */}
+                <small>bat {STYLE_ICONS[BALANCE.styleBeats[id]] ?? FALLBACK_ICON}</small>
+              </button>
+            ))}
+          </div>
+        ))}
+      </div>
+
+      {/*
+              La fente garde sa place vide.
+              Faire apparaitre la jauge en poussant les deux grappes ferait
+              bouger dix boutons sous le pouce du joueur, a l instant precis ou
+              il vient d en toucher un.
+            */}
+      <div className={armed ? 'gauge-slot' : 'gauge-slot gauge-slot--empty'}>
+        {armed && (
+          <Gauge
+            zones={resolveZones({
+              center: meterCenter,
+              zoneWidth: meterZoneWidth,
+              perfectWidth: meterPerfectWidth,
+            })}
+            needleRef={needleRef}
+          />
+        )}
+      </div>
+
+      <div className="cluster">
+        <BetHeader
+          bet={bet}
+          cap={cap}
+          names={`${tierName(tier).fr} · ${amplifierName(amplifier).fr}`}
+        />
+        <div className="row">
+          {TIERS.map((t) => {
+            const name = tierName(t).fr;
+            const affordable = t + amplifier <= cap;
+            return (
+              <button
+                key={t}
+                type="button"
+                className="pick pick--tight"
+                aria-pressed={tier === t}
+                aria-label={`${name}, puissance ${String(BALANCE.tierPower[t])}, ${
+                  t === 0 ? 'gratuit' : `coûte ${String(t)} d’énergie`
+                }`}
+                data-afford={String(affordable)}
+                disabled={locked || !affordable}
+                onClick={() => {
+                  onTier(t);
+                }}
+              >
+                <Rung fill={levelFill(t, TIERS.length)} tone="tier" />
+                <span className={pickNameClass(name)}>{name}</span>
+                <span className="pick__value">{BALANCE.tierPower[t]}</span>
+                <small>{t === 0 ? 'libre' : `−${String(t)}`}</small>
+              </button>
+            );
+          })}
+        </div>
+        <div className="row">
+          {AMPLIFIER_LEVELS.map((a) => {
+            const name = amplifierName(a).fr;
+            const multiplier = BALANCE.amplifierMultiplier[a].toFixed(2).replace('.', ',');
+            const affordable = a + tier <= cap;
+            return (
+              <button
+                key={a}
+                type="button"
+                className="pick pick--tight"
+                aria-pressed={amplifier === a}
+                aria-label={`${name}, multiplicateur ${multiplier}, ${
+                  a === 0 ? 'gratuit' : `coûte ${String(a)} d’énergie`
+                }`}
+                data-afford={String(affordable)}
+                disabled={locked || !affordable}
+                onClick={() => {
+                  onAmplifier(a);
+                }}
+              >
+                <Rung fill={levelFill(a, AMPLIFIER_LEVELS.length)} tone="amplifier" />
+                <span className={pickNameClass(name)}>{name}</span>
+                <span className="pick__value">×{multiplier}</span>
+                <small>{a === 0 ? 'libre' : `−${String(a)}`}</small>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+    </>
+  );
+});
+
 function Pips({ won }: { readonly won: number }): JSX.Element {
   return (
     <span className="pips" aria-label={`${String(won)} manche(s) gagnée(s)`}>
@@ -429,11 +691,23 @@ function Energy({ left }: { readonly left: number }): JSX.Element {
   );
 }
 
-function Banner({ title, sub }: { readonly title: string; readonly sub: string }): JSX.Element {
+/**
+ * Le bandeau de phase.
+ *
+ * Sa ligne du bas dit soit un etat — « Choix verrouille » —, soit un compte a
+ * rebours. Le premier appartient a React, le second a la boucle : d ou les
+ * deux formes, exclusives. Quand la boucle ecrit, React ne rend **aucun**
+ * enfant, sinon il l effacerait au rendu suivant.
+ */
+type BannerProps =
+  | { readonly title: string; readonly sub: string }
+  | { readonly title: string; readonly subRef: RefObject<HTMLParagraphElement | null> };
+
+function Banner(props: BannerProps): JSX.Element {
   return (
     <div className="banner">
-      <h2>{title}</h2>
-      <p>{sub}</p>
+      <h2>{props.title}</h2>
+      {'sub' in props ? <p>{props.sub}</p> : <p ref={props.subRef} />}
     </div>
   );
 }
@@ -510,6 +784,11 @@ function BetHeader({
  * differente d un autre. Les pourcentages viennent tous de `ui/gauge.ts`, la
  * feuille de style ne place plus rien.
  *
+ * Les deux zones ne bougent pas de la manche : elles restent rendues par
+ * React. Le curseur, lui, bouge a chaque image — il est peint par la boucle,
+ * qui possede son `left`. React ne lui en donne aucun, sans quoi il
+ * l effacerait au rendu suivant.
+ *
  * Le panneau est opaque : la jauge est posee sur la foule 3D, et une bande
  * translucide sur un decor anime n a pas de contraste garanti.
  *
@@ -519,10 +798,10 @@ function BetHeader({
  */
 function Gauge({
   zones,
-  position,
+  needleRef,
 }: {
   readonly zones: MeterZones;
-  readonly position: number;
+  readonly needleRef: RefObject<HTMLElement | null>;
 }): JSX.Element {
   const bands = gaugeBands(zones);
   return (
@@ -536,7 +815,7 @@ function Gauge({
           className="gauge__band gauge__band--perfect"
           style={{ left: percent(bands.perfect.left), width: percent(bands.perfect.width) }}
         />
-        <i className="gauge__needle" style={{ left: percent(position) }} />
+        <i className="gauge__needle" ref={needleRef} />
       </div>
       <p className="gauge__legend">
         <span className="gauge__key gauge__key--miss">faible</span>

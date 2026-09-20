@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Choice, RechargeTap } from '@aura/rules';
 import { createGameClient, type GameClient } from '../net/client.js';
+import type { ServerMessage } from '@aura/protocol';
 import { createSocketTransport } from '../net/socketTransport.js';
 import { createOnlineMatch, type OnlineMatch, type OnlinePhase } from '../match/online.js';
 import { presentOnline } from '../match/onlinePresentation.js';
@@ -42,6 +43,15 @@ export interface OnlineSession {
   readonly actions: MatchActions;
   readonly nowMs: number;
   readonly opponentName: string;
+  /**
+   * Ce que le serveur a accorde a la fin du dernier match, une seule fois.
+   *
+   * Remis a `null` des qu'on l'a lu : une recompense qui reste posee dans
+   * l'etat serait creditee a chaque rendu, et le joueur s'enrichirait en
+   * regardant son ecran de resultat.
+   */
+  readonly settled: ServerMessage<'match:end'> | null;
+  readonly clearSettled: () => void;
   /** Code d invitation cree par ce joueur, quand il en a demande un. */
   readonly inviteCode: string | null;
   readonly error: string | null;
@@ -94,6 +104,7 @@ export function useOnlineMatch(
   const [, force] = useState(0);
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [queue, setQueue] = useState<OnlineSession['queue']>(null);
+  const [settled, setSettled] = useState<ServerMessage<'match:end'> | null>(null);
   const [error, setError] = useState<string | null>(null);
   const nowRef = useRef(0);
 
@@ -129,6 +140,10 @@ export function useOnlineMatch(
       // Un refus d entree en file laisse le joueur devant un compte a rebours
       // qui ne mene nulle part : on referme la recherche avec le message.
       if (data.code === 'ALREADY_IN_QUEUE' || data.code === 'ALREADY_IN_MATCH') setQueue(null);
+    });
+
+    const offEnd = client.on('match:end', (data) => {
+      setSettled(data);
     });
 
     const offQueue = client.on('queue:status', (data) => {
@@ -224,6 +239,7 @@ export function useOnlineMatch(
       offInvite();
       offError();
       offQueue();
+      offEnd();
       offFound();
       client.close();
       clientRef.current = null;
@@ -261,6 +277,10 @@ export function useOnlineMatch(
     clientRef.current?.send('queue:leave', {});
   }, []);
 
+  const clearSettled = useCallback(() => {
+    setSettled(null);
+  }, []);
+
   const createInvite = useCallback(() => {
     setError(null);
     clientRef.current?.send('invite:create', {});
@@ -285,6 +305,8 @@ export function useOnlineMatch(
     actions,
     nowMs: nowRef.current,
     opponentName: match?.state.opponentName ?? 'Adversaire',
+    settled,
+    clearSettled,
     inviteCode,
     error,
     queue,

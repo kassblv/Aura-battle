@@ -34,6 +34,14 @@ export interface Progress {
   /** Identifiants possedes. Ce qui est offert n'a pas besoin d'y figurer. */
   readonly owned: readonly string[];
   readonly wallet: Wallet;
+  /**
+   * Derniere ligue annoncee par le serveur, en CLE.
+   *
+   * Optionnel a dessein : une sauvegarde d'avant le classement reste valide, et
+   * un joueur qui n'a jamais fini de match classe n'a pas de ligue. Ajouter un
+   * champ facultatif ne justifie pas de jeter les sauvegardes existantes.
+   */
+  readonly league?: string;
 }
 
 /** Le strict necessaire d'un trousseau, injecte pour rester testable. */
@@ -108,6 +116,7 @@ export function loadProgress(store: ProgressStore): Progress | null {
 
   return {
     look: data.look,
+    ...(typeof data.league === 'string' ? { league: data.league } : {}),
     // Un cosmetique retire du catalogue s'afficherait comme equipe sans
     // exister : on l'oublie plutot que de montrer un emplacement vide.
     owned: data.owned.filter(isKnown),

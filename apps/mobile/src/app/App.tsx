@@ -25,6 +25,7 @@ import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
 import { memeGallery, stepMeme } from './memes.js';
 import { tryOn } from './tryOn.js';
+import { leagueLabel } from './leagues.js';
 import { browserStore, loadProgress, saveProgress } from './persist.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
@@ -114,6 +115,25 @@ export function App(): JSX.Element {
   const inDuel = online.view.phase !== 'idle';
 
   /**
+   * Les recompenses du dernier match, creditees une seule fois.
+   *
+   * Le serveur fait autorite : le client ne calcule rien, il encaisse ce qu'on
+   * lui annonce. Et il efface l'annonce apres l'avoir encaissee — une
+   * recompense qui reste posee dans l'etat serait creditee a chaque rendu, et
+   * le joueur s'enrichirait en regardant son ecran de resultat.
+   */
+  useEffect(() => {
+    const settled = online.settled;
+    if (settled === null) return;
+    setShop((current) => ({
+      ...current,
+      wallet: { ...current.wallet, soft: current.wallet.soft + settled.rewards.softCurrency },
+    }));
+    setLeague(settled.rating.leagueAfter);
+    online.clearSettled();
+  }, [online]);
+
+  /**
    * L inscription est facultative et **ne se represente pas**.
    *
    * Une fois passee — nommee ou remise a plus tard — on ne la remontre pas a
@@ -144,6 +164,15 @@ export function App(): JSX.Element {
    * annuler.
    */
   const [trying, setTrying] = useState<string | null>(null);
+
+  /**
+   * La ligue, telle que le serveur l'a annoncee au dernier match fini.
+   *
+   * Le client ne la calcule jamais : il la reçoit dans `match:end` et la
+   * garde, faute de quoi elle disparaitrait au rechargement — et le joueur
+   * verrait « Non classé » apres avoir gagne sa place.
+   */
+  const [league, setLeague] = useState<string>(saved?.league ?? '');
   /**
    * La bourse et les possessions vivent ici en attendant le jalon M5.
    *
@@ -166,8 +195,9 @@ export function App(): JSX.Element {
       look: wardrobe.look,
       owned: [...shop.owned],
       wallet: shop.wallet,
+      ...(league === '' ? {} : { league }),
     });
-  }, [store, wardrobe.look, shop.owned, shop.wallet]);
+  }, [store, wardrobe.look, shop.owned, shop.wallet, league]);
 
   /**
    * Le profil.
@@ -181,8 +211,8 @@ export function App(): JSX.Element {
       session.identity?.displayName ?? 'Invité',
       session.identity?.playerId ?? 'anonyme',
     );
-    return { ...fresh, wallet: shop.wallet };
-  }, [session.identity, shop.wallet]);
+    return { ...fresh, wallet: shop.wallet, league: leagueLabel(league) };
+  }, [session.identity, shop.wallet, league]);
 
   /**
    * Hors match, l arene montre le personnage du joueur, habille en direct.
