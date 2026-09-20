@@ -1,7 +1,12 @@
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { MemoryQueueStore } from '../adapters/memory-queue.store.js';
-import type { MatchOpening, QueueNotifier, RatingReader } from '../domain/ports.js';
+import type {
+  MatchOpening,
+  PlayerAvailability,
+  QueueNotifier,
+  RatingReader,
+} from '../domain/ports.js';
 import { QueueWorker } from './queue-worker.js';
 import { MatchmakingQueue, QUEUE_TICK_MS } from './queue.service.js';
 
@@ -50,10 +55,15 @@ let opener: FakeOpener;
 let warnings: string[];
 let now: number;
 
-const build = (isAvailable: (playerId: string) => boolean = () => true): QueueWorker =>
-  new QueueWorker(queue, opener, { now: () => now }, isAvailable, {
-    warn: (message) => warnings.push(message),
-  });
+/** Tout le monde est connecte et libre, sauf ce que le scenario precise. */
+const build = (availability: Partial<PlayerAvailability> = {}): QueueWorker =>
+  new QueueWorker(
+    queue,
+    opener,
+    { now: () => now },
+    { isConnected: () => true, isBusy: () => false, ...availability },
+    { warn: (message) => warnings.push(message) },
+  );
 
 beforeEach(() => {
   store = new MemoryQueueStore();
@@ -100,7 +110,7 @@ describe('QueueWorker.runOnce', () => {
     await queue.join('occupe', 'ranked', 0);
     await queue.join('libre', 'ranked', 1);
 
-    expect(await build((id) => id === 'libre').runOnce()).toBe(0);
+    expect(await build({ isBusy: (id) => id === 'occupe' }).runOnce()).toBe(0);
     expect(await queue.isQueued('occupe')).toBe(false);
   });
 
@@ -200,7 +210,7 @@ describe('QueueWorker.runOnce', () => {
       seated = true;
     };
 
-    await build((id) => !(id === 'assis' && seated)).runOnce();
+    await build({ isBusy: (id) => id === 'assis' && seated }).runOnce();
 
     expect((await store.listWaiting()).map((t) => t.playerId)).toEqual(['victime']);
   });
@@ -227,6 +237,55 @@ describe('QueueWorker.runOnce', () => {
     await build().runOnce();
 
     expect((await store.listWaiting()).map((t) => t.playerId)).toEqual(['autre']);
+  });
+
+  /**
+   * Le troisieme sort : parti pendant l'ouverture ratee.
+   *
+   * Son ticket etait deja reclame quand sa socket s'est fermee, donc le `park`
+   * de la passerelle n'a rien trouve a garer. Le remettre en file serait faux
+   * — on n'apparie pas un absent — mais le laisser tomber ferait disparaitre
+   * sa place sans trace, et il attendrait pour rien devant son ecran de
+   * recherche en revenant.
+   */
+  it('gare le ticket de celui qui est parti pendant l ouverture', async () => {
+    await queue.join('parti', 'ranked', 1_000);
+    await queue.join('autre', 'ranked', 1_001);
+
+    let gone = false;
+    opener.refuseWith = () => {
+      gone = true;
+    };
+
+    now = 5_000;
+    await build({ isConnected: (id) => !(id === 'parti' && gone) }).runOnce();
+
+    expect((await store.listWaiting()).map((t) => t.playerId)).toEqual(['autre']);
+    // Sa place l'attend : elle lui est rendue telle quelle a son retour.
+    expect(await queue.resume('parti', 6_000)).toBe(true);
+    expect((await store.get('parti'))?.enqueuedAtMs).toBe(1_000);
+  });
+
+  /**
+   * Partir apres avoir annule n'est pas partir.
+   *
+   * Garer sa recherche lui rendrait, a la prochaine reconnexion, exactement ce
+   * qu'il venait d'annuler — et le rendrait a nouveau appariable sans qu'il
+   * l'ait demande.
+   */
+  it('ne gare pas la recherche de celui qui l avait annulee avant de partir', async () => {
+    await queue.join('annule', 'ranked', 1_000);
+    await queue.join('autre', 'ranked', 1_001);
+
+    let gone = false;
+    opener.refuseWith = () => {
+      gone = true;
+      void queue.cancel('annule', now);
+    };
+
+    await build({ isConnected: (id) => !(id === 'annule' && gone) }).runOnce();
+
+    expect(await queue.resume('annule', now + 1_000)).toBe(false);
   });
 
   /** Une file injoignable au retour ne doit pas arreter le tour suivant. */

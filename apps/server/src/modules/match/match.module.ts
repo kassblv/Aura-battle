@@ -156,10 +156,14 @@ import { MatchRuntime } from './application/match-runtime.js';
           queue,
           opener,
           clock,
-          // Disponible = toujours connecte **et** pas deja assis a un duel.
-          // Le worker ne connait ni les sockets ni les matchs : la composition
-          // des deux conditions est faite ici, une fois.
-          (playerId: string) => notifier.isConnected(playerId) && !runtime.isBusy(playerId),
+          // Deux questions, **transmises separement**. Le worker ne connait ni
+          // les sockets ni les matchs en cours ; il a en revanche besoin de
+          // savoir laquelle des deux est en cause : un joueur parti garde sa
+          // place le temps de revenir, un joueur deja assis la perd.
+          {
+            isConnected: (playerId: string) => notifier.isConnected(playerId),
+            isBusy: (playerId: string) => runtime.isBusy(playerId),
+          },
           logger,
         ),
     },

@@ -77,7 +77,10 @@ export function matchmakingTestProviders(options: { withWorker?: boolean } = {})
           queue,
           opener,
           { now: () => Date.now() },
-          (playerId: string) => notifier.isConnected(playerId) && !runtime.isBusy(playerId),
+          {
+            isConnected: (playerId: string) => notifier.isConnected(playerId),
+            isBusy: (playerId: string) => runtime.isBusy(playerId),
+          },
         ),
     });
   }

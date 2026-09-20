@@ -1,7 +1,7 @@
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { MemoryQueueStore } from '../adapters/memory-queue.store.js';
-import type { QueueNotifier, RatingReader } from '../domain/ports.js';
+import type { PlayerAvailability, QueueNotifier, RatingReader } from '../domain/ports.js';
 import { DEFAULT_MMR } from '../domain/ticket.js';
 import {
   MatchmakingQueue,
@@ -52,7 +52,29 @@ class FixedRatings implements RatingReader {
   }
 }
 
-const TOUS_DISPONIBLES = (): boolean => true;
+/**
+ * Disponibilite : deux questions, pas une.
+ *
+ * « Deconnecte » et « deja en duel » appellent des traitements opposes — le
+ * premier merite qu'on lui garde sa place, le second n'a plus rien a faire en
+ * file — et un seul booleen ne permet pas de les distinguer.
+ */
+const TOUS_DISPONIBLES: PlayerAvailability = {
+  isConnected: () => true,
+  isBusy: () => false,
+};
+
+/** Tout le monde est la, sauf les joueurs nommes. */
+const absents = (...partis: string[]): PlayerAvailability => ({
+  isConnected: (playerId) => !partis.includes(playerId),
+  isBusy: () => false,
+});
+
+/** Tout le monde est libre, sauf les joueurs nommes. */
+const assis = (...occupes: string[]): PlayerAvailability => ({
+  isConnected: () => true,
+  isBusy: (playerId) => occupes.includes(playerId),
+});
 
 let store: MemoryQueueStore;
 let notifier: RecordingNotifier;
@@ -253,7 +275,7 @@ describe('tour d appariement', () => {
       await queue.join('parti', 'ranked', 0);
       await queue.join('present', 'ranked', 0);
 
-      const pairs = await queue.tick(500, (id) => id === 'present');
+      const pairs = await queue.tick(500, absents('parti'));
 
       expect(pairs).toHaveLength(0);
       expect(await queue.isQueued('parti')).toBe(false);
@@ -264,9 +286,40 @@ describe('tour d appariement', () => {
       await queue.join('parti', 'ranked', 0);
       notifier.sent.length = 0;
 
-      await queue.tick(500, () => false);
+      await queue.tick(500, absents('parti'));
 
       expect(notifier.sent).toHaveLength(0);
+    });
+
+    /**
+     * Un tour peut passer entre la fermeture de la socket et le `park` de la
+     * passerelle : c'est le **meme evenement**, vu depuis l'autre bout. S'il
+     * detruisait le ticket, la grace de 45 s ne s'appliquerait qu'aux
+     * deconnexions dont le hasard d'ordonnancement a voulu qu'elles soient
+     * traitees dans le bon ordre.
+     */
+    it('gare le ticket d un absent au lieu de le detruire', async () => {
+      await queue.join('parti', 'ranked', 1_000);
+
+      await queue.tick(2_000, absents('parti'));
+
+      expect(await queue.isQueued('parti')).toBe(false);
+      expect(await queue.resume('parti', 3_000)).toBe(true);
+      expect((await store.get('parti'))?.enqueuedAtMs).toBe(1_000);
+    });
+
+    /**
+     * Un joueur deja assis a un duel, lui, n'a rien a garder : son ticket n'a
+     * plus d'objet, et le lui rendre a la prochaine reconnexion le remettrait
+     * a chercher un adversaire en pleine partie.
+     */
+    it('detruit le ticket d un joueur deja en duel', async () => {
+      await queue.join('occupe', 'ranked', 1_000);
+
+      await queue.tick(2_000, assis('occupe'));
+
+      expect(await queue.isQueued('occupe')).toBe(false);
+      expect(await queue.resume('occupe', 3_000)).toBe(false);
     });
   });
 
@@ -526,5 +579,37 @@ describe('deconnexion pendant l attente', () => {
 
   it('accepte de garer un joueur qui n a pas de ticket', async () => {
     await expect(queue.park('jamais-entre', 1_000)).resolves.toBeUndefined();
+  });
+
+  /**
+   * Le retour d'arriere-plan sur mobile, c'est-a-dire le cas le plus frequent
+   * de tous : la reconnexion et le `queue:join` du client partent ensemble, et
+   * rien ne dit lequel touchera la file en premier. Les deux doivent aboutir a
+   * la meme place, celle que le garage venait de preserver.
+   */
+  it('ne perd pas l anciennete quand la reprise et un queue:join se croisent', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+    await queue.park('p1', 2_000);
+
+    // Un rangement qui repond en differe, comme Redis : sans cela, les deux
+    // chemins ne se chevauchent jamais et la course reste invisible.
+    const honest = store.add.bind(store);
+    store.add = async (ticket) => {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      return honest(ticket);
+    };
+
+    await Promise.all([queue.resume('p1', 12_000), queue.join('p1', 'ranked', 12_000)]);
+
+    expect((await store.get('p1'))?.enqueuedAtMs).toBe(1_000);
+  });
+
+  it('laisse le dernier mot au joueur qui change de mode en se reconnectant', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+    await queue.park('p1', 2_000);
+
+    await Promise.all([queue.resume('p1', 12_000), queue.join('p1', 'casual', 12_000)]);
+
+    expect((await store.get('p1'))?.mode).toBe('casual');
   });
 });

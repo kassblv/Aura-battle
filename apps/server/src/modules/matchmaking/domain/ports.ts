@@ -128,6 +128,27 @@ export interface MatchOpening {
 
 export const MATCH_OPENING = 'MATCH_OPENING';
 
+/**
+ * Etat d'un joueur vu du serveur, **en deux questions separees**.
+ *
+ * Un seul booleen « disponible » ne suffit pas, et c'est un piege qui a coute
+ * trois defauts : « parti » et « deja en duel » appellent des traitements
+ * **opposes**. Le joueur parti garde sa place au chaud le temps de revenir
+ * (`docs/03` lui accorde 45 s) ; le joueur assis a un duel, lui, n'a plus rien
+ * a faire en file et son ticket doit disparaitre. Confondre les deux, c'est
+ * soit detruire la place de quelqu'un qui revient, soit remettre a chercher un
+ * adversaire quelqu'un qui est en train de jouer.
+ *
+ * Les deux reponses sont synchrones : elles viennent du registre des sockets
+ * et de l'index des matchs en cours, tous deux locaux au processus.
+ */
+export interface PlayerAvailability {
+  /** Toujours au bout d'une socket ? */
+  isConnected(playerId: string): boolean;
+  /** Deja assis a un duel ? */
+  isBusy(playerId: string): boolean;
+}
+
 /** Horloge du worker. Le temps entre par la, et nulle part ailleurs. */
 export interface QueueClock {
   now(): number;

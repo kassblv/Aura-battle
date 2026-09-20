@@ -51,6 +51,13 @@ les deux tickets ont déjà quitté la file : c'est le tour d'appariement qui le
 lui seul les a encore en main — avec leur ancienneté, qui est conservée. L'ouverture, elle,
 ne peut rien y reposer : elle n'a jamais eu les tickets, et elle n'a pas le droit d'attendre.
 
+**Les écritures de la file sont sérialisées par joueur.** Deux chemins qui touchent le même
+ticket peuvent s'entrelacer à chaque `await`, et ce n'est pas théorique : au retour
+d'arrière-plan, la reconnexion et le `queue:join` du client partent ensemble, chacun lit une
+file où l'autre n'a pas fini d'écrire, et le joueur perd l'ancienneté qu'on venait de lui
+préserver. Une chaîne de promesses par joueur — pas un verrou global, deux joueurs différents
+n'ont aucune raison de s'attendre — rend l'ordre déterministe sans rien demander au rangement.
+
 **Le câblage NestJS de la file vit dans `MatchModule`**, pas dans un module à part. La
 passerelle doit traiter `queue:join` — il n'y a qu'une socket authentifiée, donc qu'une
 passerelle — et le worker doit ouvrir des matchs : deux modules Nest se seraient importés

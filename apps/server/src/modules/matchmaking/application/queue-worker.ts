@@ -1,7 +1,7 @@
 import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import type { QueuePair } from '../domain/pairing.js';
-import type { MatchOpening, QueueClock } from '../domain/ports.js';
+import type { MatchOpening, PlayerAvailability, QueueClock } from '../domain/ports.js';
 import { QUEUE_TICK_MS, type MatchmakingQueue } from './queue.service.js';
 
 /**
@@ -29,11 +29,13 @@ export class QueueWorker {
     private readonly opener: MatchOpening,
     private readonly clock: QueueClock,
     /**
-     * Un joueur est disponible s'il est connecte et qu'il n'est pas deja assis
-     * a un duel. Les deux conditions sont composees par le cablage : le worker
-     * ne connait ni les sockets ni les matchs en cours.
+     * Connecte ? Deja en duel ? **Deux questions, pas une.** Le cablage les
+     * branche sur le registre des sockets et sur l'index des matchs en cours ;
+     * le worker ne connait ni l'un ni l'autre. Les confondre en un seul
+     * booleen reviendrait a reserver le meme sort a un joueur qui revient dans
+     * dix secondes et a un joueur qui est en train de jouer ailleurs.
      */
-    private readonly isAvailable: (playerId: string) => boolean,
+    private readonly availability: PlayerAvailability,
     private readonly log: AppLog | null = null,
     private readonly tickMs: number = QUEUE_TICK_MS,
   ) {}
@@ -73,7 +75,7 @@ export class QueueWorker {
     this.running = true;
 
     try {
-      const pairs = await this.queue.tick(nowMs, this.isAvailable);
+      const pairs = await this.queue.tick(nowMs, this.availability);
       let opened = 0;
 
       for (const pair of pairs) {
@@ -122,15 +124,26 @@ export class QueueWorker {
    * suffit a asseoir un joueur a deux matchs — donc il ne peut de toute facon
    * pas ecrire dans la file.
    *
-   * Celui qui vient de s'asseoir ailleurs n'est pas remis en file : c'est son
-   * adversaire pressenti qu'on sauve, pas lui. `isAvailable` repond aux deux
-   * questions d'un coup — toujours connecte, et pas deja en duel.
+   * Trois sorts, parce qu'il y a trois situations — et c'est exactement ce
+   * qu'un booleen « disponible » ne permettait pas de dire :
+   *
+   * - **assis ailleurs** : rien a lui rendre, c'est lui qui a fait echouer
+   *   l'ouverture et il joue deja ;
+   * - **parti** : son ticket est gare, il garde sa place le temps de revenir.
+   *   Sans cela il ne serait ni en file ni au garage — le `park` de la
+   *   passerelle est deja passe, et il n'a rien trouve a garer puisque le
+   *   ticket etait reclame ;
+   * - **la, et libre** : il retourne en file, anciennete intacte.
    */
   private async requeue(pair: QueuePair, nowMs: number): Promise<void> {
     for (const ticket of [pair.a, pair.b]) {
-      if (!this.isAvailable(ticket.playerId)) continue;
+      if (this.availability.isBusy(ticket.playerId)) continue;
       try {
-        await this.queue.requeue(ticket, nowMs);
+        if (this.availability.isConnected(ticket.playerId)) {
+          await this.queue.requeue(ticket, nowMs);
+        } else {
+          await this.queue.parkClaimed(ticket, nowMs);
+        }
       } catch (cause) {
         // Au mieux : un retour en file rate laisse un joueur devant un ecran
         // de recherche muet, mais ne doit pas emporter le tour suivant.

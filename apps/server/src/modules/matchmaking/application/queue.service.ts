@@ -1,6 +1,7 @@
 import { describeCause } from '../../../shared/describe-cause.js';
 import { pairTickets, searchRange, type QueuePair } from '../domain/pairing.js';
 import type {
+  PlayerAvailability,
   QueueNotifier,
   QueueTicketStore,
   RatingReader,
@@ -72,6 +73,15 @@ interface ParkedTicket {
   readonly expiresAtMs: number;
 }
 
+/**
+ * Referme une promesse : ce qui s'est passe dedans ne regarde pas la chaine.
+ *
+ * Elle ne rend rien et n'observe rien, volontairement — c'est un maillon
+ * d'ordonnancement, pas un traitement d'erreur. L'erreur, elle, est rendue a
+ * l'appelant par `serialize`.
+ */
+const settle = (): null => null;
+
 export class MatchmakingQueue {
   /**
    * Tickets gares, par joueur. **En memoire de processus, et c'est correct** :
@@ -89,6 +99,12 @@ export class MatchmakingQueue {
    * `QUEUE_CANCELLATION_MEMORY_MS`).
    */
   private readonly cancelled = new Map<string, number>();
+
+  /**
+   * Derniere ecriture en cours, par joueur. Une entree ne vit que le temps de
+   * la chaine qu'elle ordonne (voir `serialize`).
+   */
+  private readonly writes = new Map<string, Promise<unknown>>();
 
   constructor(
     private readonly tickets: QueueTicketStore,
@@ -116,36 +132,38 @@ export class MatchmakingQueue {
    * `join`, la file est la seule verite sur ce joueur.
    */
   async join(playerId: string, mode: QueueMode, nowMs: number): Promise<JoinOutcome> {
-    // Chercher un duel dit le contraire de l'avoir annule : ce qui suit ne doit
-    // plus etre retenu contre lui.
-    this.cancelled.delete(playerId);
+    return this.serialize(playerId, async () => {
+      // Chercher un duel dit le contraire de l'avoir annule : ce qui suit ne
+      // doit plus etre retenu contre lui.
+      this.cancelled.delete(playerId);
 
-    const parked = this.takeParked(playerId, nowMs);
-    const stored = await this.tickets.get(playerId);
-    const existing = stored ?? parked;
+      const parked = this.takeParked(playerId, nowMs);
+      const stored = await this.tickets.get(playerId);
+      const existing = stored ?? parked;
 
-    if (existing !== null && existing.mode === mode) {
-      // Le ticket gare pendant la coupure retourne en file ; celui qui n'en est
-      // jamais sorti n'a pas besoin d'etre reecrit, et un joueur qui insiste ne
-      // doit pas se payer une ecriture par message.
-      if (stored === null) await this.tickets.add(existing);
-      // Le client a peut-etre perdu son ecran de recherche : on le resynchronise.
-      this.sendStatus(existing, nowMs);
-      return { ticket: existing, resumed: true };
-    }
+      if (existing !== null && existing.mode === mode) {
+        // Le ticket gare pendant la coupure retourne en file ; celui qui n'en
+        // est jamais sorti n'a pas besoin d'etre reecrit, et un joueur qui
+        // insiste ne doit pas se payer une ecriture par message.
+        if (stored === null) await this.tickets.add(existing);
+        // Le client a peut-etre perdu son ecran de recherche : on le resynchronise.
+        this.sendStatus(existing, nowMs);
+        return { ticket: existing, resumed: true };
+      }
 
-    const ticket: QueueTicket = {
-      playerId,
-      mode,
-      mmr: await this.mmrOf(playerId, nowMs),
-      enqueuedAtMs: nowMs,
-      region: DEFAULT_REGION,
-      recentOpponents: await this.recentOpponentsOf(playerId, nowMs),
-    };
+      const ticket: QueueTicket = {
+        playerId,
+        mode,
+        mmr: await this.mmrOf(playerId, nowMs),
+        enqueuedAtMs: nowMs,
+        region: DEFAULT_REGION,
+        recentOpponents: await this.recentOpponentsOf(playerId, nowMs),
+      };
 
-    await this.tickets.add(ticket);
-    this.sendStatus(ticket, nowMs);
-    return { ticket, resumed: false };
+      await this.tickets.add(ticket);
+      this.sendStatus(ticket, nowMs);
+      return { ticket, resumed: false };
+    });
   }
 
   /**
@@ -164,9 +182,11 @@ export class MatchmakingQueue {
    */
   async leave(playerId: string): Promise<void> {
     // Une sortie volontaire est definitive : garder la place de garage ferait
-    // reprendre, a la prochaine reconnexion, une recherche deja annulee.
+    // reprendre, a la prochaine reconnexion, une recherche deja annulee. La
+    // vidange est **synchrone**, avant la file d'attente des ecritures : c'est
+    // ce qui la rend opposable a tout ce qui suit.
     this.parked.delete(playerId);
-    await this.tickets.remove(playerId);
+    return this.serialize(playerId, () => this.tickets.remove(playerId));
   }
 
   /**
@@ -205,11 +225,33 @@ export class MatchmakingQueue {
    * une recherche annulee (voir `QUEUE_PARKING_MS`).
    */
   async park(playerId: string, nowMs: number): Promise<void> {
-    const ticket = await this.tickets.get(playerId);
-    if (ticket === null) return;
+    return this.serialize(playerId, async () => {
+      const ticket = await this.tickets.get(playerId);
+      if (ticket === null) return;
+      await this.parkTicket(ticket, nowMs);
+    });
+  }
 
-    await this.tickets.remove(playerId);
-    this.parked.set(playerId, { ticket, expiresAtMs: nowMs + QUEUE_PARKING_MS });
+  /**
+   * Gare un ticket qu'on tient deja, sans repasser par le rangement.
+   *
+   * Deux appelants l'utilisent, et ils tiennent tous deux leur ticket d'une
+   * lecture precedente : le tour d'appariement, qui croise un joueur parti
+   * entre-temps, et le retour en file d'une paire dont l'ouverture a echoue
+   * alors qu'un des deux venait de se deconnecter. Sans ce chemin, le ticket
+   * de ce joueur-la disparaitrait sans trace — ni en file, ni au garage — et
+   * il attendrait pour rien.
+   */
+  private async parkTicket(ticket: QueueTicket, nowMs: number): Promise<void> {
+    // Une recherche annulee ne se gare pas : la rendre a la prochaine
+    // reconnexion reviendrait a ressusciter ce que le joueur a annule.
+    if (this.cancelled.has(ticket.playerId)) {
+      await this.tickets.remove(ticket.playerId);
+      return;
+    }
+
+    await this.tickets.remove(ticket.playerId);
+    this.parked.set(ticket.playerId, { ticket, expiresAtMs: nowMs + QUEUE_PARKING_MS });
   }
 
   /**
@@ -223,12 +265,38 @@ export class MatchmakingQueue {
    * ligne compte dans l'attente, comme il compte pour un match en cours.
    */
   async resume(playerId: string, nowMs: number): Promise<boolean> {
-    const ticket = this.takeParked(playerId, nowMs);
-    if (ticket === null) return false;
+    return this.serialize(playerId, async () => {
+      /**
+       * Garde defensive, et assumee comme telle.
+       *
+       * Aujourd'hui elle ne peut pas se declencher : `cancel` passe par
+       * `leave`, qui vide le garage avant toute attente. Mais c'est un
+       * argument **d'ordre d'appel**, pas de structure — que quelqu'un
+       * reecrive `cancel` sans passer par `leave`, et une recherche annulee
+       * repartirait toute seule a la reconnexion, sans qu'aucun test ne le
+       * voie puisque le cas n'existe pas encore.
+       */
+      if (this.cancelled.has(playerId)) {
+        this.parked.delete(playerId);
+        return false;
+      }
 
-    await this.tickets.add(ticket);
-    this.sendStatus(ticket, nowMs);
-    return true;
+      const ticket = this.takeParked(playerId, nowMs);
+      if (ticket === null) return false;
+
+      // Deja de retour en file — un `queue:join` du client a pu arriver en
+      // meme temps que la reconnexion : c'est son ticket qui fait foi, et le
+      // reecrire ici ecraserait le mode qu'il vient peut-etre de changer.
+      const existing = await this.tickets.get(playerId);
+      if (existing !== null) {
+        this.sendStatus(existing, nowMs);
+        return true;
+      }
+
+      await this.tickets.add(ticket);
+      this.sendStatus(ticket, nowMs);
+      return true;
+    });
   }
 
   /**
@@ -263,12 +331,62 @@ export class MatchmakingQueue {
      */
     if (this.cancelled.has(ticket.playerId)) return;
 
-    // Un ticket plus recent gagne : le joueur a pu redemander une recherche,
-    // dans un autre mode, pendant que l'ouverture echouait.
-    if ((await this.tickets.get(ticket.playerId)) !== null) return;
+    return this.serialize(ticket.playerId, async () => {
+      // Un ticket plus recent gagne : le joueur a pu redemander une recherche,
+      // dans un autre mode, pendant que l'ouverture echouait.
+      if ((await this.tickets.get(ticket.playerId)) !== null) return;
 
-    await this.tickets.add(ticket);
-    this.sendStatus(ticket, nowMs);
+      await this.tickets.add(ticket);
+      this.sendStatus(ticket, nowMs);
+    });
+  }
+
+  /**
+   * Gare le ticket d'un joueur parti avant que son match ne s'ouvre.
+   *
+   * Pendant du `requeue` pour l'autre moitie de la question : celui qui n'est
+   * plus connecte ne doit pas retourner en file — on n'apparie pas un absent —
+   * mais son ticket ne doit pas disparaitre pour autant. Sans ce chemin, un
+   * joueur dont le ticket vient d'etre reclame et qui se deconnecte pendant
+   * une ouverture ratee n'est ni en file, ni au garage : sa place s'evapore
+   * sans que rien ne le lui dise.
+   */
+  async parkClaimed(ticket: QueueTicket, nowMs: number): Promise<void> {
+    return this.serialize(ticket.playerId, () => this.parkTicket(ticket, nowMs));
+  }
+
+  /**
+   * Fait attendre les ecritures d'un **meme joueur** les unes derriere les
+   * autres.
+   *
+   * Sans cela, deux chemins qui touchent le meme ticket peuvent s'entrelacer a
+   * chaque `await` — et ce n'est pas theorique : le retour d'arriere-plan sur
+   * mobile envoie la reconnexion (`resume`) et le `queue:join` du client
+   * **ensemble**. Chacun lit la file, n'y trouve rien parce que l'autre n'a pas
+   * fini d'ecrire, et conclut qu'il doit creer un ticket neuf : le joueur perd
+   * l'anciennete que le garage venait justement de lui preserver.
+   *
+   * Un verrou par joueur, pas un verrou global : deux joueurs differents n'ont
+   * aucune raison de s'attendre, et le tour d'appariement doit rester rapide.
+   *
+   * Le maillon retenu est **neutralise** (`settle`) : il sert a ordonner, pas
+   * a propager une panne. Sans cela, une ecriture qui echoue bloquerait toutes
+   * les suivantes pour ce joueur, et son rejet, que personne n'ecoute, ferait
+   * tomber le processus.
+   */
+  private serialize<T>(playerId: string, work: () => Promise<T>): Promise<T> {
+    const previous = this.writes.get(playerId) ?? Promise.resolve();
+    const result = previous.then(work, work);
+    const link = result.then(settle, settle);
+
+    this.writes.set(playerId, link);
+    void link.then(() => {
+      // Dernier maillon de la chaine : on libere l'entree, sinon la carte
+      // grossit d'un joueur a chaque passage en file.
+      if (this.writes.get(playerId) === link) this.writes.delete(playerId);
+    });
+
+    return result;
   }
 
   /**
@@ -295,13 +413,12 @@ export class MatchmakingQueue {
    * ne reste plus qu'a ouvrir les matchs.
    *
    * La disponibilite est fournie par l'appelant — le service n'a a savoir ni ce
-   * qu'est une socket, ni ce qu'est un match en cours. Est disponible un joueur
-   * qui est toujours connecte **et** qui n'est pas deja assis a un duel.
+   * qu'est une socket, ni ce qu'est un match en cours. Elle arrive en **deux
+   * questions**, et ce n'est pas un detail de presentation : le joueur parti
+   * garde sa place au chaud, celui qui est deja en duel perd la sienne. Un
+   * booleen unique forcait a choisir le meme sort pour les deux.
    */
-  async tick(
-    nowMs: number,
-    isAvailable: (playerId: string) => boolean,
-  ): Promise<readonly QueuePair[]> {
+  async tick(nowMs: number, availability: PlayerAvailability): Promise<readonly QueuePair[]> {
     // Les tickets de ceux qui ne sont jamais revenus s'effacent ici : sans ce
     // balayage, le garage grossirait a proportion des coupures reseau.
     for (const [playerId, parked] of this.parked) {
@@ -320,11 +437,29 @@ export class MatchmakingQueue {
     // reviendrait a offrir un forfait a son adversaire.
     const present: QueueTicket[] = [];
     for (const ticket of waiting) {
-      if (isAvailable(ticket.playerId)) {
-        present.push(ticket);
-      } else {
-        await this.tickets.remove(ticket.playerId);
+      if (availability.isBusy(ticket.playerId)) {
+        // Assis a un duel : son ticket n'a plus d'objet, et le lui rendre a la
+        // prochaine reconnexion le remettrait a chercher un adversaire en
+        // pleine partie. L'ouverture l'evince deja ; ceci n'est qu'un filet.
+        await this.serialize(ticket.playerId, () => this.tickets.remove(ticket.playerId));
+        continue;
       }
+
+      if (!availability.isConnected(ticket.playerId)) {
+        /**
+         * Parti — mais pas forcement pour toujours.
+         *
+         * Un tour peut tomber entre la fermeture de la socket et le `park` de
+         * la passerelle : c'est le **meme evenement**, vu depuis l'autre bout.
+         * Detruire le ticket ici ferait dependre la grace de 45 s d'un hasard
+         * d'ordonnancement — un joueur la perdrait une fois sur deux, sans
+         * rien voir venir.
+         */
+        await this.parkClaimed(ticket, nowMs);
+        continue;
+      }
+
+      present.push(ticket);
     }
 
     const outcome = pairTickets(present, nowMs);

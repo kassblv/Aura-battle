@@ -54,7 +54,14 @@ Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste l
   rien à retirer, et le remettre en file le rendrait appariable alors que son client a quitté
   l'écran de recherche. Il encaisserait le `match:found` suivant sans le jouer, c'est-à-dire
   une défaite classée sur une recherche annulée. L'annulation reste donc opposable pendant une
-  minute, et un nouveau `queue:join` l'efface.
+  minute, et un nouveau `queue:join` l'efface. Celui qui s'est **déconnecté** pendant ce
+  temps-là, lui, voit son ticket garé comme n'importe quelle déconnexion : ni en file, ni
+  perdu.
+- **« Déconnecté » et « déjà en duel » ne se répondent pas par le même booléen.** Le premier
+  garde sa place le temps de revenir, le second la perd — son ticket n'a plus d'objet. Partout
+  où le serveur écarte un joueur de la file (tour d'appariement, retour en file), les deux
+  questions sont posées séparément ; les confondre revient à détruire la place de quelqu'un
+  qui revient, ou à remettre en recherche quelqu'un qui est en train de jouer.
 
 ## MMR et ligues
 
