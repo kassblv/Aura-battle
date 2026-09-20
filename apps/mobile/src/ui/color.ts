@@ -64,3 +64,24 @@ export function contrastRatio(a: string, b: string): number {
   ];
   return (high + 0.05) / (low + 0.05);
 }
+
+/**
+ * Melange deux couleurs, comme `color-mix(in srgb, a <ratio>%, b)`.
+ *
+ * `in srgb` interpole sur les coordonnees **gamma-encodees**, pas sur la
+ * lumiere : une moyenne par canal sur 0-255 donne donc exactement ce que le
+ * navigateur affiche. C'est ce qui permet de tester le contraste d'une bande
+ * peinte en `color-mix` sans la rendre.
+ */
+export function mix(a: string, b: string, ratio: number): string {
+  if (!(ratio >= 0 && ratio <= 1)) {
+    throw new RangeError(`proportion attendue dans [0, 1], recu : ${String(ratio)}`);
+  }
+  const [ar, ag, ab] = parseHex(a);
+  const [br, bg, bb] = parseHex(b);
+  const channel = (from: number, to: number): string =>
+    Math.round(from * ratio + to * (1 - ratio))
+      .toString(16)
+      .padStart(2, '0');
+  return `#${channel(ar, br)}${channel(ag, bg)}${channel(ab, bb)}`;
+}

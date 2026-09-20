@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { contrastRatio, parseHex, relativeLuminance } from './color.js';
+import { contrastRatio, mix, parseHex, relativeLuminance } from './color.js';
 
 describe('parseHex', () => {
   it('lit une couleur a six chiffres', () => {
@@ -45,5 +45,27 @@ describe('contrastRatio', () => {
     // Le gris moyen n'est pas a mi-chemin en luminance : c'est tout l'objet de
     // la correction. Une moyenne naive donnerait 2,55 des deux cotes.
     expect(contrastRatio('#808080', '#ffffff')).toBeCloseTo(3.95, 2);
+  });
+});
+
+describe('mix', () => {
+  it('rend une couleur, pas une moyenne approximative', () => {
+    expect(mix('#000000', '#ffffff', 0.5)).toBe('#808080');
+    expect(mix('#ff0000', '#0000ff', 0)).toBe('#0000ff');
+    expect(mix('#ff0000', '#0000ff', 1)).toBe('#ff0000');
+  });
+
+  /**
+   * Meme regle que le navigateur : `color-mix(in srgb, a 50%, b)` interpole les
+   * coordonnees gamma-encodees. Un melange fait sur la lumiere donnerait #bcbcbc
+   * pour le gris moyen — assez loin pour changer un verdict de contraste.
+   */
+  it('interpole comme `color-mix(in srgb, ...)`', () => {
+    expect(mix('#5be3a0', '#1b1039', 0.5)).toBe('#3b7a6d');
+  });
+
+  it('refuse une proportion hors de [0, 1]', () => {
+    expect(() => mix('#000000', '#ffffff', 1.2)).toThrow(RangeError);
+    expect(() => mix('#000000', '#ffffff', Number.NaN)).toThrow(RangeError);
   });
 });

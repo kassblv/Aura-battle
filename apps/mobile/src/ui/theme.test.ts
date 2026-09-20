@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { contrastRatio } from './color.js';
 import { cssVariables, DARK, LIGHT, MOTION, PALETTE_KEYS, SPACING, type Palette } from './theme.js';
@@ -139,5 +141,45 @@ describe('cssVariables', () => {
 
   it('emet des valeurs, jamais un jeton vide', () => {
     expect(cssVariables(LIGHT)).not.toMatch(/:\s*;/);
+  });
+});
+
+/**
+ * Parite entre les jetons et la feuille de style.
+ *
+ * `styles.css` annonce en tete que la duplication des couleurs « est encadree
+ * par le test de parite ». Elle ne l'etait pas : un jeton corrige dans
+ * `theme.ts` restait ancien dans le CSS, et le test de contraste garantissait
+ * alors une couleur que personne ne voyait.
+ */
+describe('styles.css', () => {
+  const css = readFileSync(fileURLToPath(new URL('../styles.css', import.meta.url)), 'utf8');
+  const root = css.slice(css.indexOf(':root {'), css.indexOf('}', css.indexOf(':root {')));
+
+  it('recopie la palette sombre sans la deriver', () => {
+    const declared = [...root.matchAll(/--([a-z-]+):\s*(#[0-9a-f]{3,6});/gi)];
+    expect(declared.length).toBeGreaterThan(0);
+
+    const byVariable = new Map(
+      PALETTE_KEYS.map((key) => [`--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`, key]),
+    );
+    for (const [, name, value] of declared) {
+      const key = byVariable.get(`--${String(name)}`);
+      if (key === undefined) continue;
+      expect(value?.toLowerCase(), `--${String(name)}`).toBe(DARK[key].toLowerCase());
+    }
+  });
+
+  it('ne declare aucune couleur inconnue de la palette', () => {
+    // Les seules exceptions sont nommees : ce sont des voiles, pas des jetons.
+    const extras = ['--hud', '--hud-line'];
+    const names = [...root.matchAll(/(--[a-z-]+):\s*(?:#|rgba?\()/gi)].map(
+      (match) => match[1] ?? '',
+    );
+    const known = new Set([
+      ...PALETTE_KEYS.map((key) => `--${key.replace(/[A-Z]/g, (c) => `-${c.toLowerCase()}`)}`),
+      ...extras,
+    ]);
+    for (const name of names) expect([...known], name).toContain(name);
   });
 });
