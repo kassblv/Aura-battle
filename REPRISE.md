@@ -4,9 +4,9 @@ Document jetable, écrit pour qu'une nouvelle conversation reprenne sans relire
 tout l'historique. Il ne remplace pas `docs/08-roadmap.md`, qui reste la source
 de vérité sur les jalons.
 
-**Branche :** `chore/m0-monorepo`, poussée, 110 commits, rien en attente.
-**Vert :** `pnpm test` 1976 tests (rules 274, protocol 99, content 84, mobile 874,
-server 645 + 3 ignorés), `pnpm lint` et `pnpm typecheck` propres.
+**Branche :** `chore/m0-monorepo`, poussée, 112 commits, rien en attente.
+**Vert :** `pnpm test` 1991 tests (rules 274, protocol 99, content 84, mobile 874,
+server 660 + 3 ignorés), `pnpm lint` et `pnpm typecheck` propres.
 
 ---
 
@@ -58,6 +58,25 @@ des cosmétiques dans la boutique avant achat.
 8. **Particules d'aura** : écrites et testées, mais branchées à rien.
 9. **Export de clip** — mis de côté sur ta demande.
 
+## Une relecture de sécurité à ne pas oublier de refaire
+
+Les commits du banc de charge (`76bdd8e`) ont été poussés **avant** la relecture
+que `CLAUDE.md` exige pour tout ce qui touche `apps/server/src/modules/match` ou
+`packages/protocol`. L'agent qui l'avait demandée s'est arrêté sur une limite de
+session sans rien produire. La revue automatique a rattrapé trois défauts, tous
+corrigés et poussés dans `faa86d1` :
+
+- une table indexée par **nom d'événement choisi par le client** — 5 000 noms
+  inventés créaient 5 000 histogrammes, jusqu'à épuiser la mémoire du nœud ;
+- `GET /health/metrics` et `POST /health/metrics/reset` ouvertes à qui sait
+  former une requête HTTP.
+
+**Ce qui n'a pas été vérifié**, faute de relecteur : les six points que j'avais
+listés, notamment la concurrence (un compteur partagé entre deux sièges) et les
+fenêtres de mesure qui s'ouvrent sans se refermer sur un gestionnaire qui lève.
+Relancer un `security-reviewer` sur `git diff 167bcc1..HEAD -- apps/server
+packages/protocol` est la première chose à faire.
+
 ## Pièges appris cette session (les plus coûteux)
 
 - **Une valeur de `packages/rules` réexprimée ailleurs ne se voit ni au
@@ -79,6 +98,11 @@ des cosmétiques dans la boutique avant achat.
   les cibles tactiles sous 46 px.
 - **`--force` avant de conclure qu'un agent s'est trompé** : Turbo sert un
   typecheck calculé avant la dernière édition.
+- **Un test peut graver une faille au lieu de la prévenir.** Un e2e exigeait
+  qu'un nom d'événement inventé par le client ait sa propre entrée dans la
+  table de mesure : écrit pour prouver qu'un message refusé est bien compté, il
+  verrouillait l'épuisement mémoire. Rien dans sa rédaction ne distinguait les
+  deux intentions.
 
 ## Où reprendre
 
