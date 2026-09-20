@@ -120,10 +120,13 @@ describe('champ framing', () => {
       .sort();
     expect(bust).toEqual(
       [
+        'anim.calme.t2.crown',
         'anim.calme.t2.lookaway',
+        'anim.provoc.t3.dust',
         'anim.provoc.t3.lfront',
         'anim.provoc.t2.mewing',
         'anim.provoc.t0.shush',
+        'anim.provoc.t2.slowclap',
       ].sort(),
     );
   });

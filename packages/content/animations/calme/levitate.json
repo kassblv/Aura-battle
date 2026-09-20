@@ -18,6 +18,12 @@
     "expression": "neutral",
     "float": -34
   },
+  "sound": [
+    {
+      "at": 0.05,
+      "accent": "hold"
+    }
+  ],
   "hands": [
     ["open", "down"],
     ["open", "down"]

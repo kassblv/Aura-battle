@@ -10,7 +10,7 @@
  * Version du catalogue. Servie au client avec les animations pour qu'il sache
  * invalider son cache (`contentVersion` dans `match:found`).
  */
-export const CONTENT_VERSION = '1.0.0';
+export const CONTENT_VERSION = '1.1.0';
 
 export * from './animation.js';
 export * from './catalogue.js';

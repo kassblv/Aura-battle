@@ -85,50 +85,59 @@ describe('non-regression : les valeurs correspondent au prototype', () => {
     prototype = await loadPrototypeData(prototypePath);
   });
 
-  it('reproduit la premiere image de chaque animation de mouvement', () => {
+  /**
+   * Les animations **portees**, par opposition a celles ecrites depuis.
+   *
+   * Le catalogue grandit — une danse par semaine est l'objectif de live-ops
+   * (docs/07) — et le prototype, lui, est fige. Confronter tout le catalogue a
+   * une source qui ne contient que les vingt-et-une premieres ferait echouer
+   * le portage a chaque ajout ; ne confronter que ce que le prototype connait
+   * laisserait en revanche disparaitre un portage en silence. D'ou les deux :
+   * l'intersection est verifiee, et son effectif est verrouille.
+   */
+  const ported = (): readonly string[] =>
+    STYLES.flatMap((style) =>
+      TIERS.flatMap((tier) =>
+        animationsFor({ style, tier }).filter((slug) => prototype.APOSE[slug] !== undefined),
+      ),
+    );
+
+  it('couvre les vingt-et-une animations heritees du prototype', () => {
+    expect(ported()).toHaveLength(21);
+  });
+
+  it('reproduit la premiere image de chaque animation portee', () => {
     const ecarts: string[] = [];
-    for (const style of STYLES) {
-      for (const tier of TIERS) {
-        for (const slug of animationsFor({ style, tier })) {
-          const porte = animations.get(slug)!.frames[0]!.joints;
-          const source = prototype.APOSE[slug]!.frames[0] as unknown as Record<
-            string,
-            [number, number]
-          >;
-          for (const [joint, [x, y]] of Object.entries(porte)) {
-            const reference = source[joint];
-            if (reference === undefined) {
-              ecarts.push(`${slug}.${joint} absent du prototype`);
-              continue;
-            }
-            if (Math.abs(x - reference[0]) > 0.01 || Math.abs(y - reference[1]) > 0.01) {
-              ecarts.push(`${slug}.${joint} : [${x}, ${y}] contre [${reference.join(', ')}]`);
-            }
-          }
+    for (const slug of ported()) {
+      const porte = animations.get(slug)!.frames[0]!.joints;
+      const source = prototype.APOSE[slug]!.frames[0] as unknown as Record<
+        string,
+        [number, number]
+      >;
+      for (const [joint, [x, y]] of Object.entries(porte)) {
+        const reference = source[joint];
+        if (reference === undefined) {
+          ecarts.push(`${slug}.${joint} absent du prototype`);
+          continue;
+        }
+        if (Math.abs(x - reference[0]) > 0.01 || Math.abs(y - reference[1]) > 0.01) {
+          ecarts.push(`${slug}.${joint} : [${x}, ${y}] contre [${reference.join(', ')}]`);
         }
       }
     }
     expect(ecarts).toEqual([]);
   });
 
-  it('reproduit la duree de boucle de chaque animation de mouvement', () => {
-    for (const style of STYLES) {
-      for (const tier of TIERS) {
-        for (const slug of animationsFor({ style, tier })) {
-          const porte = animations.get(slug) as unknown as { loop: { duration: number } };
-          expect(porte.loop.duration).toBe(prototype.APOSE[slug]!.dur);
-        }
-      }
+  it('reproduit la duree de boucle de chaque animation portee', () => {
+    for (const slug of ported()) {
+      const porte = animations.get(slug) as unknown as { loop: { duration: number } };
+      expect(porte.loop.duration, slug).toBe(prototype.APOSE[slug]!.dur);
     }
   });
 
-  it('reproduit le nombre d images de chaque animation de mouvement', () => {
-    for (const style of STYLES) {
-      for (const tier of TIERS) {
-        for (const slug of animationsFor({ style, tier })) {
-          expect(animations.get(slug)!.frames).toHaveLength(prototype.APOSE[slug]!.frames.length);
-        }
-      }
+  it('reproduit le nombre d images de chaque animation portee', () => {
+    for (const slug of ported()) {
+      expect(animations.get(slug)!.frames, slug).toHaveLength(prototype.APOSE[slug]!.frames.length);
     }
   });
 

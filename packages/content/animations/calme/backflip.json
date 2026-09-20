@@ -17,6 +17,16 @@
   "flags": {
     "expression": "neutral"
   },
+  "sound": [
+    {
+      "at": 0.3,
+      "accent": "whoosh"
+    },
+    {
+      "at": 0.72,
+      "accent": "impact"
+    }
+  ],
   "hands": [
     ["fist", "in"],
     ["fist", "in"]

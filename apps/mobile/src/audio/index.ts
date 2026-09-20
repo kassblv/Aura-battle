@@ -7,6 +7,7 @@
  */
 export * from './cues.js';
 export * from './engine.js';
+export * from './gestures.js';
 export * from './mixer.js';
 export * from './notes.js';
 export * from './scheduler.js';

@@ -21,11 +21,31 @@ describe('MOVE_ANIMATIONS', () => {
     }
   });
 
-  it('porte les 21 animations de mouvement du prototype', () => {
+  it('compte 33 animations de mouvement : les 21 du prototype et les 12 ajoutees', () => {
     const total = STYLES.flatMap((style) =>
       TIERS.flatMap((tier) => animationsFor({ style, tier })),
     ).length;
-    expect(total).toBe(21);
+    expect(total).toBe(33);
+  });
+
+  /**
+   * Une aura battle est un echange : chaque style doit offrir de quoi varier,
+   * sinon deux joueurs du meme style rejouent le meme geste toute la partie.
+   * Le compte par style est donc un critere de contenu, pas une statistique.
+   */
+  it('donne autant de choix aux trois styles', () => {
+    for (const style of STYLES) {
+      const total = TIERS.flatMap((tier) => animationsFor({ style, tier })).length;
+      expect(total, style).toBe(11);
+    }
+  });
+
+  /** Chaque palier a au moins un cosmetique a cote de son animation offerte. */
+  it('propose un cosmetique sur chaque palier', () => {
+    for (const tier of TIERS) {
+      const cosmetics = STYLES.flatMap((style) => animationsFor({ style, tier }).slice(1));
+      expect(cosmetics.length, `palier ${String(tier)}`).toBeGreaterThan(0);
+    }
   });
 
   it('n utilise jamais deux fois le meme slug', () => {
@@ -56,9 +76,9 @@ describe('identifiants', () => {
     expect(systemAnimationId('victory')).toBe('anim.system.none.victory');
   });
 
-  it('rend 26 identifiants uniques au total', () => {
+  it('rend 38 identifiants uniques au total', () => {
     const ids = allAnimationIds();
-    expect(ids).toHaveLength(21 + SYSTEM_ANIMATIONS.length);
+    expect(ids).toHaveLength(33 + SYSTEM_ANIMATIONS.length);
     expect(new Set(ids).size).toBe(ids.length);
   });
 });

@@ -73,6 +73,30 @@ export interface AnimationFraming {
   readonly shot: AnimationShot;
 }
 
+/**
+ * Accent sonore d un geste.
+ *
+ * `whoosh` : un membre qui fend l air. `impact` : un contact sec — une main
+ * qui claque, un corps qui retombe. `hold` : le souffle d une pose tenue.
+ *
+ * Trois mots pour ce que le CORPS fait, jamais pour ce que le joueur a choisi
+ * ni pour sa reussite. C est ce qui rend l accent jouable des deux cotes de
+ * l arene sans rien trahir (regle d or n°4) : un impact d acrobatie sonne
+ * pareil qu on gagne ou qu on perde la manche.
+ */
+export type SoundAccent = 'whoosh' | 'impact' | 'hold';
+
+export interface AnimationAccent {
+  /**
+   * Instant dans la boucle, en part de la boucle (0 inclus, 1 exclu).
+   *
+   * Une part, pas des secondes : rallonger une danse de deux dixiemes ne doit
+   * pas desynchroniser son impact.
+   */
+  readonly at: number;
+  readonly accent: SoundAccent;
+}
+
 export interface AnimationLoop {
   /** Duree d'un cycle, en secondes. */
   readonly duration: number;
@@ -109,6 +133,8 @@ export interface Animation {
     readonly expression?: Expression;
   };
   readonly emit?: readonly unknown[];
+  /** Accents sonores du geste. Absent : la danse est muette. */
+  readonly sound?: readonly AnimationAccent[];
   readonly hands: readonly (readonly [HandShape, HandFacing])[];
   readonly frames: readonly AnimationFrame[];
 }
@@ -175,6 +201,33 @@ export function loadAnimation(document: unknown): Animation {
   if (framing !== undefined) {
     if (!isRecord(framing) || (framing.shot !== 'body' && framing.shot !== 'bust')) {
       fail("cadrage inconnu : 'body' ou 'bust' attendu");
+    }
+  }
+
+  /**
+   * Les accents sonores, verifies sur leur FORME et pas sur leur vocabulaire.
+   *
+   * Un instant hors de la boucle ne se joue jamais, et une liste qui n en est
+   * pas une fait planter la programmation : ces deux-la sont refuses. Le nom
+   * de l accent, lui, est laisse passer tel quel — un catalogue plus recent
+   * peut en inventer un que cette version du client ne connait pas, et un
+   * accent inconnu doit rendre le silence, pas empecher de jouer (meme
+   * raisonnement que pour `framing`).
+   */
+  const sound = document.sound;
+  if (sound !== undefined) {
+    if (!Array.isArray(sound)) {
+      fail('accents sonores : une liste est attendue');
+    } else {
+      for (const [index, accent] of (sound as readonly unknown[]).entries()) {
+        if (!isRecord(accent) || typeof accent.at !== 'number') {
+          fail(`accent sonore ${String(index)} : instant manquant`);
+          continue;
+        }
+        if (!(accent.at >= 0) || accent.at >= 1) {
+          fail(`accent sonore ${String(index)} : instant ${String(accent.at)} hors de la boucle`);
+        }
+      }
     }
   }
 

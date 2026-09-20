@@ -26,25 +26,25 @@ export interface Move {
 export const MOVE_ANIMATIONS: Readonly<Record<Style, Readonly<Record<Tier, readonly string[]>>>> =
   Object.freeze({
     calme: {
-      0: ['crossed'],
-      1: ['pocket'],
-      2: ['lookaway'],
-      3: ['meditate', 'moonwalk'],
+      0: ['crossed', 'behind'],
+      1: ['pocket', 'stride'],
+      2: ['lookaway', 'crown'],
+      3: ['meditate', 'moonwalk', 'slowkick'],
       4: ['levitate', 'backflip'],
     },
     hype: {
-      0: ['dab'],
-      1: ['sixseven'],
-      2: ['fist', 'floss'],
+      0: ['dab', 'jumpclap'],
+      1: ['sixseven', 'shoulders'],
+      2: ['fist', 'floss', 'goal'],
       3: ['griddy', 'spin'],
-      4: ['boat'],
+      4: ['boat', 'wheel'],
     },
     provoc: {
-      0: ['shush'],
+      0: ['shush', 'skyward'],
       1: ['point', 'tpose'],
-      2: ['mewing', 'shrug'],
-      3: ['lfront'],
-      4: ['back'],
+      2: ['mewing', 'shrug', 'slowclap'],
+      3: ['lfront', 'dust'],
+      4: ['back', 'bow'],
     },
   });
 

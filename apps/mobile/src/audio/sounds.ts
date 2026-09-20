@@ -35,7 +35,10 @@ export type SoundName =
   | 'tapGold'
   | 'tapMiss'
   | 'rechargeEnd'
-  | 'ultimate';
+  | 'ultimate'
+  | 'whoosh'
+  | 'impact'
+  | 'hold';
 
 export const SOUND_NAMES: readonly SoundName[] = [
   'click',
@@ -61,6 +64,9 @@ export const SOUND_NAMES: readonly SoundName[] = [
   'tapMiss',
   'rechargeEnd',
   'ultimate',
+  'whoosh',
+  'impact',
+  'hold',
 ];
 
 export interface SoundOptions {
@@ -291,6 +297,87 @@ export function voicesFor(name: SoundName, options: SoundOptions = {}): readonly
           tone({ delay: 0.55, wave: 'triangle', from: f, duration: 1.1, gain: 0.09 }),
         ),
         tone({ delay: 0.55, wave: 'sine', from: 80, to: 40, duration: 0.8, gain: 0.8 }),
+      ];
+
+    /**
+     * Les trois accents de geste (`sound` dans une animation).
+     *
+     * Ils disent ce que le CORPS fait, pas ce que le joueur a choisi ni s il a
+     * reussi : c est ce qui les rend jouables des deux cotes de l arene sans
+     * rien trahir. Voir la note de `cues.ts` sur la regle d or n°4.
+     */
+
+    case 'whoosh':
+      // Un membre qui fend l air : une bande qui gonfle puis tombe. L attaque
+      // longue fait tout le travail — une attaque courte donnerait un « tss »
+      // de cymbale au lieu du passage d un bras.
+      return [
+        noise({
+          from: 2400,
+          to: 380,
+          q: 1.2,
+          duration: 0.34,
+          gain: 0.22,
+          attack: 0.14,
+          offset: offset(),
+        }),
+        noise({
+          delay: 0.04,
+          filter: 'highpass',
+          from: 1800,
+          to: 900,
+          duration: 0.22,
+          gain: 0.07,
+          attack: 0.1,
+          offset: offset(),
+        }),
+      ];
+
+    case 'impact':
+      // Un contact sec : une main qui claque, un corps qui retombe de sa roue.
+      // Plus mordant que `land`, qui n est qu un poids qui se repose, et bien
+      // plus court que `clash`, qui doit tenir toute une revelation.
+      return [
+        tone({ wave: 'sine', from: 170, to: 48, duration: 0.24, gain: 0.5 }),
+        noise({
+          filter: 'lowpass',
+          from: 1400,
+          to: 250,
+          duration: 0.14,
+          gain: 0.3,
+          offset: offset(),
+        }),
+        noise({ filter: 'highpass', from: 4200, duration: 0.05, gain: 0.22, offset: offset() }),
+      ];
+
+    case 'hold':
+      // Le souffle d une pose tenue. Il gonfle au lieu de frapper : c est une
+      // pose qu il accompagne, et une attaque nette la transformerait en coup.
+      return [
+        tone({
+          wave: 'sine',
+          from: noteFrequency('A3'),
+          duration: 1.1,
+          gain: 0.1,
+          attack: 0.45,
+        }),
+        tone({
+          delay: 0.06,
+          wave: 'triangle',
+          from: noteFrequency('E4'),
+          duration: 1,
+          gain: 0.06,
+          attack: 0.5,
+        }),
+        noise({
+          from: 500,
+          to: 1500,
+          q: 0.8,
+          duration: 1.1,
+          gain: 0.09,
+          attack: 0.6,
+          offset: offset(),
+        }),
       ];
   }
 }

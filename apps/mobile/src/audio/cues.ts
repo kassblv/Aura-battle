@@ -1,3 +1,4 @@
+import type { SoundAccent } from '@aura/content';
 import type { Seat, TimingQuality } from '@aura/rules';
 import type { ArenaEvent } from '../arena/events.js';
 import type { SoundName } from './sounds.js';
@@ -29,7 +30,22 @@ export type AudioCue =
       readonly ultimate: boolean;
     }
   | { readonly type: 'clash'; readonly counter: boolean }
-  | { readonly type: 'matchEnd'; readonly outcome: 'win' | 'loss' | 'draw' };
+  | { readonly type: 'matchEnd'; readonly outcome: 'win' | 'loss' | 'draw' }
+  /**
+   * Un accent de geste, declare par l animation en cours (`sound`).
+   *
+   * Ce fait-la est different de tous les autres : il ne vient pas du serveur,
+   * il vient de l image. Il ne peut donc servir que ce qui est DEJA a l ecran
+   * — une revelation, ou le personnage de la vitrine d accueil.
+   *
+   * Et c est precisement pourquoi il ne transporte que `accent`. Un champ
+   * `style`, `tier` ou `local` en ferait un canal de fuite : au moment du
+   * verrouillage, l arene ne joue rien de l adversaire, et un son qui dirait
+   * « il vient de choisir une acrobatie » vaudrait exactement le message que
+   * le protocole se refuse a envoyer (regle d or n°4). Un accent ne dit que ce
+   * que le corps fait, et un corps qu on ne voit pas ne fait rien.
+   */
+  | { readonly type: 'gesture'; readonly accent: SoundAccent };
 
 export interface SoundRequest {
   readonly name: SoundName;
@@ -82,6 +98,12 @@ export function soundForCue(cue: AudioCue): SoundRequest | null {
     case 'clash':
       return cue.counter ? { name: 'counter', combo: 0 } : { name: 'clash', combo: 0 };
 
+    case 'gesture':
+      return accentSound(cue.accent);
+
+    // `matchEnd` reste en dernier : son aiguillage interne rend dans chaque
+    // branche sans `break`, et un `case` pose apres lui se lit comme une
+    // chute d un cas dans l autre.
     case 'matchEnd':
       switch (cue.outcome) {
         case 'win':
@@ -92,6 +114,28 @@ export function soundForCue(cue: AudioCue): SoundRequest | null {
           return null;
       }
   }
+}
+
+/**
+ * Le vocabulaire des accents, traduit en sons.
+ *
+ * Une table plutot qu un aiguillage, parce que la cle arrive d un fichier de
+ * contenu : `loadAnimation` verifie l INSTANT d un accent, jamais son nom, et
+ * c est voulu — le catalogue se publie sans mise a jour store (regle d or
+ * n°5), donc une danse peut arriver avec un accent que cette version de
+ * l application ne connait pas. Une table rend alors `undefined`, et la danse
+ * se joue en silence au lieu d etre refusee.
+ */
+const ACCENT_SOUNDS: Readonly<Partial<Record<string, SoundName>>> = {
+  whoosh: 'whoosh',
+  impact: 'impact',
+  hold: 'hold',
+};
+
+/** Le son d un accent de geste, ou le silence quand il est inconnu. */
+function accentSound(accent: SoundAccent): SoundRequest | null {
+  const name = ACCENT_SOUNDS[accent];
+  return name === undefined ? null : { name, combo: 0 };
 }
 
 function qualitySound(quality: TimingQuality): SoundName {

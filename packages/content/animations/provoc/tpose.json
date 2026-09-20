@@ -17,6 +17,12 @@
   "flags": {
     "expression": "neutral"
   },
+  "sound": [
+    {
+      "at": 0.32,
+      "accent": "hold"
+    }
+  ],
   "hands": [
     ["open", "down"],
     ["open", "down"]
