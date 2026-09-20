@@ -1,5 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import { AURA_BUDGET } from '../arena/aura.js';
 import { ADDITIVE_CAPACITY, DARK_CAPACITY } from '../arena/particles.js';
 import { CROWD_SIZE } from '../arena/crowdLayout.js';
 import { MAX_PIXEL_RATIO } from '../arena/renderer.js';
@@ -38,6 +39,7 @@ describe('table des paliers', () => {
     expect(QUALITY_PROFILES.rich.crowdSeats).toBe(CROWD_SIZE);
     expect(QUALITY_PROFILES.rich.additiveParticles).toBe(ADDITIVE_CAPACITY);
     expect(QUALITY_PROFILES.rich.darkParticles).toBe(DARK_CAPACITY);
+    expect(QUALITY_PROFILES.rich.auraParticles).toBe(AURA_BUDGET);
     expect(QUALITY_PROFILES.rich.hands).toBe(true);
   });
 
@@ -51,6 +53,7 @@ describe('table des paliers', () => {
       expect(current.crowdSeats).toBeLessThanOrEqual(previous.crowdSeats);
       expect(current.additiveParticles).toBeLessThanOrEqual(previous.additiveParticles);
       expect(current.darkParticles).toBeLessThanOrEqual(previous.darkParticles);
+      expect(current.auraParticles).toBeLessThanOrEqual(previous.auraParticles);
     }
   });
 
@@ -60,6 +63,19 @@ describe('table des paliers', () => {
     et laisserait les gradins du fond : exactement l inverse de ce qu on veut
     voir disparaitre.
   */
+  /*
+    Deux auras a fond doivent tenir dans le tampon additif, qui porte aussi le
+    choc et ses eclats. Un budget d aura superieur a la moitie du tampon ferait
+    tronquer l un des deux combattants par ordre d arrivee — et on paierait
+    quand meme la simulation des particules jetees.
+  */
+  it('laisse les deux auras tenir dans le tampon additif', () => {
+    for (const tier of QUALITY_TIERS) {
+      const profile = QUALITY_PROFILES[tier];
+      expect(profile.auraParticles * 2).toBeLessThan(profile.additiveParticles);
+    }
+  });
+
   it('aucun palier ne descend sous le premier cercle', () => {
     for (const tier of QUALITY_TIERS) {
       expect(QUALITY_PROFILES[tier].crowdSeats).toBeGreaterThanOrEqual(18);

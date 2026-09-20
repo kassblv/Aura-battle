@@ -8,7 +8,7 @@
  * qualite se verifie image par image dans un test, sans carte graphique.
  *
  * **Cette table est la source.** `MAX_PIXEL_RATIO`, `CROWD_SIZE`,
- * `ADDITIVE_CAPACITY` et `DARK_CAPACITY` en decoulent, jamais l inverse : une
+ * `ADDITIVE_CAPACITY`, `DARK_CAPACITY` et `AURA_BUDGET` en decoulent, jamais l inverse : une
  * valeur reexprimee des deux cotes ne se voit ni au compilateur, ni aux tests,
  * ni en relecture, et c est le defaut le plus cher que ce depot ait produit.
  */
@@ -25,6 +25,14 @@ export interface QualityProfile {
   readonly crowdSeats: number;
   readonly additiveParticles: number;
   readonly darkParticles: number;
+  /**
+   * Particules vivantes par aura de combattant.
+   *
+   * Compte a part des capacites de tampon : c est un plafond de **simulation**,
+   * pas d ecriture. Laisser le tampon tronquer suffirait a l affichage, mais on
+   * paierait la naissance et le deplacement de particules jetees ensuite.
+   */
+  readonly auraParticles: number;
   /** Les mains articulees des combattants. */
   readonly hands: boolean;
 }
@@ -52,6 +60,7 @@ export const QUALITY_PROFILES: Readonly<Record<QualityTier, QualityProfile>> = O
     crowdSeats: 210,
     additiveParticles: 2400,
     darkParticles: 600,
+    auraParticles: 260,
     hands: true,
   }),
   balanced: Object.freeze({
@@ -59,6 +68,7 @@ export const QUALITY_PROFILES: Readonly<Record<QualityTier, QualityProfile>> = O
     crowdSeats: 120,
     additiveParticles: 1400,
     darkParticles: 350,
+    auraParticles: 150,
     hands: true,
   }),
   smooth: Object.freeze({
@@ -66,6 +76,7 @@ export const QUALITY_PROFILES: Readonly<Record<QualityTier, QualityProfile>> = O
     crowdSeats: 60,
     additiveParticles: 700,
     darkParticles: 180,
+    auraParticles: 70,
     hands: false,
   }),
 });

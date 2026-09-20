@@ -15,6 +15,7 @@ import {
 } from '../platform/quality.js';
 import { watchReducedMotion } from '../platform/reducedMotion.js';
 import { focusFraming, previewFraming, wideFraming, type CameraFraming } from './camera.js';
+import { auraIntensity } from './aura.js';
 import { CHEST_HEIGHT, type ClashColors, type ClashEnds } from './clash.js';
 import { createArenaDirector } from './director.js';
 import { createOrbitControl } from './orbit.js';
@@ -44,6 +45,15 @@ import { createArenaTextures } from './textures.js';
  * une mesure qui ne change jamais.
  */
 const boundsCache = new Map<string, AnimationBounds>();
+
+/**
+ * L effet d aura que tout le monde porte, en attendant le loadout.
+ *
+ * Equiper un effet est le jalon M8 (« effet par amplificateur ») : `Look` ne
+ * transporte aujourd hui qu une COULEUR. La Lueur est le style offert, et la
+ * couleur suffit deja a rendre chaque aura personnelle.
+ */
+const DEFAULT_AURA_EFFECT = 'fx.glow';
 
 function boundsOf(animation: Animation): AnimationBounds {
   let bounds = boundsCache.get(animation.id);
@@ -417,13 +427,38 @@ export function useArena(
         framing = wideFraming();
       }
 
+      /*
+        Ce que chaque aura doit afficher, et rien de plus.
+
+        Regle d or n°4 : avant le choc, les deux sieges recoivent la MEME
+        ferveur — celle que la phase justifie, identique des deux cotes. Le
+        palier joue par chacun est secret jusqu a `round:result` et n entre
+        jamais ici ; `auraIntensity` n a d ailleurs aucun champ ou le mettre.
+        Le seul moment ou les deux auras different est le choc, une fois les
+        deux choix publics.
+      */
+      const auraHype = Math.max(scene?.hype ?? 0.2, director.hype);
+      for (const seat of ['a', 'b'] as const) {
+        arena.auras[seat].set({
+          // L effet equipe viendra du loadout (M8) : d ici la, tout le monde
+          // porte la Lueur, teintee par la couleur achetee en boutique.
+          effectId: DEFAULT_AURA_EFFECT,
+          color: scene?.fighters[seat].look.aura ?? '#ffcf3f',
+          intensity: auraIntensity({
+            showcase: solo,
+            hype: auraHype,
+            clashWeight: director.auraWeight(seat),
+          }),
+        });
+      }
+
       arena.update({
         elapsed,
         delta,
         framing,
         // La ferveur est la plus haute des deux : celle que la phase justifie,
         // et celle que le choc vient d allumer.
-        hype: Math.max(scene?.hype ?? 0.2, director.hype),
+        hype: auraHype,
         shake: director.shake,
         flash: director.flash,
         reducedMotion: motion.reduced,
@@ -438,6 +473,7 @@ export function useArena(
        * gerbes, ondes — tient dans les deux memes tampons.
        */
       arena.particles.begin();
+      arena.drawAuras(arena.particles, elapsed);
       director.draw(arena.particles, now);
       arena.particles.commit();
 

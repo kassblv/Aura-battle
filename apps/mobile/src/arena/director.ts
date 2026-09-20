@@ -67,6 +67,14 @@ export interface ArenaDirector {
   readonly round: number | null;
   /** Recul du combattant, en metres, a ajouter a sa position de repos. */
   knockback(seat: Seat): number;
+  /**
+   * Ce que pese l aura de ce siege pendant le choc. Zero le reste du temps.
+   *
+   * C est la seule chose qu une aura apprend du resultat, et elle ne
+   * l apprend qu une fois les deux choix publics : avant la revelation, une
+   * aura qui gonflerait avec le palier joue l annoncerait a l adversaire.
+   */
+  auraWeight(seat: Seat): number;
   /** Met en scene une manche. Rejouer la meme ne fait rien. */
   play(story: RoundStory): void;
   /** Coupe tout : changement d ecran, fin de match, demontage. */
@@ -209,6 +217,10 @@ export function createArenaDirector(options: ArenaDirectorOptions = {}): ArenaDi
     },
     get round() {
       return round;
+    },
+
+    auraWeight(seat): number {
+      return clash.weight(seat);
     },
 
     knockback(seat): number {

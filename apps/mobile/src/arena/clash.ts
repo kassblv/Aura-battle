@@ -87,6 +87,16 @@ export function beamFade(progress: number): number {
 }
 
 /**
+ * Le faisceau le plus lourd qu on puisse pousser.
+ *
+ * Sert aussi d echelle a l intensite de l aura (`auraIntensity`) : sans une
+ * valeur nommee, le facteur de normalisation serait un 1,6 recopie ailleurs,
+ * qui cesserait d etre vrai au premier ajustement.
+ */
+export const BEAM_WEIGHT_ULTIMATE = 1.6;
+export const BEAM_WEIGHT_COUNTER = 1.35;
+
+/**
  * Poids d un faisceau : ce qu il pese dans la rencontre.
  *
  * Celui qui a contre ou lache son Ultime pousse un trait plus epais, et le
@@ -95,8 +105,8 @@ export function beamFade(progress: number): number {
  */
 export function beamWeight(spec: ClashSpec, seat: Seat, progress: number): number {
   let weight = 1;
-  if (spec.ultimate === seat) weight = 1.6;
-  else if (spec.counter === seat) weight = 1.35;
+  if (spec.ultimate === seat) weight = BEAM_WEIGHT_ULTIMATE;
+  else if (spec.counter === seat) weight = BEAM_WEIGHT_COUNTER;
 
   if (progress > CLASH_HIT_AT && spec.winner !== null && spec.winner !== seat) {
     // Le faisceau du perdant s ecrase : il ne s eteint pas, il cede.
@@ -129,6 +139,14 @@ export interface Clash {
   /** Avancement, entre 0 et 1. */
   readonly progress: number;
   readonly point: Vec3 | null;
+  /**
+   * Ce que pese le faisceau de ce siege, maintenant. Zero hors du choc.
+   *
+   * L aura des combattants lit ce nombre plutot que de rededuire le vainqueur
+   * de son cote : c est deja ce que `beamWeight` exprime, et deux expressions
+   * du meme fait finissent toujours par se contredire.
+   */
+  weight(seat: Seat): number;
   start(spec: ClashSpec): void;
   stop(): void;
   setReducedMotion(reduced: boolean): void;
@@ -155,6 +173,11 @@ export function createClash(): Clash {
     },
     get point() {
       return point;
+    },
+
+    weight(seat): number {
+      if (spec === null) return 0;
+      return beamWeight(spec, seat, clamp(elapsed / CLASH_DURATION_MS, 0, 1));
     },
 
     start(next): void {

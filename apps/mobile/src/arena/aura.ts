@@ -9,6 +9,8 @@ import {
   SpriteMaterial,
   type Texture,
 } from 'three';
+import { QUALITY_PROFILES } from '../platform/quality.js';
+import { BEAM_WEIGHT_ULTIMATE } from './clash.js';
 import { clamp, damp, easeOut } from './math.js';
 import type { ParticleSink } from './particles.js';
 import {
@@ -45,6 +47,49 @@ export interface AuraLook {
   readonly intensity: number;
 }
 
+/**
+ * L aura au repos, hors match.
+ *
+ * Assez pour qu on voie ce qu on essaie au vestiaire et ce qu on regarde en
+ * boutique — c est la que la couleur d aura se vend —, pas assez pour manger
+ * le personnage.
+ *
+ * Reglee a l oeil sur l accueil en 844x390 : a 0,35 le jeu qui s appelle Aura
+ * Battle n en montrait aucune, quelques etincelles isolees. C est une valeur
+ * de ressenti, pas une mesure : elle demandera d etre revue sur un vrai
+ * appareil, ou la luminosite et la taille de l ecran ne sont pas celles-ci.
+ */
+export const IDLE_INTENSITY = 0.6;
+
+/**
+ * Tout ce dont l aura a besoin pour savoir quelle force afficher.
+ *
+ * **Regle d or n°4, et elle se joue dans cette signature.** Le palier joue est
+ * secret jusqu a `round:result` : une aura qui gonflerait avec lui pendant la
+ * phase de choix l annoncerait a l adversaire, sans qu aucun message reseau ne
+ * change — donc sans qu une relecture du serveur ou du protocole puisse le
+ * voir. Rien ici n est propre a un siege avant le choc : `hype` vient de la
+ * seule phase et vaut pareil des deux cotes, et `clashWeight` ne devient non
+ * nul qu une fois les deux choix publics. Ce qui n entre pas ne peut pas
+ * sortir.
+ */
+export interface AuraDrive {
+  /** Hors match : un seul personnage a l ecran. */
+  readonly showcase: boolean;
+  /** Ferveur du public, deduite de la phase seule (`HYPE_BY_PHASE`). */
+  readonly hype: number;
+  /** Poids du faisceau de ce siege pendant le choc, zero le reste du temps. */
+  readonly clashWeight: number;
+}
+
+export function auraIntensity(drive: AuraDrive): number {
+  if (drive.showcase) return IDLE_INTENSITY;
+  // Le choc l emporte : c est le moment que tout l ecran prepare, et le seul
+  // ou les deux auras ont le droit de ne pas se ressembler.
+  if (drive.clashWeight > 0) return clamp(drive.clashWeight / BEAM_WEIGHT_ULTIMATE, 0, 1);
+  return clamp(drive.hype, 0, 1);
+}
+
 export interface AuraOrigin {
   readonly x: number;
   readonly y: number;
@@ -52,14 +97,17 @@ export interface AuraOrigin {
 }
 
 /**
- * Plafond de particules vivantes par combattant.
+ * Plafond de particules vivantes par combattant, au palier le plus haut.
  *
  * Deux auras a fond, plus les anneaux et les eclairs qui se dessinent en
  * plusieurs points chacun, doivent tenir dans `ADDITIVE_CAPACITY`. C est le
  * garde-fou qui empeche une pause de l onglet, suivie d un rattrapage, de
  * faire exploser le nombre de sommets.
+ *
+ * La valeur vit dans `platform/quality.ts`, avec les trois autres leviers :
+ * un palier plus bas la baisse aussi.
  */
-export const AURA_BUDGET = 260;
+export const AURA_BUDGET = QUALITY_PROFILES.rich.auraParticles;
 
 /** Vitesse de rattrapage de l intensite affichee, reprise du prototype. */
 const INTENSITY_RATE = 3.5;
@@ -124,6 +172,14 @@ export interface AuraEmitter {
   /** Change d effet, de couleur ou d intensite cible. */
   set(look: AuraLook): void;
   setReducedMotion(reduced: boolean): void;
+  /**
+   * Plafond de particules vivantes, qu un palier de qualite abaisse.
+   *
+   * Le surplus n est pas tue : il meurt de lui-meme et rien ne renait
+   * au-dela. Effacer des particules deja a l ecran ferait un trou visible
+   * juste apres la bascule.
+   */
+  setBudget(next: number): void;
   /** Fait naitre, bouger et mourir les particules. */
   update(deltaSeconds: number): void;
   /** Pose l etat courant dans le puits a particules. Ne modifie rien. */
@@ -134,7 +190,7 @@ export interface AuraEmitter {
 
 export function createAuraEmitter(options: AuraEmitterOptions = {}): AuraEmitter {
   const rng = options.rng ?? Math.random;
-  const budget = options.budget ?? AURA_BUDGET;
+  let budget = options.budget ?? AURA_BUDGET;
 
   const between = (range: Range): number => range.min + rng() * (range.max - range.min);
 
@@ -271,6 +327,10 @@ export function createAuraEmitter(options: AuraEmitterOptions = {}): AuraEmitter
       }
       color = look.color;
       target = clamp(look.intensity, 0, 1);
+    },
+
+    setBudget(next): void {
+      budget = Math.max(0, Math.floor(next));
     },
 
     setReducedMotion(reduced): void {

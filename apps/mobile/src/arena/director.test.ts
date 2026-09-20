@@ -245,3 +245,71 @@ describe('createArenaDirector — annulation', () => {
     expect(director.focus?.seat).toBe('b');
   });
 });
+
+describe('poids d aura', () => {
+  /*
+    L aura des combattants lit le choc, elle ne recalcule pas le vainqueur.
+
+    « Qui l emporte, maintenant, en un nombre » est deja exprime par
+    `beamWeight` et pilote le faisceau. Une deuxieme expression du meme fait
+    est ce qui a coute le plus cher a ce depot : les deux se contrediraient un
+    jour, et c est le faisceau qui dirait vrai pendant que l aura mentirait.
+  */
+  it('vaut zero tant que rien ne se joue', () => {
+    const director = createArenaDirector();
+    expect(director.auraWeight('a')).toBe(0);
+    expect(director.auraWeight('b')).toBe(0);
+  });
+
+  it('vaut zero hors du choc, meme pendant la manche', () => {
+    const director = createArenaDirector();
+    director.play(story());
+    run(director, REVEAL_FIRST_AT_MS + 16);
+    expect(director.auraWeight('a')).toBe(0);
+  });
+
+  it('donne aux deux le meme poids avant le contact', () => {
+    const director = createArenaDirector();
+    director.play(story());
+    run(director, CLASH_AT_MS + 32);
+    expect(director.auraWeight('a')).toBeCloseTo(director.auraWeight('b'), 6);
+    expect(director.auraWeight('a')).toBeGreaterThan(0);
+  });
+
+  it('fait ceder le perdant apres le contact', () => {
+    const director = createArenaDirector();
+    director.play(story({ winner: 'a' }));
+    run(director, CLASH_AT_MS + CLASH_DURATION_MS * CLASH_HIT_AT + 220);
+    expect(director.auraWeight('b')).toBeLessThan(director.auraWeight('a'));
+  });
+
+  it('avantage celui qui lache son Ultime', () => {
+    const director = createArenaDirector();
+    director.play(
+      story({
+        sides: {
+          a: { score: 80, quality: 'good', ultimate: true, counters: false },
+          b: { score: 40, quality: 'good', ultimate: false, counters: false },
+        },
+      }),
+    );
+    run(director, CLASH_AT_MS + 32);
+    expect(director.auraWeight('a')).toBeGreaterThan(director.auraWeight('b'));
+  });
+
+  it('retombe a zero quand le choc est fini', () => {
+    const director = createArenaDirector();
+    director.play(story());
+    run(director, CLASH_AT_MS + CLASH_DURATION_MS + 64);
+    expect(director.auraWeight('a')).toBe(0);
+    expect(director.auraWeight('b')).toBe(0);
+  });
+
+  it('retombe a zero quand la manche est coupee', () => {
+    const director = createArenaDirector();
+    director.play(story());
+    run(director, CLASH_AT_MS + 32);
+    director.cancel();
+    expect(director.auraWeight('a')).toBe(0);
+  });
+});

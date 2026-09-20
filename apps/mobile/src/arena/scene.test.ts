@@ -3,6 +3,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { wideFraming } from './camera.js';
 import { buildSeats } from './crowdLayout.js';
 import { QUALITY_PROFILES } from '../platform/quality.js';
+import type { AuraEmitter } from './aura.js';
 import { createArenaScene } from './scene.js';
 
 function makeScene() {
@@ -30,6 +31,10 @@ describe('createArenaScene', () => {
       'crowd',
       'fighter',
       'fighter',
+      // Le voile et la tache au sol de chaque aura. Ce sont les SEULS noeuds
+      // d une aura : ses particules partent dans le puits commun.
+      'aura-glow',
+      'aura-glow',
       // Deux tampons pour toutes les particules de l arene, et la camera, qui
       // entre dans le graphe parce qu elle porte le voile plein ecran.
       'particles',
@@ -224,6 +229,123 @@ describe('palier de qualite', () => {
     if (body === undefined) throw new Error('foule absente');
     expect(body.count).toBe(QUALITY_PROFILES.rich.crowdSeats);
     expect(arena.fighters.a.hands.every((hand) => hand.group.visible)).toBe(true);
+    arena.dispose();
+  });
+});
+
+describe('auras des combattants', () => {
+  it('donne une aura a chaque siege, accrochee a la scene', () => {
+    const { arena } = makeScene();
+    expect(Object.keys(arena.auras)).toEqual(['a', 'b']);
+    const glows = arena.scene.children.filter((child) => child.name === 'aura-glow');
+    expect(glows).toHaveLength(2);
+    arena.dispose();
+  });
+
+  /*
+    Le palier de qualite baisse le nombre de particules VIVANTES, pas seulement
+    celles qu on ecrit : laisser le tampon tronquer afficherait la meme chose,
+    mais on paierait la naissance et le deplacement de ce qui est jete.
+  */
+  /*
+    La Galaxie, et pas le style de repli.
+
+    Mesure a la main : au regime, la Lueur se stabilise a 37 particules et la
+    Galaxie a 143. Un test ecrit sur la Lueur passerait quel que soit le
+    budget — il ne verifierait rien. Seul un style qui SATURE le plafond peut
+    dire si le plafond existe.
+  */
+  const saturating = { effectId: 'fx.galaxy', color: '#b36bff', intensity: 1 } as const;
+
+  function settle(aura: AuraEmitter): void {
+    aura.set(saturating);
+    for (let i = 0; i < 900; i++) aura.update(1 / 60);
+  }
+
+  it('fait suivre le budget d aura au palier', () => {
+    const { arena } = makeScene();
+    arena.applyQuality(QUALITY_PROFILES.smooth);
+    for (const seat of ['a', 'b'] as const) {
+      settle(arena.auras[seat]);
+      expect(arena.auras[seat].particleCount).toBeLessThanOrEqual(
+        QUALITY_PROFILES.smooth.auraParticles,
+      );
+    }
+    arena.dispose();
+  });
+
+  it('remonte le budget avec le palier', () => {
+    const { arena } = makeScene();
+    arena.applyQuality(QUALITY_PROFILES.smooth);
+    arena.applyQuality(QUALITY_PROFILES.rich);
+    settle(arena.auras.a);
+    expect(arena.auras.a.particleCount).toBeGreaterThan(QUALITY_PROFILES.smooth.auraParticles);
+    arena.dispose();
+  });
+});
+
+describe('aura d un combattant masque', () => {
+  /*
+    Hors match un seul combattant est a l ecran : `useArena` rend l autre
+    invisible. Mais une aura ne passe pas par le noeud du combattant — ses
+    particules vont dans le puits commun, et son voile est un groupe a part.
+    Sans cette regle, l accueil affiche une gerbe doree qui flotte a un metre
+    et demi du personnage, autour de quelqu un qu on ne voit pas. Vu a
+    l ecran, pas dans un test.
+  */
+  function drawnXs(arena: ReturnType<typeof createArenaScene>): number[] {
+    const xs: number[] = [];
+    arena.drawAuras(
+      {
+        add: (x) => xs.push(x),
+        dark: (x) => xs.push(x),
+      },
+      1,
+    );
+    return xs;
+  }
+
+  function charge(arena: ReturnType<typeof createArenaScene>): void {
+    for (const seat of ['a', 'b'] as const) {
+      arena.auras[seat].set({ effectId: 'fx.galaxy', color: '#b36bff', intensity: 1 });
+    }
+    for (let i = 0; i < 300; i++) {
+      arena.update({
+        elapsed: i / 60,
+        delta: 1 / 60,
+        framing: wideFraming(),
+        hype: 1,
+        shake: 0,
+        reducedMotion: false,
+      });
+    }
+  }
+
+  it('dessine les deux auras quand les deux combattants sont la', () => {
+    const { arena } = makeScene();
+    charge(arena);
+    const xs = drawnXs(arena);
+    expect(xs.filter((x) => x < 0).length).toBeGreaterThan(0);
+    expect(xs.filter((x) => x > 0).length).toBeGreaterThan(0);
+    arena.dispose();
+  });
+
+  it('ne dessine rien autour d un combattant invisible', () => {
+    const { arena } = makeScene();
+    charge(arena);
+    arena.fighters.b.root.visible = false;
+    const xs = drawnXs(arena);
+    expect(xs.filter((x) => x < 0).length).toBeGreaterThan(0);
+    expect(xs.filter((x) => x > 0)).toHaveLength(0);
+    arena.dispose();
+  });
+
+  it('eteint aussi le voile du combattant invisible', () => {
+    const { arena } = makeScene();
+    arena.fighters.b.root.visible = false;
+    charge(arena);
+    const glows = arena.scene.children.filter((child) => child.name === 'aura-glow');
+    expect(glows.map((g) => g.visible)).toEqual([true, false]);
     arena.dispose();
   });
 });

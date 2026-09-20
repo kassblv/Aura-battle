@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AURA_BUDGET, createAuraEmitter, floorScale, haloScale } from './aura.js';
+import { AURA_BUDGET, auraIntensity, createAuraEmitter, floorScale, haloScale } from './aura.js';
 import { AURA_STYLES, styleForEffect, totalRate } from './auraTheme.js';
 import { ADDITIVE_CAPACITY, type ParticleSink } from './particles.js';
 
@@ -375,5 +375,115 @@ describe('voile lumineux', () => {
     expect(styleForEffect('fx.dark').haloOpacity).toBeLessThan(
       styleForEffect('fx.glow').haloOpacity,
     );
+  });
+});
+
+describe('auraIntensity', () => {
+  /*
+    LA regle de ce module, et elle n est pas visuelle : regle d or n°4.
+
+    Le palier joue est secret jusqu a `round:result`. Une aura qui gonflerait
+    avec lui pendant la phase de choix l annoncerait a l adversaire — sans
+    qu aucun message reseau ne change, donc sans qu une relecture du serveur ou
+    du protocole puisse le voir. La parade est dans la signature : avant le
+    choc, cette fonction ne recoit **aucune entree propre a un siege**. Ce qui
+    n entre pas ne peut pas sortir.
+  */
+  it('ne lit que la ferveur avant le choc, rien d autre', () => {
+    /*
+      La garantie est dans le type, pas dans cette boucle : `AuraDrive` n a
+      aucun champ propre a un siege, donc un appelant ne PEUT pas lui passer
+      le palier joue sans modifier l interface — et modifier l interface se
+      lit en relecture. Ce test tient l autre moitie : que la valeur rendue
+      soit exactement la ferveur, donc qu aucune autre entree ne s y glisse.
+    */
+    for (const hype of [0, 0.18, 0.4, 0.55, 0.95, 1]) {
+      expect(auraIntensity({ showcase: false, hype, clashWeight: 0 })).toBeCloseTo(hype, 6);
+    }
+  });
+
+  it('pose une aura de repos hors match, quelle que soit la ferveur', () => {
+    const calm = auraIntensity({ showcase: true, hype: 0, clashWeight: 0 });
+    const loud = auraIntensity({ showcase: true, hype: 1, clashWeight: 0 });
+    expect(calm).toBe(loud);
+    expect(calm).toBeGreaterThan(0);
+    expect(calm).toBeLessThan(1);
+  });
+
+  it('laisse le choc l emporter sur la ferveur', () => {
+    const base = auraIntensity({ showcase: false, hype: 0.4, clashWeight: 0 });
+    const clashing = auraIntensity({ showcase: false, hype: 0.4, clashWeight: 1 });
+    expect(clashing).toBeGreaterThan(base);
+  });
+
+  it('monte avec le poids du faisceau', () => {
+    const plain = auraIntensity({ showcase: false, hype: 0, clashWeight: 1 });
+    const countering = auraIntensity({ showcase: false, hype: 0, clashWeight: 1.35 });
+    const ultimate = auraIntensity({ showcase: false, hype: 0, clashWeight: 1.6 });
+    expect(countering).toBeGreaterThan(plain);
+    expect(ultimate).toBeGreaterThan(countering);
+    expect(ultimate).toBeCloseTo(1, 6);
+  });
+
+  it('fait retomber l aura du perdant sous celle d un faisceau plein', () => {
+    const losing = auraIntensity({ showcase: false, hype: 0, clashWeight: 0.55 });
+    const plain = auraIntensity({ showcase: false, hype: 0, clashWeight: 1 });
+    expect(losing).toBeLessThan(plain);
+    expect(losing).toBeGreaterThan(0);
+  });
+
+  it('reste entre 0 et 1 quoi qu on lui donne', () => {
+    for (const drive of [
+      { showcase: false, hype: -5, clashWeight: 0 },
+      { showcase: false, hype: 12, clashWeight: 0 },
+      { showcase: false, hype: 0, clashWeight: 40 },
+      { showcase: false, hype: 0, clashWeight: -3 },
+    ]) {
+      const value = auraIntensity(drive);
+      expect(value).toBeGreaterThanOrEqual(0);
+      expect(value).toBeLessThanOrEqual(1);
+    }
+  });
+});
+
+describe('budget reglable', () => {
+  /** La Galaxie sature : au regime elle tient 143 particules, mesure a la main. */
+  const SATURATING = { effectId: 'fx.galaxy', color: '#b36bff', intensity: 1 } as const;
+
+  function settle(emitter: ReturnType<typeof createAuraEmitter>, frames = 900): void {
+    for (let i = 0; i < frames; i++) emitter.update(1 / 60);
+  }
+
+  it('plafonne la population vivante', () => {
+    const emitter = createAuraEmitter({ rng: seeded(11) });
+    emitter.set(SATURATING);
+    emitter.setBudget(40);
+    settle(emitter);
+    expect(emitter.particleCount).toBeLessThanOrEqual(40);
+  });
+
+  it('laisse repartir la population quand le budget remonte', () => {
+    const emitter = createAuraEmitter({ rng: seeded(11) });
+    emitter.set(SATURATING);
+    emitter.setBudget(40);
+    settle(emitter);
+    emitter.setBudget(AURA_BUDGET);
+    settle(emitter);
+    expect(emitter.particleCount).toBeGreaterThan(40);
+  });
+
+  /*
+    Baisser le budget ne tue rien : le surplus meurt de lui-meme. Effacer des
+    particules deja a l ecran ferait un trou visible juste apres la bascule —
+    et la bascule arrive precisement quand l appareil rame, donc au pire
+    moment pour un defaut visuel.
+  */
+  it('ne vide pas l aura d un coup en baissant le budget', () => {
+    const emitter = createAuraEmitter({ rng: seeded(11) });
+    emitter.set(SATURATING);
+    settle(emitter);
+    const before = emitter.particleCount;
+    emitter.setBudget(10);
+    expect(emitter.particleCount).toBe(before);
   });
 });

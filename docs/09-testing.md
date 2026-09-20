@@ -156,6 +156,20 @@ rendrait une mise en arrière-plan de dix secondes indistinguable d'une image
 lente, et ferait chuter la qualité de quelqu'un qui a simplement répondu à un
 message.
 
+**L'aura ne doit rien apprendre du choix secret.** C'est la règle d'or n°4
+appliquée au rendu, et c'est une fuite qu'aucune relecture du serveur ou du
+protocole ne verrait : le serveur n'enverrait rien de nouveau, c'est le client
+qui trahirait en dessinant une aura proportionnelle à une valeur qu'il connaît
+pour son propre siège. La parade est dans le type : `AuraDrive` ne contient que
+`showcase`, `hype` et `clashWeight` — aucun champ où un palier pourrait entrer.
+Un test pin l'autre moitié, à savoir qu'avant le choc la valeur rendue est
+exactement `hype`.
+
+**Un test d'aura écrit sur le style de repli ne teste rien.** Au régime, la
+Lueur se stabilise à 37 particules et la Galaxie à 143 (mesuré à la main). Un
+plafond de 70 n'est donc atteint que par la Galaxie : les tests de budget
+l'utilisent, sans quoi ils passeraient quel que soit le plafond.
+
 **Un seul rapport de pixels.** Le rendu dimensionne son tampon et la scène y
 convertit la taille des particules : les deux lisent `effectivePixelRatio`. Le
 plafond vivait auparavant dans `renderer.ts` pendant que `scene.setSize`

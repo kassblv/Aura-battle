@@ -9,7 +9,13 @@ import { createFighterRig, type FighterRig, type RigPlacement } from './rig.js';
 import { createToonGradientMap } from './toonGradient.js';
 import { createFlash, type Flash } from './flash.js';
 import type { QualityProfile } from '../platform/quality.js';
-import { createParticleFields, projectionScale, type ParticleFields } from './particles.js';
+import { createAuraEmitter, createAuraGlow, type AuraEmitter, type AuraGlow } from './aura.js';
+import {
+  createParticleFields,
+  projectionScale,
+  type ParticleFields,
+  type ParticleSink,
+} from './particles.js';
 import type { ArenaTextures } from './textures.js';
 
 /**
@@ -74,6 +80,14 @@ export interface ArenaScene {
    * match. Deux appels de dessin quoi qu il arrive.
    */
   readonly particles: ParticleFields;
+  /**
+   * L aura de chaque combattant.
+   *
+   * Exposee plutot qu alimentee ici, comme le puits a particules : ce qui sait
+   * quelle force afficher — la phase, le choc — vit au-dessus de la scene, qui
+   * n a pas a connaitre le match.
+   */
+  readonly auras: Readonly<Record<'a' | 'b', AuraEmitter>>;
   /** Metriques du calque 2D, mises a jour par `setSize`. */
   readonly viewport: Viewport;
   /**
@@ -93,6 +107,8 @@ export interface ArenaScene {
    */
   applyQuality(profile: QualityProfile): void;
   update(frame: ArenaFrame): void;
+  /** Pose les deux auras dans le puits, dans la sequence `begin` / `commit`. */
+  drawAuras(sink: ParticleSink, elapsedSeconds: number): void;
   dispose(): void;
 }
 
@@ -138,12 +154,28 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
 
   const particles = createParticleFields();
 
+  const auras: Record<'a' | 'b', AuraEmitter> = {
+    a: createAuraEmitter(),
+    b: createAuraEmitter(),
+  };
+  /*
+    Le voile et la tache au sol sont des noeuds, l emetteur n en est pas un :
+    les particules partent dans le puits commun, donc dans les deux memes
+    appels de dessin que tout le reste.
+  */
+  const glows: Record<'a' | 'b', AuraGlow> = {
+    a: createAuraGlow({ texture: options.textures.glow }),
+    b: createAuraGlow({ texture: options.textures.glow }),
+  };
+
   scene.add(
     lighting.group,
     stage.group,
     crowd.group,
     fighters.a.root,
     fighters.b.root,
+    glows.a.group,
+    glows.b.group,
     particles.group,
   );
 
@@ -180,6 +212,8 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
     applyQuality(profile): void {
       crowd.setVisibleSeats(profile.crowdSeats);
       particles.setLimits(profile.additiveParticles, profile.darkParticles);
+      auras.a.setBudget(profile.auraParticles);
+      auras.b.setBudget(profile.auraParticles);
       fighters.a.setHandsVisible(profile.hands);
       fighters.b.setHandsVisible(profile.hands);
     },
@@ -193,10 +227,39 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
       particles.setProjectionScale(projectionScale(height, pixelRatio, camera.fov));
     },
 
+    auras,
+
     update(frame: ArenaFrame): void {
       lighting.update(frame.hype);
       stage.update(frame.elapsed, frame.hype);
       crowd.update(frame.elapsed, frame.hype, frame.showcase === true);
+
+      /*
+        Les auras avancent avec la scene, et leurs voiles suivent les pieds.
+
+        L origine est au sol : `createAuraGlow` place le halo a mi-hauteur et
+        la tache sous les pieds a partir de la. Le recul du choc a deja ete
+        applique a `root.position` par l appelant, donc l aura recule avec son
+        combattant sans rien savoir du choc.
+      */
+      for (const seat of ['a', 'b'] as const) {
+        auras[seat].setReducedMotion(frame.reducedMotion);
+        auras[seat].update(frame.delta);
+        /*
+          Une aura suit la VISIBILITE de son combattant.
+
+          Elle ne passe pas par son noeud : ses particules vont dans le puits
+          commun et son voile est un groupe a part, donc rien ne les cache
+          quand l appelant masque le combattant. Sans cette ligne, l accueil
+          — ou un seul personnage est a l ecran — affiche une gerbe qui flotte
+          a un metre et demi, autour de quelqu un qu on ne voit pas.
+        */
+        const shown = fighters[seat].root.visible;
+        glows[seat].group.visible = shown;
+        if (!shown) continue;
+        const root = fighters[seat].root.position;
+        glows[seat].update(auras[seat], { x: root.x, y: root.y, z: root.z });
+      }
       // Le voile est coupe en amont par `impulseFor` quand l utilisateur
       // demande moins d animation : ici on se contente de le poser.
       flash.set(frame.flash ?? 0);
@@ -210,6 +273,21 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
       });
     },
 
+    /**
+     * Pose les deux auras dans le puits a particules.
+     *
+     * Separe de `update` parce que le dessin appartient a la sequence
+     * `begin` / `commit` de l appelant, qui y pose aussi les effets du
+     * realisateur : tout finit dans les deux memes tampons.
+     */
+    drawAuras(sink, elapsedSeconds): void {
+      for (const seat of ['a', 'b'] as const) {
+        if (!fighters[seat].root.visible) continue;
+        const root = fighters[seat].root.position;
+        auras[seat].draw(sink, { x: root.x, y: root.y, z: root.z }, elapsedSeconds);
+      }
+    },
+
     dispose(): void {
       if (disposed) {
         return;
@@ -219,6 +297,8 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
       crowd.dispose();
       particles.dispose();
       flash.dispose();
+      glows.a.dispose();
+      glows.b.dispose();
       camera.clear();
       fighters.a.dispose();
       fighters.b.dispose();
