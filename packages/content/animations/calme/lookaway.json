@@ -14,8 +14,8 @@
   },
   "loop": {
     "duration": 4.4,
-    "weights": null,
-    "ease": false
+    "weights": [0.26, 0.74],
+    "ease": true
   },
   "flags": {
     "expression": "neutral"

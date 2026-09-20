@@ -11,8 +11,8 @@
   "rarity": "default",
   "loop": {
     "duration": 2.2,
-    "weights": null,
-    "ease": false
+    "weights": [0.34, 0.16, 0.34, 0.16],
+    "ease": true
   },
   "flags": {
     "expression": "neutral"

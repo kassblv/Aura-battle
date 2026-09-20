@@ -81,6 +81,37 @@ Le champ ne sert **que** la vitrine de l'accueil, où le joueur inspecte un mèm
 4. Ajout au catalogue (prix, rareté, dates de disponibilité).
 5. Publication : les fichiers sont servis par le serveur avec un `contentVersion` ; le client met en cache et télécharge le delta.
 
+## Rythme : une danse doit accélérer quelque part
+
+Un mème se reconnaît à son **accent** — le griddy claque, le dab tombe, la
+danse du bateau tire puis relâche. Un mouvement qui parcourt sa boucle à
+vitesse constante n'est pas une danse, c'est un métronome.
+
+Deux champs le décident, et ils sont dans `loop` :
+
+- `weights` — la part de boucle de chaque image. Des parts égales donnent une
+  vitesse presque constante.
+- `ease` — un adoucissement en S : la vitesse tombe à zéro sur chaque image clé
+  et culmine entre deux. À lui seul, il crée déjà un temps fort.
+
+`apps/mobile/src/animation/rhythm.test.ts` mesure le rapport **pic / moyenne**
+de la vitesse du squelette sur une boucle complète, et refuse toute animation
+non-système en dessous de **2,2**. Repères mesurés sur ce catalogue :
+
+| Rapport | Ce que ça donne |
+|---|---|
+| 1,0 | vitesse rigoureusement constante |
+| ~1,5 | sinusoïde pure — un Catmull-Rom sur des images de durée égale |
+| 2,2 à 6 | un ou plusieurs temps forts par boucle |
+| > 9 | un sursaut suivi d'une immobilité : ça se lit comme une saccade |
+
+Le test mesure le **résultat**, pas la présence des champs : une animation peut
+trouver son accent par ses parts, par son adoucissement, ou en ajoutant des
+images clés.
+
+Les poses système d'une seule image (`charge`, `land`, `stagger`) en sont
+exemptées, et elles seules : leur travail est précisément de ne pas bouger.
+
 ## Noms et droits (à vérifier avant publication)
 
 Le prototype utilise des noms de tendances. Avant la sortie sur les stores :

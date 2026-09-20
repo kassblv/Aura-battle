@@ -11,8 +11,8 @@
   "rarity": "epic",
   "loop": {
     "duration": 1.4,
-    "weights": null,
-    "ease": false
+    "weights": [0.18, 0.32, 0.18, 0.32],
+    "ease": true
   },
   "flags": {
     "expression": "neutral"

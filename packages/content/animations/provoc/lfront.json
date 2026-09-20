@@ -14,8 +14,8 @@
   },
   "loop": {
     "duration": 1.2,
-    "weights": null,
-    "ease": false
+    "weights": [0.28, 0.72],
+    "ease": true
   },
   "flags": {
     "expression": "smug"
