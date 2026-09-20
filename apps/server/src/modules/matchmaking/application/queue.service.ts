@@ -394,11 +394,29 @@ export class MatchmakingQueue {
    * pour la duree de vie du processus. Les methodes internes (`parkTicket`,
    * `sendStatus`) sont la pour ca : elles ne serialisent pas.
    *
+   * **Second invariant, et c'est lui qui rend le premier suffisant : aucun
+   * corps serialise ne touche un second joueur.** `join`, `leave`, `resume`,
+   * `requeue`, `parkTicket` : un joueur chacun. C'est la seule raison pour
+   * laquelle detecter la re-entree du **meme** joueur suffit — un cycle
+   * croise, ou le bloc de p1 attend la chaine de p2 pendant que celui de p2
+   * attend celle de p1, passerait sous le radar et rendrait exactement la
+   * meme panne. Une operation qui toucherait deux joueurs d'un coup — un
+   * echange de tickets, une reclamation de paire remontee ici — devrait donc
+   * prendre les deux verrous dans un ordre fixe, ou ne pas se serialiser du
+   * tout.
+   *
    * L'invariant n'est pas seulement ecrit, il est **detecte** : le contexte
    * ci-dessous suit le joueur a travers les `await`, et une re-entree se
    * solde par un rejet bruyant plutot que par une attente eternelle. Un
    * commentaire aurait protege la prochaine lecture ; ceci protege aussi la
    * prochaine distraction.
+   *
+   * La detection repond a « appele depuis le contexte », pas a « attendu par
+   * le bloc » — et elle se trompe du cote sur. Un `void this.leave(...)` du
+   * meme joueur **lance sans etre attendu** depuis un bloc serialise ne peut
+   * pas interbloquer, et serait pourtant refuse : le contexte se propage aussi
+   * dans ce qu'on ne retient pas. Aucun appel ne fait cela aujourd'hui — celui
+   * de `tick` est hors contexte, `tick` n'etant pas serialise.
    */
   private serialize<T>(playerId: string, work: () => Promise<T>): Promise<T> {
     if (serializedFor.getStore() === playerId) {

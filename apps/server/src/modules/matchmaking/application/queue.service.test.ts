@@ -547,8 +547,12 @@ describe('ecritures serialisees', () => {
    * ce joueur ne pourrait plus rien faire en file pour la duree de vie du
    * processus. Le rejet vaut mille fois cette attente-la.
    *
-   * Ce que fait ce test est precisement ce que le code de production ne doit
-   * jamais faire : c'est pour cela qu'il passe par la porte de derriere.
+   * La distraction reproduite est bien la vraie : le bloc appelle la methode
+   * **publique** `leave` du meme joueur, comme le ferait quelqu'un qui ajoute
+   * une ligne sans penser au verrou. Seul le bloc exterieur passe par la porte
+   * de derriere, parce qu'aucune methode de production ne fait — et ne doit
+   * faire — ce qu'on teste ici. Le rejet remonte jusqu'a l'appelant du bloc
+   * exterieur : la panne est signalee la ou elle a ete provoquee.
    */
   it('refuse une ecriture re-entrante au lieu de s attendre elle-meme', async () => {
     const reentrant = serializeOf(queue)('p1', async () => {
@@ -556,6 +560,24 @@ describe('ecritures serialisees', () => {
     });
 
     await expect(reentrant).rejects.toThrow(/re-entrante/);
+  });
+
+  /**
+   * La limite de la garde, ecrite plutot que subie.
+   *
+   * Elle ne voit que la re-entree du **meme** joueur. Un bloc qui en toucherait
+   * un second passe — et c'est sans danger tant que l'autre invariant tient :
+   * aucun corps serialise ne touche deux joueurs. Le jour ou une operation le
+   * fera, ce test sera le premier endroit a relire.
+   */
+  it('laisse passer un bloc qui touche un autre joueur', async () => {
+    await queue.join('p2', 'ranked', 1_000);
+
+    await serializeOf(queue)('p1', async () => {
+      await queue.leave('p2');
+    });
+
+    expect(await queue.isQueued('p2')).toBe(false);
   });
 
   /** Deux appels venus d'ailleurs, eux, doivent simplement prendre la file. */
