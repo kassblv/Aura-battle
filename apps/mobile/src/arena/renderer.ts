@@ -1,4 +1,5 @@
 import { WebGLRenderer } from 'three';
+import { QUALITY_PROFILES } from '../platform/quality.js';
 import { ARENA_COLORS } from './palette.js';
 
 /**
@@ -10,12 +11,14 @@ import { ARENA_COLORS } from './palette.js';
  */
 
 /**
- * Plafond du rapport de pixels.
+ * Plafond du rapport de pixels, au palier le plus haut.
  *
  * Au-dela, on paie quatre fois le cout de remplissage pour un gain invisible a
- * bout de bras. C est le premier levier du budget de 60 i/s.
+ * bout de bras. C est le premier levier du budget de 60 i/s — et c est pour ca
+ * que c est aussi le premier que les paliers de qualite abaissent. La valeur
+ * vit dans `platform/quality.ts` : elle est lue ici, pas redite.
  */
-export const MAX_PIXEL_RATIO = 1.75;
+export const MAX_PIXEL_RATIO = QUALITY_PROFILES.rich.pixelRatioCap;
 
 export interface ArenaRenderer {
   readonly renderer: WebGLRenderer;
@@ -41,11 +44,19 @@ export function createArenaRenderer(canvas: HTMLCanvasElement): ArenaRenderer | 
   return {
     renderer,
 
-    setSize(width: number, height: number, devicePixelRatio: number): void {
+    /**
+     * `pixelRatio` est **deja plafonne** par l appelant
+     * (`effectivePixelRatio`, `platform/quality.ts`).
+     *
+     * Le plafond ne peut pas etre applique ici : la scene a besoin du meme
+     * nombre pour dimensionner ses particules, et deux plafonnages separes
+     * finissent toujours par diverger.
+     */
+    setSize(width: number, height: number, pixelRatio: number): void {
       if (width <= 0 || height <= 0) {
         return;
       }
-      renderer.setPixelRatio(Math.min(MAX_PIXEL_RATIO, devicePixelRatio));
+      renderer.setPixelRatio(pixelRatio);
       // `false` : on ne laisse pas Three.js ecrire la taille CSS du canvas,
       // c est la mise en page qui la fixe.
       renderer.setSize(width, height, false);

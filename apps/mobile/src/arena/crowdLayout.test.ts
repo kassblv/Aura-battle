@@ -245,3 +245,37 @@ describe('seatMotion', () => {
     expect(share).toBeLessThan(0.2);
   });
 });
+
+describe('ordre de dessin des places', () => {
+  /*
+    Un palier de qualite plus bas ne reconstruit pas la foule : il abaisse le
+    nombre d instances dessinees, donc il **coupe la fin de la liste**. Cet
+    ordre decide alors ce qui disparait, et la reponse ne peut pas etre le
+    premier cercle : c est la couche proche, celle qui donne sa profondeur a
+    l arene. Ce sont les derniers rangs qui partent, deja a moitie manges par
+    le brouillard.
+  */
+  it('met le premier cercle en tete', () => {
+    for (let i = 0; i < RING_SIZE; i++) {
+      expect(at(i).ring).toBe(true);
+    }
+    expect(seats.slice(RING_SIZE).some((s) => s.ring)).toBe(false);
+  });
+
+  it('range ensuite les gradins du plus proche au plus lointain', () => {
+    const radii = seats.slice(RING_SIZE).map((s) => s.radius);
+    for (let i = 1; i < radii.length; i++) {
+      expect(radii[i]!).toBeGreaterThanOrEqual(radii[i - 1]!);
+    }
+  });
+
+  /*
+    Reordonner ne doit rien changer a la foule elle-meme : memes places, meme
+    graine, meme tribune — seulement lues dans un autre ordre.
+  */
+  it('garde exactement les memes places', () => {
+    const key = (s: CrowdSeat): string =>
+      `${s.x.toFixed(6)}|${s.z.toFixed(6)}|${String(s.ring)}`;
+    expect([...seats].map(key).sort()).toEqual([...buildSeats(seeded(7))].map(key).sort());
+  });
+});

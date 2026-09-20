@@ -7,6 +7,12 @@ import { ANIMATIONS } from '../content/animations.js';
 import { gestureCues } from '../audio/gestures.js';
 import type { AudioCue } from '../audio/cues.js';
 import type { Presentation } from '../match/presentation.js';
+import {
+  createQualityGovernor,
+  effectivePixelRatio,
+  type QualityGovernor,
+  type QualityTier,
+} from '../platform/quality.js';
 import { watchReducedMotion } from '../platform/reducedMotion.js';
 import { focusFraming, previewFraming, wideFraming, type CameraFraming } from './camera.js';
 import { CHEST_HEIGHT, type ClashColors, type ClashEnds } from './clash.js';
@@ -88,6 +94,19 @@ export function useArena(
    * constructible sans audio — un test, un rendu hors navigateur.
    */
   onCue?: (cue: AudioCue) => void,
+  /**
+   * Le gouverneur de qualite graphique.
+   *
+   * Fourni par l appelant, qui detient aussi le reglage manuel de l ecran
+   * Reglages et sa memorisation : c est le meme objet des deux cotes, sinon
+   * l ecran afficherait un palier et l arene en dessinerait un autre.
+   *
+   * Facultatif pour que l arene reste constructible sans — un test, un rendu
+   * hors navigateur. Elle se donne alors le sien, en automatique.
+   */
+  quality?: QualityGovernor,
+  /** Appele quand le palier applique change, pour que l ecran suive. */
+  onQualityTier?: (tier: QualityTier) => void,
 ): ArenaControls {
   /**
    * Le puits d accents traverse par une reference, pas par la dependance de
@@ -99,6 +118,15 @@ export function useArena(
    */
   const cueRef = useRef(onCue);
   cueRef.current = onCue;
+  const tierRef = useRef(onQualityTier);
+  tierRef.current = onQualityTier;
+  // Meme raison que l orbite : le palier trouve doit survivre aux rendus de
+  // React, pas repartir du plus haut a chaque redessin de l accueil.
+  const fallback = useRef<QualityGovernor | null>(null);
+  fallback.current ??= createQualityGovernor();
+  const governor = quality ?? fallback.current;
+  const governorRef = useRef(governor);
+  governorRef.current = governor;
   const presentation = useRef<Presentation | null>(null);
   const showcase = useRef(true);
   const round = useRef<RoundReport | null>(null);
@@ -124,13 +152,42 @@ export function useArena(
 
     const resize = (): void => {
       const { clientWidth, clientHeight } = canvas;
-      arena.setSize(clientWidth, clientHeight, window.devicePixelRatio);
-      renderer.setSize(clientWidth, clientHeight, window.devicePixelRatio);
+      /*
+        Le meme nombre aux deux.
+
+        Le rendu dessine dans un tampon de `css x ratio` pixels physiques, et
+        la scene convertit la taille d une particule en pixels **de ce
+        tampon**. Deux valeurs differentes grossissent les particules du
+        rapport entre elles.
+      */
+      const ratio = effectivePixelRatio(
+        window.devicePixelRatio,
+        governorRef.current.profile.pixelRatioCap,
+      );
+      arena.setSize(clientWidth, clientHeight, ratio);
+      renderer.setSize(clientWidth, clientHeight, ratio);
       control.setViewport(clientWidth, clientHeight);
     };
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
+    arena.applyQuality(governorRef.current.profile);
     resize();
+
+    /**
+     * Applique une descente en attente, si la frontiere de manche en a une.
+     *
+     * Appele **entre** les manches, jamais pendant : changer le rapport de
+     * pixels au milieu de la jauge deplacerait le sol sous les pieds du joueur
+     * a l instant precis ou son timing est mesure.
+     */
+    const commitQuality = (): void => {
+      const current = governorRef.current;
+      if (!current.commit()) return;
+      arena.applyQuality(current.profile);
+      // Le plafond du rapport de pixels a change avec le palier.
+      resize();
+      tierRef.current?.(current.tier);
+    };
 
     /**
      * Glissement sur l arene : le joueur retourne son personnage.
@@ -200,8 +257,20 @@ export function useArena(
       frame = requestAnimationFrame(tick);
       // Un onglet revenu au premier plan livre plusieurs secondes d un coup :
       // les rattraper ferait traverser l arene aux personnages.
-      const delta = Math.min(0.25, (now - previous) / 1000);
+      /*
+        La mesure lit l ecart **brut**, l animation l ecart borne.
+
+        Le plafond de 0,25 s existe pour ne pas faire traverser l arene aux
+        personnages apres un retour au premier plan. Mesurer la valeur bornee
+        rendrait une suspension de dix secondes indistinguable d une image
+        lente, et ferait chuter la qualite de quelqu un qui a simplement
+        repondu a un message — c est justement ce que le gouverneur sait
+        ecarter, a condition de voir le vrai nombre.
+      */
+      const rawMs = now - previous;
+      const delta = Math.min(0.25, rawMs / 1000);
       previous = now;
+      governorRef.current.record(rawMs);
       const elapsed = now / 1000;
 
       const scene = presentation.current;
@@ -222,10 +291,17 @@ export function useArena(
         if (stagedRound !== null) {
           stagedRound = null;
           director.cancel();
+          commitQuality();
         }
       } else if (report.round !== stagedRound) {
         stagedRound = report.round;
         director.play(storyOfRound(report));
+        /*
+          La revelation est le meilleur instant pour basculer : les deux choix
+          sont verrouilles, plus rien du joueur n est mesure, et elle s ouvre
+          sur un voile blanc qui couvre le changement de resolution.
+        */
+        commitQuality();
       }
 
       const colors: ClashColors = {

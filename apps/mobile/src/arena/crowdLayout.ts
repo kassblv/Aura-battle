@@ -1,4 +1,5 @@
 import { SKIN_TONES } from '@aura/content';
+import { QUALITY_PROFILES } from '../platform/quality.js';
 import { clamp } from './math.js';
 
 /**
@@ -22,7 +23,15 @@ const TIER_DEPTH = 0.9;
 /** Hauteur des epaules au-dessus de la marche, a l echelle 1. */
 const SHOULDER = 0.3;
 
-export const CROWD_SIZE = 210;
+/**
+ * Places construites : le maximum, quel que soit le palier de qualite.
+ *
+ * Un palier plus bas n en construit pas moins, il en **dessine** moins
+ * (`crowd.setVisibleSeats`). Reconstruire la foule au milieu d un match
+ * couterait six allocations de `InstancedMesh` a l image precise ou l appareil
+ * a deja du mal.
+ */
+export const CROWD_SIZE = QUALITY_PROFILES.rich.crowdSeats;
 
 /**
  * Le premier cercle : ceux qui sont debout au bord du trace.
@@ -196,7 +205,24 @@ export function buildSeats(rng: () => number, size = CROWD_SIZE): readonly Crowd
     });
   }
 
-  return seats;
+  /*
+    Par ordre d importance a l ecran, et non d ordre de construction.
+
+    Un palier de qualite plus bas dessine les `n` premieres instances et
+    ignore les suivantes (`crowd.setVisibleSeats`). C est donc cet ordre qui
+    decide de ce qui disparait. Le premier cercle passe devant parce que c est
+    la couche proche, celle qui donne sa profondeur a l arene ; les gradins
+    suivent du plus proche au plus lointain, et ce sont les derniers rangs —
+    deja a moitie manges par le brouillard, qui commence a 6,5 m — qui
+    s effacent en premier.
+
+    Le tri ne change pas la tribune : memes places, meme graine, meme tirage.
+    Il ne change que l ordre dans lequel on les lit.
+  */
+  return [...seats].sort((a, b) => {
+    if (a.ring !== b.ring) return a.ring ? -1 : 1;
+    return a.radius - b.radius;
+  });
 }
 
 function seat(input: {

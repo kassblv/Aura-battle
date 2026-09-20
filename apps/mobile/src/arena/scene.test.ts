@@ -1,7 +1,8 @@
-import { type Color, Fog, type InstancedMesh, Matrix4, Texture } from 'three';
+import { type Color, Fog, InstancedMesh, Matrix4, Texture } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { wideFraming } from './camera.js';
 import { buildSeats } from './crowdLayout.js';
+import { QUALITY_PROFILES } from '../platform/quality.js';
 import { createArenaScene } from './scene.js';
 
 function makeScene() {
@@ -181,5 +182,48 @@ describe('cadrage par defaut', () => {
       reducedMotion: true,
     });
     expect(arena.camera.position.z).toBeCloseTo(4.7, 2);
+  });
+});
+
+describe('palier de qualite', () => {
+  /*
+    La scene ne decide rien : `platform/quality.ts` choisit le palier, la
+    scene le pose sur les trois leviers qu elle detient. Le quatrieme — le
+    rapport de pixels — appartient au rendu, qui vit au-dessus.
+  */
+  it('pose le palier sur la foule, les particules et les mains', () => {
+    const { arena } = makeScene();
+    arena.applyQuality(QUALITY_PROFILES.smooth);
+
+    const body = arena.crowd.group.children.find(
+      (child): child is InstancedMesh => child instanceof InstancedMesh && child.name === 'body',
+    );
+    if (body === undefined) throw new Error('foule absente');
+    expect(body.count).toBe(QUALITY_PROFILES.smooth.crowdSeats);
+
+    arena.particles.begin();
+    for (let i = 0; i < QUALITY_PROFILES.rich.additiveParticles; i++) {
+      arena.particles.add(0, 0, 0, '#ffffff', 1, 1);
+    }
+    expect(arena.particles.counts.additive).toBe(QUALITY_PROFILES.smooth.additiveParticles);
+
+    for (const seat of ['a', 'b'] as const) {
+      expect(arena.fighters[seat].hands.every((hand) => hand.group.visible)).toBe(false);
+    }
+    arena.dispose();
+  });
+
+  it('remet tout en place quand le palier remonte', () => {
+    const { arena } = makeScene();
+    arena.applyQuality(QUALITY_PROFILES.smooth);
+    arena.applyQuality(QUALITY_PROFILES.rich);
+
+    const body = arena.crowd.group.children.find(
+      (child): child is InstancedMesh => child instanceof InstancedMesh && child.name === 'body',
+    );
+    if (body === undefined) throw new Error('foule absente');
+    expect(body.count).toBe(QUALITY_PROFILES.rich.crowdSeats);
+    expect(arena.fighters.a.hands.every((hand) => hand.group.visible)).toBe(true);
+    arena.dispose();
   });
 });

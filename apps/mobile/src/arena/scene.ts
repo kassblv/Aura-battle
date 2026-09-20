@@ -8,6 +8,7 @@ import { createCrowd, type Crowd } from './crowd.js';
 import { createFighterRig, type FighterRig, type RigPlacement } from './rig.js';
 import { createToonGradientMap } from './toonGradient.js';
 import { createFlash, type Flash } from './flash.js';
+import type { QualityProfile } from '../platform/quality.js';
 import { createParticleFields, projectionScale, type ParticleFields } from './particles.js';
 import type { ArenaTextures } from './textures.js';
 
@@ -80,6 +81,17 @@ export interface ArenaScene {
    * doit valoir le meme nombre de **pixels physiques** sur tous les ecrans.
    */
   setSize(width: number, height: number, pixelRatio?: number): void;
+  /**
+   * Applique un palier de qualite (`platform/quality.ts`).
+   *
+   * La scene ne choisit pas : elle pose. Rien n est alloue ni libere ici, ce
+   * sont trois compteurs qu on abaisse — un palier change en plein match, a la
+   * frontiere d une manche, et l appareil concerne a deja du mal.
+   *
+   * Le quatrieme levier, le rapport de pixels, appartient au rendu, qui vit
+   * au-dessus de la scene et detient le canvas.
+   */
+  applyQuality(profile: QualityProfile): void;
   update(frame: ArenaFrame): void;
   dispose(): void;
 }
@@ -163,6 +175,13 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
 
     get viewport(): Viewport {
       return viewport;
+    },
+
+    applyQuality(profile): void {
+      crowd.setVisibleSeats(profile.crowdSeats);
+      particles.setLimits(profile.additiveParticles, profile.darkParticles);
+      fighters.a.setHandsVisible(profile.hands);
+      fighters.b.setHandsVisible(profile.hands);
     },
 
     setSize(width: number, height: number, pixelRatio = 1): void {

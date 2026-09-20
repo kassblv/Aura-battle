@@ -155,13 +155,17 @@ describe('createCrowd', () => {
     const crowd = build();
     const seats = buildSeats(seeded(7));
     const index = seats.findIndex((s) => s.ring);
+    // Les places sont triees par importance : la premiere marche n est plus
+    // la place zero, il faut la chercher.
+    const stand = seats.findIndex((s) => !s.ring);
     expect(index).toBeGreaterThanOrEqual(0);
+    expect(stand).toBeGreaterThanOrEqual(0);
     const body = part(crowd, 'body');
 
     crowd.update(0, 0.3, true);
     expect(scaleAt(body, index)).toBe(0);
     // La tribune, elle, reste : c est le fond de l ecran d accueil.
-    expect(scaleAt(body, 0)).toBeGreaterThan(0);
+    expect(scaleAt(body, stand)).toBeGreaterThan(0);
 
     crowd.update(0, 0.3, false);
     expect(scaleAt(body, index)).toBeGreaterThan(0);
@@ -172,9 +176,10 @@ describe('createCrowd', () => {
     const crowd = build();
     const seats = buildSeats(seeded(7));
     const index = seats.findIndex((s) => s.ring);
+    const stand = seats.findIndex((s) => !s.ring);
     crowd.update(0, 0.3);
     expect(scaleAt(part(crowd, 'body'), index)).toBeGreaterThan(1.2);
-    expect(scaleAt(part(crowd, 'body'), 0)).toBeCloseTo(1, 6);
+    expect(scaleAt(part(crowd, 'body'), stand)).toBeCloseTo(1, 6);
     expect(seats.filter((s) => s.ring)).toHaveLength(RING_SIZE);
     crowd.dispose();
   });
@@ -224,5 +229,59 @@ describe('createCrowd', () => {
     const crowd = build();
     crowd.dispose();
     expect(() => crowd.dispose()).not.toThrow();
+  });
+});
+
+describe('places dessinees', () => {
+  /*
+    Un palier de qualite plus bas ne reconstruit pas la foule : il baisse le
+    `count` des instances, ce que Three.js lit a chaque image. Les places sont
+    triees par importance (`crowdLayout`), donc couper la fin retire les
+    derniers rangs et garde le premier cercle.
+  */
+  it('dessine toute la foule par defaut', () => {
+    const crowd = build();
+    expect(part(crowd, 'body').count).toBe(CROWD_SIZE);
+  });
+
+  it('coupe la fin de la liste, pas le premier cercle', () => {
+    const crowd = build();
+    crowd.setVisibleSeats(40);
+    for (const name of ['body', 'head', 'armLeft', 'armRight']) {
+      expect(part(crowd, name).count).toBe(40);
+    }
+    const seats = buildSeats(seeded(7));
+    expect(seats.slice(0, 40).filter((s) => s.ring)).toHaveLength(RING_SIZE);
+  });
+
+  it('retire les telephones des places qu on ne dessine plus', () => {
+    const crowd = build();
+    const seats = buildSeats(seeded(7));
+    const visible = 40;
+    const filming = seats.slice(0, visible).filter((s) => s.filming).length;
+    crowd.setVisibleSeats(visible);
+    expect(part(crowd, 'phone').count).toBe(filming);
+    expect(part(crowd, 'screen').count).toBe(filming);
+  });
+
+  it('ne descend jamais sous le premier cercle', () => {
+    const crowd = build();
+    crowd.setVisibleSeats(0);
+    expect(part(crowd, 'body').count).toBe(RING_SIZE);
+  });
+
+  it('ne demande jamais plus de places qu il n en existe', () => {
+    const crowd = build();
+    crowd.setVisibleSeats(CROWD_SIZE * 10);
+    expect(part(crowd, 'body').count).toBe(CROWD_SIZE);
+  });
+
+  it('redessine les places rendues quand le palier remonte', () => {
+    const crowd = build();
+    crowd.setVisibleSeats(40);
+    crowd.setVisibleSeats(CROWD_SIZE);
+    crowd.update(1, 0.5);
+    expect(part(crowd, 'body').count).toBe(CROWD_SIZE);
+    expect(positionAt(part(crowd, 'body'), CROWD_SIZE - 1).lengthSq()).toBeGreaterThan(0);
   });
 });

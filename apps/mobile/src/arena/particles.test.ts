@@ -184,3 +184,57 @@ describe('srgbComponents', () => {
     expect(srgbComponents('#4fe3ff')).toBe(srgbComponents('#4fe3ff'));
   });
 });
+
+describe('plafond d ecriture', () => {
+  /** Remplit les deux tampons au-dela de toute limite plausible. */
+  function flood(fields: ReturnType<typeof createParticleFields>, n: number): void {
+    fields.begin();
+    for (let i = 0; i < n; i++) {
+      fields.add(0, 0, 0, '#ffffff', 1, 1);
+      fields.dark(0, 0, 0, '#000000', 1, 1);
+    }
+    fields.commit();
+  }
+
+  it('ecrit jusqu a la pleine capacite par defaut', () => {
+    const fields = createParticleFields();
+    flood(fields, ADDITIVE_CAPACITY + 100);
+    expect(fields.counts).toEqual({ additive: ADDITIVE_CAPACITY, dark: DARK_CAPACITY });
+  });
+
+  it('s arrete au plafond demande', () => {
+    const fields = createParticleFields();
+    fields.setLimits(10, 5);
+    flood(fields, 500);
+    expect(fields.counts).toEqual({ additive: 10, dark: 5 });
+  });
+
+  /*
+    Le plafond est un levier de qualite : il change en plein match, a la
+    frontiere d une manche. Il ne doit donc rien allouer ni rien liberer —
+    c est le tampon deja en place qu on remplit moins.
+  */
+  it('ne realloue rien : le tampon garde sa taille', () => {
+    const fields = createParticleFields();
+    const before = geometryOf(fields, 'particles-additive').getAttribute('position').array.length;
+    fields.setLimits(10, 5);
+    const after = geometryOf(fields, 'particles-additive').getAttribute('position').array.length;
+    expect(after).toBe(before);
+    expect(after).toBe(ADDITIVE_CAPACITY * 3);
+  });
+
+  it('ne laisse pas depasser la capacite allouee', () => {
+    const fields = createParticleFields();
+    fields.setLimits(ADDITIVE_CAPACITY * 10, DARK_CAPACITY * 10);
+    flood(fields, ADDITIVE_CAPACITY * 2);
+    expect(fields.counts).toEqual({ additive: ADDITIVE_CAPACITY, dark: DARK_CAPACITY });
+  });
+
+  it('se rouvre quand le palier remonte', () => {
+    const fields = createParticleFields();
+    fields.setLimits(10, 5);
+    fields.setLimits(ADDITIVE_CAPACITY, DARK_CAPACITY);
+    flood(fields, ADDITIVE_CAPACITY + 100);
+    expect(fields.counts).toEqual({ additive: ADDITIVE_CAPACITY, dark: DARK_CAPACITY });
+  });
+});

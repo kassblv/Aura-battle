@@ -16,7 +16,7 @@ import {
   type Texture,
   Vector3,
 } from 'three';
-import { buildSeats, seatMotion, type CrowdSeat } from './crowdLayout.js';
+import { RING_SIZE, buildSeats, seatMotion, type CrowdSeat } from './crowdLayout.js';
 
 /**
  * Le public qui entoure le duel.
@@ -78,6 +78,16 @@ export interface Crowd {
    * tiennent. Ils masqueraient alors ce qu on vient inspecter.
    */
   update(elapsedSeconds: number, hype: number, showcase?: boolean): void;
+  /**
+   * Combien de places on dessine, sur les `CROWD_SIZE` construites.
+   *
+   * Les places sont triees par importance a l ecran (`crowdLayout`) : baisser
+   * ce nombre retire les derniers rangs et garde le premier cercle. Rien n est
+   * alloue ni libere — c est le `count` des `InstancedMesh` qui change, et
+   * Three.js le relit a chaque image. Le premier cercle n est jamais retire :
+   * c est la couche proche, celle qui donne sa profondeur a l arene.
+   */
+  setVisibleSeats(count: number): void;
   dispose(): void;
 }
 
@@ -186,8 +196,35 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
   const phoneSlot = new Map<number, number>();
   filming.forEach((seatIndex, i) => phoneSlot.set(seatIndex, i));
 
+  let visible = seats.length;
+
   return {
     group,
+
+    setVisibleSeats(count): void {
+      const next = Math.max(RING_SIZE, Math.min(seats.length, Math.floor(count)));
+      if (next === visible) return;
+      visible = next;
+
+      for (const mesh of [parts.body, parts.head, parts.armLeft, parts.armRight]) {
+        mesh.count = visible;
+      }
+      /*
+        Les places qui filment sont un sous-ensemble de la liste triee, donc
+        celles des `visible` premieres places sont les `n` premiers telephones.
+        Compter suffit : aucun slot n est a deplacer.
+      */
+      let phones = 0;
+      for (const seatIndex of filming) {
+        if (seatIndex < visible) phones++;
+      }
+      parts.phone.count = phones;
+      parts.screen.count = phones;
+
+      // Les places redevenues visibles portent des matrices perimees : la
+      // prochaine image doit les reecrire, meme si le temps n a pas bouge.
+      lastElapsed = Number.NaN;
+    },
 
     update(elapsed, hype, showcase = false): void {
       if (elapsed === lastElapsed && hype === lastHype && showcase === lastShowcase) return;
@@ -195,7 +232,7 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
       lastHype = hype;
       lastShowcase = showcase;
 
-      for (let i = 0; i < seats.length; i++) {
+      for (let i = 0; i < visible; i++) {
         const seat = seats[i];
         if (seat === undefined) continue;
         const slot = phoneSlot.get(i);

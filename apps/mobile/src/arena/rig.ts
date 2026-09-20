@@ -192,6 +192,15 @@ export interface FighterRig {
   };
   dress(look: FighterLook): void;
   pose(pose: Pose, animation: Animation, elapsedSeconds: number, deltaSeconds: number): void;
+  /**
+   * Dessine ou non les mains articulees — dernier levier des paliers de
+   * qualite (`platform/quality.ts`).
+   *
+   * Les cacher ne suffit pas : `pose` cesse aussi de les mettre en pose, sinon
+   * on paierait encore l interpolation de huit doigts par combattant et par
+   * image pour des noeuds que personne ne voit.
+   */
+  setHandsVisible(visible: boolean): void;
   dispose(): void;
 }
 
@@ -277,6 +286,8 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
   // la silhouette descend du cou vers les bras au lieu de s elargir.
   parts.shoulderYoke = outlined(body, 'cylinder', true);
   for (const name of KNOTS) parts[name] = outlined(body, 'sphere', false);
+
+  let handsVisible = true;
 
   const hands = [
     createHand((parent, geometry) => outlined(parent, geometry, false)),
@@ -476,6 +487,12 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
     head,
     parts,
     hands,
+
+    setHandsVisible(visible): void {
+      handsVisible = visible;
+      for (const hand of hands) hand.group.visible = visible;
+    },
+
     hair: { cap, hood, spikes, long, band },
 
     dress(look) {
@@ -669,12 +686,14 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
       setKnot(parts.kneeLeft, v.knL, JOINT_RADIUS.knee);
       setKnot(parts.kneeRight, v.knR, JOINT_RADIUS.knee);
 
-      const specs = animation.hands.length >= 2 ? animation.hands : DEFAULT_HANDS;
-      hands.forEach((hand, i) => {
-        const spec: HandSpec = specs[i] ?? (['relax', 'in'] as const);
-        hand.shape(spec, delta);
-        hand.aim(i === 0 ? v.hL : v.hR, i === 0 ? v.elL : v.elR, spec[1] ?? 'in', delta);
-      });
+      if (handsVisible) {
+        const specs = animation.hands.length >= 2 ? animation.hands : DEFAULT_HANDS;
+        hands.forEach((hand, i) => {
+          const spec: HandSpec = specs[i] ?? (['relax', 'in'] as const);
+          hand.shape(spec, delta);
+          hand.aim(i === 0 ? v.hL : v.hR, i === 0 ? v.elL : v.elR, spec[1] ?? 'in', delta);
+        });
+      }
 
       for (const [group, foot] of [
         [parts.footLeft, v.ftL],

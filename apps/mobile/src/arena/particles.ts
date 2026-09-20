@@ -9,6 +9,7 @@ import {
   Points,
   ShaderMaterial,
 } from 'three';
+import { QUALITY_PROFILES } from '../platform/quality.js';
 
 /**
  * Le puits a particules (port de `makePoints` / `P` / `commit` du prototype).
@@ -23,9 +24,15 @@ import {
  * particules vit dans `aura.ts`, ici il n y a qu un tampon.
  */
 
-/** Plafond de points par tampon. Au-dela, les demandes sont ignorees. */
-export const ADDITIVE_CAPACITY = 2400;
-export const DARK_CAPACITY = 600;
+/**
+ * Plafond de points par tampon, au palier le plus haut.
+ *
+ * Au-dela, les demandes sont ignorees. Les tampons sont toujours **alloues**
+ * a cette taille ; un palier plus bas abaisse la limite d ecriture
+ * (`setLimits`), ce qui ne coute ni allocation ni liberation en plein match.
+ */
+export const ADDITIVE_CAPACITY = QUALITY_PROFILES.rich.additiveParticles;
+export const DARK_CAPACITY = QUALITY_PROFILES.rich.darkParticles;
 
 /** En dessous, le point n apparaitrait pas : inutile de payer son sommet. */
 const MIN_ALPHA = 0.003;
@@ -49,6 +56,14 @@ export interface ParticleFields extends ParticleSink {
    * A recalculer a chaque redimensionnement.
    */
   setProjectionScale(scale: number): void;
+  /**
+   * Abaisse le nombre de points qu une image a le droit d ecrire.
+   *
+   * Les tampons restent alloues a leur pleine taille : un palier de qualite
+   * change en plein match, et rien ne doit s allouer ni se liberer a l image
+   * precise ou l appareil a deja du mal.
+   */
+  setLimits(additive: number, dark: number): void;
   dispose(): void;
 }
 
@@ -120,7 +135,10 @@ interface Buffer {
   readonly position: Float32Array;
   readonly color: Float32Array;
   readonly size: Float32Array;
+  /** Taille allouee, fixee une fois pour toutes. */
   readonly capacity: number;
+  /** Plafond d ecriture courant, au plus `capacity`. Un palier de qualite le baisse. */
+  limit: number;
   count: number;
 }
 
@@ -151,7 +169,7 @@ function createBuffer(capacity: number, blending: Blending, name: string): Buffe
   // La fumee passe avant la lumiere, sinon elle l efface.
   points.renderOrder = blending === NormalBlending ? 1 : 2;
 
-  return { points, geometry, material, position, color, size, capacity, count: 0 };
+  return { points, geometry, material, position, color, size, capacity, limit: capacity, count: 0 };
 }
 
 function push(
@@ -163,7 +181,7 @@ function push(
   alpha: number,
   size: number,
 ): void {
-  if (buffer.count >= buffer.capacity || alpha <= MIN_ALPHA) return;
+  if (buffer.count >= buffer.limit || alpha <= MIN_ALPHA) return;
   const i = buffer.count++;
   const rgb = srgbComponents(hex);
   buffer.position[i * 3] = x;
@@ -184,6 +202,10 @@ function commitBuffer(buffer: Buffer): void {
     // nul tant que le tampon tient dans une seule ecriture.
     attribute.needsUpdate = true;
   }
+}
+
+function clampLimit(wanted: number, capacity: number): number {
+  return Math.max(0, Math.min(capacity, Math.floor(wanted)));
 }
 
 export function createParticleFields(): ParticleFields {
@@ -224,6 +246,11 @@ export function createParticleFields(): ParticleFields {
     setProjectionScale(scale): void {
       additive.material.uniforms.uScale!.value = scale;
       dark.material.uniforms.uScale!.value = scale;
+    },
+
+    setLimits(additiveLimit, darkLimit): void {
+      additive.limit = clampLimit(additiveLimit, additive.capacity);
+      dark.limit = clampLimit(darkLimit, dark.capacity);
     },
 
     dispose(): void {

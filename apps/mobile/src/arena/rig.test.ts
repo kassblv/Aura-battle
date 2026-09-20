@@ -482,3 +482,78 @@ describe('ce qui est dessine tient dans ce qui est cadre', () => {
     rig.dispose();
   });
 });
+
+describe('mains, palier de qualite', () => {
+  /*
+    Les mains sont le dernier levier de qualite, et le plus cher a perdre :
+    ce sont elles qui portent la moitie des poses du contenu. Au palier le plus
+    bas, elles ne sont plus dessinees — et surtout plus mises en pose, sinon on
+    paierait encore l interpolation de huit doigts par combattant et par image
+    pour des noeuds que personne ne voit.
+  */
+
+  /**
+   * Une animation livree, et la forme de main que son premier doigt **ne**
+   * demande **pas**.
+   *
+   * Sans ca le test serait vide : si on ferme le poing a la main alors que
+   * l animation voulait deja un poing, la pose ne change rien et on ne peut
+   * plus distinguer « les doigts ne bougent plus » de « ils sont deja la ».
+   */
+  function opposedSetup(): { animation: Animation; opposite: 'fist' | 'open' } {
+    const animation = shippedAnimations()[0];
+    if (animation === undefined) throw new Error('aucune animation livree');
+    const wanted = animation.hands[0]?.[0];
+    return { animation, opposite: wanted === 'fist' ? 'open' : 'fist' };
+  }
+
+  it('dessine les mains par defaut', () => {
+    const rig = build();
+    expect(rig.hands.every((hand) => hand.group.visible)).toBe(true);
+    rig.dispose();
+  });
+
+  it('retire les mains quand le palier les coupe', () => {
+    const rig = build();
+    rig.setHandsVisible(false);
+    expect(rig.hands.every((hand) => hand.group.visible)).toBe(false);
+    rig.dispose();
+  });
+
+  it('cesse de mettre les doigts en pose une fois les mains coupees', () => {
+    const { animation, opposite } = opposedSetup();
+    const rig = build();
+    rig.dress(LOOK);
+    const hand = rig.hands[0];
+    if (hand === undefined) throw new Error('main absente');
+
+    for (let i = 0; i < 90; i++) hand.shape([opposite, 'in'], 1 / 60);
+    const before = hand.curl[0] ?? 0;
+
+    rig.setHandsVisible(false);
+    for (let i = 0; i < 90; i++) {
+      rig.pose(samplePose(animation, 0.5), animation, i / 60, 1 / 60);
+    }
+    expect(hand.curl[0] ?? 0).toBeCloseTo(before, 6);
+    rig.dispose();
+  });
+
+  it('remet les doigts en pose quand le palier remonte', () => {
+    const { animation, opposite } = opposedSetup();
+    const rig = build();
+    rig.dress(LOOK);
+    rig.setHandsVisible(false);
+    rig.setHandsVisible(true);
+    const hand = rig.hands[0];
+    if (hand === undefined) throw new Error('main absente');
+
+    for (let i = 0; i < 90; i++) hand.shape([opposite, 'in'], 1 / 60);
+    const before = hand.curl[0] ?? 0;
+    for (let i = 0; i < 90; i++) {
+      rig.pose(samplePose(animation, 0.5), animation, i / 60, 1 / 60);
+    }
+    expect(hand.curl[0] ?? 0).not.toBeCloseTo(before, 6);
+    expect(rig.hands.every((h) => h.group.visible)).toBe(true);
+    rig.dispose();
+  });
+});
