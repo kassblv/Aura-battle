@@ -419,6 +419,7 @@ export function App(): JSX.Element {
             nowMs={online.nowMs}
             clock={online.clock}
             opponentName={online.opponentName}
+            opponentIsGhost={online.opponentIsGhost}
             onLeave={leaveMatch}
             onRematch={() => {
               // En ligne, « rejouer » c est se remettre en file : l adversaire
@@ -449,6 +450,7 @@ export function App(): JSX.Element {
             nowMs={online.nowMs}
             clock={online.clock}
             opponentName={online.opponentName}
+            opponentIsGhost={online.opponentIsGhost}
             onLeave={() => {
               go('home');
             }}

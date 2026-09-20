@@ -1256,6 +1256,23 @@ body {
 .hud__side--right {
   justify-content: flex-end;
 }
+/*
+  « En differe » : dit, pas cache.
+
+  Discret parce que ce n'est pas le sujet du match, mais lisible parce que le
+  joueur a le droit de savoir contre quoi il joue — et parce qu'un match contre
+  un differe ne rapporte que la moitie des points de ligue.
+*/
+.hud__ghost {
+  display: block;
+  font-style: normal;
+  font-weight: 500;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
 .hud__round {
   font-family: var(--display);
   font-weight: 400;

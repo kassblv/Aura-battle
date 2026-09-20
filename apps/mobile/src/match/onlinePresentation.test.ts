@@ -46,6 +46,7 @@ function state(phase: OnlinePhase, over: Partial<OnlineState> = {}): OnlineState
     matchId: 'm_1',
     seat: 'a',
     opponentName: 'Nova',
+    opponentIsGhost: false,
     phase,
     round: 1,
     phaseEndsAtMs: 0,

@@ -51,6 +51,8 @@ export interface OnlineSession {
    */
   readonly clock: () => number;
   readonly opponentName: string;
+  /** Vrai si l adversaire est un differe : le jeu doit le dire. */
+  readonly opponentIsGhost: boolean;
   /**
    * Ce que le serveur a accorde a la fin du dernier match, une seule fois.
    *
@@ -316,6 +318,7 @@ export function useOnlineMatch(
     nowMs: nowRef.current,
     clock,
     opponentName: match?.state.opponentName ?? 'Adversaire',
+    opponentIsGhost: match?.state.opponentIsGhost ?? false,
     settled,
     clearSettled,
     inviteCode,

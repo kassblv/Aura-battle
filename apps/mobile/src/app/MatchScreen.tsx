@@ -117,6 +117,14 @@ export interface MatchScreenProps {
    */
   readonly clock?: () => number;
   readonly opponentName: string;
+  /**
+   * L adversaire est un enregistrement.
+   *
+   * Le jeu le dit, discretement mais sans ambiguite (`docs/05`, § Fantomes).
+   * Remplir une file en laissant croire a un humain absent est un mensonge qui
+   * decredibiliserait tout le reste de ce que l ecran affiche.
+   */
+  readonly opponentIsGhost?: boolean;
   readonly onLeave: () => void;
   /**
    * Rejouer tout de suite.
@@ -135,6 +143,7 @@ function MatchScreenBody({
   nowMs,
   clock,
   opponentName,
+  opponentIsGhost = false,
   onLeave,
   onRematch,
   rematchLabel,
@@ -326,7 +335,11 @@ function MatchScreenBody({
         </span>
         <span className="hud__round">Manche {view.round}</span>
         <span className="hud__side hud__side--right">
-          <Pips won={view.opponent.roundsWon} /> <b>{opponentName}</b>
+          <Pips won={view.opponent.roundsWon} />{' '}
+          <b>
+            {opponentName}
+            {opponentIsGhost && <em className="hud__ghost">en différé</em>}
+          </b>
         </span>
         <i className="hud__timer" ref={timerRef} />
       </header>

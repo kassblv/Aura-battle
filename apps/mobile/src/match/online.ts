@@ -38,6 +38,14 @@ export interface OnlineState {
   readonly matchId: string | null;
   readonly seat: Seat | null;
   readonly opponentName: string | null;
+  /**
+   * L adversaire est un enregistrement, pas quelqu un en ligne.
+   *
+   * Le serveur le dit (`match:found.ghost`) et le jeu doit le montrer : une
+   * file qui se remplit en faisant croire a un humain absent est un mensonge
+   * qui decredibilise tout le reste de ce que l ecran affiche.
+   */
+  readonly opponentIsGhost: boolean;
   readonly phase: OnlinePhase;
   readonly round: number;
   /** Fin de la phase, **en heure locale**. */
@@ -96,6 +104,7 @@ export const EMPTY_ONLINE_STATE: OnlineState = {
   matchId: null,
   seat: null,
   opponentName: null,
+  opponentIsGhost: false,
   phase: 'idle',
   round: 1,
   phaseEndsAtMs: 0,
@@ -125,6 +134,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       matchId: data.matchId,
       seat: data.seat,
       opponentName: data.opponent.displayName,
+      opponentIsGhost: data.ghost,
     };
   });
 
@@ -227,6 +237,8 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
        * nom quand un annuaire injoignable prive l'instantane du sien.
        */
       opponentName: data.opponent?.displayName ?? state.opponentName,
+      // Une reprise ne doit pas faire disparaitre l avertissement.
+      opponentIsGhost: state.opponentIsGhost,
       phase: data.phase,
       round: data.round,
       phaseEndsAtMs: toLocal(data.endsAt),
