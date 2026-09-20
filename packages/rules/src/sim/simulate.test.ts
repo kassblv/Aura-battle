@@ -2,8 +2,9 @@ import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../balance.js';
 import { choiceCost } from '../round.js';
 import { createRng } from '../rng.js';
+import { AI_PROFILE_IDS, AI_PROFILES } from '../ai/profiles.js';
 import { STRATEGIES, STRATEGY_IDS, type StrategyId } from './strategies.js';
-import { runTournament, simulateMatch } from './simulate.js';
+import { runTournament, simulateMatch, simulateProfileMatch } from './simulate.js';
 
 describe('STRATEGIES', () => {
   it('expose les cinq strategies de la roadmap', () => {
@@ -102,6 +103,78 @@ describe('simulateMatch', () => {
     const premier = simulateMatch('graine-1', { a: STRATEGIES.random, b: STRATEGIES.random });
     const second = simulateMatch('graine-2', { a: STRATEGIES.random, b: STRATEGIES.random });
     expect(premier).not.toEqual(second);
+  });
+});
+
+/**
+ * Les profils d'IA sont ce que rencontre un joueur seul, et `simulateProfileMatch`
+ * est la seule facon de les faire jouer en masse sans ouvrir le jeu.
+ *
+ * Les faire s'affronter EUX-MEMES est l'epreuve utile : deux joueurs identiques
+ * doivent produire un match qui se termine, se rejoue, et ne favorise personne
+ * par construction. Si `rookie` contre `rookie` finissait toujours du meme cote,
+ * ce ne serait pas le profil qui serait en cause mais le moteur — et aucune
+ * mesure d'equilibrage posee dessus ne voudrait plus rien dire.
+ */
+describe('simulateProfileMatch', () => {
+  it('termine toujours sur un resultat, quel que soit le profil', () => {
+    for (const id of AI_PROFILE_IDS) {
+      const match = simulateProfileMatch(`profil-${id}`, AI_PROFILES[id]);
+      expect(match.result.winner === 'a' || match.result.winner === 'b').toBe(true);
+      expect(match.rounds.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('rejoue exactement le meme match pour une meme graine', () => {
+    const une = simulateProfileMatch('rejeu', AI_PROFILES.calm);
+    const deux = simulateProfileMatch('rejeu', AI_PROFILES.calm);
+    expect(deux).toEqual(une);
+  });
+
+  it('accepte une configuration d equilibrage explicite', () => {
+    const defaut = simulateProfileMatch('config', AI_PROFILES.mystery);
+    const explicite = simulateProfileMatch('config', AI_PROFILES.mystery, BALANCE);
+    expect(explicite).toEqual(defaut);
+  });
+
+  /**
+   * `usesUltimate: false` n'est pas une preference d'affichage : le debutant
+   * ne doit jamais sortir d'Ultime, sinon le premier match d'un joueur lui
+   * montre le coup le plus violent du jeu avant qu'il ne sache le lire.
+   */
+  it('ne fait jamais declencher l Ultime au debutant', () => {
+    for (let i = 0; i < 12; i += 1) {
+      const match = simulateProfileMatch(`debutant-${i}`, AI_PROFILES.rookie);
+      for (const seat of ['a', 'b'] as const) {
+        for (const played of match.played[seat]) {
+          expect(played.choice.useUltimate).toBe(false);
+        }
+      }
+    }
+  });
+
+  /**
+   * Le profil intouchable, lui, s'en sert : c'est ce qui rend la derniere
+   * marche differente des trois autres. Sans ce temoin, le test precedent
+   * passerait aussi si l'Ultime etait casse pour tout le monde.
+   */
+  it('fait declencher l Ultime a l intouchable', () => {
+    const vu = [];
+    for (let i = 0; i < 40 && vu.length === 0; i += 1) {
+      const match = simulateProfileMatch(`intouchable-${i}`, AI_PROFILES.untouchable);
+      for (const seat of ['a', 'b'] as const) {
+        vu.push(...match.played[seat].filter((played) => played.choice.useUltimate));
+      }
+    }
+    expect(vu.length).toBeGreaterThan(0);
+  });
+
+  it('ne laisse jamais l energie devenir negative', () => {
+    for (const id of AI_PROFILE_IDS) {
+      const match = simulateProfileMatch(`energie-${id}`, AI_PROFILES[id]);
+      expect(match.finalEnergy.a).toBeGreaterThanOrEqual(0);
+      expect(match.finalEnergy.b).toBeGreaterThanOrEqual(0);
+    }
   });
 });
 

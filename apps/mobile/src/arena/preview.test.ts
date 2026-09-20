@@ -150,7 +150,20 @@ describe('previewFraming', () => {
   });
 });
 
-describe('chaque meme livre tient dans le cadre', () => {
+/**
+ * Ces trois epreuves cadrent CHAQUE animation livree, une par une, en faisant
+ * converger la vraie camera. Leur cout suit donc le catalogue — qui est passe
+ * de 21 a 33 memes — et non la complexite du code.
+ *
+ * Le delai est pose sur le bloc entier, pas sur le test qui a lache en
+ * premier : en donner un seul a celui qui deborde aujourd hui laisse les
+ * autres exploser au prochain lot de danses, et un depassement de delai se
+ * lit comme un cadrage casse alors que rien n a bouge. C est arrive deux fois
+ * dans ce depot, ici et sur `measureSkill`.
+ */
+const CADRAGE_LENT = { timeout: 30_000 };
+
+describe('chaque meme livre tient dans le cadre', CADRAGE_LENT, () => {
   /**
    * Le critere d acceptation du jalon : la camera ne coupe pas les pieds.
    *
@@ -158,7 +171,7 @@ describe('chaque meme livre tient dans le cadre', () => {
    * apres convergence. Un cadrage trop serre se voit ici, pas sur le telephone
    * d un joueur.
    */
-  it('de face, silhouette entiere dans l image', () => {
+  it('de face, silhouette entiere dans l image', CADRAGE_LENT, () => {
     for (const animation of all) {
       const bounds = animationBounds(animation);
       const framing = previewFraming({ worldX: 0, bounds, shot: animation.framing?.shot });
@@ -181,7 +194,7 @@ describe('chaque meme livre tient dans le cadre', () => {
    * c est une couverture qui augmente — et l echantillonnage ne doit pas etre
    * rabote pour rentrer dans un delai arbitraire.
    */
-  it('sous n importe quel angle d orbite et d inclinaison', { timeout: 30_000 }, () => {
+  it('sous n importe quel angle d orbite et d inclinaison', CADRAGE_LENT, () => {
     // Le joueur peut tourner autour et lever la camera : le geste doit rester
     // lisible de dos et de trois quarts, pas seulement de face.
     for (const animation of all) {
@@ -203,7 +216,7 @@ describe('chaque meme livre tient dans le cadre', () => {
     }
   });
 
-  it('garde la camera au-dessus de la plateforme a tout moment', () => {
+  it('garde la camera au-dessus de la plateforme a tout moment', CADRAGE_LENT, () => {
     for (const animation of all) {
       const bounds = animationBounds(animation);
       for (const tilt of [-0.5, 0, 0.9]) {
