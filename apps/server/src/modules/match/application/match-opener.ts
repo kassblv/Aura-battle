@@ -35,6 +35,13 @@ export interface MatchStarter {
     seed: string;
     seats: MatchSeats;
     mode?: MatchMode;
+    ghost?: {
+      seat: Seat;
+      mmr: number;
+      sourcePlayerId: string;
+      displayName: string;
+      league: string;
+    } | null;
   }): boolean;
   /** Arme le compte a rebours d'abandon d'un joueur absent. */
   notePlayerDisconnected(playerId: string): void;
@@ -77,11 +84,35 @@ export interface QueueEviction {
 
 export type MatchMode = 'RANKED' | 'CASUAL' | 'INVITE';
 
+/**
+ * Siege tenu par le rejeu d'un enregistrement (docs/05 § « Fantomes »).
+ *
+ * L'ouverture **sait** qu'elle assoit un fantome, et c'est delibere : c'est
+ * elle qui envoie `match:found`, donc elle seule peut porter le drapeau
+ * `ghost`. Le declarer ici plutot que de le deviner a l'identifiant du siege
+ * garde la regle lisible — un joueur n'apprend jamais qu'il affronte un
+ * enregistrement par un effet de bord.
+ *
+ * `displayName` et `league` viennent de l'appelant, deja resolus : l'ouverture
+ * ne sait pas lire un classement, et n'a pas le droit d'attendre.
+ */
+export interface GhostSeatRequest {
+  readonly seat: Seat;
+  /** Joueur dont provient l'enregistrement. Ecrit en base, jamais envoye. */
+  readonly sourcePlayerId: string;
+  readonly mmr: number;
+  readonly recordingId: string;
+  readonly displayName: string;
+  readonly league: string;
+}
+
 export interface OpenRequest {
   /** Siege `a`. Par convention, l'hote de l'invitation ou le plus ancien en file. */
   readonly playerA: string;
   readonly playerB: string;
   readonly mode: MatchMode;
+  /** Absent : les deux sieges sont des personnes. */
+  readonly ghost?: GhostSeatRequest;
 }
 
 export class MatchOpener {
@@ -142,28 +173,62 @@ export class MatchOpener {
 
     const matchId = `m_${randomUUID()}`;
     const seed = randomUUID();
+    const ghost = request.ghost;
 
     for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
+      // Rien a annoncer a un fantome : il n'y a personne au bout, et
+      // `GhostDirector` n'a pas besoin de savoir contre qui il joue — il ne
+      // reagit pas a son adversaire (docs/05).
+      if (seat === ghost?.seat) continue;
+
       const playerId = seats[seat];
       const opponentId = seat === 'a' ? seats.b : seats.a;
+      const facingGhost = ghost !== undefined && ghost.seat !== seat;
       this.notifier.send(playerId, 'match:found', {
         matchId,
         seat,
         // Le nom ET la ligue de l'ADVERSAIRE, jamais les siens (docs/05 :
         // seule la ligue est publique, le MMR ne l'est pas).
         opponent: {
-          displayName: this.presence.displayNameOf(opponentId),
-          league: this.presence.leagueOf(opponentId),
+          displayName: facingGhost ? ghost.displayName : this.presence.displayNameOf(opponentId),
+          league: facingGhost ? ghost.league : this.presence.leagueOf(opponentId),
           cosmetics: {},
         },
         protocolVersion: PROTOCOL_VERSION,
         rulesVersion: RULES_VERSION,
         contentVersion: CONTENT_VERSION,
-        ghost: false,
+        /**
+         * **Le drapeau d'honnetete** (docs/05 § « Fantomes »).
+         *
+         * Il part dans le tout premier message du match, avant la moindre
+         * manche, et le client l'affiche. Un fantome qui passerait pour un
+         * humain serait un mensonge du serveur, pas un detail d'affichage :
+         * c'est ici, et nulle part ailleurs, que cette promesse se tient.
+         */
+        ghost: facingGhost,
       });
     }
 
-    if (!this.runtime.createMatch({ matchId, seed, seats, mode: request.mode })) {
+    if (
+      !this.runtime.createMatch({
+        matchId,
+        seed,
+        seats,
+        mode: request.mode,
+        ghost:
+          ghost === undefined
+            ? null
+            : {
+                seat: ghost.seat,
+                mmr: ghost.mmr,
+                sourcePlayerId: ghost.sourcePlayerId,
+                // Le nom et la ligue annonces : le runtime les rappellera a une
+                // reprise apres reconnexion, ou aucune session ne repondra.
+                displayName: ghost.displayName,
+                league: ghost.league,
+              },
+      })
+    ) {
       // Inatteignable sans collision d'identifiant : les sieges viennent d'etre
       // verifies et rien n'a pu s'intercaler. Si cela arrivait, c'est un defaut
       // du serveur et il doit se voir.
@@ -180,9 +245,18 @@ export class MatchOpener {
      * futur ne le fera : son adversaire subirait trois manches d'actions par
      * defaut au lieu d'un forfait en quarante-cinq secondes.
      */
-    for (const playerId of [seats.a, seats.b]) {
-      if (!this.presence.isConnected(playerId)) {
-        this.runtime.notePlayerDisconnected(playerId);
+    for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
+      /**
+       * Un fantome n'est jamais « parti » : il n'a pas de socket a perdre.
+       *
+       * Sans cette exception, l'ouverture armerait pour lui le compte a rebours
+       * d'abandon — `isConnected` repond non, faute de session — et le match
+       * s'acheverait sur un forfait au bout de quarante-cinq secondes, donc une
+       * victoire offerte a son adversaire, au milieu de la deuxieme manche.
+       */
+      if (seat === ghost?.seat) continue;
+      if (!this.presence.isConnected(seats[seat])) {
+        this.runtime.notePlayerDisconnected(seats[seat]);
       }
     }
 
@@ -194,8 +268,9 @@ export class MatchOpener {
      * de sa rapidite — un joueur assis est deja ecarte de l'appariement par le
      * controle de disponibilite du worker, qui lit `isBusy` de facon synchrone.
      */
-    this.evict(seats.a);
-    this.evict(seats.b);
+    // Un fantome n'a jamais fait la queue : rien a l'en sortir.
+    if (ghost?.seat !== 'a') this.evict(seats.a);
+    if (ghost?.seat !== 'b') this.evict(seats.b);
 
     return matchId;
   }

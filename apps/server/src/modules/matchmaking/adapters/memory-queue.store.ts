@@ -52,6 +52,10 @@ export class MemoryQueueStore implements QueueTicketStore, RecentOpponentStore {
     return Promise.resolve(true);
   }
 
+  claim(playerId: string): Promise<boolean> {
+    return Promise.resolve(this.tickets.delete(playerId));
+  }
+
   of(playerId: string, nowMs: number): Promise<readonly string[]> {
     const met = this.recent.get(playerId);
     if (met === undefined) return Promise.resolve([]);

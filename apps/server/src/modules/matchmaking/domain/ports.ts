@@ -1,4 +1,5 @@
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
+import type { GhostRecording, GhostRound } from './ghost.js';
 import type { QueueTicket } from './ticket.js';
 
 /**
@@ -37,6 +38,15 @@ export interface QueueTicketStore {
    * plus rien n'alimente.
    */
   claimPair(firstPlayerId: string, secondPlayerId: string): Promise<boolean>;
+  /**
+   * Retire **un** ticket, et dit s'il etait encore la.
+   *
+   * Pendant a un siege de `claimPair` : la bascule vers un fantome ne marie
+   * pas deux joueurs, elle en sort un seul de la file pour l'asseoir face a un
+   * enregistrement. `remove` ne suffit pas — il ne dit rien — et deux tours qui
+   * se chevauchent ouvriraient alors deux matchs pour la meme personne.
+   */
+  claim(playerId: string): Promise<boolean>;
 }
 
 export const QUEUE_TICKET_STORE = 'QUEUE_TICKET_STORE';
@@ -123,7 +133,23 @@ export const QUEUE_NOTIFIER = 'QUEUE_NOTIFIER';
  * matchs. Le port l'impose donc a toute realisation future.
  */
 export interface MatchOpening {
-  open(request: { playerA: string; playerB: string; mode: 'RANKED' | 'CASUAL' }): string | null;
+  open(request: {
+    playerA: string;
+    playerB: string;
+    mode: 'RANKED' | 'CASUAL';
+    /**
+     * Siege tenu par un fantome (docs/05). Absent, les deux sieges sont des
+     * personnes — c'est le cas de tout appariement humain.
+     */
+    ghost?: {
+      seat: 'a' | 'b';
+      sourcePlayerId: string;
+      mmr: number;
+      recordingId: string;
+      displayName: string;
+      league: string;
+    };
+  }): string | null;
 }
 
 export const MATCH_OPENING = 'MATCH_OPENING';
@@ -153,3 +179,45 @@ export interface PlayerAvailability {
 export interface QueueClock {
   now(): number;
 }
+
+/**
+ * Rangement des enregistrements de fantomes (docs/05 § « Fantomes »).
+ *
+ * Volontairement etroit : on ecrit un enregistrement a la fin d'un match, on
+ * relit des candidats pour un ticket. Le **choix**, lui, n'est pas ici — il est
+ * pur et vit dans `domain/ghost.ts`.
+ */
+export interface GhostRecordingStore {
+  /**
+   * Enregistrements utilisables pour ce niveau, a cette version des regles.
+   *
+   * La fourchette est une **presomption**, pas la decision : le selecteur
+   * refiltre ce qui revient. Elle existe pour ne pas rapatrier la table
+   * entiere, et c'est tout ce qu'on lui demande.
+   */
+  candidates(query: {
+    readonly rulesVersion: string;
+    readonly mmr: number;
+    readonly range: number;
+    readonly limit: number;
+  }): Promise<readonly GhostRecording[]>;
+
+  /**
+   * Ecrit l'enregistrement d'un joueur, en **remplacant** le precedent.
+   *
+   * Un enregistrement par joueur, pas un par match : sans ce remplacement la
+   * table grossirait d'une ligne a chaque manche classee jouee sur le serveur,
+   * pour un besoin — « offrir un adversaire credible de ce niveau » — qu'une
+   * seule ligne par joueur remplit deja. La plus recente est aussi celle dont
+   * le MMR est le plus juste.
+   */
+  save(recording: {
+    readonly playerId: string;
+    readonly mmr: number;
+    readonly rulesVersion: string;
+    readonly rounds: readonly GhostRound[];
+    readonly atMs: number;
+  }): Promise<void>;
+}
+
+export const GHOST_RECORDING_STORE = 'GHOST_RECORDING_STORE';

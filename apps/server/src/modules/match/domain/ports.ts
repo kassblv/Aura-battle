@@ -1,4 +1,5 @@
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
+import type { AmplifierLevel, Style, Tier, TimingQuality } from '@aura/rules';
 
 /**
  * Ports du module match (architecture hexagonale, docs/02).
@@ -78,11 +79,63 @@ export interface MatchRecord {
    * imputerait a un joueur honnete les mensonges de ses adversaires.
    */
   readonly impossibleTaps: Readonly<Record<'a' | 'b', number>>;
+  /**
+   * Siege tenu par un fantome, s'il y en a un.
+   *
+   * `seats[ghost.seat]` vaut alors `null` : `MatchSeat.playerId` est nullable
+   * « pour un fantome » (docs/04), et y ecrire l'identifiant synthetique du
+   * siege ferait echouer la cle etrangere — le fantome n'est pas un joueur.
+   * `Match.isGhost` et `MatchSeat.ghostOfId` gardent la trace de ce qui s'est
+   * reellement passe, sans jamais pretendre que quelqu'un etait connecte.
+   */
+  readonly ghost: GhostSeatInfo | null;
 }
 
 /** Ecriture d'un match acheve. */
 export interface MatchRepository {
   save(record: MatchRecord): Promise<void>;
+}
+
+/**
+ * Une manche telle qu'un siege l'a jouee, pour rejeu ulterieur (docs/05).
+ *
+ * C'est **exactement** ce que `round:result` a deja revele des deux sieges :
+ * enregistrer ne divulgue donc rien de plus que ce que le match a publie. Ni
+ * les taps eux-memes ni la graine n'y figurent — un fantome rejoue sur une
+ * autre sequence d'orbes et une autre jauge, seul le **niveau de jeu** se
+ * transporte.
+ */
+export interface GhostRoundTrace {
+  readonly move: { readonly style: Style; readonly tier: Tier };
+  readonly amplifier: AmplifierLevel;
+  readonly useUltimate: boolean;
+  /** Qualite et ecart du tap de timing, tels que le moteur les a juges. */
+  readonly timing: { readonly quality: TimingQuality; readonly delta: number };
+  /** Points marques a la recharge : le « profil de recharge » de docs/05. */
+  readonly rechargePoints: number;
+  /** Nombre de taps comptabilises, seule valeur qui se rejoue telle quelle. */
+  readonly rechargeTaps: number;
+}
+
+/**
+ * Enregistrement d'un match pour servir de fantome (docs/05 § « Fantomes »).
+ *
+ * Realise par `matchmaking/application/ghost-recorder.service.ts` : meme
+ * montage que `MatchRatingSettlement`, une interface declaree a cote de son
+ * seul appelant et implementee ailleurs. Le runtime ne sait ni ou cela
+ * s'ecrit, ni que le MMR doit y etre joint.
+ *
+ * **Appele pour les seuls matchs `RANKED` entre deux humains**, comme le
+ * document l'exige : rejouer un fantome enregistrerait un fantome, et le
+ * niveau de jeu de la file derivereait de copie en copie.
+ */
+export interface GhostRecorder {
+  record(input: {
+    readonly matchId: string;
+    readonly seats: Readonly<Record<'a' | 'b', string>>;
+    readonly rounds: Readonly<Record<'a' | 'b', readonly GhostRoundTrace[]>>;
+    readonly atMs: number;
+  }): Promise<void>;
 }
 
 /** Classement d'un siege avant et apres le match, et ce qu'il rapporte (docs/05, jalon M5). */
@@ -115,5 +168,25 @@ export interface MatchRatingSettlement {
     readonly seats: Readonly<Record<'a' | 'b', string>>;
     readonly result: { readonly winner: 'a' | 'b' | null; readonly reason: string };
     readonly atMs: number;
+    /**
+     * Siege tenu par un fantome, s'il y en a un (docs/05 § « Fantomes »).
+     *
+     * Deux consequences, et aucune n'est optionnelle : **rien n'est ecrit au
+     * classement de ce siege** — le joueur enregistre n'est pas la, et lui
+     * infliger une defaite serait le classer sur un match qu'il n'a pas joue —
+     * et son adversaire ne gagne que la moitie des LP habituels. Le `mmr` est
+     * celui que porte l'enregistrement : c'est le seul niveau reel disponible
+     * en face, et le classement en a besoin pour son score attendu.
+     */
+    readonly ghost?: GhostSeatInfo | null;
   }): Promise<Readonly<Record<'a' | 'b', SeatRatingOutcome>>>;
+}
+
+/** Un siege tenu par le rejeu d'un enregistrement plutot que par un joueur. */
+export interface GhostSeatInfo {
+  readonly seat: 'a' | 'b';
+  /** MMR de l'enregistrement, c'est-a-dire du joueur au moment ou il a joue. */
+  readonly mmr: number;
+  /** Joueur dont cet enregistrement provient. Ecrit en base, jamais envoye. */
+  readonly sourcePlayerId: string;
 }

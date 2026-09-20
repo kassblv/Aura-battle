@@ -20,6 +20,9 @@ import { CONTENT_VERSION } from '@aura/content';
 import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import type {
+  GhostRecorder,
+  GhostRoundTrace,
+  GhostSeatInfo,
   MatchClock,
   MatchNotifier,
   MatchRatingSettlement,
@@ -125,6 +128,32 @@ interface LiveMatch {
   impossibleTaps: Record<Seat, number>;
   /** Transitions de phase deja journalisees, pour tenir leur reserve. */
   phaseEntries: number;
+  /**
+   * Siege tenu par un fantome, ou `null` si deux personnes jouent.
+   *
+   * Le runtime ne rejoue rien lui-meme — c'est `GhostDirector` qui envoie les
+   * taps et les verrouillages, par les memes methodes qu'un client. Ce champ ne
+   * sert qu'aux trois endroits ou la difference se voit : ne pas ecrire de
+   * `playerId` inexistant en base, ne rien inscrire au classement d'un absent,
+   * et ne pas enregistrer un fantome comme modele de fantome.
+   */
+  readonly ghost: GhostSeatInfo | null;
+  /**
+   * Ce qu'on montre du fantome a son adversaire, resolu a l'ouverture.
+   *
+   * Separe de `ghost` a dessein : celui-la part au classement et en base, ou un
+   * nom d'affichage n'a rien a faire. Celui-ci ne sert qu'a rappeler, apres une
+   * reconnexion, ce que `match:found` avait deja annonce.
+   */
+  readonly ghostOpponent: { readonly displayName: string; readonly league: string } | null;
+  /**
+   * Ce que chaque siege a joue, manche par manche (docs/05 § « Fantomes »).
+   *
+   * Recopie au moment ou `round:result` part : ces valeurs viennent d'etre
+   * rendues publiques aux deux joueurs, les conserver ne divulgue donc rien.
+   * Rien n'est recalcule ici — ni cout, ni qualite, ni points (regle d'or n°1).
+   */
+  readonly ghostTrace: Record<Seat, GhostRoundTrace[]>;
 }
 
 const SEATS: readonly Seat[] = ['a', 'b'];
@@ -188,6 +217,17 @@ const LOCK_TOLERANCE_MS = 300;
  */
 const CLOCK_ALLOWANCE_MS = 250;
 
+/**
+ * Mouvement attribue a un siege qui n'a pas verrouille.
+ *
+ * Le moteur joue « palier 0 d'un style tire par la graine » (`@aura/rules`,
+ * §9) ; le serveur, lui, n'a qu'a **nommer** ce qui s'est passe pour la
+ * revelation et pour la trace de fantome. Une seule constante pour les deux :
+ * deux replis differents montreraient deux mouvements differents pour la meme
+ * manche.
+ */
+const FALLBACK_MOVE = { style: 'calme', tier: 0 } as const;
+
 /** Cle du minuteur de deconnexion d'un siege. */
 const disconnectKey = (matchId: string, seat: Seat): string => `${matchId}:disconnect:${seat}`;
 
@@ -234,6 +274,11 @@ export class MatchRuntime {
     /** Classement et recompenses de fin de match. Absent, `match:end` reste neutre (jalon M5). */
     private readonly ratingSettlement: MatchRatingSettlement | null = null,
     private readonly log: AppLog | null = null,
+    /**
+     * Enregistrement des fantomes (docs/05). Absent, on ne conserve rien — un
+     * serveur sans fantomes reste un serveur qui marche.
+     */
+    private readonly ghostRecorder: GhostRecorder | null = null,
   ) {}
 
   /**
@@ -341,6 +386,13 @@ export class MatchRuntime {
      * classement compterait plus tard des parties d'invitation.
      */
     mode?: MatchRecord['mode'];
+    /**
+     * Siege tenu par un fantome (docs/05). Le fantome porte un identifiant de
+     * siege synthetique, unique : les refus ci-dessous — deux sieges
+     * identiques, joueur deja assis — s'appliquent donc a lui comme a tout le
+     * monde, sans exception a creuser.
+     */
+    ghost?: (GhostSeatInfo & { displayName: string; league: string }) | null;
   }): boolean {
     if (this.matches.has(input.matchId)) return false;
     /**
@@ -377,6 +429,19 @@ export class MatchRuntime {
       dropped: { a: 0, b: 0 },
       impossibleTaps: { a: 0, b: 0 },
       phaseEntries: 0,
+      ghost:
+        input.ghost == null
+          ? null
+          : {
+              seat: input.ghost.seat,
+              mmr: input.ghost.mmr,
+              sourcePlayerId: input.ghost.sourcePlayerId,
+            },
+      ghostOpponent:
+        input.ghost == null
+          ? null
+          : { displayName: input.ghost.displayName, league: input.ghost.league },
+      ghostTrace: { a: [], b: [] },
     };
     this.matches.set(input.matchId, match);
     for (const seat of SEATS) {
@@ -395,7 +460,31 @@ export class MatchRuntime {
 
   snapshotFor(matchId: string, seat: Seat): ServerMessage<'match:state'> | null {
     const match = this.matches.get(matchId);
-    return match === undefined ? null : matchStateFor(seat, match.state, matchId);
+    if (match === undefined) return null;
+    return matchStateFor(seat, match.state, matchId, this.facesGhost(match, seat));
+  }
+
+  /**
+   * Ce que le siege d'en face montre de lui, s'il s'agit d'un rejeu.
+   *
+   * `null` des que l'adversaire est une personne : la passerelle retombe alors
+   * sur le registre des sessions, comme avant. C'est ce qui permet a une
+   * reprise apres reconnexion de reafficher « Aura en differe » plutot que le
+   * nom de repli d'un joueur qu'on ne trouve pas — un fantome n'a pas de
+   * session, donc l'annuaire n'a jamais rien a en dire.
+   */
+  ghostOpponentIn(
+    matchId: string,
+    seat: Seat,
+  ): { readonly displayName: string; readonly league: string } | null {
+    const match = this.matches.get(matchId);
+    if (match === undefined) return null;
+    return this.facesGhost(match, seat) ? match.ghostOpponent : null;
+  }
+
+  /** Ce siege a-t-il un rejeu en face de lui ? */
+  private facesGhost(match: LiveMatch, seat: Seat): boolean {
+    return match.ghost !== null && match.ghost.seat !== seat;
   }
 
   /**
@@ -601,7 +690,7 @@ export class MatchRuntime {
     if (chosen !== null) return chosen;
 
     const locked = match.state.pending[seat].locked;
-    const move = locked?.choice.move ?? { style: 'calme' as const, tier: 0 as const };
+    const move = locked?.choice.move ?? FALLBACK_MOVE;
     const amplifier = locked?.choice.amplifier ?? 0;
     void result;
     return {
@@ -615,7 +704,7 @@ export class MatchRuntime {
       const outcome = result.seats[seat];
       const locked = match.state.pending[seat].locked;
       const recharge = match.state.pending[seat].recharge;
-      const move = locked?.choice.move ?? { style: 'calme' as const, tier: 0 as const };
+      const move = locked?.choice.move ?? FALLBACK_MOVE;
 
       return {
         move,
@@ -658,6 +747,33 @@ export class MatchRuntime {
       this.notifier.send(match.seats[seat], 'round:result', payload);
     }
 
+    /**
+     * Trace pour les fantomes (docs/05), prise sur ce qui vient d'etre envoye.
+     *
+     * Le moment n'est pas indifferent : `pending` porte encore les choix et la
+     * recharge de la manche, et ils viennent d'etre reveles aux deux joueurs.
+     * Plus tard, `afterReveal` remet `pending` a zero et l'information est
+     * perdue ; plus tot, elle serait encore secrete.
+     */
+    for (const seat of SEATS) {
+      const locked = match.state.pending[seat].locked;
+      const pending = match.state.pending[seat];
+      match.ghostTrace[seat].push({
+        // Meme repli que la vue ci-dessus : qui n'a pas verrouille a joue
+        // l'action par defaut, et c'est bien ce que son adversaire a vu.
+        move: locked?.choice.move ?? FALLBACK_MOVE,
+        amplifier: locked?.choice.amplifier ?? 0,
+        useUltimate: locked?.choice.useUltimate ?? false,
+        // Repris de la resolution, jamais recalcule (regle d'or n°1).
+        timing: {
+          quality: result.seats[seat].timing.quality,
+          delta: result.seats[seat].timing.delta,
+        },
+        rechargePoints: pending.recharge?.points ?? 0,
+        rechargeTaps: pending.taps.length,
+      });
+    }
+
     // La manche est jouee : les cosmetiques de la suivante seront redemandes.
     match.cosmetics = { a: null, b: null };
   }
@@ -688,6 +804,7 @@ export class MatchRuntime {
     }
 
     this.persist(match, result);
+    this.recordGhost(match);
 
     if (this.ratingSettlement === null) {
       // Pas de classement cable (tests, ou jalon anterieur a M5) : le match
@@ -719,6 +836,10 @@ export class MatchRuntime {
         seats: match.seats,
         result,
         atMs: this.clock.now(),
+        // Un fantome n'a pas de classement a recevoir, et son adversaire n'en
+        // recoit que la moitie (docs/05). Le calcul reste entier au module
+        // `rating` : on lui dit seulement qui n'etait pas la.
+        ghost: match.ghost,
       });
     } catch (cause) {
       this.log?.warn(
@@ -769,7 +890,15 @@ export class MatchRuntime {
       mode: match.mode,
       rulesVersion: RULES_VERSION,
       contentVersion: CONTENT_VERSION,
-      seats: { a: match.seats.a, b: match.seats.b },
+      // `null` au siege d'un fantome : `MatchSeat.playerId` pointe sur `Player`
+      // (docs/04), et l'identifiant synthetique d'un siege fantome n'y existe
+      // pas. C'est `ghost.sourcePlayerId`, via `ghostOfId`, qui dit de qui le
+      // rejeu provenait.
+      seats: {
+        a: match.ghost?.seat === 'a' ? null : match.seats.a,
+        b: match.ghost?.seat === 'b' ? null : match.seats.b,
+      },
+      ghost: match.ghost,
       winner: result.winner,
       reason: result.reason,
       startedAtMs: match.startedAtMs,
@@ -784,5 +913,41 @@ export class MatchRuntime {
     void this.repository.save(record).catch(() => {
       // L'adaptateur journalise le detail.
     });
+  }
+
+  /**
+   * Conserve ce match comme modele de fantome (docs/05 § « Fantomes »).
+   *
+   * Trois conditions, et chacune ferme un defaut precis :
+   *
+   * - **`RANKED` seulement**, parce que c'est ce que le document demande — et
+   *   parce qu'une invitation entre amis n'est pas un echantillon de niveau ;
+   * - **aucun siege fantome**, sans quoi un rejeu servirait de modele au
+   *   suivant : le niveau de la file derivererait de copie en copie, en
+   *   s'eloignant un peu plus a chaque fois de ce qu'un humain joue vraiment ;
+   * - **au moins une manche jouee**, sinon on enregistrerait un adversaire qui
+   *   ne fait rien — c'est-a-dire une victoire offerte a qui le croisera.
+   *
+   * Comme l'ecriture du match, elle ne bloque pas la fin de partie et un echec
+   * ne remonte jamais : perdre un enregistrement ne coute qu'un fantome de
+   * moins dans la reserve.
+   */
+  private recordGhost(match: LiveMatch): void {
+    if (this.ghostRecorder === null) return;
+    if (match.mode !== 'RANKED' || match.ghost !== null) return;
+    if (match.ghostTrace.a.length === 0 && match.ghostTrace.b.length === 0) return;
+
+    void this.ghostRecorder
+      .record({
+        matchId: match.matchId,
+        seats: match.seats,
+        rounds: { a: [...match.ghostTrace.a], b: [...match.ghostTrace.b] },
+        atMs: this.clock.now(),
+      })
+      .catch((cause: unknown) => {
+        this.log?.warn(
+          `enregistrement de fantome impossible pour ${match.matchId} : ${describeCause(cause)}`,
+        );
+      });
   }
 }

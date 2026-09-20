@@ -47,17 +47,24 @@ hype une danse du bateau, et « Apogée » couvre les deux.
 L'interface montre le nom **et** les chiffres : cacher la puissance et le coût
 rendrait le choix opaque, et c'est sur eux que se décide une manche.
 
-### Animations par défaut (issues du prototype)
+### Animations par défaut
 
 | Mouvement | Calme 🧊 | Hype 🔥 | Provoc 😏 |
 |---|---|---|---|
-| Palier 0 (gratuit) | Bras croisés | Dab | Chut |
-| Palier 1 | Main dans la poche | Six Seven | Doigt pointé, T-pose |
-| Palier 2 | Regard au loin | Poing levé, Floss | Mewing, Haussement d'épaules |
-| Palier 3 | Méditation, Moonwalk | Griddy, Toupie | L sur le front |
-| Palier 4 | Lévitation, Salto arrière | Danse du bateau | Dos tourné |
+| Palier 0 (gratuit) | Bras croisés, Mains dans le dos | Dab, Saut applaudi | Chut, Doigt vers le ciel |
+| Palier 1 | Main dans la poche, Marche assurée | Six Seven, Épaules qui roulent | Doigt pointé, T-pose |
+| Palier 2 | Regard au loin, Mains en couronne | Poing levé, Floss, Célébration de but | Mewing, Haussement d'épaules, Applaudissement lent |
+| Palier 3 | Méditation, Moonwalk, Coup de pied lent | Griddy, Toupie | L sur le front, Épaules époussetées |
+| Palier 4 | Lévitation, Salto arrière | Danse du bateau, Roue | Dos tourné, Révérence |
 
 La première animation de chaque case est offerte à tous. Les autres sont des cosmétiques. Voir `07-content-pipeline.md` pour les noms à revoir avant publication.
+
+33 animations de mouvement, 11 par style. Les 21 premières sont portées du
+prototype ; les 12 suivantes complètent ce que font réellement les participants
+d'une *aura battle* — un échange de danses courtes, d'**acrobaties**, de
+**prouesses physiques** et de **poses marquantes**, dont le prototype ne portait
+que le premier tiers. Chaque style garde sa voix : `calme` est posé et maîtrisé,
+`hype` explose, `provoc` nargue.
 
 ## 3. Amplificateurs d'aura
 

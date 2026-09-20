@@ -19,6 +19,7 @@ Schéma : `docs/content/animation.schema.json` (à copier dans `packages/content
   "loop": { "duration": 0.72, "weights": null, "ease": false },
   "flags": { "armsFront": false, "armsBack": false, "noFace": false, "float": 0, "expression": "neutral" },
   "emit": ["6", "7"],
+  "sound": [{ "at": 0.3, "accent": "whoosh" }, { "at": 0.66, "accent": "impact" }],
   "hands": [["open", "up"], ["open", "up"]],
   "frames": [
     {
@@ -52,6 +53,38 @@ Optionnel, `{ "shot": "body" }` par défaut.
 Le champ ne sert **que** la vitrine de l'accueil, où le joueur inspecte un mème : la caméra du match est une mise en scène, elle appartient au jeu et ignore ce cadrage.
 
 `body` n'est pas une distance fixe. Le client échantillonne la boucle entière, mesure l'encombrement du squelette (élévation, lévitation et salto compris) et en déduit la distance. Une nouvelle danse qui saute plus haut est donc cadrée correctement sans qu'on touche à une ligne de code — c'est le sens de la règle d'or n°5.
+
+## Accents sonores (`sound`)
+
+Optionnel. Une danse muette ne déclare rien ; une acrobatie, elle, a besoin
+qu'on l'entende retomber.
+
+```json
+"sound": [{ "at": 0.3, "accent": "whoosh" }, { "at": 0.66, "accent": "impact" }]
+```
+
+| Accent | Ce qu'il sonne | Pour quoi |
+|---|---|---|
+| `whoosh` | un membre qui fend l'air | Roue, Salto arrière, Toupie, Coup de pied lent, Révérence, Épaules époussetées |
+| `impact` | un contact sec — une main qui claque, un corps qui retombe | Roue, Salto arrière, Saut applaudi, Applaudissement lent |
+| `hold` | le souffle d'une pose tenue | Mains en couronne, Doigt vers le ciel, T-pose, Lévitation, Révérence |
+
+`at` est une **part de boucle** (0 inclus, 1 exclu), pas des secondes :
+rallonger une danse de deux dixièmes ne doit pas désynchroniser son impact.
+Six accents par animation au maximum.
+
+**Pourquoi ces trois mots-là.** Ils disent ce que le **corps** fait, jamais ce
+que le joueur a choisi ni s'il a réussi. C'est ce qui les rend jouables des deux
+côtés de l'arène sans rien trahir : un accent ne peut servir que ce qui est
+**déjà à l'écran** — une révélation, ou le personnage de la vitrine d'accueil.
+Un accent qui transporterait le style ou le palier serait exactement le message
+que le protocole refuse d'envoyer avant `round:result` (règle d'or n°4).
+
+**Le nom d'un accent n'est pas validé côté client.** `loadAnimation` vérifie
+l'*instant* d'un accent, jamais son vocabulaire : le catalogue se publie sans
+mise à jour store, donc une danse peut arriver avec un accent qu'une vieille
+version de l'application ne connaît pas. Elle le joue alors en silence plutôt
+que de refuser la danse. Le validateur de publication, lui, est strict.
 
 ## Autres cosmétiques
 
@@ -109,8 +142,34 @@ Le test mesure le **résultat**, pas la présence des champs : une animation peu
 trouver son accent par ses parts, par son adoucissement, ou en ajoutant des
 images clés.
 
+Repères sur les 12 animations ajoutées après le portage (rapport pic/moyenne) :
+« Coup de pied lent » 2,52, « Marche assurée » 2,94, « Épaules qui roulent »
+3,31, « Roue » 3,96, « Saut applaudi » 3,53, « Doigt vers le ciel » 5,78. Un
+mouvement lent n'est pas un mouvement plat : le coup de pied lent passe parce
+qu'il **s'arrête** en extension, pas parce qu'il va vite.
+
 Les poses système d'une seule image (`charge`, `land`, `stagger`) en sont
 exemptées, et elles seules : leur travail est précisément de ne pas bouger.
+
+## Pièges de rédaction (mesurés en écrivant les 12 dernières danses)
+
+- **Des bras écartés en `z` mais bas se lisent comme une position debout.** Le
+  `z` est bien l'axe latéral à l'écran, mais si les mains restent sous la ligne
+  d'épaule (`y` du cou, ≈ −132) elles se confondent avec le corps. La première
+  version de « Célébration de but » avait les mains à −112 : dans la vitrine,
+  le personnage avait l'air immobile. Mains à −150, coudes à −140, `z` à ±50.
+- **Une rotation qui reboucle dépasse la verticale à la couture.** Le
+  Catmull-Rom déborde, et une danse qui finit à −2π avec une image voisine
+  lointaine se retrouve inclinée de 9° en position debout — assez pour enfoncer
+  un pied sous le sol. « Roue » a demandé deux temps à l'atterrissage et une
+  **posture debout étroite** (pieds à ±10 cm comme le salto arrière, pas ±18).
+  `apps/mobile/src/arena/rig.test.ts` (« ne fait jamais passer un personnage
+  sous le sol ») mesure le maillage réel, pas les articulations : il voit ce que
+  `bounds.ts` ne voit pas.
+- **Un mouvement lent n'est pas un mouvement plat.** « Coup de pied lent »
+  passe le test de rythme à 2,52 parce qu'il **s'arrête** en extension, pas
+  parce qu'il va vite : `ease: true` plus une part de boucle large sur la pose
+  tenue.
 
 ## Noms et droits (à vérifier avant publication)
 
@@ -120,6 +179,14 @@ Le prototype utilise des noms de tendances. Avant la sortie sur les stores :
 - À renommer ou valider juridiquement : « Griddy », « Moonwalk », « Six Seven », « Floss », « Dab ».
 - Préférer des noms maison (« Pas quadrillé », « Glisse arrière », « Six-Sept »…) et consigner les validations dans `docs/adr/`.
 - Ce point relève d'un avis juridique ; ce document n'en tient pas lieu.
+
+**Les 12 animations ajoutées après le portage sont toutes descriptives**, et
+c'est une règle de rédaction, pas un hasard : « Célébration de but », « Roue »,
+« Marche assurée », « Révérence », « Épaules époussetées » nomment le **geste**,
+jamais qui l'a rendu célèbre. Les tendances des plateformes portent souvent le
+nom de quelqu'un — inutilisable tel quel. En cas d'hésitation sur un nom, le
+descriptif l'emporte : il ne demande aucune validation juridique et il survit à
+la tendance qui l'a inspiré.
 
 ## Live-ops
 

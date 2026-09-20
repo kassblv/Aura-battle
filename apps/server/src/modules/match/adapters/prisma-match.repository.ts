@@ -189,6 +189,9 @@ export class PrismaMatchRepository implements MatchRepository {
             status: 'ENDED',
             endReason: record.reason,
             winnerSeat: record.winner === null ? null : SEAT_COLUMN[record.winner],
+            // Un match dont un siege etait un rejeu se lit comme tel en base,
+            // sans qu'il faille deduire quoi que ce soit d'un `playerId` nul.
+            isGhost: record.ghost !== null,
             startedAt: new Date(record.startedAtMs),
             endedAt: new Date(record.endedAtMs),
             events,
@@ -196,10 +199,27 @@ export class PrismaMatchRepository implements MatchRepository {
         });
 
         const seats = await this.attributableSeats(tx, record);
+        /**
+         * `ghostOfId` n'est **pas** une cle etrangere (docs/04) : le joueur
+         * d'origine peut disparaitre sans emporter la trace du rejeu, et la
+         * colonne ne porte que la provenance du jeu, pas une participation.
+         */
+        const ghostOf = (seat: 'a' | 'b'): string | null =>
+          record.ghost?.seat === seat ? record.ghost.sourcePlayerId : null;
         await tx.matchSeat.createMany({
           data: [
-            { matchId: record.matchId, seat: SEAT_COLUMN.a, playerId: seats.a },
-            { matchId: record.matchId, seat: SEAT_COLUMN.b, playerId: seats.b },
+            {
+              matchId: record.matchId,
+              seat: SEAT_COLUMN.a,
+              playerId: seats.a,
+              ghostOfId: ghostOf('a'),
+            },
+            {
+              matchId: record.matchId,
+              seat: SEAT_COLUMN.b,
+              playerId: seats.b,
+              ghostOfId: ghostOf('b'),
+            },
           ],
         });
 

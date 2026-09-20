@@ -61,6 +61,20 @@ export interface QueueLog {
   warn(message: string): void;
 }
 
+/**
+ * Ce qu'un tour d'appariement rend : ce qui est parti, et ce qui reste.
+ *
+ * Les paires sont **reclamees** — leurs tickets ont deja quitte la file. Les
+ * tickets en attente, eux, y sont toujours : c'est sur cette liste-la que se
+ * decide une bascule vers un fantome, et elle est deja debarrassee des absents,
+ * des joueurs assis ailleurs et des recherches annulees.
+ */
+export interface QueueTickOutcome {
+  readonly pairs: readonly QueuePair[];
+  /** Tickets toujours en file, du plus ancien au plus recent. */
+  readonly waiting: readonly QueueTicket[];
+}
+
 /** Ce qu'un joueur sait de sa propre attente. Rien de l'attente des autres. */
 export interface JoinOutcome {
   readonly ticket: QueueTicket;
@@ -470,8 +484,14 @@ export class MatchmakingQueue {
    * questions**, et ce n'est pas un detail de presentation : le joueur parti
    * garde sa place au chaud, celui qui est deja en duel perd la sienne. Un
    * booleen unique forcait a choisir le meme sort pour les deux.
+   *
+   * Les tickets **restes en file** repartent avec, et ce n'est pas du confort :
+   * c'est sur eux que porte la bascule vers un fantome (docs/05). Les faire
+   * relire par l'appelant lui redonnerait une liste non filtree — absents et
+   * annulations compris — et il refereait, moins bien, le tri qui vient d'etre
+   * fait ici.
    */
-  async tick(nowMs: number, availability: PlayerAvailability): Promise<readonly QueuePair[]> {
+  async tick(nowMs: number, availability: PlayerAvailability): Promise<QueueTickOutcome> {
     // Les tickets de ceux qui ne sont jamais revenus s'effacent ici : sans ce
     // balayage, le garage grossirait a proportion des coupures reseau.
     for (const [playerId, parked] of this.parked) {
@@ -557,7 +577,25 @@ export class MatchmakingQueue {
       this.sendStatus(ticket, nowMs);
     }
 
-    return opened;
+    return { pairs: opened, waiting: outcome.waiting };
+  }
+
+  /**
+   * Sort un ticket de la file pour l'asseoir face a un fantome.
+   *
+   * Pendant de `claimPair` pour un seul siege : le second n'est pas un joueur,
+   * il n'y a donc rien a reclamer en face. Le booleen n'est pas decoratif — un
+   * `remove` muet laisserait deux tours qui se chevauchent ouvrir deux matchs
+   * a la meme personne, et le second la trouverait deja assise.
+   *
+   * Une recherche annulee n'est jamais reclamee : `tick` la retire deja, mais
+   * l'annulation peut tomber **entre** le tour et cet appel — et un
+   * `match:found` sur une recherche annulee, c'est une defaite classee que le
+   * joueur n'a pas acceptee (voir `cancel`).
+   */
+  async claimForGhost(playerId: string): Promise<boolean> {
+    if (this.cancelled.has(playerId)) return false;
+    return this.serialize(playerId, () => this.tickets.claim(playerId));
   }
 
   /**

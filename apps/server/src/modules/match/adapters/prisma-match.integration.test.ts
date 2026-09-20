@@ -254,6 +254,7 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
         rulesVersion: '1.0.0',
         contentVersion: '1.0.0',
         seats: { a: playerA, b: null },
+        ghost: null,
         winner: 'a',
         reason: 'rounds',
         startedAtMs: Date.now() - 60_000,

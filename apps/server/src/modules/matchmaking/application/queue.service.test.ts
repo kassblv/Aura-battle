@@ -208,7 +208,7 @@ describe('tour d appariement', () => {
     await queue.join('p1', 'ranked', 0);
     await queue.join('p2', 'ranked', 0);
 
-    const pairs = await queue.tick(500, TOUS_DISPONIBLES);
+    const { pairs } = await queue.tick(500, TOUS_DISPONIBLES);
 
     expect(pairs).toHaveLength(1);
     expect([pairs[0]!.a.playerId, pairs[0]!.b.playerId].sort()).toEqual(['p1', 'p2']);
@@ -220,7 +220,7 @@ describe('tour d appariement', () => {
     await queue.join('p1', 'ranked', 0);
     await queue.join('p2', 'ranked', 0);
 
-    expect(await queue.tick(500, TOUS_DISPONIBLES)).toHaveLength(0);
+    expect((await queue.tick(500, TOUS_DISPONIBLES)).pairs).toHaveLength(0);
     expect(await store.listWaiting()).toHaveLength(2);
   });
 
@@ -230,15 +230,15 @@ describe('tour d appariement', () => {
     await queue.join('p1', 'ranked', 0);
     await queue.join('p2', 'ranked', 0);
 
-    expect(await queue.tick(10_000, TOUS_DISPONIBLES)).toHaveLength(0);
-    expect(await queue.tick(14_000, TOUS_DISPONIBLES)).toHaveLength(1);
+    expect((await queue.tick(10_000, TOUS_DISPONIBLES)).pairs).toHaveLength(0);
+    expect((await queue.tick(14_000, TOUS_DISPONIBLES)).pairs).toHaveLength(1);
   });
 
   it('ne marie pas un joueur classe avec un joueur en partie rapide', async () => {
     await queue.join('p1', 'ranked', 0);
     await queue.join('p2', 'casual', 0);
 
-    expect(await queue.tick(500, TOUS_DISPONIBLES)).toHaveLength(0);
+    expect((await queue.tick(500, TOUS_DISPONIBLES)).pairs).toHaveLength(0);
   });
 
   it('annonce l attente reelle a ceux qui attendent encore', async () => {
@@ -291,7 +291,7 @@ describe('tour d appariement', () => {
       await queue.join('parti', 'ranked', 0);
       await queue.join('present', 'ranked', 0);
 
-      const pairs = await queue.tick(500, absents('parti'));
+      const { pairs } = await queue.tick(500, absents('parti'));
 
       expect(pairs).toHaveLength(0);
       expect(await queue.isQueued('parti')).toBe(false);
@@ -360,7 +360,7 @@ describe('tour d appariement', () => {
       await queue.join('p2', 'ranked', 1_001);
       await queue.join('p3', 'ranked', 1_002);
 
-      const pairs = await queue.tick(1_500, TOUS_DISPONIBLES);
+      const { pairs } = await queue.tick(1_500, TOUS_DISPONIBLES);
       expect(pairs).toHaveLength(1);
       expect([pairs[0]!.a.playerId, pairs[0]!.b.playerId]).not.toEqual(
         expect.arrayContaining(['p2']),
@@ -386,7 +386,7 @@ describe('tour d appariement', () => {
       return honest(first, second);
     };
 
-    const pairs = await queue.tick(500, TOUS_DISPONIBLES);
+    const { pairs } = await queue.tick(500, TOUS_DISPONIBLES);
 
     expect(pairs).toHaveLength(0);
     expect(await queue.isQueued('p1')).toBe(true);
@@ -488,7 +488,7 @@ describe('retour en file apres un match non ouvert', () => {
 
     const cancelling = queue.cancel('hesitant', 1_500);
 
-    expect(await queue.tick(2_000, TOUS_DISPONIBLES)).toHaveLength(0);
+    expect((await queue.tick(2_000, TOUS_DISPONIBLES)).pairs).toHaveLength(0);
 
     release();
     await cancelling;
@@ -633,7 +633,7 @@ describe('deconnexion pendant l attente', () => {
 
     await queue.park('parti', 1_000);
 
-    expect(await queue.tick(1_500, TOUS_DISPONIBLES)).toHaveLength(0);
+    expect((await queue.tick(1_500, TOUS_DISPONIBLES)).pairs).toHaveLength(0);
     expect(await queue.isQueued('parti')).toBe(false);
   });
 

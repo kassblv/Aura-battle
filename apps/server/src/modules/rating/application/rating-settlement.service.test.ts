@@ -78,6 +78,7 @@ const settle = (
   overrides: Partial<{
     mode: 'RANKED' | 'CASUAL' | 'INVITE' | 'SOLO';
     result: { winner: Seat | null; reason: string };
+    ghost: { seat: Seat; mmr: number; sourcePlayerId: string } | null;
   }> = {},
 ) =>
   service.settle({
@@ -85,6 +86,7 @@ const settle = (
     seats: SEATS,
     result: overrides.result ?? { winner: 'a', reason: 'rounds' },
     atMs: NOW,
+    ghost: overrides.ghost ?? null,
   });
 
 describe('RatingSettlementService — match classe', () => {
@@ -225,5 +227,77 @@ describe('RatingSettlementService — degradation (docs/05 : une base lente ne d
         atMs: NOW,
       }),
     ).resolves.toBeDefined();
+  });
+});
+
+/**
+ * Match contre un fantome (docs/05 § « Fantomes »).
+ *
+ * Deux promesses, et les deux sont tenues ici plutot que dans le module match :
+ * le fantome n'ecrit rien — il n'etait pas la — et son adversaire ne gagne que
+ * la moitie des LP habituels.
+ */
+describe('RatingSettlementService — contre un fantome', () => {
+  const GHOST = { seat: 'b' as Seat, mmr: 1_000, sourcePlayerId: 'p_source' };
+
+  it('n ecrit le classement que du joueur present', async () => {
+    await settle({ ghost: GHOST });
+
+    expect(writer.saved).toHaveLength(1);
+    expect(writer.saved[0]?.entries.map((entry) => entry.playerId)).toEqual(['p1']);
+  });
+
+  it('ne demande meme pas le classement du siege fantome', async () => {
+    await settle({ ghost: GHOST });
+    expect(lookup.calls[0]).toEqual(['p1']);
+  });
+
+  it('laisse le classement du fantome inchange, avant comme apres', async () => {
+    const outcome = await settle({ ghost: GHOST });
+    expect(outcome.b.after).toEqual(outcome.b.before);
+  });
+
+  it('ne rafraichit pas la ligue en session d un joueur qui n est pas la', async () => {
+    await settle({ ghost: GHOST });
+    expect([...presence.leagues.keys()]).toEqual(['p1']);
+  });
+
+  /** « Un match contre un fantome rapporte 50 % des LP habituels. » */
+  it('rapporte la moitie des LP d un match entre humains', async () => {
+    const humain = await settle();
+    const fantome = await settle({ ghost: GHOST });
+
+    const gainHumain = humain.a.after.leaguePoints - humain.a.before.leaguePoints;
+    const gainFantome = fantome.a.after.leaguePoints - fantome.a.before.leaguePoints;
+
+    expect(gainHumain).toBeGreaterThan(0);
+    expect(gainFantome).toBeGreaterThan(0);
+    expect(gainFantome).toBe(Math.round(gainHumain / 2));
+  });
+
+  it('fait quand meme perdre des LP a qui perd contre un fantome', async () => {
+    lookup.set('p1', { ...STARTING_RATING, leaguePoints: 300 });
+    const outcome = await settle({ ghost: GHOST, result: { winner: 'b', reason: 'rounds' } });
+    expect(outcome.a.after.leaguePoints).toBeLessThan(outcome.a.before.leaguePoints);
+  });
+
+  it('ne recompense pas un siege que personne n occupe', async () => {
+    const outcome = await settle({ ghost: GHOST });
+    expect(outcome.b.rewards).toEqual({ softCurrency: 0, xp: 0 });
+    expect(outcome.a.rewards.softCurrency).toBeGreaterThan(0);
+  });
+
+  it('n ecrit rien du tout quand le match n est pas classe', async () => {
+    await settle({ ghost: GHOST, mode: 'CASUAL' });
+    expect(writer.saved).toHaveLength(0);
+  });
+
+  it('montre la ligue impliquee par le MMR de l enregistrement', async () => {
+    // 1 000 de MMR implique 0 LP (meme echelle, decalee), donc « Sans aura ».
+    const bas = await settle({ ghost: { ...GHOST, mmr: 1_000 } });
+    expect(bas.b.before.league).toBe('sans_aura');
+
+    const haut = await settle({ ghost: { ...GHOST, mmr: 2_500 } });
+    expect(haut.b.before.league).toBe('rayonnante');
   });
 });

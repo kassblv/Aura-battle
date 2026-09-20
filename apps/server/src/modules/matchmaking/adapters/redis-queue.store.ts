@@ -77,6 +77,16 @@ const storedTicketSchema = z.strictObject({
  * ensuite, evite le cas ou le premier `ZREM` reussit et le second echoue — le
  * premier joueur aurait alors quitte la file sans obtenir de match.
  */
+const CLAIM_ONE_SCRIPT = `
+local score = redis.call('ZSCORE', KEYS[1], ARGV[1])
+if score then
+  redis.call('ZREM', KEYS[1], ARGV[1])
+  redis.call('DEL', KEYS[2])
+  return 1
+end
+return 0
+`;
+
 const CLAIM_PAIR_SCRIPT = `
 local first = redis.call('ZSCORE', KEYS[1], ARGV[1])
 local second = redis.call('ZSCORE', KEYS[1], ARGV[2])
@@ -158,6 +168,21 @@ export class RedisQueueStore implements QueueTicketStore, RecentOpponentStore {
     const claimed = await this.client.eval(CLAIM_PAIR_SCRIPT, {
       keys: [QUEUE_KEY, ticketKey(firstPlayerId), ticketKey(secondPlayerId)],
       arguments: [firstPlayerId, secondPlayerId],
+    });
+    return claimed === 1;
+  }
+
+  /**
+   * Reclame un ticket seul, atomiquement.
+   *
+   * Le meme besoin que `claimPair` avec un seul siege : la bascule vers un
+   * fantome retire ce joueur de la file avant d'ouvrir son match, et deux
+   * instances branchees sur le meme Redis ne doivent pas lui en ouvrir deux.
+   */
+  async claim(playerId: string): Promise<boolean> {
+    const claimed = await this.client.eval(CLAIM_ONE_SCRIPT, {
+      keys: [QUEUE_KEY, ticketKey(playerId)],
+      arguments: [playerId],
     });
     return claimed === 1;
   }

@@ -5,13 +5,20 @@ import { RedisModule } from '../../shared/redis.module.js';
 import { RedisService } from '../../shared/redis.js';
 import { PrismaService } from '../../shared/prisma.service.js';
 import { AuthModule } from '../auth/auth.module.js';
+import { GhostNotifier } from '../matchmaking/adapters/ghost-notifier.js';
+import { PrismaGhostStore } from '../matchmaking/adapters/prisma-ghost.store.js';
 import { PrismaRatingReader } from '../matchmaking/adapters/prisma-rating.reader.js';
 import { RedisQueueStore } from '../matchmaking/adapters/redis-queue.store.js';
+import { GhostDirector } from '../matchmaking/application/ghost-director.js';
+import { GhostFallbackService } from '../matchmaking/application/ghost-fallback.service.js';
+import { GhostRecorderService } from '../matchmaking/application/ghost-recorder.service.js';
 import { QueueWorker } from '../matchmaking/application/queue-worker.js';
 import { MatchmakingQueue } from '../matchmaking/application/queue.service.js';
 import {
+  GHOST_RECORDING_STORE,
   QUEUE_TICKET_STORE,
   RECENT_OPPONENT_STORE,
+  type GhostRecordingStore,
   type QueueTicketStore,
   type RecentOpponentStore,
 } from '../matchmaking/domain/ports.js';
@@ -98,25 +105,82 @@ import { MatchRuntime } from './application/match-runtime.js';
       ) => new RatingSettlementService(lookup, writer, presenceCache, logger),
     },
 
+    /**
+     * Fantomes (docs/05). L'ordre de construction n'a rien d'arbitraire et
+     * c'est lui qui **evite un cycle** : le chef d'orchestre du rejeu ne
+     * connait pas le runtime, ce sont ses appelants qui lui apportent de quoi
+     * agir. Le directeur ne depend donc que d'une horloge et d'un ordonnanceur,
+     * le notifier depend du directeur, le runtime du notifier, et la bascule —
+     * construite en dernier — des trois.
+     */
+    {
+      provide: PrismaGhostStore,
+      inject: [PrismaService],
+      useFactory: (prisma: PrismaService) => new PrismaGhostStore(prisma),
+    },
+    {
+      provide: GHOST_RECORDING_STORE,
+      inject: [PrismaGhostStore],
+      useFactory: (store: PrismaGhostStore) => store,
+    },
+    {
+      provide: GhostDirector,
+      inject: [TimeoutScheduler, SystemMatchClock, PinoLoggerService],
+      useFactory: (
+        scheduler: TimeoutScheduler,
+        clock: SystemMatchClock,
+        logger: PinoLoggerService,
+      ) => new GhostDirector(scheduler, clock, BALANCE, logger),
+    },
+    {
+      provide: GhostNotifier,
+      inject: [SocketNotifier, GhostDirector, PinoLoggerService],
+      useFactory: (notifier: SocketNotifier, director: GhostDirector, logger: PinoLoggerService) =>
+        new GhostNotifier(notifier, director, logger),
+    },
+    {
+      provide: GhostRecorderService,
+      inject: [GHOST_RECORDING_STORE, PrismaRatingReader, PinoLoggerService],
+      useFactory: (
+        store: GhostRecordingStore,
+        ratings: PrismaRatingReader,
+        logger: PinoLoggerService,
+      ) => new GhostRecorderService(store, ratings, logger),
+    },
+
     {
       provide: MatchRuntime,
       inject: [
-        SocketNotifier,
+        GhostNotifier,
         TimeoutScheduler,
         SystemMatchClock,
         PrismaMatchRepository,
         RatingSettlementService,
         PinoLoggerService,
+        GhostRecorderService,
       ],
       useFactory: (
-        notifier: SocketNotifier,
+        // Le runtime parle a des **sieges**, pas a des sockets : ce notifier-la
+        // aiguille vers le rejeu ce qui part vers un siege fantome, et vers la
+        // socket tout le reste.
+        notifier: GhostNotifier,
         scheduler: TimeoutScheduler,
         clock: SystemMatchClock,
         repository: PrismaMatchRepository,
         ratingSettlement: RatingSettlementService,
         logger: PinoLoggerService,
+        ghostRecorder: GhostRecorderService,
       ) =>
-        new MatchRuntime(notifier, scheduler, clock, BALANCE, repository, ratingSettlement, logger),
+        new MatchRuntime(
+          notifier,
+          scheduler,
+          clock,
+          BALANCE,
+          repository,
+          ratingSettlement,
+          logger,
+          ghostRecorder,
+        ),
     },
     PrismaPlayerDirectory,
     // Jeton nomme : la passerelle depend du **port**, pas de Prisma. Le nom
@@ -193,6 +257,28 @@ import { MatchRuntime } from './application/match-runtime.js';
     },
 
     {
+      provide: GhostFallbackService,
+      inject: [
+        MatchmakingQueue,
+        GHOST_RECORDING_STORE,
+        MatchOpener,
+        GhostDirector,
+        MatchRuntime,
+        PinoLoggerService,
+      ],
+      useFactory: (
+        queue: MatchmakingQueue,
+        store: GhostRecordingStore,
+        opener: MatchOpener,
+        director: GhostDirector,
+        // Le fantome agit par les memes methodes qu'un client : c'est le
+        // runtime lui-meme qui les realise, sans aucune porte derobee.
+        runtime: MatchRuntime,
+        logger: PinoLoggerService,
+      ) => new GhostFallbackService(queue, store, opener, director, runtime, logger),
+    },
+
+    {
       provide: QueueWorker,
       inject: [
         MatchmakingQueue,
@@ -201,6 +287,7 @@ import { MatchRuntime } from './application/match-runtime.js';
         SocketNotifier,
         MatchRuntime,
         PinoLoggerService,
+        GhostFallbackService,
       ],
       useFactory: (
         queue: MatchmakingQueue,
@@ -209,6 +296,7 @@ import { MatchRuntime } from './application/match-runtime.js';
         notifier: SocketNotifier,
         runtime: MatchRuntime,
         logger: PinoLoggerService,
+        ghosts: GhostFallbackService,
       ) =>
         new QueueWorker(
           queue,
@@ -223,6 +311,8 @@ import { MatchRuntime } from './application/match-runtime.js';
             isBusy: (playerId: string) => runtime.isBusy(playerId),
           },
           logger,
+          undefined,
+          ghosts,
         ),
     },
 

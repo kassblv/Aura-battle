@@ -39,6 +39,13 @@ class FakeRuntime implements MatchStarter {
     matchId: string;
     seats: MatchSeats;
     mode: string | undefined;
+    ghost: {
+      seat: 'a' | 'b';
+      mmr: number;
+      sourcePlayerId: string;
+      displayName: string;
+      league: string;
+    } | null;
     /** Messages deja partis au moment de l'ouverture : l'ordre compte. */
     sentBefore: number;
   }[] = [];
@@ -57,12 +64,20 @@ class FakeRuntime implements MatchStarter {
     seed: string;
     seats: MatchSeats;
     mode?: 'RANKED' | 'CASUAL' | 'INVITE';
+    ghost?: {
+      seat: 'a' | 'b';
+      mmr: number;
+      sourcePlayerId: string;
+      displayName: string;
+      league: string;
+    } | null;
   }): boolean {
     if (this.refuse) return false;
     this.opened.push({
       matchId: input.matchId,
       seats: input.seats,
       mode: input.mode,
+      ghost: input.ghost ?? null,
       sentBefore: this.notifier.sent.length,
     });
     return true;
@@ -290,5 +305,81 @@ describe('MatchOpener', () => {
 
     expect(open()).toBeNull();
     expect(warnings).toHaveLength(1);
+  });
+});
+
+/**
+ * Ouverture d'un match contre un fantome (docs/05 § « Fantomes »).
+ *
+ * « Sans faire croire a un faux humain en ligne. » Cette promesse se tient
+ * ici, dans le premier message du match, et nulle part ailleurs : c'est
+ * l'ouverture qui envoie `match:found`, donc elle seule peut dire la verite.
+ */
+describe('MatchOpener — face a un fantome', () => {
+  const GHOST = {
+    seat: 'b' as const,
+    sourcePlayerId: 'p_source',
+    mmr: 1_400,
+    recordingId: 'rec_1',
+    displayName: 'Aura en differe',
+    league: 'stable',
+  };
+
+  const openGhost = (): string | null =>
+    opener.open({ playerA: 'p1', playerB: 'ghost:rec_1:n', mode: 'RANKED', ghost: GHOST });
+
+  it('dit au joueur que son adversaire est un rejeu', () => {
+    openGhost();
+    expect(notifier.foundBy('p1')?.ghost).toBe(true);
+  });
+
+  it('n annonce rien au siege du fantome', () => {
+    openGhost();
+    expect(notifier.sent.filter((m) => m.playerId === 'ghost:rec_1:n')).toHaveLength(0);
+  });
+
+  it('montre le nom et la ligue fournis, pas ceux d une session inexistante', () => {
+    openGhost();
+    expect(notifier.foundBy('p1')?.opponent.displayName).toBe('Aura en differe');
+    expect(notifier.foundBy('p1')?.opponent.league).toBe('stable');
+  });
+
+  /**
+   * Le defaut que ce test ferme : `isConnected` repond « non » pour un siege
+   * sans session. Armer le compte a rebours d'abandon donnerait au joueur une
+   * victoire par forfait au milieu de la deuxieme manche.
+   */
+  it('n arme aucun compte a rebours d abandon pour le fantome', () => {
+    openGhost();
+    expect(runtime.abandonArmed).not.toContain('ghost:rec_1:n');
+  });
+
+  it('arme toujours celui du joueur parti avant l ouverture', () => {
+    presence.absent.add('p1');
+    openGhost();
+    expect(runtime.abandonArmed).toEqual(['p1']);
+  });
+
+  it('ne cherche pas a sortir un fantome de la file', () => {
+    openGhost();
+    expect(queue.evicted).toEqual(['p1']);
+  });
+
+  it('transmet le siege fantome au runtime', () => {
+    openGhost();
+    expect(runtime.opened[0]?.ghost).toEqual({
+      seat: 'b',
+      mmr: 1_400,
+      sourcePlayerId: 'p_source',
+      displayName: 'Aura en differe',
+      league: 'stable',
+    });
+  });
+
+  it('laisse un match entre humains sans siege fantome', () => {
+    open();
+    expect(runtime.opened[0]?.ghost).toBeNull();
+    expect(notifier.foundBy('p1')?.ghost).toBe(false);
+    expect(notifier.foundBy('p2')?.ghost).toBe(false);
   });
 });

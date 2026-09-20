@@ -2,6 +2,7 @@ import { BALANCE, type Choice, type Seat } from '@aura/rules';
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type {
+  GhostRecorder,
   MatchClock,
   MatchNotifier,
   MatchRatingSettlement,
@@ -1003,5 +1004,190 @@ describe('classement de fin de match (docs/05, jalon M5)', () => {
 
     expect(notifier.to(SEATS.a, 'match:end')).toHaveLength(1);
     expect(notifier.to(SEATS.b, 'match:end')).toHaveLength(1);
+  });
+});
+
+/**
+ * Fantomes : enregistrement et siege (docs/05 § « Fantomes »).
+ *
+ * Deux moities distinctes. L'**enregistrement** ne doit se faire que pour un
+ * match classe entre deux personnes — sans quoi un rejeu servirait de modele au
+ * suivant, et le niveau de la file deriverait de copie en copie. Le **siege**
+ * d'un fantome, lui, ne doit jamais etre ecrit comme un joueur : `Player` ne le
+ * connait pas.
+ */
+describe('fantomes — enregistrement et siege', () => {
+  class RecordingRepository {
+    readonly saved: MatchRecord[] = [];
+    save(record: MatchRecord): Promise<void> {
+      this.saved.push(record);
+      return Promise.resolve();
+    }
+  }
+
+  class RecordingGhostRecorder {
+    readonly calls: Parameters<GhostRecorder['record']>[0][] = [];
+    record(input: Parameters<GhostRecorder['record']>[0]): Promise<void> {
+      this.calls.push(input);
+      return Promise.resolve();
+    }
+  }
+
+  let repository: RecordingRepository;
+  let recorder: RecordingGhostRecorder;
+
+  /** Un siege fantome tel que l'ouverture le transmet, presentation comprise. */
+  const GHOST_SEAT = {
+    seat: 'b' as Seat,
+    mmr: 1_000,
+    sourcePlayerId: 'p_source',
+    displayName: 'Aura en differe',
+    league: 'sans_aura',
+  };
+
+  const build = (options: {
+    mode?: MatchRecord['mode'];
+    ghost?: {
+      seat: Seat;
+      mmr: number;
+      sourcePlayerId: string;
+      displayName: string;
+      league: string;
+    } | null;
+  }): void => {
+    repository = new RecordingRepository();
+    recorder = new RecordingGhostRecorder();
+    runtime = new MatchRuntime(
+      notifier,
+      scheduler,
+      clock,
+      BALANCE,
+      repository,
+      null,
+      null,
+      recorder,
+    );
+    runtime.createMatch({
+      matchId: MATCH_ID,
+      seed: 'graine',
+      seats: SEATS,
+      mode: options.mode ?? 'RANKED',
+      ghost: options.ghost ?? null,
+    });
+  };
+
+  const playRound = (winner: Seat): void => {
+    advanceTo('recharge');
+    runtime.submitTaps(MATCH_ID, winner, [{ atMs: 10, orbIndex: 0 }]);
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, winner, choice(3), null);
+    runtime.lockChoice(MATCH_ID, winner === 'a' ? 'b' : 'a', choice(0), null);
+    scheduler.fire(MATCH_ID);
+  };
+
+  it('enregistre les deux joueurs a la fin d un match classe', () => {
+    build({ mode: 'RANKED' });
+    playRound('a');
+    playRound('a');
+
+    expect(recorder.calls).toHaveLength(1);
+    const enregistre = recorder.calls[0]!;
+    expect(enregistre.seats).toEqual(SEATS);
+    expect(enregistre.rounds.a).toHaveLength(2);
+    expect(enregistre.rounds.b).toHaveLength(2);
+  });
+
+  it('conserve le choix, le timing et le profil de recharge de chaque manche', () => {
+    build({ mode: 'RANKED' });
+    playRound('a');
+    playRound('a');
+
+    const manche = recorder.calls[0]!.rounds.a[0]!;
+    expect(manche.move).toEqual({ style: 'calme', tier: 3 });
+    expect(manche.amplifier).toBe(0);
+    expect(manche.useUltimate).toBe(false);
+    // Personne n'a tape la jauge : le moteur rend « rate », ecart maximal.
+    expect(manche.timing.quality).toBe('miss');
+    expect(manche.timing.delta).toBe(1);
+    expect(manche.rechargeTaps).toBe(1);
+    expect(manche.rechargePoints).toBeGreaterThanOrEqual(0);
+  });
+
+  it('n enregistre rien hors classe', () => {
+    build({ mode: 'INVITE' });
+    playRound('a');
+    playRound('a');
+    expect(recorder.calls).toHaveLength(0);
+  });
+
+  /** Un rejeu ne doit jamais servir de modele : le niveau deriverait de copie en copie. */
+  it('n enregistre pas un match qui comptait deja un fantome', () => {
+    build({ mode: 'RANKED', ghost: GHOST_SEAT });
+    playRound('a');
+    playRound('a');
+    expect(recorder.calls).toHaveLength(0);
+  });
+
+  it('n enregistre rien quand aucune manche n a ete jouee', () => {
+    build({ mode: 'RANKED' });
+    runtime.forfeit(MATCH_ID, 'b');
+    expect(recorder.calls).toHaveLength(0);
+  });
+
+  it('ecrit le siege du fantome sans joueur, et sa provenance', () => {
+    build({ mode: 'RANKED', ghost: { ...GHOST_SEAT, mmr: 1_200 } });
+    playRound('a');
+    playRound('a');
+
+    expect(repository.saved).toHaveLength(1);
+    expect(repository.saved[0]?.seats).toEqual({ a: SEATS.a, b: null });
+    expect(repository.saved[0]?.ghost).toEqual({
+      seat: 'b',
+      mmr: 1_200,
+      sourcePlayerId: 'p_source',
+    });
+  });
+
+  it('ecrit les deux joueurs quand personne n est un fantome', () => {
+    build({ mode: 'RANKED' });
+    playRound('a');
+    playRound('a');
+    expect(repository.saved[0]?.seats).toEqual(SEATS);
+    expect(repository.saved[0]?.ghost).toBeNull();
+  });
+
+  it('dit au classement quel siege n etait pas la', async () => {
+    const settlements: unknown[] = [];
+    const settlement: MatchRatingSettlement = {
+      settle: (input) => {
+        settlements.push(input.ghost);
+        return Promise.resolve({
+          a: {
+            before: { leaguePoints: 0, league: 'sans_aura' },
+            after: { leaguePoints: 0, league: 'sans_aura' },
+            rewards: { softCurrency: 0, xp: 0 },
+          },
+          b: {
+            before: { leaguePoints: 0, league: 'sans_aura' },
+            after: { leaguePoints: 0, league: 'sans_aura' },
+            rewards: { softCurrency: 0, xp: 0 },
+          },
+        } as Readonly<Record<Seat, SeatRatingOutcome>>);
+      },
+    };
+
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, null, settlement);
+    runtime.createMatch({
+      matchId: MATCH_ID,
+      seed: 'graine',
+      seats: SEATS,
+      mode: 'RANKED',
+      ghost: { ...GHOST_SEAT, mmr: 1_100 },
+    });
+    playRound('a');
+    playRound('a');
+    await flush();
+
+    expect(settlements[0]).toEqual({ seat: 'b', mmr: 1_100, sourcePlayerId: 'p_source' });
   });
 });

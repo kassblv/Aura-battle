@@ -133,6 +133,7 @@ function aRecord(overrides: Partial<MatchRecord> = {}): MatchRecord {
     rulesVersion: '1.2.3',
     contentVersion: '4.5.6',
     seats: { a: 'p_alice', b: 'p_bob' },
+    ghost: null,
     winner: 'a',
     reason: 'rounds',
     startedAtMs: STARTED_AT,
@@ -215,6 +216,7 @@ describe('PrismaMatchRepository', () => {
     expect(prisma.callsTo('match.create')[0]?.args.data).toEqual({
       id: 'm_1',
       mode: 'RANKED',
+      isGhost: false,
       rulesVersion: '1.2.3',
       contentVersion: '4.5.6',
       seed: 'graine',
@@ -294,8 +296,8 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord());
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice' },
-      { matchId: 'm_1', seat: 'B', playerId: 'p_bob' },
+      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null },
+      { matchId: 'm_1', seat: 'B', playerId: 'p_bob', ghostOfId: null },
     ]);
   });
 
@@ -318,8 +320,8 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord({ seats: { a: 'p_alice', b: null } }));
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice' },
-      { matchId: 'm_1', seat: 'B', playerId: null },
+      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null },
+      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null },
     ]);
   });
 
@@ -360,8 +362,8 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord());
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice' },
-      { matchId: 'm_1', seat: 'B', playerId: null },
+      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null },
+      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null },
     ]);
     expect(prisma.callsTo('matchRound.createMany')[0]?.args.data).toHaveLength(2);
   });
@@ -421,8 +423,8 @@ describe('PrismaMatchRepository', () => {
 
     expect(prisma.callsTo('$queryRaw')).toHaveLength(0);
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: null },
-      { matchId: 'm_1', seat: 'B', playerId: null },
+      { matchId: 'm_1', seat: 'A', playerId: null, ghostOfId: null },
+      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null },
     ]);
   });
 

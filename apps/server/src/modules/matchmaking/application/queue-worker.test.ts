@@ -404,3 +404,116 @@ describe('QueueWorker — cycle de vie', () => {
     worker.stop();
   });
 });
+
+/**
+ * Bascule vers un fantome (docs/05 § « Fantomes »).
+ *
+ * Le worker ne choisit rien — la decision est pure, le service l'applique —
+ * mais deux choses lui reviennent, et elles ne sont pas symetriques :
+ * **l'ordre** (les humains d'abord) et **le retour en file** d'un ticket
+ * reclame pour un match qui ne s'est pas ouvert.
+ */
+describe('QueueWorker — fantomes', () => {
+  class FakeGhosts {
+    readonly seen: string[] = [];
+    result: 'opened' | 'skipped' | 'failed' = 'opened';
+    failure: Error | null = null;
+
+    constructor(private readonly tickets: MemoryQueueStore) {}
+
+    async tryOpen(ticket: { playerId: string }): Promise<'opened' | 'skipped' | 'failed'> {
+      this.seen.push(ticket.playerId);
+      if (this.failure !== null) throw this.failure;
+      // Le vrai service reclame le ticket avant d'ouvrir : `failed` veut donc
+      // dire « sorti de la file, et sans match ». Reproduire la reclamation est
+      // ce qui rend le retour en file observable.
+      if (this.result !== 'skipped') await this.tickets.claim(ticket.playerId);
+      return this.result;
+    }
+  }
+
+  let ghosts: FakeGhosts;
+
+  const withGhosts = (availability: Partial<PlayerAvailability> = {}): QueueWorker =>
+    new QueueWorker(
+      queue,
+      opener,
+      { now: () => now },
+      { isConnected: () => true, isBusy: () => false, ...availability },
+      { warn: (message) => warnings.push(message) },
+      undefined,
+      ghosts as unknown as ConstructorParameters<typeof QueueWorker>[6],
+    );
+
+  beforeEach(() => {
+    ghosts = new FakeGhosts(store);
+  });
+
+  it('propose un fantome a qui reste en file', async () => {
+    await queue.join('p_seul', 'ranked', 0);
+
+    expect(await withGhosts().runOnce(now)).toBe(1);
+    expect(ghosts.seen).toEqual(['p_seul']);
+  });
+
+  /** Un adversaire present vaut toujours mieux qu'un enregistrement. */
+  it('ne propose pas de fantome a qui vient d etre apparie', async () => {
+    await queue.join('p1', 'ranked', 0);
+    await queue.join('p2', 'ranked', 1);
+
+    await withGhosts().runOnce(now);
+
+    expect(opener.opened).toHaveLength(1);
+    expect(ghosts.seen).toHaveLength(0);
+  });
+
+  /**
+   * `failed` veut dire « le ticket a quitte la file et personne ne l'a ». Sans
+   * ce retour, le joueur reste devant un ecran de recherche que plus aucun
+   * tour n'alimente.
+   */
+  it('remet en file un ticket reclame dont le match ne s est pas ouvert', async () => {
+    await queue.join('p_seul', 'ranked', 0);
+    ghosts.result = 'failed';
+
+    await withGhosts().runOnce(now);
+
+    expect(await queue.isQueued('p_seul')).toBe(true);
+  });
+
+  it('gare le ticket d un joueur parti pendant la bascule', async () => {
+    await queue.join('p_seul', 'ranked', 0);
+    ghosts.result = 'failed';
+
+    await withGhosts({ isConnected: () => false }).runOnce(now);
+
+    // Ni en file — on n'apparie pas un absent — ni perdu : il reprend sa place
+    // en revenant.
+    expect(await queue.isQueued('p_seul')).toBe(false);
+    expect(await queue.resume('p_seul', now)).toBe(true);
+  });
+
+  it('ne rend rien a un joueur qui s est assis ailleurs entre-temps', async () => {
+    await queue.join('p_seul', 'ranked', 0);
+    ghosts.result = 'failed';
+
+    await withGhosts({ isBusy: () => true }).runOnce(now);
+
+    expect(await queue.isQueued('p_seul')).toBe(false);
+  });
+
+  it('survit a une bascule qui echoue, sans toucher au ticket', async () => {
+    await queue.join('p_seul', 'ranked', 0);
+    ghosts.failure = new Error('reserve indisponible');
+
+    expect(await withGhosts().runOnce(now)).toBe(0);
+    expect(await queue.isQueued('p_seul')).toBe(true);
+    expect(warnings.join(' ')).toContain('p_seul');
+  });
+
+  it('n appelle rien quand aucune bascule n est cablee', async () => {
+    await queue.join('p_seul', 'ranked', 0);
+    expect(await build().runOnce(now)).toBe(0);
+    expect(ghosts.seen).toHaveLength(0);
+  });
+});

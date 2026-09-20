@@ -65,7 +65,7 @@ CREATED ─────────────────────▶ ROUND
 | `intent:shown` | `{ matchId, round, seat, style }` |
 | `round:result` | voir ci-dessous |
 | `match:end` | `{ matchId, winner: Seat \| null, reason: 'rounds' \| 'tiebreak' \| 'forfeit' \| 'disconnect', rating: { before, after, leagueBefore, leagueAfter }, rewards }` |
-| `match:state` | Instantané complet pour reprise après reconnexion |
+| `match:state` | Instantané complet pour reprise après reconnexion. Porte `ghost: boolean` et rappelle `opponent` : le drapeau d'honnêteté de `match:found` doit survivre à une application tuée en arrière-plan |
 | `emote:received` | `{ seat, emoteId }` |
 | `error` | `{ code, message, retryable }` |
 

@@ -2,6 +2,8 @@ import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import type { QueuePair } from '../domain/pairing.js';
 import type { MatchOpening, PlayerAvailability, QueueClock } from '../domain/ports.js';
+import type { QueueTicket } from '../domain/ticket.js';
+import type { GhostFallbackService } from './ghost-fallback.service.js';
 import { QUEUE_TICK_MS, type MatchmakingQueue } from './queue.service.js';
 
 /**
@@ -38,6 +40,12 @@ export class QueueWorker {
     private readonly availability: PlayerAvailability,
     private readonly log: AppLog | null = null,
     private readonly tickMs: number = QUEUE_TICK_MS,
+    /**
+     * Bascule vers un fantome (docs/05). Absente, la file se contente des
+     * humains — c'est ce qu'elle faisait avant ce jalon, et un serveur sans
+     * reserve d'enregistrements marche exactement pareil.
+     */
+    private readonly ghosts: GhostFallbackService | null = null,
   ) {}
 
   onModuleInit(): void {
@@ -75,7 +83,7 @@ export class QueueWorker {
     this.running = true;
 
     try {
-      const pairs = await this.queue.tick(nowMs, this.availability);
+      const { pairs, waiting } = await this.queue.tick(nowMs, this.availability);
       let opened = 0;
 
       for (const pair of pairs) {
@@ -105,7 +113,7 @@ export class QueueWorker {
         await this.requeue(pair, nowMs);
       }
 
-      return opened;
+      return opened + (await this.openGhosts(waiting, nowMs));
     } catch (cause) {
       this.log?.warn(`tour d'appariement abandonne : ${describeCause(cause)}`);
       return 0;
@@ -137,20 +145,58 @@ export class QueueWorker {
    */
   private async requeue(pair: QueuePair, nowMs: number): Promise<void> {
     for (const ticket of [pair.a, pair.b]) {
-      if (this.availability.isBusy(ticket.playerId)) continue;
-      try {
-        if (this.availability.isConnected(ticket.playerId)) {
-          await this.queue.requeue(ticket, nowMs);
-        } else {
-          await this.queue.parkClaimed(ticket, nowMs);
-        }
-      } catch (cause) {
-        // Au mieux : un retour en file rate laisse un joueur devant un ecran
-        // de recherche muet, mais ne doit pas emporter le tour suivant.
-        this.log?.warn(
-          `retour en file impossible pour ${ticket.playerId} : ${describeCause(cause)}`,
-        );
-      }
+      await this.restore(ticket, nowMs);
     }
+  }
+
+  /** Rend son ticket a un joueur, selon lequel des trois cas le concerne. */
+  private async restore(ticket: QueueTicket, nowMs: number): Promise<void> {
+    if (this.availability.isBusy(ticket.playerId)) return;
+    try {
+      if (this.availability.isConnected(ticket.playerId)) {
+        await this.queue.requeue(ticket, nowMs);
+      } else {
+        await this.queue.parkClaimed(ticket, nowMs);
+      }
+    } catch (cause) {
+      // Au mieux : un retour en file rate laisse un joueur devant un ecran
+      // de recherche muet, mais ne doit pas emporter le tour suivant.
+      this.log?.warn(`retour en file impossible pour ${ticket.playerId} : ${describeCause(cause)}`);
+    }
+  }
+
+  /**
+   * Offre un fantome a ceux qui attendent depuis trop longtemps (docs/05).
+   *
+   * **Apres l'appariement humain, jamais avant** : un adversaire present vaut
+   * toujours mieux qu'un enregistrement, et basculer d'abord priverait deux
+   * joueurs d'un vrai duel au profit de deux rejeux.
+   *
+   * L'echec d'une bascule ne touche que son propre ticket. C'est aussi
+   * pourquoi le retour en file passe par `restore` et pas par une seconde
+   * politique : les trois sorts — assis ailleurs, parti, la et libre — sont les
+   * memes que pour une paire dont le match ne s'est pas ouvert.
+   */
+  private async openGhosts(waiting: readonly QueueTicket[], nowMs: number): Promise<number> {
+    if (this.ghosts === null) return 0;
+
+    let opened = 0;
+    for (const ticket of waiting) {
+      let result;
+      try {
+        result = await this.ghosts.tryOpen(ticket, nowMs);
+      } catch (cause) {
+        // Le ticket est reste en file : `tryOpen` ne le reclame qu'une fois
+        // tout ce qui peut echouer derriere lui deja fait.
+        this.log?.warn(
+          `bascule vers un fantome impossible pour ${ticket.playerId} : ${describeCause(cause)}`,
+        );
+        continue;
+      }
+
+      if (result === 'opened') opened += 1;
+      if (result === 'failed') await this.restore(ticket, nowMs);
+    }
+    return opened;
   }
 }

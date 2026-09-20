@@ -137,6 +137,35 @@ const MAX_LP_CORRECTION = 10;
 const MMR_LP_OFFSET = 1_000;
 
 /**
+ * Points de ligue qu'un MMR implique, sur l'echelle ci-dessus.
+ *
+ * C'est la meme conversion que celle de `nextLeaguePoints`, nommee une fois :
+ * elle sert aussi a dire **quelle ligue montrer pour un fantome**, qui n'a pas
+ * de ligne de classement a lui (docs/05 § « Fantomes »). Un enregistrement ne
+ * porte que le MMR de son auteur ; en deduire une ligue par la conversion que
+ * le classement utilise deja vaut mieux que d'afficher « Sans aura » a tous les
+ * fantomes, ou d'inventer une seconde echelle.
+ */
+export function impliedLeaguePoints(mmr: number): number {
+  return Math.max(0, mmr - MMR_LP_OFFSET);
+}
+
+/** Ligue impliquee par un MMR, pour qui n'a pas de LP a montrer (fantome). */
+export function leagueForMmr(mmr: number): League {
+  return leagueFor(impliedLeaguePoints(mmr));
+}
+
+/**
+ * Part des LP habituels qu'un match contre un fantome rapporte (docs/05).
+ *
+ * « Un match contre un fantome rapporte 50 % des LP habituels. » La reduction
+ * s'applique au **delta**, base et correction comprises, et pas au total :
+ * multiplier des LP acquis reviendrait a punir retroactivement tout ce que le
+ * joueur a gagne avant.
+ */
+export const GHOST_LEAGUE_POINTS_MULTIPLIER = 0.5;
+
+/**
  * Prochains points de ligue.
  *
  * Base +-20 (docs/05), corrigee par l'ecart entre le MMR **d'avant ce match**
@@ -149,16 +178,23 @@ const MMR_LP_OFFSET = 1_000;
  * Une seule formule couvre victoire, defaite et nul : `actualScore` vaut 1,
  * 0 ou 0.5, et `(2 * actualScore - 1)` vaut donc +1, -1 ou 0 — le signe du
  * `BASE_LP` a appliquer, la correction s'ajoutant dans tous les cas.
+ *
+ * `multiplier` est la part des LP habituels que ce match rapporte : 1 pour un
+ * duel entre humains, `GHOST_LEAGUE_POINTS_MULTIPLIER` contre un fantome
+ * (docs/05). Il s'applique au delta entier — base et correction — puis on
+ * arrondit : reduire la base sans reduire la correction laisserait la seconde
+ * peser deux fois plus lourd qu'elle ne le doit, et pourrait inverser le signe
+ * d'un resultat.
  */
 export function nextLeaguePoints(
   mmrBefore: number,
   leaguePoints: number,
   outcome: RatingOutcome,
+  multiplier = 1,
 ): number {
-  const impliedLp = Math.max(0, mmrBefore - MMR_LP_OFFSET);
-  const gap = impliedLp - leaguePoints;
+  const gap = impliedLeaguePoints(mmrBefore) - leaguePoints;
   const correction = clamp(gap * LP_CORRECTION_FACTOR, -MAX_LP_CORRECTION, MAX_LP_CORRECTION);
-  const delta = Math.round((2 * actualScore(outcome) - 1) * BASE_LP + correction);
+  const delta = Math.round(((2 * actualScore(outcome) - 1) * BASE_LP + correction) * multiplier);
   return Math.max(0, leaguePoints + delta);
 }
 
@@ -208,15 +244,26 @@ export function outcomeFor(seat: Seat, result: MatchOutcomeInput): MatchOutcome 
  * joueur en difficulte n'aurait aucune raison de finir la manche plutot que
  * de fuir. Seules les recompenses distinguent le forfait d'une defaite jouee
  * (`rewardsFor`), pour ne pas punir deux fois le meme abandon.
+ *
+ * `leaguePointsMultiplier` ne touche **que** les LP. Contre un fantome, docs/05
+ * reduit de moitie ce que le match rapporte — il ne dit rien du MMR, et le MMR
+ * n'a aucune raison de bouger differemment : l'enregistrement porte le MMR reel
+ * d'un joueur reel, et c'est bien contre ce niveau-la qu'on vient de jouer.
  */
 export function nextRating(
   rating: RatingSnapshot,
   opponentMmr: number,
   outcome: MatchOutcome,
+  options: { readonly leaguePointsMultiplier?: number } = {},
 ): RatingSnapshot {
   const ratingOutcome: RatingOutcome = outcome === 'forfeited' ? 'loss' : outcome;
   const mmr = nextMmr(rating.mmr, opponentMmr, ratingOutcome, rating.placements);
-  const leaguePoints = nextLeaguePoints(rating.mmr, rating.leaguePoints, ratingOutcome);
+  const leaguePoints = nextLeaguePoints(
+    rating.mmr,
+    rating.leaguePoints,
+    ratingOutcome,
+    options.leaguePointsMultiplier ?? 1,
+  );
 
   return {
     mmr,

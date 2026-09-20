@@ -2,8 +2,10 @@ import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import type { Seat } from '@aura/rules';
 import {
+  GHOST_LEAGUE_POINTS_MULTIPLIER,
   isMutualForfeit,
   leagueFor,
+  leagueForMmr,
   nextLeaguePoints,
   nextMmr,
   nextRating,
@@ -312,6 +314,78 @@ describe('seatArb — usage garanti dans outcomeFor (garde-fou anti-inutilise)',
         const opponent: Seat = seat === 'a' ? 'b' : 'a';
         expect(outcomeFor(seat, { winner: seat, reason: 'rounds' })).toBe('win');
         expect(outcomeFor(opponent, { winner: seat, reason: 'rounds' })).toBe('loss');
+      }),
+    );
+  });
+});
+
+/**
+ * Reduction des LP contre un fantome (docs/05 § « Fantomes »).
+ *
+ * « Un match contre un fantome rapporte 50 % des LP habituels. » Elle vit dans
+ * ce module et nulle part ailleurs : une seconde formule ailleurs dans le
+ * serveur finirait par diverger de celle-ci.
+ */
+describe('nextLeaguePoints — part des LP gagnes', () => {
+  it('vaut la moitie, comme le document le dit', () => {
+    expect(GHOST_LEAGUE_POINTS_MULTIPLIER).toBe(0.5);
+  });
+
+  it('ne change rien quand la part vaut un', () => {
+    expect(nextLeaguePoints(1_000, 100, 'win', 1)).toBe(nextLeaguePoints(1_000, 100, 'win'));
+  });
+
+  it('coupe le gain en deux', () => {
+    const entier = nextLeaguePoints(1_000, 100, 'win') - 100;
+    const moitie = nextLeaguePoints(1_000, 100, 'win', GHOST_LEAGUE_POINTS_MULTIPLIER) - 100;
+    expect(moitie).toBe(Math.round(entier / 2));
+  });
+
+  /**
+   * La propriete qui compte : reduire ne doit **jamais** inverser le sens du
+   * resultat. Un vainqueur qui perd des LP, ou un perdant qui en gagne, serait
+   * pire qu'un gain reduit.
+   */
+  it('ne retourne jamais le signe du delta', () => {
+    fc.assert(
+      fc.property(
+        fc.integer({ min: 0, max: 3_000 }),
+        fc.integer({ min: 0, max: 8_000 }),
+        (mmr, leaguePoints) => {
+          const gagne = nextLeaguePoints(mmr, leaguePoints, 'win', GHOST_LEAGUE_POINTS_MULTIPLIER);
+          expect(gagne).toBeGreaterThan(leaguePoints);
+
+          const perdu = nextLeaguePoints(mmr, leaguePoints, 'loss', GHOST_LEAGUE_POINTS_MULTIPLIER);
+          // Plancher a zero : on ne descend jamais sous le bas de l'echelle.
+          expect(perdu).toBeLessThanOrEqual(leaguePoints);
+          if (leaguePoints > 0) expect(perdu).toBeLessThan(leaguePoints);
+        },
+      ),
+    );
+  });
+
+  it('se transmet par nextRating sans toucher au MMR', () => {
+    const base: RatingSnapshot = { ...STARTING_RATING, mmr: 1_200, leaguePoints: 300 };
+    const humain = nextRating(base, 1_200, 'win');
+    const fantome = nextRating(base, 1_200, 'win', {
+      leaguePointsMultiplier: GHOST_LEAGUE_POINTS_MULTIPLIER,
+    });
+
+    expect(fantome.mmr).toBe(humain.mmr);
+    expect(fantome.leaguePoints - 300).toBe(Math.round((humain.leaguePoints - 300) / 2));
+  });
+});
+
+describe('leagueForMmr — quelle ligue montrer pour qui n a pas de LP', () => {
+  it('place le MMR de depart au bas de l echelle', () => {
+    expect(leagueForMmr(1_000)).toBe('sans_aura');
+    expect(leagueForMmr(0)).toBe('sans_aura');
+  });
+
+  it('suit la meme echelle que les LP', () => {
+    fc.assert(
+      fc.property(fc.integer({ min: 0, max: 10_000 }), (mmr) => {
+        expect(leagueForMmr(mmr)).toBe(leagueFor(Math.max(0, mmr - 1_000)));
       }),
     );
   });

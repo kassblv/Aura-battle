@@ -98,6 +98,14 @@ export function matchStateFor(
   seat: Seat,
   state: MatchState,
   matchId: string,
+  /**
+   * L'adversaire de ce siege est-il un rejeu (docs/05) ?
+   *
+   * Le drapeau doit survivre a la reprise : sans lui, une application mobile
+   * tuee en arriere-plan reviendrait par `match:rejoin` et finirait la partie
+   * en croyant affronter quelqu'un.
+   */
+  ghostOpponent = false,
 ): ServerMessage<'match:state'> {
   const context = state.roundContext;
   const base: ServerMessage<'match:state'> = {
@@ -112,6 +120,7 @@ export function matchStateFor(
     // Le seul fait public de la phase de choix : l'adversaire a verrouille.
     // Ni son mouvement, ni son timing, ni son cout.
     opponentLocked: state.pending[opponentOf(seat)].locked !== null,
+    ghost: ghostOpponent,
     history: revealedHistory(state),
   };
 

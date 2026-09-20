@@ -86,9 +86,23 @@ Référence : `docs/05-matchmaking-ranking.md`.
   `match:found.league` lit la vraie ligue, mise en cache à la connexion et rafraîchie à chaque
   match classé. **Non fait : la réinitialisation douce de fin de saison, et le MMR caché
   séparé de la partie rapide** (`docs/05` les documente déjà, hors périmètre de ce jalon).
-- [ ] Enregistrement des fantômes et rejeu serveur ; LP réduits ; drapeau `ghost` — **non fait ; le drapeau est toujours `false`, et la bascule vers un fantôme après 25 s / 12 s n'existe pas**
+- [x] Enregistrement des fantômes et rejeu serveur ; LP réduits ; drapeau `ghost`. La
+  bascule est pure et testée (`matchmaking/domain/ghost.ts` : 25 s en classé, 12 s en partie
+  rapide, même fenêtre MMR que l'appariement humain). Un fantôme occupe un siège synthétique
+  (`ghost:<id>:<nonce>`), passe par le **chemin d'ouverture unique**, et joue par les mêmes
+  méthodes qu'un client (`GhostDirector` → `acceptSeq`, `submitTaps`, `lockChoice`) : phase,
+  `seq`, instants déclarés, plafond de cadence et coût en énergie lui sont opposés comme à
+  tout le monde. Les choix impayables sont rabattus par la politique de l'IA solo
+  (`affordableChoice`, `@aura/rules`), le timing est rejoué à partir de l'**écart**
+  enregistré sur la jauge de la manche en cours. Enregistrement à la fin de chaque match
+  `RANKED` humain contre humain, une ligne par joueur (`GhostRecording`, table déjà au
+  schéma). LP réduits de moitié **par le module `rating`**
+  (`GHOST_LEAGUE_POINTS_MULTIPLIER`), et **rien n'est écrit au classement du fantôme**.
+  `match:found.ghost` et `match:state.ghost` portent le drapeau — il survit donc à une
+  reconnexion. **Non fait : le client n'affiche pas encore « Adversaire en différé »**
+  (`apps/mobile`, hors périmètre de cet agent).
 - [ ] Écrans : partie classée ✅ et partie rapide ✅ (choix sur l'accueil, `queue:join` émis avec le mode), profil affichant la ligue ✅ — **historique et classement : non faits**
-- [ ] Tests : appariement par MMR ✅, élargissement ✅, entrée/sortie de file et tickets fantômes ✅ (e2e à deux clients) — **bascule vers fantôme et calcul des LP : non faits**
+- [x] Tests : appariement par MMR ✅, élargissement ✅, entrée/sortie de file et tickets fantômes ✅ (e2e à deux clients), bascule vers fantôme ✅ (`ghost-e2e.test.ts` : un duel humain est enregistré puis rejoué contre un joueur seul), sélection de fantôme en propriétés `fast-check` ✅, LP réduits ✅
 
 ## M6 — Application mobile
 

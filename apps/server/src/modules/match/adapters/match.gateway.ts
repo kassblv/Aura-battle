@@ -502,6 +502,12 @@ export class MatchGateway implements OnGatewayConnection {
    * et l'instantane ne promet rien d'autre que ce qu'il avait le droit de
    * voir. Le champ reste absent si le siege d'en face est introuvable, plutot
    * que d'inventer un nom.
+   *
+   * **Un fantome se rappelle comme tel** (docs/05) : son siege n'a pas de
+   * session, donc le registre ne connait ni son nom ni sa ligue et repondrait
+   * « Adversaire ». Le runtime, lui, a garde ce qui a ete annonce a
+   * l'ouverture — c'est la meme chose qu'on reaffiche, et `snapshot.ghost` dit
+   * deja qu'il s'agit d'un rejeu.
    */
   private withOpponent(
     snapshot: ServerMessage<'match:state'>,
@@ -510,11 +516,15 @@ export class MatchGateway implements OnGatewayConnection {
   ): ServerMessage<'match:state'> {
     const opponentId = this.runtime.opponentIn(matchId, seat);
     if (opponentId === null) return snapshot;
+
+    const ghost = this.runtime.ghostOpponentIn(matchId, seat);
     return {
       ...snapshot,
       opponent: {
-        displayName: this.notifier.displayNameOf(opponentId),
-        league: 'bronze',
+        displayName: ghost?.displayName ?? this.notifier.displayNameOf(opponentId),
+        // La vraie ligue de l'adversaire, comme dans `match:found` : « bronze »
+        // etait ecrit en dur ici, et n'est meme pas une ligue du jeu (docs/05).
+        league: ghost?.league ?? this.notifier.leagueOf(opponentId),
         cosmetics: {},
       },
     };

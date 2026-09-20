@@ -161,6 +161,28 @@ export function describeQueueStoreContract(
       expect(await subject.claimPair(first, second)).toBe(false);
     });
 
+    /**
+     * Reclamation d'un seul ticket : c'est la bascule vers un fantome, ou il
+     * n'y a personne a reclamer en face (docs/05).
+     */
+    it('reclame un ticket seul, une seule fois', async () => {
+      const subject = await store();
+      const playerId = newPlayerId();
+
+      await subject.add(ticketFor(playerId));
+
+      expect(await subject.claim(playerId)).toBe(true);
+      expect(await subject.get(playerId)).toBeNull();
+      // Deux tours qui se chevauchent : le second ne doit rien obtenir, sinon
+      // le meme joueur se voit ouvrir deux matchs.
+      expect(await subject.claim(playerId)).toBe(false);
+    });
+
+    it('ne reclame pas un ticket qui n a jamais existe', async () => {
+      const subject = await store();
+      expect(await subject.claim(newPlayerId())).toBe(false);
+    });
+
     it('retient une rencontre dans les deux sens', async () => {
       const subject = await store();
       const [first, second] = [newPlayerId(), newPlayerId()];
