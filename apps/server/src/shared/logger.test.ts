@@ -58,6 +58,48 @@ describe('createLogger — les secrets ne partent jamais dans les journaux', () 
     expect(sortie).not.toContain('sujet-123456');
   });
 
+  /**
+   * Le journal borne ce qu'une erreur de bibliotheque raconte.
+   *
+   * Une erreur Prisma recopie les arguments refuses dans son `message`, et sa
+   * pile en reprend la premiere ligne. `describeCause` existe pour ca, mais
+   * c'est une CONVENTION : partout ou quelqu'un ecrira `logger.error(cause)`
+   * avec une erreur de bibliotheque, le message et la pile repartiraient
+   * entiers, et aucune relecture ne le verrait passer.
+   *
+   * Le point de passage obligatoire n'est pas `describeCause`, c'est cet
+   * adaptateur. Borner ici ferme la classe entiere plutot que site par site.
+   */
+  it('borne le journal, quelle que soit la taille de l erreur', () => {
+    const journaliser = (repetitions: number): string => {
+      const { lines, stream } = capture();
+      const bavarde = new Error(`echec\n${'secret-argument '.repeat(repetitions)}`);
+      new PinoLoggerService(createLogger(config, stream)).error(bavarde, undefined, 'Test');
+      return lines.join('');
+    };
+
+    const petite = journaliser(200);
+    const enorme = journaliser(20_000);
+
+    // Le debut reste : un journal doit rester diagnosticable.
+    expect(petite).toContain('echec');
+    // L invariant qui compte : la taille du journal ne suit PAS celle de
+    // l erreur. Une erreur cent fois plus longue n ecrit pas cent fois plus.
+    expect(petite.length).toBeLessThan(4_000);
+    expect(enorme.length).toBeLessThan(4_000);
+    expect(Math.abs(enorme.length - petite.length)).toBeLessThan(200);
+  });
+
+  it('garde une erreur courte intacte', () => {
+    const { lines, stream } = capture();
+    new PinoLoggerService(createLogger(config, stream)).error(
+      new Error('connexion refusee'),
+      undefined,
+      'Test',
+    );
+    expect(lines.join('')).toContain('connexion refusee');
+  });
+
   it('masque un en-tete Authorization', () => {
     const { lines, stream } = capture();
     createLogger(config, stream).info(

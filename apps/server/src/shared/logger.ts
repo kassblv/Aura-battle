@@ -76,6 +76,47 @@ export function createLogger(config: ServerConfig, destination?: DestinationStre
  * tient en cinq methodes, et posseder ce point de passage garantit que rien ne
  * contourne la redaction ci-dessus.
  */
+/**
+ * Ce qu'on garde du message d'une erreur, en caracteres.
+ *
+ * Assez pour diagnostiquer, trop peu pour deverser. Une erreur Prisma recopie
+ * les arguments refuses dans son `message` — c'est ainsi qu'une seule erreur
+ * produisait onze mille caracteres de journal, arguments compris.
+ */
+const MAX_ERROR_MESSAGE = 300;
+
+/**
+ * Nombre de lignes de pile conservees.
+ *
+ * La pile sert a savoir OU, pas quoi : huit cadres menent au coupable, et les
+ * suivants sont de la tuyauterie. Sa premiere ligne recopie le message, donc
+ * elle est bornee comme lui.
+ */
+const MAX_STACK_LINES = 8;
+
+/** Coupe une chaine, en disant qu'on l'a coupee. */
+function clamp(text: string, limit: number): string {
+  return text.length <= limit ? text : `${text.slice(0, limit)}… (${String(text.length)} car.)`;
+}
+
+/**
+ * Reduit une pile a ses premiers cadres, message borne compris.
+ *
+ * Le journal doit rester diagnosticable sans devenir un canal : c'est le point
+ * de passage obligatoire de tout ce qui s'ecrit, et le seul endroit ou une
+ * erreur de bibliotheque — Prisma, Redis — ne peut pas contourner la borne en
+ * etant passee telle quelle a `logger.error`.
+ */
+function shortStack(stack: string | undefined): string | undefined {
+  if (stack === undefined) return undefined;
+  const lines = stack.split('\n');
+  const kept = lines.slice(0, MAX_STACK_LINES).map((line) => clamp(line, MAX_ERROR_MESSAGE));
+  if (lines.length > MAX_STACK_LINES) {
+    kept.push(`    … ${String(lines.length - MAX_STACK_LINES)} cadre(s) de plus`);
+  }
+  return kept.join('\n');
+}
+
 export class PinoLoggerService implements LoggerService {
   constructor(private readonly logger: Logger) {}
 
@@ -92,9 +133,10 @@ export class PinoLoggerService implements LoggerService {
       return { text: value, fields: {} };
     }
     if (value instanceof Error) {
+      const message = clamp(value.message, MAX_ERROR_MESSAGE);
       return {
-        text: value.message,
-        fields: { err: { name: value.name, message: value.message, stack: value.stack } },
+        text: message,
+        fields: { err: { name: value.name, message, stack: shortStack(value.stack) } },
       };
     }
     return { text: JSON.stringify(value) ?? String(value), fields: {} };
