@@ -4,9 +4,9 @@ Document jetable, écrit pour qu'une nouvelle conversation reprenne sans relire
 tout l'historique. Il ne remplace pas `docs/08-roadmap.md`, qui reste la source
 de vérité sur les jalons.
 
-**Branche :** `chore/m0-monorepo`, poussée, 112 commits, rien en attente.
-**Vert :** `pnpm test` 1991 tests (rules 274, protocol 99, content 84, mobile 874,
-server 660 + 3 ignorés), `pnpm lint` et `pnpm typecheck` propres.
+**Branche :** `chore/m0-monorepo`, poussée, 115 commits, rien en attente.
+**Vert :** `pnpm test` 1999 tests (rules 274, protocol 102, content 84, mobile 874,
+server 665 + 3 ignorés), `pnpm lint` et `pnpm typecheck` propres.
 
 ---
 
@@ -58,24 +58,25 @@ des cosmétiques dans la boutique avant achat.
 8. **Particules d'aura** : écrites et testées, mais branchées à rien.
 9. **Export de clip** — mis de côté sur ta demande.
 
-## Une relecture de sécurité à ne pas oublier de refaire
+## La relecture de sécurité est faite
 
-Les commits du banc de charge (`76bdd8e`) ont été poussés **avant** la relecture
-que `CLAUDE.md` exige pour tout ce qui touche `apps/server/src/modules/match` ou
-`packages/protocol`. L'agent qui l'avait demandée s'est arrêté sur une limite de
-session sans rien produire. La revue automatique a rattrapé trois défauts, tous
-corrigés et poussés dans `faa86d1` :
+Elle a eu lieu (`security-reviewer`, périmètre `git diff 167bcc1..HEAD --
+apps/server packages/protocol`) et elle est **close**. Verdict : rien de
+bloquant dans le diff — pas de fuite d'information, aucune valeur calculée par
+le client qui soit crue, aucun compteur anti-triche partagé entre sièges.
 
-- une table indexée par **nom d'événement choisi par le client** — 5 000 noms
-  inventés créaient 5 000 histogrammes, jusqu'à épuiser la mémoire du nœud ;
-- `GET /health/metrics` et `POST /health/metrics/reset` ouvertes à qui sait
-  former une requête HTTP.
+Quatre défauts trouvés, tous corrigés et couverts par des tests de mutation :
 
-**Ce qui n'a pas été vérifié**, faute de relecteur : les six points que j'avais
-listés, notamment la concurrence (un compteur partagé entre deux sièges) et les
-fenêtres de mesure qui s'ouvrent sans se refermer sur un gestionnaire qui lève.
-Relancer un `security-reviewer` sur `git diff 167bcc1..HEAD -- apps/server
-packages/protocol` est la première chose à faire.
+| | Défaut | Commit |
+|---|---|---|
+| A | Un paquet atteignait un gestionnaire **avant la fin de l'authentification** — sans identité, sans limite de débit, sans schéma. Latent aujourd'hui (l'authentification ne fait aucune E/S), ouvert dès que quelqu'un y ajoutera une lecture Redis ou base. | `7d9f5f4` |
+| B | Table d'histogrammes indexée par un nom d'événement **choisi par le client** : 5 000 noms inventés, 5 000 histogrammes. | `faa86d1` |
+| C | Le message d'erreur d'analyse recopiait les noms de clés inconnues : **148 918 caractères** pour 5 000 clés, sans autre limite que le mégaoctet d'engine.io. | `4dec605` |
+| D | Deux messages de même nom en vol échangent leurs durées de mesure. Documenté plutôt que corrigé — corriger demanderait un identifiant par paquet que Socket.IO ne fournit pas. | `4dec605` |
+
+Les quatre sont **le même défaut sous quatre formes** : une structure dont le
+client choisit la taille. La phrase de `CLAUDE.md` — *le protocole borne un
+message, pas la somme des messages* — était écrite et n'en a empêché aucun.
 
 ## Pièges appris cette session (les plus coûteux)
 
@@ -103,6 +104,18 @@ packages/protocol` est la première chose à faire.
   table de mesure : écrit pour prouver qu'un message refusé est bien compté, il
   verrouillait l'épuisement mémoire. Rien dans sa rédaction ne distinguait les
   deux intentions.
+- **Un test vert ne dit rien tant qu'on ne l'a pas vu rouge pour la bonne
+  raison.** Trois fois de suite : un test du nom d'événement numérique qui
+  passait à vide (`socket.io-client` ne sait pas émettre un nom numérique, il
+  fallait une socket brute) ; une mutation qui semblait innocenter une garde
+  alors que c'était un *plantage* qui bloquait le paquet ; et un test de borne
+  qui aurait aussi passé avec une coupe proportionnelle, donc sans borne. La
+  parade : muter la **structure**, et vérifier qu'une borne ne bouge pas quand
+  la charge est multipliée par dix.
+- **Un commentaire qui affirme faux empêche la relecture.** `handleConnection`
+  portait « c'est la seule attente de cette méthode » alors que
+  l'authentification en était une autre, avant. C'est cette phrase qui rendait
+  le défaut [A] invisible à la lecture.
 
 ## Où reprendre
 

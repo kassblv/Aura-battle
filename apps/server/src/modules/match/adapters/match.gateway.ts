@@ -88,16 +88,24 @@ function isAuthenticated(data: unknown): data is SocketState {
  *
  * Le defaut d'engine.io est **un mega-octet**, ce qui n'a aucun rapport avec
  * ce que ce protocole echange : le plus gros message legitime est
- * `recharge:taps`, borne a `MAX_TAPS_PER_MESSAGE` entrees de deux nombres —
- * quelques kilo-octets. Seize mille octets laissent donc un facteur cinq de
- * marge tout en divisant par soixante ce qu'un client peut faire analyser a
- * chaque message.
+ * `recharge:taps`, borne a `MAX_TAPS_PER_MESSAGE` — 72 taps, soit 12 par
+ * seconde pendant les 6 000 ms de recharge — c'est-a-dire environ 2,5 Kio
+ * enveloppe Socket.IO comprise. Seize mille octets laissent donc un facteur
+ * six de marge tout en divisant par soixante ce qu'un client peut faire
+ * analyser a chaque message.
  *
  * Ce n'est pas une optimisation : c'est la borne qui manquait en amont de
  * toutes les autres. Un message par ailleurs valide accompagne d'un mega-octet
  * de cles inconnues faisait travailler zod, puis fabriquait un message
  * d'erreur proportionnel — les deux sont bornes maintenant, mais borner la
  * source coute moins cher que borner chaque consequence.
+ *
+ * **Elle ne borne que l'entrant.** Sur le transport WebSocket, engine.io
+ * transmet cette valeur a `ws` comme `maxPayload`, qui ne s'applique qu'au
+ * recu. Un message SORTANT part quelle que soit sa taille — `recharge:start`
+ * et ses 256 orbes autorisees par le schema, par exemple. C'est voulu, et
+ * c'est ecrit ici pour qu'on ne l'invoque pas un jour comme une protection
+ * des deux sens.
  */
 const MAX_MESSAGE_BYTES = 16_000;
 
