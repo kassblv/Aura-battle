@@ -1,5 +1,6 @@
-import { SKIN_TONES } from '@aura/content';
 import {
+  AdditiveBlending,
+  BoxGeometry,
   CapsuleGeometry,
   Color,
   DynamicDrawUsage,
@@ -9,84 +10,119 @@ import {
   Matrix4,
   MeshBasicMaterial,
   MeshToonMaterial,
+  PlaneGeometry,
   Quaternion,
   SphereGeometry,
   type Texture,
   Vector3,
 } from 'three';
+import { buildSeats, seatMotion, type CrowdSeat } from './crowdLayout.js';
 
 /**
- * Le public des gradins.
+ * Le public qui entoure le duel.
  *
- * Un spectateur n est pas une gelule : il a une tete, un buste et deux bras qui
- * bougent separement. Chaque partie du corps vit dans son propre
- * `InstancedMesh` — cinq appels de dessin pour deux cent dix personnes, la ou
- * deux cent dix groupes en couteraient des milliers. Les bras ont leurs propres
- * instances parce qu une matrice d instance ne peut pas animer un sous-objet.
+ * Un spectateur n est pas une gelule : il a une tete, un buste, deux bras qui
+ * bougent separement, et — pour pres de la moitie d entre eux — un telephone
+ * braque sur les combattants. Chaque partie du corps vit dans son propre
+ * `InstancedMesh` : six appels de dessin pour deux cent dix personnes, la ou
+ * deux cent dix groupes en couteraient des milliers. Les bras ont leurs
+ * propres instances parce qu une matrice d instance ne peut pas animer un
+ * sous-objet.
  *
- * Les places sont calees sur les gradins de `stage.ts` : meme arc, memes rayons,
- * memes hauteurs de marche. Un public qui flotte se lit comme des gens
+ * Les places sont calees sur les gradins de `stage.ts` : meme arc, memes
+ * rayons, memes hauteurs de marche. Un public qui flotte se lit comme des gens
  * suspendus, et la profondeur du fond disparait avec lui.
+ *
+ * Tout ce qui se **decide** ici est dans `crowdLayout.ts`, sans Three.js.
  */
 
-export const CROWD_SIZE = 210;
+export { CROWD_SIZE, RING_SIZE } from './crowdLayout.js';
 
-/** Doit suivre `stage.ts` : c est la meme tribune. */
-const TIER_COUNT = 4;
-const TIER_HEIGHT = 0.42;
-const FLOOR_Y = -0.45;
-const STANDS_START = Math.PI * 1.5 + 0.9;
-const STANDS_ARC = Math.PI * 2 - 1.8;
-const TIER_INNER = 4.2;
-const TIER_DEPTH = 0.9;
+/** Demi-longueur d un bras : c est la que se tient la main, donc le telephone. */
+const ARM_REACH = 0.175;
 
-/** Hauteur des epaules au-dessus de la marche. */
-const SHOULDER = 0.3;
+/**
+ * Ce qu il reste d un teint de peau une fois la nuit tombee.
+ *
+ * La foule est eclairee par les memes lumieres que les combattants ; sans ce
+ * coup de frein, deux cent dix visages clairs tiennent le fond de l ecran et
+ * l oeil ne trouve plus les deux seules choses a lire.
+ */
+const FACE_LIGHT = 0.16;
 
-interface Seat {
-  readonly x: number;
-  readonly z: number;
-  readonly y: number;
-  readonly phase: number;
-  readonly speed: number;
-  readonly lean: number;
-  readonly glowstick: boolean;
-}
+/**
+ * Taille du halo d ecran, en metres.
+ *
+ * Un ecran de telephone a six metres fait trois pixels : ce n est pas l ecran
+ * qu on dessine, c est la lueur qu il jette. Le halo est donc plus large que
+ * l appareil — et **debout**, dans les proportions d un telephone tenu a la
+ * verticale. Un halo carre donne une boule de coton ; c est la forme qui dit
+ * qu il y a un ecran dessous.
+ */
+const SCREEN_GLOW_W = 0.2;
+const SCREEN_GLOW_H = 0.34;
 
 export interface CrowdResources {
   readonly gradientMap: Texture;
+  /** Degrade radial blanc, partage : il fait la lueur des ecrans. */
+  readonly glow: Texture;
 }
 
 export interface Crowd {
   readonly group: Group;
-  /** `hype` entre 0 et 1 : la ferveur leve les bras et fait sauter la foule. */
-  update(elapsedSeconds: number, hype: number): void;
+  /**
+   * `hype` entre 0 et 1 : la ferveur leve les bras et fait sauter la foule.
+   *
+   * `showcase` efface le premier cercle : hors match un seul personnage est a
+   * l ecran et on tourne autour, jusqu a passer la camera la ou ces gens-la se
+   * tiennent. Ils masqueraient alors ce qu on vient inspecter.
+   */
+  update(elapsedSeconds: number, hype: number, showcase?: boolean): void;
   dispose(): void;
 }
 
 export function createCrowd(resources: CrowdResources, rng: () => number = Math.random): Crowd {
-  const { gradientMap } = resources;
+  const { gradientMap, glow } = resources;
   const group = new Group();
   group.name = 'crowd';
+
+  const seats = buildSeats(rng);
+  const filming: number[] = [];
+  seats.forEach((seat, index) => {
+    if (seat.filming) filming.push(index);
+  });
 
   const geometries = {
     body: new CapsuleGeometry(0.16, 0.3, 3, 8),
     head: new SphereGeometry(0.125, 12, 9),
     arm: new CapsuleGeometry(0.045, 0.26, 2, 6),
-    glowstick: new CapsuleGeometry(0.022, 0.2, 2, 5),
+    phone: new BoxGeometry(0.075, 0.145, 0.012),
+    screen: new PlaneGeometry(SCREEN_GLOW_W, SCREEN_GLOW_H),
   };
 
   const cloth = new MeshToonMaterial({ color: 0xffffff, gradientMap });
   const skin = new MeshToonMaterial({ color: 0xffffff, gradientMap });
-  // Les batons ne prennent pas la lumiere : ils en emettent.
-  const neon = new MeshBasicMaterial({ color: 0xffffff });
+  // Le dos d un telephone ne renvoie rien : c est une decoupe noire sur la
+  // foule, et c est le halo qui porte la lecture.
+  const shell = new MeshBasicMaterial({ color: 0x0b0a14 });
+  const screen = new MeshBasicMaterial({
+    map: glow,
+    transparent: true,
+    blending: AdditiveBlending,
+    depthWrite: false,
+    // Un halo additif melange au brouillard **ajoute** la couleur de brume :
+    // le fond deviendrait plus clair que le premier rang. La distance est
+    // peinte dans la couleur de l instance (`seat.reach`).
+    fog: false,
+  });
 
   const parts = {
-    body: new InstancedMesh(geometries.body, cloth, CROWD_SIZE),
-    head: new InstancedMesh(geometries.head, skin, CROWD_SIZE),
-    armLeft: new InstancedMesh(geometries.arm, cloth, CROWD_SIZE),
-    armRight: new InstancedMesh(geometries.arm, cloth, CROWD_SIZE),
-    glowstick: new InstancedMesh(geometries.glowstick, neon, CROWD_SIZE),
+    body: new InstancedMesh(geometries.body, cloth, seats.length),
+    head: new InstancedMesh(geometries.head, skin, seats.length),
+    armLeft: new InstancedMesh(geometries.arm, cloth, seats.length),
+    armRight: new InstancedMesh(geometries.arm, cloth, seats.length),
+    phone: new InstancedMesh(geometries.phone, shell, filming.length),
+    screen: new InstancedMesh(geometries.screen, screen, filming.length),
   };
 
   for (const [name, mesh] of Object.entries(parts)) {
@@ -98,38 +134,30 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
     group.add(mesh);
   }
 
-  const seats: Seat[] = [];
   const tint = new Color();
   const hidden = new Matrix4().makeScale(0, 0, 0);
 
-  for (let i = 0; i < CROWD_SIZE; i++) {
-    const tier = i % TIER_COUNT;
-    // Meme repere que les marches : l anneau est tourne de -90 degres autour
-    // de x, donc l angle se lit en (cos, -sin) dans le plan du sol.
-    const angle = STANDS_START + rng() * STANDS_ARC;
-    const radius = TIER_INNER + tier * TIER_DEPTH + 0.2 + rng() * (TIER_DEPTH - 0.4);
-    const hasGlowstick = rng() < 0.34;
-
-    seats.push({
-      x: Math.cos(angle) * radius,
-      z: -Math.sin(angle) * radius,
-      y: FLOOR_Y + (tier + 1) * TIER_HEIGHT + SHOULDER,
-      phase: rng() * Math.PI * 2,
-      speed: 1.9 + rng() * 1.6,
-      lean: (rng() - 0.5) * 0.24,
-      glowstick: hasGlowstick,
-    });
-
-    tint.setHSL(0.68 + rng() * 0.22, 0.45 + rng() * 0.3, 0.3 + rng() * 0.24);
+  seats.forEach((seat, i) => {
+    tint.setHSL(seat.cloth.h, seat.cloth.s, seat.cloth.l);
     parts.body.setColorAt(i, tint);
     parts.armLeft.setColorAt(i, tint);
     parts.armRight.setColorAt(i, tint);
-    const tone = SKIN_TONES[Math.floor(rng() * SKIN_TONES.length)] ?? '#f3cfae';
-    parts.head.setColorAt(i, tint.set(tone));
-    tint.setHSL(0.6 + rng() * 0.3, 0.9, 0.62);
-    parts.glowstick.setColorAt(i, tint);
-    if (!hasGlowstick) parts.glowstick.setMatrixAt(i, hidden);
-  }
+    /*
+      Les visages sont eteints, pas eclaires.
+
+      Un teint de peau pose tel quel fait deux cent dix taches claires en fond
+      d ecran — et l oeil va aux taches claires, donc partout sauf sur les deux
+      combattants. Ceux du premier cercle, vus de dos et a contre-jour, n ont
+      meme pas de visage a montrer : ils prennent la couleur de leur manteau.
+    */
+    parts.head.setColorAt(i, seat.ring ? tint : tint.set(seat.skin).multiplyScalar(FACE_LIGHT));
+  });
+  filming.forEach((seatIndex, i) => {
+    const seat = seats[seatIndex];
+    if (seat === undefined) return;
+    tint.setHSL(seat.screen.h, seat.screen.s, seat.screen.l);
+    parts.screen.setColorAt(i, tint);
+  });
 
   for (const mesh of Object.values(parts)) {
     if (mesh.instanceColor !== null) mesh.instanceColor.needsUpdate = true;
@@ -140,6 +168,7 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
   const position = new Vector3();
   const scale = new Vector3(1, 1, 1);
   const euler = new Euler();
+  const glowTint = new Color();
 
   /**
    * Derniere image calculee.
@@ -150,70 +179,146 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
    */
   let lastElapsed = Number.NaN;
   let lastHype = Number.NaN;
+  let lastShowcase: boolean | null = null;
   let disposed = false;
+
+  /** Ou en est le telephone du siege `index`, s il en tient un. */
+  const phoneSlot = new Map<number, number>();
+  filming.forEach((seatIndex, i) => phoneSlot.set(seatIndex, i));
 
   return {
     group,
 
-    update(elapsed, hype) {
-      if (elapsed === lastElapsed && hype === lastHype) return;
+    update(elapsed, hype, showcase = false): void {
+      if (elapsed === lastElapsed && hype === lastHype && showcase === lastShowcase) return;
       lastElapsed = elapsed;
       lastHype = hype;
+      lastShowcase = showcase;
 
-      for (let i = 0; i < CROWD_SIZE; i++) {
+      for (let i = 0; i < seats.length; i++) {
         const seat = seats[i];
         if (seat === undefined) continue;
+        const slot = phoneSlot.get(i);
 
-        const beat = Math.sin(elapsed * seat.speed + seat.phase);
-        const y = seat.y + Math.abs(beat) * (0.05 + hype * 0.17);
+        if (seat.ring && showcase) {
+          parts.body.setMatrixAt(i, hidden);
+          parts.head.setMatrixAt(i, hidden);
+          parts.armLeft.setMatrixAt(i, hidden);
+          parts.armRight.setMatrixAt(i, hidden);
+          if (slot !== undefined) {
+            parts.phone.setMatrixAt(slot, hidden);
+            parts.screen.setMatrixAt(slot, hidden);
+          }
+          continue;
+        }
 
-        euler.set(0, 0, seat.lean + beat * 0.06);
+        const motion = seatMotion(seat, elapsed, hype);
+        const s = seat.scale;
+        scale.setScalar(s);
+
+        euler.set(0, 0, motion.lean);
         rotation.setFromEuler(euler);
 
-        position.set(seat.x, y, seat.z);
+        position.set(seat.x, motion.y, seat.z);
         matrix.compose(position, rotation, scale);
         parts.body.setMatrixAt(i, matrix);
 
-        position.set(seat.x, y + 0.33, seat.z);
+        position.set(seat.x, motion.y + 0.33 * s, seat.z);
         matrix.compose(position, rotation, scale);
         parts.head.setMatrixAt(i, matrix);
 
-        // Au repos les bras pendent ; la ferveur les envoie au-dessus de la tete.
-        const raise = Math.min(1, hype * 1.25) * (0.55 + 0.45 * beat);
-        const swing = 0.35 + raise * 2.1;
-        const armY = y + 0.1 + raise * 0.22;
+        /*
+          Le bras pend au repos et monte avec la ferveur.
 
-        euler.set(0, 0, swing);
-        rotation.setFromEuler(euler);
-        position.set(seat.x - 0.17 - raise * 0.03, armY, seat.z + 0.05);
-        matrix.compose(position, rotation, scale);
-        parts.armLeft.setMatrixAt(i, matrix);
+          L angle **decroit** quand le bras se leve : une gelule tournee de
+          zero autour de z pointe deja vers le haut. Le portage initial faisait
+          croitre cet angle avec la ferveur, ce qui rabattait les bras le long
+          du corps au moment precis ou la salle explosait — le buste montait, la
+          position du bras aussi, mais la gelule, elle, basculait vers le bas.
+        */
+        writeArm(i, seat, motion.y, motion.raiseLeft, -1, s);
+        writeArm(i, seat, motion.y, motion.raiseRight, 1, s);
 
-        euler.set(0, 0, -swing);
-        rotation.setFromEuler(euler);
-        position.set(seat.x + 0.17 + raise * 0.03, armY, seat.z + 0.05);
-        matrix.compose(position, rotation, scale);
-        parts.armRight.setMatrixAt(i, matrix);
+        if (slot !== undefined) {
+          const swing = armSwing(motion.raiseRight);
+          const hand = handAt(seat, motion.y, motion.raiseRight, swing, s);
 
-        if (seat.glowstick) {
-          position.set(seat.x + 0.17 + raise * 0.24, y + 0.32 + raise * 0.42, seat.z + 0.05);
+          // Le dos du telephone regarde le centre : c est le duel qu on filme.
+          euler.set(-0.22, seat.facing, 0);
+          rotation.setFromEuler(euler);
+          position.copy(hand);
           matrix.compose(position, rotation, scale);
-          parts.glowstick.setMatrixAt(i, matrix);
+          parts.phone.setMatrixAt(slot, matrix);
+
+          // Le halo, lui, est tourne vers l objectif : un plan vu par la
+          // tranche ne jette aucune lueur.
+          euler.set(0, seat.glowFacing, 0);
+          rotation.setFromEuler(euler);
+          // Legerement devant l appareil, sinon la plaque et le halo se
+          // disputent le meme plan et scintillent.
+          position.set(hand.x, hand.y, hand.z + 0.02);
+          scale.setScalar(s * (1 + motion.flash * 1.4));
+          matrix.compose(position, rotation, scale);
+          parts.screen.setMatrixAt(slot, matrix);
+          scale.setScalar(s);
+
+          glowTint
+            .setHSL(seat.screen.h, seat.screen.s, seat.screen.l)
+            .multiplyScalar(motion.screen);
+          parts.screen.setColorAt(slot, glowTint);
         }
       }
 
       for (const mesh of Object.values(parts)) mesh.instanceMatrix.needsUpdate = true;
+      if (parts.screen.instanceColor !== null) parts.screen.instanceColor.needsUpdate = true;
     },
 
-    dispose() {
+    dispose(): void {
       if (disposed) return;
       disposed = true;
       for (const geometry of Object.values(geometries)) geometry.dispose();
       cloth.dispose();
       skin.dispose();
-      neon.dispose();
+      shell.dispose();
+      screen.dispose();
       for (const mesh of Object.values(parts)) mesh.dispose();
       group.clear();
     },
   };
+
+  function writeArm(
+    index: number,
+    seat: CrowdSeat,
+    bodyY: number,
+    raise: number,
+    side: -1 | 1,
+    s: number,
+  ): void {
+    const swing = armSwing(raise);
+    euler.set(0, 0, -side * swing);
+    rotation.setFromEuler(euler);
+    position.set(
+      seat.x + side * (0.17 + raise * 0.03) * s,
+      bodyY + (0.1 + raise * 0.22) * s,
+      seat.z + 0.05 * s,
+    );
+    matrix.compose(position, rotation, scale);
+    (side === -1 ? parts.armLeft : parts.armRight).setMatrixAt(index, matrix);
+  }
+}
+
+/** Angle du bras avec la verticale : grand au repos, petit bras leve. */
+export function armSwing(raise: number): number {
+  return 2.3 - raise * 1.85;
+}
+
+const HAND = new Vector3();
+
+/** Position de la main droite, ou se tient le telephone. */
+function handAt(seat: CrowdSeat, bodyY: number, raise: number, swing: number, s: number): Vector3 {
+  return HAND.set(
+    seat.x + (0.17 + raise * 0.03) * s + Math.sin(swing) * ARM_REACH * s,
+    bodyY + (0.1 + raise * 0.22) * s + Math.cos(swing) * ARM_REACH * s,
+    seat.z + 0.05 * s,
+  );
 }

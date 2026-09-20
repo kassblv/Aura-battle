@@ -1,6 +1,8 @@
 import {
+  type BufferGeometry as Geometry,
   type CircleGeometry,
   type CylinderGeometry,
+  type MeshBasicMaterial,
   type Group,
   type Mesh,
   type Material,
@@ -12,11 +14,18 @@ import {
 } from 'three';
 import { describe, expect, it, vi } from 'vitest';
 import { STAR_COUNT, createStage } from './stage.js';
+import { arenaMood } from './mood.js';
 
 function makeStage(rng: () => number = () => 0.5) {
   const gradientMap = new Texture();
-  const gridTexture = new Texture();
-  return { stage: createStage({ gradientMap, gridTexture }, rng), gradientMap, gridTexture };
+  const floorTexture = new Texture();
+  const hazeTexture = new Texture();
+  return {
+    stage: createStage({ gradientMap, floorTexture, hazeTexture }, rng),
+    gradientMap,
+    floorTexture,
+    hazeTexture,
+  };
 }
 
 function child<T>(group: Group, name: string): T {
@@ -34,6 +43,7 @@ describe('createStage — decor', () => {
       'platform',
       'platform-top',
       'rim',
+      'haze',
       'stands',
       'sweeps',
       'stars',
@@ -55,13 +65,13 @@ describe('createStage — decor', () => {
     expect(plat.position.y).toBeCloseTo(-0.225, 10);
   });
 
-  it('applique la grille fournie sur le dessus de la plateforme', () => {
-    const { stage, gridTexture } = makeStage();
+  it('applique le cercle fourni sur le dessus de la plateforme', () => {
+    const { stage, floorTexture } = makeStage();
     const top = child<Mesh<CircleGeometry, Material & { map: Texture | null }>>(
       stage.group,
       'platform-top',
     );
-    expect(top.material.map).toBe(gridTexture);
+    expect(top.material.map).toBe(floorTexture);
     expect(top.material.transparent).toBe(true);
     expect(top.position.y).toBeGreaterThan(0);
   });
@@ -83,12 +93,76 @@ describe('createStage — decor', () => {
     });
   });
 
-  it('accroche quatre projecteurs au-dessus et derriere la scene', () => {
+  it('accroche les projecteurs au-dessus, derriere, et repartis autour du centre', () => {
     const sweeps = child<Group>(makeStage().stage.group, 'sweeps');
-    expect(sweeps.children).toHaveLength(4);
-    sweeps.children.forEach((piv, i) => {
-      expect(piv.position.toArray()).toEqual([-4.5 + i * 3, 6.2, -3.8]);
+    expect(sweeps.children).toHaveLength(3);
+    const xs = sweeps.children.map((piv) => piv.position.x);
+    // Symetriques : la somme des abscisses tombe a zero quel qu en soit le
+    // nombre. Le portage initial les posait a `-4,5 + i * 3`, ce qui les
+    // centrait pour quatre et les decalait pour tout autre compte.
+    expect(xs.reduce((a, b) => a + b, 0)).toBeCloseTo(0, 10);
+    for (const piv of sweeps.children) {
+      expect(piv.position.y).toBeGreaterThan(5);
+      expect(piv.position.z).toBeLessThan(-3);
+    }
+  });
+
+  /**
+   * La brume separe le cercle du fond. Percee en son centre : elle ne voile
+   * jamais ce qu on regarde, et c est tout l interet d un anneau.
+   */
+  it('pose la brume a plat, au ras du sol, et lui prete la texture fournie', () => {
+    const { stage, hazeTexture } = makeStage();
+    const haze = child<Mesh<CircleGeometry, Material & { map: Texture | null }>>(
+      stage.group,
+      'haze',
+    );
+    expect(haze.material.map).toBe(hazeTexture);
+    expect(haze.rotation.x).toBeCloseTo(-Math.PI / 2, 10);
+    // Au-dessus du bitume, sous le genou des combattants.
+    expect(haze.position.y).toBeGreaterThan(-0.45);
+    expect(haze.position.y).toBeLessThan(0.3);
+    expect(haze.geometry.parameters.radius).toBeGreaterThan(2.8);
+  });
+
+  /**
+   * Les bandeaux des gradins s eteignent avec la distance : a pleine
+   * intensite sur les quatre rangs, le fond reprend le dessus sur les deux
+   * seules choses a lire.
+   */
+  it('eteint les bandeaux rang apres rang', () => {
+    const stands = child<Group>(makeStage().stage.group, 'stands');
+    const levels = stands.children.map((tier) => {
+      const strip = child<Mesh<CylinderGeometry, MeshBasicMaterial>>(tier as Group, 'strip');
+      // Les bandeaux alternent deux teintes : on compare chaque rang a celui
+      // de meme couleur, deux crans plus pres.
+      return strip.material.color.getHSL({ h: 0, s: 0, l: 0 }).l;
     });
+    expect(levels[2]).toBeLessThan(levels[0] ?? 0);
+    expect(levels[3]).toBeLessThan(levels[1] ?? 0);
+  });
+
+  /**
+   * Un materiau transparent **et** a double face est dessine deux fois par
+   * Three.js. Les bandeaux s eteignent donc en couleur, pas en opacite : sur
+   * un fond presque noir l image est la meme, le budget ne l est pas.
+   */
+  it('garde les bandeaux opaques, pour ne pas les payer deux fois', () => {
+    const stands = child<Group>(makeStage().stage.group, 'stands');
+    for (const tier of stands.children) {
+      const strip = child<Mesh<CylinderGeometry, Material>>(tier as Group, 'strip');
+      expect(strip.material.transparent).toBe(false);
+    }
+  });
+
+  /** Meme raison, autre remede : un melange additif se moque de l ordre. */
+  it('ne dessine les faisceaux qu une fois, le melange additif etant commutatif', () => {
+    const sweeps = child<Group>(makeStage().stage.group, 'sweeps');
+    for (const pivot of sweeps.children) {
+      const beam = child<Mesh<Geometry, Material>>(pivot as Group, 'beam');
+      expect(beam.material.transparent).toBe(true);
+      expect(beam.material.forceSinglePass).toBe(true);
+    }
   });
 
   it('seme un ciel etoile deterministe pour un tirage donne', () => {
@@ -100,23 +174,44 @@ describe('createStage — decor', () => {
     const ph = 0.1 + 0.5 * 1.2;
     expect(pos.getX(0)).toBeCloseTo(45 * Math.cos(th) * Math.cos(ph), 4);
     expect(pos.getY(0)).toBeCloseTo(45 * Math.sin(ph) - 3, 4);
-    expect(pos.getX(499)).toBeCloseTo(pos.getX(0), 10);
+    expect(pos.getX(STAR_COUNT - 1)).toBeCloseTo(pos.getX(0), 10);
   });
 });
 
 describe('createStage — animation', () => {
-  it('blanchit le liseré quand la ferveur monte', () => {
+  it('rechauffe le liseré quand la ferveur monte', () => {
     const { stage } = makeStage();
     const read = () => stage.rim.material.color.getRGB({ r: 0, g: 0, b: 0 }, SRGBColorSpace);
 
     // Aller-retour sRGB <-> lineaire : la comparaison se fait au dix-millieme.
     stage.update(0, 0);
-    expect(read().r).toBeCloseTo(0.7, 4);
-    expect(read().g).toBeCloseTo(0.42, 4);
+    const calm = read();
+    expect(calm.r).toBeCloseTo(arenaMood(0).rimColor[0], 4);
 
     stage.update(0, 1);
-    expect(read().r).toBeCloseTo(1, 4);
-    expect(read().g).toBeCloseTo(0.87, 4);
+    const blaze = read();
+    expect(blaze.r).toBeCloseTo(arenaMood(1).rimColor[0], 4);
+    // Plus chaud : le rouge gagne sur le bleu.
+    expect(blaze.r - blaze.b).toBeGreaterThan(calm.r - calm.b);
+  });
+
+  it('leve la brume avec la salle', () => {
+    const { stage } = makeStage();
+    const haze = stage.group.getObjectByName('haze') as Mesh<CircleGeometry, Material>;
+    stage.update(0, 0);
+    const calm = haze.material.opacity;
+    stage.update(0, 1);
+    expect(haze.material.opacity).toBeGreaterThan(calm);
+  });
+
+  it('fait tourner la brume, seul mouvement du decor quand personne ne bouge', () => {
+    const { stage } = makeStage();
+    const haze = stage.group.getObjectByName('haze');
+    if (!haze) throw new Error('brume absente');
+    stage.update(0, 0);
+    const start = haze.rotation.z;
+    stage.update(6, 0);
+    expect(haze.rotation.z).not.toBeCloseTo(start, 4);
   });
 
   it('borne la ferveur a 1', () => {
@@ -162,8 +257,12 @@ describe('createStage — liberation', () => {
   });
 
   it('ne touche pas aux ressources qu on lui a pretees', () => {
-    const { stage, gradientMap, gridTexture } = makeStage();
-    const spies = [vi.spyOn(gradientMap, 'dispose'), vi.spyOn(gridTexture, 'dispose')];
+    const { stage, gradientMap, floorTexture, hazeTexture } = makeStage();
+    const spies = [
+      vi.spyOn(gradientMap, 'dispose'),
+      vi.spyOn(floorTexture, 'dispose'),
+      vi.spyOn(hazeTexture, 'dispose'),
+    ];
     stage.dispose();
     for (const spy of spies) expect(spy).not.toHaveBeenCalled();
   });

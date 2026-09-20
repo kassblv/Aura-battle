@@ -35,6 +35,13 @@ export interface ArenaFrame {
   readonly hype: number;
   readonly shake: number;
   readonly reducedMotion: boolean;
+  /**
+   * Vrai hors match : un seul personnage a l ecran, camera au doigt.
+   *
+   * L arene s en sert pour retirer les silhouettes du premier plan — elles
+   * cadrent un duel, elles masqueraient un vetement qu on vient essayer.
+   */
+  readonly showcase?: boolean;
 }
 
 /**
@@ -67,12 +74,19 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
   scene.background = background;
   // Le brouillard commence juste derriere les combattants : il efface les
   // gradins du fond et garde l attention au centre.
-  scene.fog = new Fog(background.getHex(), 7, 19);
+  scene.fog = new Fog(background.getHex(), 6.5, 17);
 
   const gradientMap = createToonGradientMap();
   const lighting = createLighting();
-  const stage = createStage({ gradientMap, gridTexture: options.textures.grid }, options.rng);
-  const crowd = createCrowd({ gradientMap }, options.rng);
+  const stage = createStage(
+    {
+      gradientMap,
+      floorTexture: options.textures.floor,
+      hazeTexture: options.textures.haze,
+    },
+    options.rng,
+  );
+  const crowd = createCrowd({ gradientMap, glow: options.textures.glow }, options.rng);
 
   /**
    * Un trois-quarts, pas un profil.
@@ -121,8 +135,9 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
     },
 
     update(frame: ArenaFrame): void {
+      lighting.update(frame.hype);
       stage.update(frame.elapsed, frame.hype);
-      crowd.update(frame.elapsed, frame.hype);
+      crowd.update(frame.elapsed, frame.hype, frame.showcase === true);
 
       rig.update({
         framing: frame.framing,
@@ -144,7 +159,9 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
       fighters.b.dispose();
       lighting.dispose();
       gradientMap.dispose();
-      options.textures.grid.dispose();
+      options.textures.floor.dispose();
+      options.textures.glow.dispose();
+      options.textures.haze.dispose();
       scene.clear();
     },
   };

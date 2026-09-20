@@ -1,6 +1,7 @@
-import { InstancedMesh, Matrix4, Quaternion, Vector3 } from 'three';
+import { InstancedMesh, Matrix4, Quaternion, Texture, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { createCrowd, CROWD_SIZE } from './crowd.js';
+import { buildSeats, RING_SIZE } from './crowdLayout.js';
 import { createToonGradientMap } from './toonGradient.js';
 
 const gradientMap = createToonGradientMap();
@@ -14,10 +15,16 @@ function seeded(seed: number): () => number {
   };
 }
 
-const build = () => createCrowd({ gradientMap }, seeded(7));
+const build = () => createCrowd({ gradientMap, glow: new Texture() }, seeded(7));
 
 function instancesOf(crowd: ReturnType<typeof createCrowd>): InstancedMesh[] {
   return crowd.group.children.filter((c): c is InstancedMesh => c instanceof InstancedMesh);
+}
+
+function part(crowd: ReturnType<typeof createCrowd>, name: string): InstancedMesh {
+  const found = instancesOf(crowd).find((m) => m.name === name);
+  if (found === undefined) throw new Error(`${name} absent de la foule`);
+  return found;
 }
 
 function positionAt(mesh: InstancedMesh, index: number): Vector3 {
@@ -28,97 +35,147 @@ function positionAt(mesh: InstancedMesh, index: number): Vector3 {
   return position;
 }
 
+/**
+ * Echelle lue **sur les colonnes** de la matrice, pas par `decompose`.
+ *
+ * `Matrix4.decompose` releve une echelle de 1 sur une matrice d echelle nulle
+ * — il se protege de la division par zero avant de rendre le resultat. Or une
+ * echelle nulle est exactement la facon dont on efface une instance : un test
+ * ecrit avec `decompose` ne verrait jamais la difference entre effacee et
+ * presente.
+ */
+function scaleAt(mesh: InstancedMesh, index: number): number {
+  const matrix = new Matrix4();
+  mesh.getMatrixAt(index, matrix);
+  const [xx = 0, xy = 0, xz = 0] = matrix.elements;
+  return Math.hypot(xx, xy, xz);
+}
+
 describe('createCrowd', () => {
   it('dessine chaque partie du corps en une seule fois', () => {
     const crowd = build();
     const meshes = instancesOf(crowd);
-    // Buste, tete, deux bras, baton lumineux : cinq appels de dessin pour
-    // deux cents personnes, la ou deux cents groupes en couteraient des
-    // milliers.
-    expect(meshes).toHaveLength(5);
+    // Buste, tete, deux bras, telephone, halo d ecran : six appels de dessin
+    // pour deux cent dix personnes, la ou deux cent dix groupes en
+    // couteraient des milliers.
+    expect(meshes).toHaveLength(6);
     expect(meshes.map((m) => m.name).sort()).toEqual(
-      ['armLeft', 'armRight', 'body', 'glowstick', 'head'].sort(),
+      ['armLeft', 'armRight', 'body', 'head', 'phone', 'screen'].sort(),
     );
-    for (const mesh of meshes) expect(mesh.count).toBe(CROWD_SIZE);
-    crowd.dispose();
-  });
-
-  it('donne une couleur propre a chaque spectateur', () => {
-    const crowd = build();
-    for (const mesh of instancesOf(crowd)) expect(mesh.instanceColor).not.toBeNull();
-    crowd.dispose();
-  });
-
-  /**
-   * Les spectateurs se tiennent sur les marches de `stage.ts`. Flottants, on
-   * lit des gens suspendus au lieu d une tribune — et la profondeur du fond
-   * disparait avec.
-   */
-  it('assied la foule sur les gradins, jamais dans le vide', () => {
-    const crowd = build();
-    const body = instancesOf(crowd).find((m) => m.name === 'body');
-    if (body === undefined) throw new Error('buste absent');
-
-    crowd.update(0, 0);
-    for (let i = 0; i < CROWD_SIZE; i++) {
-      const at = positionAt(body, i);
-      const radius = Math.hypot(at.x, at.z);
-      expect(radius).toBeGreaterThan(4.2);
-      expect(radius).toBeLessThan(8.1);
-      expect(at.y).toBeGreaterThan(0);
+    for (const name of ['body', 'head', 'armLeft', 'armRight']) {
+      expect(part(crowd, name).count).toBe(CROWD_SIZE);
     }
     crowd.dispose();
   });
 
   /**
-   * L arc des gradins est ouvert face a la camera : un public devant cacherait
-   * le combat.
+   * Les silhouettes du premier plan ne coutent aucun appel de dessin : ce sont
+   * des places comme les autres dans les memes `InstancedMesh`. C est tout
+   * l interet de les avoir mises la.
    */
-  it('laisse la face avant de l arene libre', () => {
+  it('loge le premier plan dans les memes instances que la tribune', () => {
     const crowd = build();
-    const body = instancesOf(crowd).find((m) => m.name === 'body');
-    if (body === undefined) throw new Error('buste absent');
+    expect(part(crowd, 'body').count).toBe(CROWD_SIZE);
+    expect(instancesOf(crowd)).toHaveLength(6);
+    crowd.dispose();
+  });
 
-    crowd.update(0, 0);
-    for (let i = 0; i < CROWD_SIZE; i++) {
-      const at = positionAt(body, i);
-      // Personne juste devant : ni proche de l axe, ni du cote de la camera.
-      expect(at.z < 2.6 || Math.abs(at.x) > 3.4).toBe(true);
+  /** Un telephone par spectateur qui filme, et pas une instance de plus. */
+  it('n instancie que les telephones reellement tenus', () => {
+    const crowd = build();
+    const filming = buildSeats(seeded(7)).filter((s) => s.filming).length;
+    expect(filming).toBeGreaterThan(0);
+    expect(filming).toBeLessThan(CROWD_SIZE);
+    expect(part(crowd, 'phone').count).toBe(filming);
+    expect(part(crowd, 'screen').count).toBe(filming);
+    crowd.dispose();
+  });
+
+  it('donne une couleur propre a chaque spectateur et a chaque ecran', () => {
+    const crowd = build();
+    for (const name of ['body', 'head', 'armLeft', 'armRight', 'screen']) {
+      expect(part(crowd, name).instanceColor).not.toBeNull();
     }
     crowd.dispose();
   });
 
-  /**
-   * Les bras montent avec la ferveur. C est ce mouvement, et non la densite de
-   * la foule, qui fait qu une tribune a l air vivante.
-   */
   it('leve les bras quand la ferveur monte', () => {
     const crowd = build();
-    const arm = instancesOf(crowd).find((m) => m.name === 'armLeft');
-    if (arm === undefined) throw new Error('bras absent');
-
+    const arm = part(crowd, 'armLeft');
     crowd.update(0, 0);
     const calm = positionAt(arm, 0).y;
     crowd.update(0, 1);
-    const roused = positionAt(arm, 0).y;
-    expect(roused).toBeGreaterThan(calm);
+    expect(positionAt(arm, 0).y).toBeGreaterThan(calm);
     crowd.dispose();
   });
 
-  it('fait sauter la foule, sans la decoller des gradins', () => {
+  /**
+   * Le telephone se tient au bout du bras, pas a cote du corps. Le portage
+   * initial accrochait le baton lumineux a une hauteur calculee a part : il
+   * flottait a cote d une main qui ne le tenait pas.
+   */
+  it('tient le telephone au bout du bras qui le brandit', () => {
     const crowd = build();
-    const body = instancesOf(crowd).find((m) => m.name === 'body');
-    if (body === undefined) throw new Error('buste absent');
+    crowd.update(0, 1);
+    const seats = buildSeats(seeded(7));
+    const index = seats.findIndex((s) => s.filming && !s.ring);
+    const slot = seats.slice(0, index).filter((s) => s.filming).length;
 
-    const heights: number[] = [];
-    for (let step = 0; step < 40; step++) {
+    const head = positionAt(part(crowd, 'head'), index);
+    const phone = positionAt(part(crowd, 'phone'), slot);
+    const screen = positionAt(part(crowd, 'screen'), slot);
+
+    // A portee de main : au-dessus des epaules, sous le bras tendu.
+    expect(phone.y).toBeGreaterThan(head.y - 0.25);
+    expect(phone.y).toBeLessThan(head.y + 0.4);
+    expect(Math.hypot(phone.x - head.x, phone.z - head.z)).toBeLessThan(0.6);
+    // Le halo est pose juste devant l appareil, sinon les deux plans
+    // se disputent la meme profondeur et scintillent.
+    expect(screen.z).toBeGreaterThan(phone.z);
+    crowd.dispose();
+  });
+
+  it('fait grossir le halo au moment de l eclat', () => {
+    const crowd = build();
+    const screen = part(crowd, 'screen');
+    const sizes: number[] = [];
+    for (let step = 0; step < 200; step++) {
       crowd.update(step * 0.05, 1);
-      heights.push(positionAt(body, 3).y);
+      sizes.push(scaleAt(screen, 0));
     }
-    const low = Math.min(...heights);
-    const high = Math.max(...heights);
-    expect(high - low).toBeGreaterThan(0.02);
-    expect(high - low).toBeLessThan(0.4);
+    expect(Math.max(...sizes)).toBeGreaterThan(Math.min(...sizes) * 1.3);
+    crowd.dispose();
+  });
+
+  /**
+   * Hors match on tourne autour d un seul personnage, jusqu a passer la camera
+   * la ou ces gens-la se tiennent : ils masqueraient ce qu on vient inspecter.
+   */
+  it('efface le premier cercle dans la vitrine, et le remet en duel', () => {
+    const crowd = build();
+    const seats = buildSeats(seeded(7));
+    const index = seats.findIndex((s) => s.ring);
+    expect(index).toBeGreaterThanOrEqual(0);
+    const body = part(crowd, 'body');
+
+    crowd.update(0, 0.3, true);
+    expect(scaleAt(body, index)).toBe(0);
+    // La tribune, elle, reste : c est le fond de l ecran d accueil.
+    expect(scaleAt(body, 0)).toBeGreaterThan(0);
+
+    crowd.update(0, 0.3, false);
+    expect(scaleAt(body, index)).toBeGreaterThan(0);
+    crowd.dispose();
+  });
+
+  it('met le premier cercle a une echelle plus grande que les marches', () => {
+    const crowd = build();
+    const seats = buildSeats(seeded(7));
+    const index = seats.findIndex((s) => s.ring);
+    crowd.update(0, 0.3);
+    expect(scaleAt(part(crowd, 'body'), index)).toBeGreaterThan(1.2);
+    expect(scaleAt(part(crowd, 'body'), 0)).toBeCloseTo(1, 6);
+    expect(seats.filter((s) => s.ring)).toHaveLength(RING_SIZE);
     crowd.dispose();
   });
 
@@ -127,18 +184,16 @@ describe('createCrowd', () => {
     const two = build();
     one.update(1.3, 0.5);
     two.update(1.3, 0.5);
-    const bodyOne = instancesOf(one).find((m) => m.name === 'body');
-    const bodyTwo = instancesOf(two).find((m) => m.name === 'body');
-    if (bodyOne === undefined || bodyTwo === undefined) throw new Error('buste absent');
-    expect(positionAt(bodyOne, 12).toArray()).toEqual(positionAt(bodyTwo, 12).toArray());
+    expect(positionAt(part(one, 'body'), 12).toArray()).toEqual(
+      positionAt(part(two, 'body'), 12).toArray(),
+    );
     one.dispose();
     two.dispose();
   });
 
   it('ne demande pas de mise a jour quand rien n a bouge', () => {
     const crowd = build();
-    const body = instancesOf(crowd).find((m) => m.name === 'body');
-    if (body === undefined) throw new Error('buste absent');
+    const body = part(crowd, 'body');
     crowd.update(0.5, 0.2);
     // `needsUpdate` est un setter seul : il ne se relit pas. C est `version`
     // qu il incremente, et c est donc elle qui dit si un televersement a ete
@@ -152,5 +207,22 @@ describe('createCrowd', () => {
     crowd.update(0.6, 0.2);
     expect(body.instanceMatrix.version).toBeGreaterThan(version);
     crowd.dispose();
+  });
+
+  /** Changer de vitrine doit redessiner, meme a instant et ferveur egaux. */
+  it('redessine quand la vitrine s ouvre ou se ferme', () => {
+    const crowd = build();
+    const body = part(crowd, 'body');
+    crowd.update(0.5, 0.2, false);
+    const version = body.instanceMatrix.version;
+    crowd.update(0.5, 0.2, true);
+    expect(body.instanceMatrix.version).toBeGreaterThan(version);
+    crowd.dispose();
+  });
+
+  it('supporte une double liberation', () => {
+    const crowd = build();
+    crowd.dispose();
+    expect(() => crowd.dispose()).not.toThrow();
   });
 });

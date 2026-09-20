@@ -10,6 +10,7 @@ export * from './crowd.js';
 export * from './events.js';
 export * from './hands.js';
 export * from './lighting.js';
+export * from './mood.js';
 export * from './palette.js';
 export * from './renderer.js';
 export * from './rig.js';

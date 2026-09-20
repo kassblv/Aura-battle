@@ -223,6 +223,7 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
         hype: scene?.hype ?? 0.2,
         shake: 0,
         reducedMotion: motion.reduced,
+        showcase: solo,
       });
       renderer.renderer.render(arena.scene, arena.camera);
     };

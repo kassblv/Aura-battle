@@ -8,16 +8,49 @@ import { Color } from 'three';
  */
 export const ARENA_COLORS = {
   /** Fond et brouillard : la salle disparait dans le violet nuit. */
-  background: '#120a28',
-  ground: '#170d35',
-  platform: '#1f114a',
+  background: '#0d0620',
+  /**
+   * Le bitume autour du cercle.
+   *
+   * Plus sombre que la plateforme, et nettement plus sombre que le portage
+   * initial : c est l ecart de valeur entre le sol, le cercle et les
+   * combattants qui fait tenir la lecture. A valeurs egales, tout se confond.
+   */
+  ground: '#0f0725',
+  platform: '#251355',
   rim: '#b36bff',
   /** Les gradins alternent deux violets pour marquer les marches. */
-  stands: ['#201244', '#261550'],
+  stands: ['#180d33', '#1d103d'],
   /** Bandeaux lumineux au nez de chaque marche, alternes eux aussi. */
   strips: ['#4fe3ff', '#ff4fa3'],
-  /** Les quatre projecteurs qui balaient la salle. */
-  sweeps: ['#b36bff', '#4fe3ff', '#ff4fa3', '#ffcf3f'],
+  /** Les trois projecteurs qui balaient la salle. */
+  sweeps: ['#b36bff', '#4fe3ff', '#ff4fa3'],
+} as const;
+
+/**
+ * Les deux extremes de l ambiance, entre lesquels `mood.ts` interpole.
+ *
+ * `calm` est la salle avant que rien n arrive ; `blaze` est l instant du choc.
+ * Tout ce qui se joue entre les deux est une interpolation — aucune couleur
+ * intermediaire ne s ecrit ailleurs qu ici.
+ */
+export const ARENA_MOOD = {
+  calm: {
+    ambientSky: '#8a74d8',
+    ambientGround: '#150b2a',
+    key: '#c9d4ff',
+    back: '#7a4fd6',
+    rim: '#9a5cff',
+    haze: '#3a2170',
+  },
+  blaze: {
+    ambientSky: '#d6aaff',
+    ambientGround: '#2a1040',
+    key: '#ffe7c4',
+    back: '#ff5fb4',
+    rim: '#ffd489',
+    haze: '#8a3fb6',
+  },
 } as const;
 
 /**
