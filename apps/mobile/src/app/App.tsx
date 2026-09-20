@@ -26,6 +26,7 @@ import { useSession } from './useSession.js';
 import { memeGallery, stepMeme } from './memes.js';
 import { tryOn } from './tryOn.js';
 import { leagueLabel } from './leagues.js';
+import { inviteFromUrl } from './deepLink.js';
 import { browserStore, loadProgress, saveProgress } from './persist.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
@@ -115,6 +116,24 @@ export function App(): JSX.Element {
   const inDuel = online.view.phase !== 'idle';
 
   /**
+   * Un lien d'invitation rejoint des que la connexion le permet.
+   *
+   * On attend l'etat `online` : envoyer `invite:join` sur une socket qui n'est
+   * pas encore etablie le perdrait en silence, et le joueur resterait devant un
+   * ecran d'attente sans savoir pourquoi.
+   */
+  useEffect(() => {
+    const code = invited.current;
+    if (code === null || online.status !== 'online') return;
+    invited.current = null;
+    // L'adresse est nettoyee : un rechargement ne doit pas rejouer la jonction,
+    // et le code n'a plus rien a faire dans la barre d'adresse.
+    window.history.replaceState(null, '', '/');
+    setNav((current) => navigate(current, 'invite'));
+    online.joinInvite(code);
+  }, [online]);
+
+  /**
    * Les recompenses du dernier match, creditees une seule fois.
    *
    * Le serveur fait autorite : le client ne calcule rien, il encaisse ce qu'on
@@ -173,6 +192,16 @@ export function App(): JSX.Element {
    * joueur ne pouvait jamais bouger, quoi qu'il gagne.
    */
   const [mode, setMode] = useState<'ranked' | 'casual'>('ranked');
+
+  /**
+   * Le code porte par le lien qui a ouvert l'application.
+   *
+   * Lu une seule fois : le lien decrit l'intention du LANCEMENT, pas un etat.
+   * Le relire a chaque rendu rejouerait la jonction apres chaque partie, et le
+   * joueur serait renvoye au meme duel sans jamais pouvoir en chercher un
+   * autre.
+   */
+  const invited = useRef<string | null>(inviteFromUrl(window.location.href));
 
   /**
    * La ligue, telle que le serveur l'a annoncee au dernier match fini.
