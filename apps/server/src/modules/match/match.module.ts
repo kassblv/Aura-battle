@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { BALANCE } from '@aura/rules';
 import { AuthModule } from '../auth/auth.module.js';
 import { MatchGateway } from './adapters/match.gateway.js';
+import { PrismaPlayerDirectory } from './adapters/prisma-directory.js';
+import { PLAYER_DIRECTORY } from './domain/directory.js';
 import { PrismaMatchRepository } from './adapters/prisma-match.repository.js';
 import { SocketNotifier } from './adapters/socket-notifier.js';
 import { SystemMatchClock, TimeoutScheduler } from './adapters/timeout-scheduler.js';
@@ -34,6 +36,14 @@ import { MatchRuntime } from './application/match-runtime.js';
         clock: SystemMatchClock,
         repository: PrismaMatchRepository,
       ) => new MatchRuntime(notifier, scheduler, clock, BALANCE, repository),
+    },
+    PrismaPlayerDirectory,
+    // Jeton nomme : la passerelle depend du **port**, pas de Prisma. Le nom
+    // affiche est la seule chose que `match` sait d'un joueur.
+    {
+      provide: PLAYER_DIRECTORY,
+      inject: [PrismaPlayerDirectory],
+      useFactory: (directory: PrismaPlayerDirectory) => directory,
     },
     MatchGateway,
   ],

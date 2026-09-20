@@ -23,6 +23,11 @@ import type { Socket } from 'socket.io';
 import { PinoLoggerService } from '../../../shared/logger.js';
 import { TokenBucket } from '../../../shared/rate-limit.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
+import {
+  PLAYER_DIRECTORY,
+  UNKNOWN_PLAYER_NAME,
+  type PlayerDirectory,
+} from '../domain/directory.js';
 import { InviteService } from '../application/invites.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { SocketNotifier } from './socket-notifier.js';
@@ -71,6 +76,7 @@ export class MatchGateway implements OnGatewayConnection {
     @Inject(MatchRuntime) private readonly runtime: MatchRuntime,
     @Inject(InviteService) private readonly invites: InviteService,
     @Inject(SocketNotifier) private readonly notifier: SocketNotifier,
+    @Inject(PLAYER_DIRECTORY) private readonly directory: PlayerDirectory,
   ) {}
 
   /** Identifiant du joueur derriere une socket authentifiee. */
@@ -225,10 +231,10 @@ export class MatchGateway implements OnGatewayConnection {
    * des le depart ne ferait qu'infliger un forfait a quelqu'un qui est parti.
    */
   @SubscribeMessage('invite:join')
-  inviteJoin(
+  async inviteJoin(
     @ConnectedSocket() socket: Socket,
     @MessageBody() body: ClientMessage<'invite:join'>,
-  ): void {
+  ): Promise<void> {
     const guestId = this.playerOf(socket);
     const result = this.invites.join(body.code, guestId, Date.now());
     if (!result.ok) {
@@ -253,12 +259,23 @@ export class MatchGateway implements OnGatewayConnection {
     const seats = { a: result.hostId, b: guestId } as const;
     const seed = randomUUID();
 
+    /**
+     * Le nom de l'adversaire est lu **avant** d'ouvrir le match.
+     *
+     * Il etait code en dur : les deux joueurs voyaient « Adversaire », et le
+     * bandeau de match ne designait donc personne. Une lecture ratee retombe
+     * sur ce meme mot plutot que de faire echouer l'ouverture — un nom manquant
+     * ne vaut pas un duel annule.
+     */
+    const names = await this.namesOf(Object.values(seats));
+
     for (const [seat, playerId] of Object.entries(seats) as [Seat, string][]) {
+      const opponentId = seat === 'a' ? seats.b : seats.a;
       this.notifier.send(playerId, 'match:found', {
         matchId,
         seat,
         opponent: {
-          displayName: 'Adversaire',
+          displayName: names.get(opponentId) ?? UNKNOWN_PLAYER_NAME,
           league: 'bronze',
           cosmetics: {},
         },
@@ -270,6 +287,19 @@ export class MatchGateway implements OnGatewayConnection {
     }
 
     this.runtime.createMatch({ matchId, seed, seats });
+  }
+
+  /** Les noms, ou une carte vide si l'annuaire ne repond pas. */
+  private async namesOf(playerIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+    try {
+      return await this.directory.displayNames(playerIds);
+    } catch (cause) {
+      this.logger.warn(
+        `annuaire indisponible a l'ouverture du match : ${String(cause)}`,
+        'MatchGateway',
+      );
+      return new Map();
+    }
   }
 
   /** Reprise apres reconnexion : l'instantane ne contient rien de cache. */

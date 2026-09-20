@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { generateDeviceSecret, hashSecret } from '../domain/credentials.js';
+import { DeviceIdentityConflictError } from '../domain/ports.js';
 import type {
   AccessTokenSigner,
   Clock,
@@ -19,6 +20,8 @@ class FakePlayers implements PlayerRepository {
   readonly byDeviceHash = new Map<string, PlayerRecord>();
   readonly byId = new Map<string, PlayerRecord>();
   touched: string[] = [];
+  /** Panne a injecter au prochain `createWithDeviceIdentity`. */
+  createFailure: Error | null = null;
   private next = 1;
 
   findByDeviceHash(deviceHash: string): Promise<PlayerRecord | null> {
@@ -41,6 +44,17 @@ class FakePlayers implements PlayerRepository {
     deviceHash: string;
     displayName: string;
   }): Promise<PlayerRecord> {
+    if (this.createFailure !== null) {
+      const failure = this.createFailure;
+      this.createFailure = null;
+      return Promise.reject(failure);
+    }
+    // La base porte une contrainte d'unicite sur (provider, subject) : un double
+    // qui accepterait deux joueurs pour un meme appareil laisserait passer
+    // exactement le bug qu'on cherche a couvrir.
+    if (this.byDeviceHash.has(input.deviceHash)) {
+      return Promise.reject(new DeviceIdentityConflictError());
+    }
     const player: PlayerRecord = { id: `p_${String(this.next++)}`, displayName: input.displayName };
     this.byDeviceHash.set(input.deviceHash, player);
     this.byId.set(player.id, player);
@@ -165,6 +179,36 @@ describe('authenticateDevice — jouer sans inscription', () => {
     await service.authenticateDevice(secret);
     await service.authenticateDevice(secret);
     expect(players.touched).toEqual(['p_1']);
+  });
+
+  it('rend le meme joueur a deux appels concurrents du meme appareil', async () => {
+    // Deux onglets, ou un double appui au lancement : les deux appels ne
+    // trouvent rien et creent en meme temps. Le perdant de la course doit
+    // repartir du joueur que le gagnant vient de creer.
+    const secret = generateDeviceSecret();
+    const [a, b] = await Promise.all([
+      service.authenticateDevice(secret),
+      service.authenticateDevice(secret),
+    ]);
+
+    expect(b.player.id).toBe(a.player.id);
+    expect(players.byId.size).toBe(1);
+  });
+
+  it('remonte une panne de creation qui n est pas une collision', async () => {
+    players.createFailure = new Error('base indisponible');
+    await expect(service.authenticateDevice(generateDeviceSecret())).rejects.toThrow(
+      'base indisponible',
+    );
+  });
+
+  it('remonte la collision si le joueur reste introuvable ensuite', async () => {
+    // Une collision sans joueur a retrouver n'est plus une course : c'est une
+    // anomalie, et l'avaler rendrait une session sans joueur.
+    players.createFailure = new DeviceIdentityConflictError();
+    await expect(service.authenticateDevice(generateDeviceSecret())).rejects.toThrow(
+      DeviceIdentityConflictError,
+    );
   });
 
   it('refuse un secret qui n en est pas un', async () => {

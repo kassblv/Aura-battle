@@ -9,6 +9,7 @@ import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { InviteService } from '../application/invites.js';
+import { PLAYER_DIRECTORY } from '../domain/directory.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { MatchGateway } from './match.gateway.js';
 import { SocketNotifier } from './socket-notifier.js';
@@ -150,6 +151,19 @@ beforeAll(async () => {
           },
         }),
       },
+      /**
+       * Annuaire de test : deux noms fixes.
+       *
+       * Le vrai lit Postgres ; ce qu'on veut verifier ici, c'est que la
+       * passerelle annonce le nom de l'ADVERSAIRE et non celui du destinataire.
+       */
+      {
+        provide: PLAYER_DIRECTORY,
+        useValue: {
+          displayNames: (ids: readonly string[]) =>
+            Promise.resolve(new Map(ids.map((id) => [id, `Joueur ${id.slice(-4)}`]))),
+        },
+      },
       {
         provide: SocketNotifier,
         inject: [PinoLoggerService],
@@ -195,6 +209,35 @@ async function seatTwoPlayers(): Promise<{
   await guest.first<ServerMessage<'match:found'>>('match:found');
   return { host, guest, matchId: found.matchId };
 }
+
+describe('match:found', () => {
+  /**
+   * Chacun recoit le nom de l'AUTRE.
+   *
+   * Le nom etait code en dur a « Adversaire » : les deux joueurs voyaient le
+   * meme mot, et le bandeau de match ne designait donc personne. L'erreur
+   * suivante, une fois le nom branche, serait de renvoyer a chacun le sien.
+   */
+  it('annonce a chaque joueur le nom de son adversaire', async () => {
+    // `record` enregistre tous les messages des la connexion : poser un
+    // ecouteur au moment ou l'on s'interesse a `match:found` arriverait trop
+    // tard, la phase durant quelques dizaines de millisecondes.
+    const host = await record();
+    const guestId = nextPlayerId();
+    const guest = await record(guestId);
+
+    host.socket.emit('invite:create', {});
+    const invite = await host.first<ServerMessage<'invite:created'>>('invite:created');
+    guest.socket.emit('invite:join', { code: invite.code });
+
+    const forHost = await host.first<ServerMessage<'match:found'>>('match:found');
+    const forGuest = await guest.first<ServerMessage<'match:found'>>('match:found');
+
+    expect(forHost.opponent.displayName).toBe(`Joueur ${guestId.slice(-4)}`);
+    expect(forGuest.opponent.displayName).not.toBe(forHost.opponent.displayName);
+    close(host, guest);
+  });
+});
 
 /** Ferme proprement deux sockets. */
 const close = (...recorders: Recorder[]): void => {

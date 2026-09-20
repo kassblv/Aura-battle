@@ -1,6 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
+import { DeviceIdentityConflictError } from '../domain/ports.js';
 import type {
   PlayerRecord,
   PlayerRepository,
@@ -40,18 +41,31 @@ export class PrismaPlayerRepository implements PlayerRepository {
    * Cree le joueur et son identite d'appareil **en une transaction**.
    * Un joueur sans identite serait injoignable ; une identite sans joueur
    * serait orpheline. Les deux doivent apparaitre ensemble ou pas du tout.
+   *
+   * Prisma leve `P2002` quand la contrainte d'unicite sur `(provider, subject)`
+   * refuse la ligne, c'est-a-dire quand un autre appel a cree cette identite
+   * entre-temps. Traduit ici en erreur du domaine, comme `P2025` l'est en
+   * `null` plus bas : le cas d'usage a une reponse pour « cette identite existe
+   * deja », il n'en a pas pour « le moteur de base a leve ».
    */
   async createWithDeviceIdentity(input: {
     deviceHash: string;
     displayName: string;
   }): Promise<PlayerRecord> {
-    return this.prisma.player.create({
-      data: {
-        displayName: input.displayName,
-        identities: { create: { provider: 'DEVICE', subject: input.deviceHash } },
-      },
-      select: { id: true, displayName: true },
-    });
+    try {
+      return await this.prisma.player.create({
+        data: {
+          displayName: input.displayName,
+          identities: { create: { provider: 'DEVICE', subject: input.deviceHash } },
+        },
+        select: { id: true, displayName: true },
+      });
+    } catch (cause) {
+      if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
+        throw new DeviceIdentityConflictError(cause);
+      }
+      throw cause;
+    }
   }
 
   /**

@@ -8,6 +8,7 @@ import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { InviteService } from '../application/invites.js';
+import { PLAYER_DIRECTORY } from '../domain/directory.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { MatchGateway } from './match.gateway.js';
 import { SocketNotifier } from './socket-notifier.js';
@@ -106,6 +107,17 @@ beforeAll(async () => {
               ? Promise.resolve({ sub: 'p_1' })
               : Promise.reject(new Error('non')),
         }),
+      },
+      /**
+       * Annuaire vide : aucun nom connu.
+       *
+       * Ce fichier teste la poignee de main et l'authentification, pas les
+       * noms — et un annuaire muet couvre au passage le repli sur
+       * `UNKNOWN_PLAYER_NAME`, qui est le cas reel d'un compte efface.
+       */
+      {
+        provide: PLAYER_DIRECTORY,
+        useValue: { displayNames: () => Promise.resolve(new Map<string, string>()) },
       },
       {
         provide: PinoLoggerService,

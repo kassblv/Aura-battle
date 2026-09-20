@@ -6,6 +6,20 @@
  * base de donnees et sans attendre trente jours.
  */
 
+/**
+ * L'identite d'appareil visee existe deja.
+ *
+ * C'est l'adaptateur qui leve ce type, en traduisant la violation d'unicite que
+ * lui rend la base : le cas d'usage rattrape une course entre deux appels sans
+ * jamais connaitre le moteur de stockage ni ses codes d'erreur.
+ */
+export class DeviceIdentityConflictError extends Error {
+  constructor(cause?: unknown) {
+    super('DEVICE_IDENTITY_CONFLICT', { cause });
+    this.name = 'DeviceIdentityConflictError';
+  }
+}
+
 export interface PlayerRecord {
   readonly id: string;
   readonly displayName: string;
@@ -25,7 +39,10 @@ export interface PlayerRepository {
   findByDeviceHash(deviceHash: string): Promise<PlayerRecord | null>;
   /** Trouve un joueur par son identifiant. */
   findById(playerId: string): Promise<PlayerRecord | null>;
-  /** Cree un joueur et son identite d'appareil, en une seule transaction. */
+  /**
+   * Cree un joueur et son identite d'appareil, en une seule transaction.
+   * Leve `DeviceIdentityConflictError` si cette identite est deja prise.
+   */
   createWithDeviceIdentity(input: {
     readonly deviceHash: string;
     readonly displayName: string;

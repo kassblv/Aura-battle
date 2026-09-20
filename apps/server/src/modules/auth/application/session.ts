@@ -4,9 +4,11 @@ import {
   generateRefreshToken,
   hashSecret,
 } from '../domain/credentials.js';
+import { DeviceIdentityConflictError } from '../domain/ports.js';
 import type {
   AccessTokenSigner,
   Clock,
+  PlayerRecord,
   PlayerRepository,
   RefreshTokenRepository,
 } from '../domain/ports.js';
@@ -66,18 +68,42 @@ export class SessionService {
 
     const deviceHash = hashSecret(deviceSecret);
     const existing = await this.deps.players.findByDeviceHash(deviceHash);
-    const player =
-      existing ??
-      (await this.deps.players.createWithDeviceIdentity({
-        deviceHash,
-        displayName: generateDisplayName(),
-      }));
+    const player = existing ?? (await this.createOrAdopt(deviceHash));
 
     if (existing !== null) {
       await this.deps.players.touchLastSeen(player.id);
     }
 
     return this.issue(player);
+  }
+
+  /**
+   * Cree le joueur de cet appareil, ou adopte celui qu'un appel concurrent
+   * vient de creer.
+   *
+   * Deux onglets ouverts ensemble, un double appui au lancement ou un simple
+   * reessai reseau suffisent : les deux appels ne trouvent rien et creent en
+   * meme temps. Perdre cette course n'est pas une faute du client, c'est le
+   * comportement normal du protocole d'ouverture de session — le perdant
+   * repart donc du joueur du gagnant. Une collision sans joueur a retrouver,
+   * en revanche, est une vraie anomalie : elle remonte.
+   */
+  private async createOrAdopt(deviceHash: string): Promise<PlayerRecord> {
+    try {
+      return await this.deps.players.createWithDeviceIdentity({
+        deviceHash,
+        displayName: generateDisplayName(),
+      });
+    } catch (cause) {
+      if (!(cause instanceof DeviceIdentityConflictError)) {
+        throw cause;
+      }
+      const winner = await this.deps.players.findByDeviceHash(deviceHash);
+      if (winner === null) {
+        throw cause;
+      }
+      return winner;
+    }
   }
 
   /**
