@@ -16,6 +16,17 @@ import {
   TorusGeometry,
   Vector3,
 } from 'three';
+import {
+  CM,
+  DELTOID_LENGTH,
+  DELTOID_OFFSET,
+  DELTOID_RADIUS,
+  FLIP_PIVOT,
+  SHOULDER_DROP,
+  skeletonDepths,
+  YOKE_DEPTH,
+  YOKE_THICKNESS,
+} from '../animation/layout.js';
 import type { Pose } from '../animation/pose.js';
 import { createHand, type Hand, type HandSpec } from './hands.js';
 
@@ -29,16 +40,63 @@ import { createHand, type Hand, type HandSpec } from './hands.js';
  * l assombrissement du cote eloigne.
  */
 
-/** Les articulations sont en centimetres, y negatif vers le haut. */
-const CM = 0.01;
-
-/** Ecartement des membres de part et d autre du corps, en unites de scene. */
-const DEPTH = 0.12;
-
-/** Hauteur du pivot de salto : a mi-corps, pas au sol. */
-const FLIP_PIVOT = 0.85;
-
 const HAIR_COLOR = '#1b1426';
+
+/**
+ * Galbe des membres : rayon a l extremite, en part du rayon a la racine.
+ *
+ * Un cylindre de rayon constant se lit comme un tuyau, pas comme un bras. Le
+ * bras s affine du deltoide au coude, l avant-bras du coude au poignet, et le
+ * meme raisonnement vaut pour la cuisse et le mollet. Le rapport est porte par
+ * la geometrie plutot que par l echelle : trois nombres passes a
+ * `CylinderGeometry` coutent zero appel de dessin supplementaire, la ou une
+ * mise a l echelle non uniforme ne sait pas faire de cone.
+ */
+const TAPER = {
+  upperArm: 0.77,
+  foreArm: 0.7,
+  thigh: 0.76,
+  shin: 0.68,
+} as const;
+
+/**
+ * Rayons des membres a leur racine, en metres.
+ *
+ * Volontairement plus epais que le prototype a la racine et plus fins a
+ * l extremite : a volume egal, c est le galbe qui fait la difference entre un
+ * membre et un tuyau.
+ */
+const LIMB_RADIUS = {
+  upperArm: 0.056,
+  foreArm: 0.0435,
+  thigh: 0.068,
+  shin: 0.0515,
+  neck: 0.036,
+} as const;
+
+/**
+ * Rayons des articulations, en metres.
+ *
+ * Chaque bille doit **contenir** la section des deux os qu elle relie,
+ * contour compris : c est elle qui ferme le raccord quand le membre plie
+ * fort. Une bille plus petite que l os laisse voir une marche, et le pli d un
+ * coude serre laisse apparaitre un trou entre les deux cylindres.
+ */
+const JOINT_RADIUS = {
+  elbow: 0.048,
+  hip: 0.063,
+  knee: 0.054,
+} as const;
+
+/**
+ * Dilatation du contour d un membre.
+ *
+ * Le contour est une copie dilatee : sur un volume plus epais, le meme facteur
+ * donne un trait plus gros. 1,28 garde le trait du prototype (environ un
+ * centimetre et demi) sur des membres devenus plus larges — et, surtout, garde
+ * la section du bras a l interieur du deltoide qui la recouvre.
+ */
+const WIDE_OUTLINE = 1.28;
 
 /** Repli quand une animation ne declare pas ses mains. */
 const DEFAULT_HANDS: readonly HandSpec[] = Object.freeze([
@@ -59,6 +117,7 @@ type PartName =
   | 'shinRight'
   | 'shoulderLeft'
   | 'shoulderRight'
+  | 'shoulderYoke'
   | 'elbowLeft'
   | 'elbowRight'
   | 'hipLeft'
@@ -69,17 +128,18 @@ type PartName =
   | 'footRight'
   | 'skull';
 
-const BONES: readonly PartName[] = [
-  'neck',
-  'upperArmLeft',
-  'foreArmLeft',
-  'upperArmRight',
-  'foreArmRight',
-  'thighLeft',
-  'shinLeft',
-  'thighRight',
-  'shinRight',
-];
+/** Chaque os et la geometrie galbee qui lui va. */
+const BONES = [
+  ['neck', 'neck'],
+  ['upperArmLeft', 'upperArm'],
+  ['foreArmLeft', 'foreArm'],
+  ['upperArmRight', 'upperArm'],
+  ['foreArmRight', 'foreArm'],
+  ['thighLeft', 'thigh'],
+  ['shinLeft', 'shin'],
+  ['thighRight', 'thigh'],
+  ['shinRight', 'shin'],
+] as const satisfies readonly (readonly [PartName, string])[];
 
 const KNOTS: readonly PartName[] = [
   'shoulderLeft',
@@ -163,8 +223,19 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
     return material;
   };
 
+  /**
+   * Un tronc de cone unitaire : rayon 1 a la base (`a`), `taper` au sommet
+   * (`b`). `setBone` envoie l axe +Y sur `b`, donc le sommet est l extremite.
+   */
+  const limb = (taper: number): CylinderGeometry => new CylinderGeometry(taper, 1, 1, 12);
+
   const shapes = {
     cylinder: new CylinderGeometry(1, 1, 1, 12),
+    neck: limb(0.92),
+    upperArm: limb(TAPER.upperArm),
+    foreArm: limb(TAPER.foreArm),
+    thigh: limb(TAPER.thigh),
+    shin: limb(TAPER.shin),
     torso: new CylinderGeometry(1, 0.8, 1, 16),
     sphere: new SphereGeometry(1, 18, 12),
     box: new BoxGeometry(1, 1, 1),
@@ -187,15 +258,11 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
   flip.add(body);
 
   /** Un volume et son contour, dans un groupe qu on peut poser et etirer. */
-  const outlined = (
-    parent: Group,
-    geometry: 'cylinder' | 'torso' | 'sphere' | 'finger',
-    wide: boolean,
-  ): Group => {
+  const outlined = (parent: Group, geometry: keyof typeof shapes, wide: boolean): Group => {
     const group = new Group();
     const inner = new Mesh(shapes[geometry], outline);
     const border = new Mesh(shapes[geometry], outline);
-    if (wide) border.scale.set(1.32, 1.02, 1.32);
+    if (wide) border.scale.set(WIDE_OUTLINE, 1.02, WIDE_OUTLINE);
     else border.scale.setScalar(1.17);
     group.add(inner, border);
     parent.add(group);
@@ -203,8 +270,12 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
   };
 
   const parts = {} as Record<PartName, Group>;
-  for (const name of BONES) parts[name] = outlined(body, 'cylinder', true);
+  for (const [name, shape] of BONES) parts[name] = outlined(body, shape, true);
   parts.torso = outlined(body, 'torso', true);
+  // La ligne d epaules : un seul volume, donc deux appels de dessin de plus.
+  // Sans elle, les deltoides sont deux billes accrochees a un buste etroit et
+  // la silhouette descend du cou vers les bras au lieu de s elargir.
+  parts.shoulderYoke = outlined(body, 'cylinder', true);
   for (const name of KNOTS) parts[name] = outlined(body, 'sphere', false);
 
   const hands = [
@@ -339,6 +410,7 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
   };
   const direction = new Vector3();
   const rotation = new Quaternion();
+  const axisX = new Vector3(1, 0, 0);
   const axisY = new Vector3(0, 1, 0);
 
   const setMaterial = (group: Group, material: Material): void => {
@@ -359,6 +431,40 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
     group.position.copy(at);
     group.quaternion.identity();
     group.scale.setScalar(radius);
+  };
+
+  /**
+   * Le deltoide : une masse allongee le long du bras, pas une bille.
+   *
+   * Une sphere posee au point d epaule donne une articulation de pantin. Ce
+   * qui fait lire une epaule, c est un volume qui **suit l humerus** : il
+   * monte quand le bras se leve, part en avant quand le bras pointe, et
+   * recouvre toujours la section haute du bras — c est lui qui ferme le
+   * raccord quand le bras passe derriere le dos.
+   */
+  const setDeltoid = (group: Group, shoulder: Vector3, elbow: Vector3): void => {
+    direction.subVectors(elbow, shoulder);
+    const length = Math.max(0.0001, direction.length());
+    direction.divideScalar(length);
+    group.position.copy(shoulder).addScaledVector(direction, DELTOID_OFFSET);
+    rotation.setFromUnitVectors(axisY, direction);
+    group.quaternion.copy(rotation);
+    group.scale.set(DELTOID_RADIUS, DELTOID_LENGTH, DELTOID_RADIUS);
+  };
+
+  /**
+   * La ligne d epaules, d un deltoide a l autre.
+   *
+   * L orientation est posee explicitement plutot que deduite des deux points :
+   * `setFromUnitVectors` laisse le roulis libre autour de l axe, et ce volume
+   * n est pas rond — il est large d avant en arriere et plat en hauteur, ce
+   * qui n a de sens que si le roulis est connu. Un quart de tour autour de x
+   * envoie l axe du tube de y vers z.
+   */
+  const setYoke = (group: Group, at: Vector3, span: number): void => {
+    group.position.copy(at);
+    group.quaternion.setFromAxisAngle(axisX, Math.PI / 2);
+    group.scale.set(YOKE_DEPTH, span, YOKE_THICKNESS);
   };
 
   let dressed = '';
@@ -397,6 +503,9 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
       const skin = toon(look.skin);
 
       setMaterial(parts.torso, jacket);
+      // La ligne d epaules appartient au buste, pas a un bras : la teinte
+      // proche, sinon le haut du torse s assombrit d un cote sans raison.
+      setMaterial(parts.shoulderYoke, jacket);
       setMaterial(parts.neck, skin);
       for (const name of ['upperArmLeft', 'foreArmLeft', 'shoulderLeft', 'elbowLeft'] as const) {
         setMaterial(parts[name], jacketFar);
@@ -478,69 +587,87 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
        * ecarter de part et d autre du corps est ce qui transforme un dessin en
        * volume — sans cela ils se traversent proprement, et la pose devient
        * illisible de trois quarts.
+       *
+       * Ces ecartements viennent de `animation/layout`, pas d ici : le cadrage
+       * de la vitrine les applique aussi, et deux copies finissent toujours
+       * par diverger.
        */
-      const back = -DEPTH * facing;
-      const front = DEPTH * facing;
+      const depths = skeletonDepths(flags);
 
       const neck = at(v.neck, 'neck', 0);
       const hip = at(v.hip, 'hip', 0);
       const skull = at(v.head, 'head', 0);
 
-      v.shL.set(neck.x, neck.y - 0.025, neck.z + back);
-      v.shR.set(neck.x, neck.y - 0.025, neck.z + front);
-      at(v.elL, 'le', back * 1.05);
-      at(v.elR, 're', front * 1.05);
+      /**
+       * Les epaules, que le dessin n a pas.
+       *
+       * Le contenu fait partir les bras du cou. Les ecarter donne au buste une
+       * vraie ligne d epaules, horizontale, au lieu d un V.
+       */
+      const shoulderY = neck.y - SHOULDER_DROP;
+      v.shL.set(neck.x, shoulderY, neck.z + depths.shoulderLeft * facing);
+      v.shR.set(neck.x, shoulderY, neck.z + depths.shoulderRight * facing);
+      at(v.elL, 'le', depths.elbowLeft * facing);
+      at(v.elR, 're', depths.elbowRight * facing);
 
-      let handBack = back * 0.95;
-      let handFront = front * 0.95;
-      if (flags.armsFront === true) {
-        handBack = front * 0.4;
-        handFront = back * 0.4;
-      }
-      if (flags.armsBack === true) {
-        handBack = back * 0.35;
-        handFront = front * 0.35;
-      }
-      at(v.hL, 'lh', handBack);
-      at(v.hR, 'rh', handFront);
-      if (flags.armsBack === true) {
-        v.hL.x -= 0.09;
-        v.hR.x -= 0.09;
-        v.elL.x -= 0.04;
-        v.elR.x -= 0.04;
-      }
+      at(v.hL, 'lh', depths.handLeft * facing);
+      at(v.hR, 'rh', depths.handRight * facing);
+      v.hL.x += depths.handShift;
+      v.hR.x += depths.handShift;
+      v.elL.x += depths.elbowShift;
+      v.elR.x += depths.elbowShift;
 
-      v.hpL.set(hip.x, hip.y, hip.z + back * 0.55);
-      v.hpR.set(hip.x, hip.y, hip.z + front * 0.55);
-      at(v.knL, 'lk', back * 0.55);
-      at(v.knR, 'rk', front * 0.55);
-      at(v.ftL, 'lf', back * 0.55);
-      at(v.ftR, 'rf', front * 0.55);
+      v.hpL.set(hip.x, hip.y, hip.z + depths.hipLeft * facing);
+      v.hpR.set(hip.x, hip.y, hip.z + depths.hipRight * facing);
+      at(v.knL, 'lk', depths.kneeLeft * facing);
+      at(v.knR, 'rk', depths.kneeRight * facing);
+      at(v.ftL, 'lf', depths.footLeft * facing);
+      at(v.ftR, 'rf', depths.footRight * facing);
 
       v.a.set(hip.x, hip.y - 0.03, hip.z);
       v.b.set(neck.x, neck.y + 0.01, neck.z);
-      setBone(parts.torso, v.a, v.b, 0.13, 0.085);
+      // Un buste un peu plus large qu au prototype : le tronc n a plus a
+      // rattraper tout seul une ligne d epaules qui n existait pas.
+      setBone(parts.torso, v.a, v.b, 0.13, 0.095);
 
       v.a.set(skull.x * 0.6 + neck.x * 0.4, skull.y - 0.1, skull.z * 0.6 + neck.z * 0.4);
-      setBone(parts.neck, neck, v.a, 0.036);
+      setBone(parts.neck, neck, v.a, LIMB_RADIUS.neck);
 
-      setBone(parts.upperArmLeft, v.shL, v.elL, 0.048);
-      setBone(parts.foreArmLeft, v.elL, v.hL, 0.04);
-      setBone(parts.upperArmRight, v.shR, v.elR, 0.048);
-      setBone(parts.foreArmRight, v.elR, v.hR, 0.04);
-      setBone(parts.thighLeft, v.hpL, v.knL, 0.062);
-      setBone(parts.shinLeft, v.knL, v.ftL, 0.05);
-      setBone(parts.thighRight, v.hpR, v.knR, 0.062);
-      setBone(parts.shinRight, v.knR, v.ftR, 0.05);
+      setBone(parts.upperArmLeft, v.shL, v.elL, LIMB_RADIUS.upperArm);
+      setBone(parts.foreArmLeft, v.elL, v.hL, LIMB_RADIUS.foreArm);
+      setBone(parts.upperArmRight, v.shR, v.elR, LIMB_RADIUS.upperArm);
+      setBone(parts.foreArmRight, v.elR, v.hR, LIMB_RADIUS.foreArm);
+      setBone(parts.thighLeft, v.hpL, v.knL, LIMB_RADIUS.thigh);
+      setBone(parts.shinLeft, v.knL, v.ftL, LIMB_RADIUS.shin);
+      setBone(parts.thighRight, v.hpR, v.knR, LIMB_RADIUS.thigh);
+      setBone(parts.shinRight, v.knR, v.ftR, LIMB_RADIUS.shin);
 
-      setKnot(parts.shoulderLeft, v.shL, 0.05);
-      setKnot(parts.shoulderRight, v.shR, 0.05);
-      setKnot(parts.elbowLeft, v.elL, 0.043);
-      setKnot(parts.elbowRight, v.elR, 0.043);
-      setKnot(parts.hipLeft, v.hpL, 0.063);
-      setKnot(parts.hipRight, v.hpR, 0.063);
-      setKnot(parts.kneeLeft, v.knL, 0.051);
-      setKnot(parts.kneeRight, v.knR, 0.051);
+      setDeltoid(parts.shoulderLeft, v.shL, v.elL);
+      setDeltoid(parts.shoulderRight, v.shR, v.elR);
+
+      /**
+       * La ligne d epaules relie les DELTOIDES, pas les points du squelette.
+       *
+       * Le deltoide est decale vers le coude : le tendre entre `shL` et `shR`
+       * laissait donc deux billes depassant a chaque bout, ce qui est
+       * exactement la silhouette qu on cherchait a supprimer. Le poser apres
+       * eux coute un ordre d instructions et rend la mesure vraie.
+       */
+      v.a.addVectors(parts.shoulderLeft.position, parts.shoulderRight.position).multiplyScalar(0.5);
+      // La barre est couchee le long de z : sa longueur est donc l etendue en
+      // z, pas la distance 3D. Prendre la distance la faisait depasser des
+      // deltoides des qu une epaule avancait.
+      setYoke(
+        parts.shoulderYoke,
+        v.a,
+        Math.abs(parts.shoulderLeft.position.z - parts.shoulderRight.position.z),
+      );
+      setKnot(parts.elbowLeft, v.elL, JOINT_RADIUS.elbow);
+      setKnot(parts.elbowRight, v.elR, JOINT_RADIUS.elbow);
+      setKnot(parts.hipLeft, v.hpL, JOINT_RADIUS.hip);
+      setKnot(parts.hipRight, v.hpR, JOINT_RADIUS.hip);
+      setKnot(parts.kneeLeft, v.knL, JOINT_RADIUS.knee);
+      setKnot(parts.kneeRight, v.knR, JOINT_RADIUS.knee);
 
       const specs = animation.hands.length >= 2 ? animation.hands : DEFAULT_HANDS;
       hands.forEach((hand, i) => {

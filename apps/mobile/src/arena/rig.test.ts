@@ -1,8 +1,20 @@
 import { readdirSync, readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { loadAnimation, OUTFITS, SKIN_TONES, type Animation } from '@aura/content';
-import { Box3, Mesh, type MeshToonMaterial, type Object3D } from 'three';
+import {
+  Box3,
+  type BufferGeometry,
+  type CylinderGeometry,
+  type Group,
+  type Material,
+  Matrix4,
+  Mesh,
+  type MeshToonMaterial,
+  type Object3D,
+  Vector3,
+} from 'three';
 import { describe, expect, it } from 'vitest';
+import { animationBounds } from '../animation/bounds.js';
 import { samplePose } from '../animation/sample.js';
 import { createToonGradientMap } from './toonGradient.js';
 import { createFighterRig, type FighterLook } from './rig.js';
@@ -130,39 +142,40 @@ describe('habillage', () => {
   });
 });
 
-describe('mise en pose', () => {
-  const animation = (rot: number, pitch = 0): Animation =>
-    loadAnimation({
-      id: 'anim.test',
-      version: 1,
-      name: { fr: 'Test' },
-      move: { style: 'calme', tier: 0 },
-      loop: { duration: 1 },
-      hands: [
-        ['relax', 'in'],
-        ['relax', 'in'],
-      ],
-      frames: [
-        {
-          joints: {
-            head: [0, -150],
-            neck: [0, -130],
-            hip: [0, -78],
-            le: [-16, -104],
-            lh: [-10, -80],
-            re: [16, -104],
-            rh: [10, -80],
-            lk: [-10, -42],
-            lf: [-6, -2],
-            rk: [10, -42],
-            rf: [6, -2],
-          },
-          rot,
-          pitch,
+/** Une pose debout minimale, avec le lacet et le salto qu on veut eprouver. */
+const animation = (rot: number, pitch = 0): Animation =>
+  loadAnimation({
+    id: 'anim.test',
+    version: 1,
+    name: { fr: 'Test' },
+    move: { style: 'calme', tier: 0 },
+    loop: { duration: 1 },
+    hands: [
+      ['relax', 'in'],
+      ['relax', 'in'],
+    ],
+    frames: [
+      {
+        joints: {
+          head: [0, -150],
+          neck: [0, -130],
+          hip: [0, -78],
+          le: [-16, -104],
+          lh: [-10, -80],
+          re: [16, -104],
+          rh: [10, -80],
+          lk: [-10, -42],
+          lf: [-6, -2],
+          rk: [10, -42],
+          rf: [6, -2],
         },
-      ],
-    });
+        rot,
+        pitch,
+      },
+    ],
+  });
 
+describe('mise en pose', () => {
   /**
    * Regression. `rot` vaut jusqu a 6,28 dans `victory` : c est un tour complet
    * sur l axe vertical. Applique comme un roulis, et autour d un pivot au
@@ -274,6 +287,198 @@ describe('mains', () => {
     hand.shape(['fist', 'in'], 1 / 60);
     // Une main qui passe d ouverte a fermee en une image se lit comme un defaut.
     expect(hand.curl[0] ?? 0).toBeLessThan(0.4);
+    rig.dispose();
+  });
+});
+
+/**
+ * Les deux maillages d un volume : la forme, puis son contour dilate.
+ *
+ * On verifie les deux. Un raccord propre sur la forme mais pas sur le contour
+ * laisse un anneau noir a la jonction, ce qui se lit exactement comme la
+ * marche qu on cherche a eviter.
+ */
+/**
+ * Un maillage aux generiques fixes.
+ *
+ * `node instanceof Mesh` reduit vers `Mesh<any, any, any>` : les parametres de
+ * type de Three valent `any` par defaut, et tout ce qu'on lit ensuite —
+ * `geometry`, `material` — devient `any` a son tour. Nommer le type une fois
+ * rend la suite verifiee.
+ */
+type TypedMesh = Mesh<BufferGeometry, Material | Material[]>;
+
+const isMesh = (node: Object3D): node is TypedMesh => node instanceof Mesh;
+
+const shell = (group: Group, outline: boolean): TypedMesh => {
+  const mesh = group.children[outline ? 1 : 0];
+  if (mesh === undefined || !isMesh(mesh)) throw new Error('volume sans maillage');
+  return mesh;
+};
+
+/**
+ * La section d un os a l une de ses extremites, en coordonnees du monde.
+ *
+ * Les rayons sont lus sur la geometrie plutot que recopies : c est elle qui
+ * porte le galbe, et un test qui redeclare les memes nombres ne verifie plus
+ * rien le jour ou ils changent.
+ */
+function boneSection(group: Group, end: 'racine' | 'extremite', outline: boolean): Vector3[] {
+  const mesh = shell(group, outline);
+  const { radiusTop, radiusBottom } = (mesh.geometry as CylinderGeometry).parameters;
+  const tip = end === 'extremite';
+  const radius = tip ? radiusTop : radiusBottom;
+  const y = tip ? 0.5 : -0.5;
+  return Array.from({ length: 16 }, (_, i) => {
+    const angle = (i / 16) * Math.PI * 2;
+    return new Vector3(Math.cos(angle) * radius, y, Math.sin(angle) * radius).applyMatrix4(
+      mesh.matrixWorld,
+    );
+  });
+}
+
+/**
+ * Profondeur d un point dans une articulation, 1 = sa surface.
+ *
+ * L articulation est une sphere unitaire mise a l echelle : il suffit de
+ * repasser le point dans son repere pour savoir s il est dedans, quelle que
+ * soit l orientation du deltoide.
+ */
+const local = new Matrix4();
+function insideJoint(joint: Group, point: Vector3, outline: boolean): number {
+  const mesh = shell(joint, outline);
+  local.copy(mesh.matrixWorld).invert();
+  return point.clone().applyMatrix4(local).length();
+}
+
+/** Rayon horizontal et sommet de ce qui est reellement dessine, sommet par sommet. */
+function drawnExtent(root: Object3D): { radius: number; maxY: number } {
+  root.updateMatrixWorld(true);
+  const point = new Vector3();
+  let radius = 0;
+  let maxY = Number.NEGATIVE_INFINITY;
+  const walk = (node: Object3D): void => {
+    if (!node.visible) return;
+    if (isMesh(node)) {
+      const positions = node.geometry.getAttribute('position');
+      for (let i = 0; i < positions.count; i++) {
+        point.fromBufferAttribute(positions, i).applyMatrix4(node.matrixWorld);
+        radius = Math.max(radius, Math.hypot(point.x, point.z));
+        maxY = Math.max(maxY, point.y);
+      }
+    }
+    for (const child of node.children) walk(child);
+  };
+  walk(root);
+  return { radius, maxY };
+}
+
+describe('bras et epaules', () => {
+  it('galbe les membres au lieu de poser des tuyaux', () => {
+    const rig = build();
+    // Un membre plus fin a l extremite qu a la racine : c est la seule chose
+    // qui distingue un bras d un tube de meme volume.
+    for (const name of ['upperArmLeft', 'foreArmLeft', 'thighRight', 'shinRight'] as const) {
+      const { radiusTop, radiusBottom } = (
+        shell(rig.parts[name], false).geometry as CylinderGeometry
+      ).parameters;
+      expect(radiusTop, name).toBeLessThan(radiusBottom * 0.85);
+    }
+    rig.dispose();
+  });
+
+  it('donne des epaules plus larges que le buste', () => {
+    const rig = build(0, 1);
+    rig.dress(LOOK);
+    const anim = animation(0);
+    rig.pose(samplePose(anim, 0), anim, 0, 1 / 60);
+
+    // Le contenu fait partir les bras du cou : sans deltoides ecartes, la
+    // silhouette n a pas d epaules du tout, juste un buste et deux tubes.
+    const span = Math.abs(rig.parts.shoulderLeft.position.z - rig.parts.shoulderRight.position.z);
+    expect(span).toBeGreaterThan(rig.parts.torso.scale.z * 2);
+    // Et une ligne d epaules qui les relie au buste, sinon ce sont deux
+    // billes posees de part et d autre d un tronc etroit.
+    expect(rig.parts.shoulderYoke.scale.y).toBeCloseTo(span, 6);
+    rig.dispose();
+  });
+
+  it('ne laisse ni marche ni trou a l epaule et au coude', () => {
+    const rig = build(-0.5, 1);
+    rig.dress(LOOK);
+    const fautes: string[] = [];
+
+    for (const anim of shippedAnimations()) {
+      for (let step = 0; step < 16; step++) {
+        const t = (anim.loop.duration * step) / 16;
+        rig.pose(samplePose(anim, t), anim, t, 1 / 60);
+        rig.root.updateMatrixWorld(true);
+
+        const raccords = [
+          ['epaule gauche', rig.parts.shoulderLeft, rig.parts.upperArmLeft, 'racine'],
+          ['epaule droite', rig.parts.shoulderRight, rig.parts.upperArmRight, 'racine'],
+          ['coude gauche haut', rig.parts.elbowLeft, rig.parts.upperArmLeft, 'extremite'],
+          ['coude gauche bas', rig.parts.elbowLeft, rig.parts.foreArmLeft, 'racine'],
+          ['coude droit haut', rig.parts.elbowRight, rig.parts.upperArmRight, 'extremite'],
+          ['coude droit bas', rig.parts.elbowRight, rig.parts.foreArmRight, 'racine'],
+        ] as const;
+
+        for (const [nom, joint, bone, end] of raccords) {
+          for (const outline of [false, true]) {
+            for (const point of boneSection(bone, end, outline)) {
+              const depth = insideJoint(joint, point, outline);
+              if (depth > 1) {
+                fautes.push(
+                  `${anim.id} a t=${t.toFixed(2)} : ${nom}${outline ? ' (contour)' : ''} deborde de ${((depth - 1) * 100).toFixed(1)} %`,
+                );
+              }
+            }
+          }
+        }
+      }
+    }
+
+    expect(fautes.slice(0, 5)).toEqual([]);
+    rig.dispose();
+  });
+});
+
+/**
+ * Le cadrage de la vitrine doit suivre la geometrie.
+ *
+ * `animationBounds` mesure un squelette, le rig dessine des volumes autour :
+ * tant que les deux recopiaient les memes ecartements, la T-pose, la toupie,
+ * le haussement d epaules et la levitation debordaient du cadre de sept
+ * centimetres. Ce test-la est le seul qui l aurait vu.
+ */
+describe('ce qui est dessine tient dans ce qui est cadre', () => {
+  it('sur les 26 animations livrees', () => {
+    const rig = build(-0.5, 1);
+    rig.dress(LOOK);
+    const fautes: string[] = [];
+
+    for (const anim of shippedAnimations()) {
+      const bounds = animationBounds(anim);
+      for (let step = 0; step < 16; step++) {
+        const t = (anim.loop.duration * step) / 16;
+        rig.pose(samplePose(anim, t), anim, t, 1 / 60);
+        const { radius, maxY } = drawnExtent(rig.root);
+        if (radius > bounds.radius) {
+          fautes.push(
+            `${anim.id} deborde en largeur : ${radius.toFixed(3)} contre ${bounds.radius.toFixed(3)}`,
+          );
+          break;
+        }
+        if (maxY > bounds.maxY) {
+          fautes.push(
+            `${anim.id} deborde en hauteur : ${maxY.toFixed(3)} contre ${bounds.maxY.toFixed(3)}`,
+          );
+          break;
+        }
+      }
+    }
+
+    expect(fautes).toEqual([]);
     rig.dispose();
   });
 });

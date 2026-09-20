@@ -1,4 +1,5 @@
 import type { Animation } from '@aura/content';
+import { CM, FLIP_PIVOT, SHOULDER_DROP, skeletonDepths } from './layout.js';
 import { JOINT_NAMES, type JointName } from './pose.js';
 import { samplePose } from './sample.js';
 
@@ -16,26 +17,19 @@ import { samplePose } from './sample.js';
  * Three.js — donc testable sans navigateur.
  */
 
-/** Le contenu est en centimetres, y negatif vers le haut. */
-const CM = 0.01;
-
-/**
- * Pivot du salto, en metres.
- *
- * Doit suivre `FLIP_PIVOT` de `arena/rig.ts` : c est autour de ce point que le
- * rig fait tourner le corps. Mesurer sans lui donnerait un salto arriere cadre
- * comme une pose debout.
- */
-const FLIP_PIVOT = 0.85;
-
 /**
  * Marge autour des articulations, en metres.
  *
  * Les positions du contenu sont des **axes** d os : le volume dessine deborde
  * de part et d autre, et la tete a un crane, des cheveux et un contour. Sans
- * cette marge, le cadrage coupe le sommet du crane. Elle couvre aussi
- * l ecartement en profondeur que le rig donne aux membres (`DEPTH`, 12 cm),
- * absent du contenu qui est dessine a plat.
+ * cette marge, le cadrage coupe le sommet du crane.
+ *
+ * Elle ne couvre **pas** l ecartement en profondeur des membres : celui-la est
+ * applique article par article via `skeletonDepths`, exactement comme le rig
+ * le dessine. Le confondre avec la marge de volume revenait a esperer qu un
+ * seul nombre couvre a la fois un crane et douze centimetres d ecartement — la
+ * T-pose, la toupie, le haussement d epaules et la levitation debordaient du
+ * cadre de sept centimetres.
  */
 export const LIMB_MARGIN = 0.18;
 
@@ -67,8 +61,17 @@ export interface AnimationBounds {
   readonly hipY: number;
 }
 
-/** Une articulation, la ou le rig la posera : metres, y vers le haut, 0 au sol. */
-export type JointVisitor = (x: number, y: number, z: number, joint: JointName) => void;
+/**
+ * Point du squelette en volume.
+ *
+ * Les onze articulations du dessin, plus les deux epaules que le rig ajoute :
+ * le contenu n en a pas, mais elles sont ce qu il y a de plus large sur une
+ * pose bras le long du corps.
+ */
+export type SkeletonPoint = JointName | 'shoulderLeft' | 'shoulderRight';
+
+/** Un point du squelette, la ou le rig le posera : metres, y vers le haut, 0 au sol. */
+export type JointVisitor = (x: number, y: number, z: number, joint: SkeletonPoint) => void;
 
 /**
  * Parcourt la boucle et rend chaque articulation en coordonnees de scene.
@@ -85,6 +88,27 @@ export function forEachWorldJoint(
 ): void {
   const float = animation.flags?.float ?? 0;
   const steps = Math.max(1, samples);
+  const depths = skeletonDepths(animation.flags);
+
+  /**
+   * Profondeur et recul de chaque articulation, tels que le rig les applique.
+   *
+   * `facing` vaut 1 : on mesure un encombrement, et un rayon ne change pas de
+   * signe quand le personnage se retourne.
+   */
+  const placement: Readonly<Record<JointName, readonly [number, number]>> = {
+    head: [0, 0],
+    neck: [0, 0],
+    hip: [0, 0],
+    le: [depths.elbowShift, depths.elbowLeft],
+    lh: [depths.handShift, depths.handLeft],
+    re: [depths.elbowShift, depths.elbowRight],
+    rh: [depths.handShift, depths.handRight],
+    lk: [0, depths.kneeLeft],
+    lf: [0, depths.footLeft],
+    rk: [0, depths.kneeRight],
+    rf: [0, depths.footRight],
+  };
 
   for (let i = 0; i < steps; i++) {
     const time = (i / steps) * animation.loop.duration;
@@ -102,20 +126,30 @@ export function forEachWorldJoint(
     const cos = Math.cos(pose.pitch);
     const sin = Math.sin(pose.pitch);
 
-    for (const name of JOINT_NAMES) {
-      const joint = pose.joints[name];
-      const dx = joint[0] * CM;
+    /** Le salto tourne dans le plan x-y : la profondeur n en depend pas. */
+    const send = (name: SkeletonPoint, x: number, y: number, z: number): void => {
       // Le salto tourne le corps autour du pivot : mesurer la pose a plat
       // cadrerait un personnage debout la ou il est tete en bas.
-      const dy = -joint[1] * CM - FLIP_PIVOT;
-      visit(
-        dx * cos - dy * sin,
-        dx * sin + dy * cos + FLIP_PIVOT + root,
-        // Le salto tourne dans le plan x-y : la profondeur n en depend pas.
-        joint[2] * CM,
-        name,
-      );
+      const dy = y - FLIP_PIVOT;
+      visit(x * cos - dy * sin, x * sin + dy * cos + FLIP_PIVOT + root, z, name);
+    };
+
+    for (const name of JOINT_NAMES) {
+      const joint = pose.joints[name];
+      const [shift, depth] = placement[name];
+      send(name, joint[0] * CM + shift, -joint[1] * CM, depth + joint[2] * CM);
     }
+
+    /**
+     * Les epaules, que le dessin n a pas.
+     *
+     * Le rig les pose au niveau du cou, ecartees de `SHOULDER_SPAN` : sur une
+     * pose bras le long du corps, ce sont elles le point le plus large.
+     */
+    const neck = pose.joints.neck;
+    const shoulderY = -neck[1] * CM - SHOULDER_DROP;
+    send('shoulderLeft', neck[0] * CM, shoulderY, depths.shoulderLeft + neck[2] * CM);
+    send('shoulderRight', neck[0] * CM, shoulderY, depths.shoulderRight + neck[2] * CM);
   }
 }
 
