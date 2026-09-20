@@ -1,6 +1,7 @@
 import { memeGallery } from './memes.js';
 import { priceOf } from './wardrobe.js';
 import type { Wallet } from './profile.js';
+import type { PlayerRecord } from './record.js';
 import type { Look } from './wardrobe.js';
 
 /**
@@ -42,6 +43,13 @@ export interface Progress {
    * champ facultatif ne justifie pas de jeter les sauvegardes existantes.
    */
   readonly league?: string;
+  /**
+   * Ce que le joueur a fait, compte depuis les fins de match confirmees.
+   *
+   * Optionnel comme la ligue : une sauvegarde d'avant le classement reste
+   * valide, et quelqu'un qui n'a jamais fini de match n'a rien a compter.
+   */
+  readonly record?: PlayerRecord;
 }
 
 /** Le strict necessaire d'un trousseau, injecte pour rester testable. */
@@ -62,6 +70,10 @@ export function browserStore(key = PROGRESS_KEY): ProgressStore {
 
 function isCount(value: unknown): value is number {
   return typeof value === 'number' && Number.isInteger(value) && value >= 0;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null;
 }
 
 function isLook(value: unknown): value is Look {
@@ -117,6 +129,12 @@ export function loadProgress(store: ProgressStore): Progress | null {
   return {
     look: data.look,
     ...(typeof data.league === 'string' ? { league: data.league } : {}),
+    ...(isRecord(data.record) &&
+    ['matches', 'wins', 'currentStreak', 'bestStreak', 'lp'].every((f) =>
+      isCount((data.record as Record<string, unknown>)[f]),
+    )
+      ? { record: data.record as unknown as PlayerRecord }
+      : {}),
     // Un cosmetique retire du catalogue s'afficherait comme equipe sans
     // exister : on l'oublie plutot que de montrer un emplacement vide.
     owned: data.owned.filter(isKnown),

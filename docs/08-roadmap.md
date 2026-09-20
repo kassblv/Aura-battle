@@ -101,7 +101,7 @@ Référence : `docs/05-matchmaking-ranking.md`.
   `match:found.ghost` et `match:state.ghost` portent le drapeau — il survit donc à une
   reconnexion. **Non fait : le client n'affiche pas encore « Adversaire en différé »**
   (`apps/mobile`, hors périmètre de cet agent).
-- [ ] Écrans : partie classée ✅ et partie rapide ✅ (choix sur l'accueil, `queue:join` émis avec le mode), profil affichant la ligue ✅ — **historique et classement : non faits**
+- [ ] Écrans : partie classée ✅ et partie rapide ✅ (choix sur l'accueil, `queue:join` émis avec le mode), profil affichant la ligue, les LP, les matchs joués, les victoires et les séries ✅ — chaque chiffre est **compté** depuis un `match:end` confirmé, jamais estimé. **Classement général : non fait** (il demande une lecture serveur que le protocole ne porte pas encore)
 - [x] Tests : appariement par MMR ✅, élargissement ✅, entrée/sortie de file et tickets fantômes ✅ (e2e à deux clients), bascule vers fantôme ✅ (`ghost-e2e.test.ts` : un duel humain est enregistré puis rejoué contre un joueur seul), sélection de fantôme en propriétés `fast-check` ✅, LP réduits ✅
 
 ## M6 — Application mobile

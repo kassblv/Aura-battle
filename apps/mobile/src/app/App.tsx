@@ -27,6 +27,7 @@ import { memeGallery, stepMeme } from './memes.js';
 import { tryOn } from './tryOn.js';
 import { leagueLabel } from './leagues.js';
 import { inviteFromUrl } from './deepLink.js';
+import { emptyRecord, recordMatch } from './record.js';
 import { browserStore, loadProgress, saveProgress } from './persist.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
@@ -157,6 +158,18 @@ export function App(): JSX.Element {
       wallet: { ...current.wallet, soft: current.wallet.soft + settled.rewards.softCurrency },
     }));
     setLeague(settled.rating.leagueAfter);
+    setRecord((current) =>
+      recordMatch(current, {
+        // `view.ended` porte deja l issue traduite en « moi »/« adversaire » :
+        // la vue ne parle jamais de sieges, et la retraduire ici rouvrirait la
+        // question de savoir lequel on occupe.
+        // Une egalite reste `null` : la traiter comme une defaite casserait
+        // une serie que le joueur n a pas perdue.
+        won:
+          (online.view.ended?.winner ?? null) === null ? null : online.view.ended?.winner === 'moi',
+        lp: settled.rating.after,
+      }),
+    );
     online.clearSettled();
   }, [online]);
 
@@ -219,6 +232,13 @@ export function App(): JSX.Element {
    * verrait « Non classé » apres avoir gagne sa place.
    */
   const [league, setLeague] = useState<string>(saved?.league ?? '');
+
+  /**
+   * Ce que le joueur a fait, compte depuis les fins de match confirmees.
+   *
+   * Aucun de ces chiffres n'est invente : chacun vient d'un `match:end`.
+   */
+  const [record, setRecord] = useState(saved?.record ?? emptyRecord());
   /**
    * La bourse et les possessions vivent ici en attendant le jalon M5.
    *
@@ -242,8 +262,9 @@ export function App(): JSX.Element {
       owned: [...shop.owned],
       wallet: shop.wallet,
       ...(league === '' ? {} : { league }),
+      ...(record.matches === 0 ? {} : { record }),
     });
-  }, [store, wardrobe.look, shop.owned, shop.wallet, league]);
+  }, [store, wardrobe.look, shop.owned, shop.wallet, league, record]);
 
   /**
    * Le profil.
@@ -257,8 +278,17 @@ export function App(): JSX.Element {
       session.identity?.displayName ?? 'Invité',
       session.identity?.playerId ?? 'anonyme',
     );
-    return { ...fresh, wallet: shop.wallet, league: leagueLabel(league) };
-  }, [session.identity, shop.wallet, league]);
+    return {
+      ...fresh,
+      wallet: shop.wallet,
+      league: leagueLabel(league),
+      lp: record.lp,
+      matches: record.matches,
+      wins: record.wins,
+      currentStreak: record.currentStreak,
+      bestStreak: record.bestStreak,
+    };
+  }, [session.identity, shop.wallet, league, record]);
 
   /**
    * Hors match, l arene montre le personnage du joueur, habille en direct.
