@@ -16,7 +16,6 @@ import { useSoloMatch } from './useMatch.js';
 import { canLeave, navigate, openingScreen, type Navigation } from './navigation.js';
 import { needsOnboarding } from './onboarding.js';
 import { OnboardingScreen } from './OnboardingScreen.jsx';
-import { defaultEmotes, equipEmote, type EmoteLoadout } from './emotes.js';
 import { newProfile, type PlayerProfile } from './profile.js';
 import { buy, type ShopState } from './shop.js';
 import { ShopScreen } from './ShopScreen.jsx';
@@ -25,6 +24,7 @@ import { QueueScreen } from './QueueScreen.jsx';
 import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
 import { memeGallery, stepMeme } from './memes.js';
+import { tryOn } from './tryOn.js';
 import { browserStore, loadProgress, saveProgress } from './persist.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
@@ -136,10 +136,14 @@ export function App(): JSX.Element {
   const gallery = useMemo(() => memeGallery(), []);
   const [memeId, setMemeId] = useState(() => gallery[0]?.animationId ?? '');
   const meme = gallery.find((card) => card.animationId === memeId) ?? gallery[0]!;
-  const [emotes, setEmotes] = useState<EmoteLoadout>(() => ({
-    slots: saved?.emotes ?? defaultEmotes(),
-    owned: new Set(saved?.owned ?? []),
-  }));
+  /**
+   * L'article porte a l'essai dans la boutique.
+   *
+   * Il ne touche jamais au vestiaire : essayer n'est pas equiper, et refermer
+   * la boutique doit rendre le joueur a lui-meme sans qu'il ait rien a
+   * annuler.
+   */
+  const [trying, setTrying] = useState<string | null>(null);
   /**
    * La bourse et les possessions vivent ici en attendant le jalon M5.
    *
@@ -160,11 +164,10 @@ export function App(): JSX.Element {
   useEffect(() => {
     saveProgress(store, {
       look: wardrobe.look,
-      emotes: emotes.slots,
       owned: [...shop.owned],
       wallet: shop.wallet,
     });
-  }, [store, wardrobe.look, emotes.slots, shop.owned, shop.wallet]);
+  }, [store, wardrobe.look, shop.owned, shop.wallet]);
 
   /**
    * Le profil.
@@ -190,9 +193,11 @@ export function App(): JSX.Element {
    * seul combattant a l ecran pendant que le HUD jouait la manche.
    */
   if (nav.screen !== 'match' && !inDuel) {
+    // Ce qu'on essaie prend le pas sur ce qu'on porte, et seulement a l'ecran.
+    const shown = tryOn(looks.a, meme.animationId, nav.screen === 'shop' ? trying : null);
     arena.presentation.current = {
       fighters: {
-        a: { animationId: meme.animationId, look: looks.a },
+        a: { animationId: shown.animationId, look: shown.look },
         b: { animationId: 'anim.system.none.charge', look: looks.b },
       },
       hype: 0.35,
@@ -282,23 +287,23 @@ export function App(): JSX.Element {
         {!showOnboarding && nav.screen === 'shop' && (
           <ShopScreen
             state={shop}
-            emotes={emotes}
+            trying={trying}
+            onTry={(id) => {
+              // Retoucher l'article qu'on porte deja le repose : on peut
+              // comparer avec soi-meme sans quitter l'etalage.
+              setTrying((current) => (current === id ? null : id));
+            }}
             onBuy={(id) => {
               setShop((current) => {
                 const next = buy(current, id);
                 // Ce qu'on vient d'acheter devient portable sur-le-champ : la
                 // boutique et le vestiaire partagent la meme liste.
-                if (next !== current) {
-                  setWardrobe((w) => ({ ...w, owned: next.owned }));
-                  setEmotes((e) => ({ ...e, owned: next.owned }));
-                }
+                if (next !== current) setWardrobe((w) => ({ ...w, owned: next.owned }));
                 return next;
               });
             }}
-            onEquipEmote={(slot, id) => {
-              setEmotes((current) => equipEmote(current, slot, id));
-            }}
             onClose={() => {
+              setTrying(null);
               go('home');
             }}
           />

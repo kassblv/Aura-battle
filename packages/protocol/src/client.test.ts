@@ -37,7 +37,6 @@ describe('registre des messages client', () => {
     expect([...CLIENT_MESSAGE_NAMES].sort()).toEqual(
       [
         'choice:lock',
-        'emote:send',
         'intent:show',
         'invite:create',
         'invite:join',

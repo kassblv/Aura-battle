@@ -53,7 +53,6 @@ describe('registre des messages serveur', () => {
     expect([...SERVER_MESSAGE_NAMES].sort()).toEqual(
       [
         'choice:start',
-        'emote:received',
         'error',
         'intent:shown',
         'invite:created',

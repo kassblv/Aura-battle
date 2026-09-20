@@ -1,6 +1,5 @@
 import { memeGallery } from './memes.js';
 import { priceOf } from './wardrobe.js';
-import type { EmoteLoadout } from './emotes.js';
 import type { Wallet } from './profile.js';
 import type { Look } from './wardrobe.js';
 
@@ -28,11 +27,10 @@ export const PROGRESS_KEY = 'aura.progress';
  * Un format inconnu est jete plutot que devine : deviner ce qu'une version
  * precedente contenait est exactement la ou l'on invente des possessions.
  */
-const VERSION = 1;
+const VERSION = 2;
 
 export interface Progress {
   readonly look: Look;
-  readonly emotes: EmoteLoadout['slots'];
   /** Identifiants possedes. Ce qui est offert n'a pas besoin d'y figurer. */
   readonly owned: readonly string[];
   readonly wallet: Wallet;
@@ -101,9 +99,6 @@ export function loadProgress(store: ProgressStore): Progress | null {
   const data = parsed as Record<string, unknown>;
   if (data.version !== VERSION) return null;
   if (!isLook(data.look)) return null;
-  if (!Array.isArray(data.emotes) || !data.emotes.every((id) => typeof id === 'string')) {
-    return null;
-  }
   if (!Array.isArray(data.owned) || !data.owned.every((id) => typeof id === 'string')) return null;
 
   const wallet = data.wallet;
@@ -113,7 +108,6 @@ export function loadProgress(store: ProgressStore): Progress | null {
 
   return {
     look: data.look,
-    emotes: data.emotes,
     // Un cosmetique retire du catalogue s'afficherait comme equipe sans
     // exister : on l'oublie plutot que de montrer un emplacement vide.
     owned: data.owned.filter(isKnown),

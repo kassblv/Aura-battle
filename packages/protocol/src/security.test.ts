@@ -51,12 +51,34 @@ describe('identifiants — pas d injection de journal ni de collision de cle', (
     expect(parseClientMessage('invite:join', { code: 'ab 12' }).success).toBe(false);
   });
 
-  it('impose un identifiant d emote pointe', () => {
+  /**
+   * Un identifiant de contenu est pointe, jamais un chemin.
+   *
+   * C'est sur `choice:lock` que ca compte le plus : c'est l'identifiant que le
+   * serveur ira chercher dans le catalogue, et une traversee de chemin qui
+   * passerait la validation irait lire ce qu'elle veut sur le disque.
+   */
+  it('impose un identifiant de cosmetique pointe', () => {
+    const choix = {
+      matchId: 'm_01',
+      round: 1,
+      seq: 1,
+      move: { style: 'hype', tier: 2 },
+      amp: 1,
+      ult: false,
+      timing: { chargeAt: 0, tapAt: 400 },
+    };
     expect(
-      parseClientMessage('emote:send', { matchId: 'm_01', emoteId: 'emote.rire' }).success,
+      parseClientMessage('choice:lock', {
+        ...choix,
+        cosmetic: { animationId: 'anim.hype.t2.floss', effectId: 'fx.glow' },
+      }).success,
     ).toBe(true);
     expect(
-      parseClientMessage('emote:send', { matchId: 'm_01', emoteId: '../../etc/passwd' }).success,
+      parseClientMessage('choice:lock', {
+        ...choix,
+        cosmetic: { animationId: '../../etc/passwd', effectId: 'fx.glow' },
+      }).success,
     ).toBe(false);
   });
 });

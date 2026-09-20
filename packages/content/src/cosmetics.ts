@@ -149,42 +149,6 @@ export const OUTFITS: readonly Outfit[] = Object.freeze([
   },
 ]);
 
-export interface Emote {
-  readonly id: string;
-  readonly name: { readonly fr: string };
-  /** Symbole affiche : une emote se lit en un dixieme de seconde ou pas du tout. */
-  readonly glyph: string;
-  readonly rarity: Rarity;
-  readonly price: number;
-}
-
-/**
- * Emotes.
- *
- * Elles ne disent rien du jeu : ni le style choisi, ni l'energie restante, ni
- * l'intention. C'est deliberé — `intent:show` existe pour annoncer un style, et
- * il coute quelque chose. Une emote qui porterait la meme information la
- * rendrait gratuite, et vendre celle-la reviendrait a vendre un avantage
- * (regle d'or n°3).
- *
- * Quatre sont offertes : de quoi se saluer et se charrier sans rien acheter.
- */
-export const EMOTES: readonly Emote[] = Object.freeze([
-  { id: 'emote.salut', name: { fr: 'Salut' }, glyph: '👋', rarity: 'default', price: 0 },
-  { id: 'emote.rire', name: { fr: 'Rire' }, glyph: '😂', rarity: 'default', price: 0 },
-  { id: 'emote.bravo', name: { fr: 'Bravo' }, glyph: '👏', rarity: 'default', price: 0 },
-  { id: 'emote.pleure', name: { fr: 'Larme' }, glyph: '😭', rarity: 'default', price: 0 },
-  { id: 'emote.flamme', name: { fr: 'En feu' }, glyph: '🔥', rarity: 'common', price: 90 },
-  { id: 'emote.glace', name: { fr: 'Glacial' }, glyph: '🧊', rarity: 'common', price: 90 },
-  { id: 'emote.couronne', name: { fr: 'Couronne' }, glyph: '👑', rarity: 'rare', price: 400 },
-  { id: 'emote.eclair', name: { fr: 'Éclair' }, glyph: '⚡', rarity: 'rare', price: 400 },
-  { id: 'emote.crane', name: { fr: 'Crâne' }, glyph: '💀', rarity: 'epic', price: 850 },
-  { id: 'emote.licorne', name: { fr: 'Licorne' }, glyph: '🦄', rarity: 'legendary', price: 1_500 },
-]);
-
-/** Nombre d'emotes equipables en meme temps : la roue doit rester lisible au pouce. */
-export const EMOTE_SLOTS = 4;
-
 /** Teintes de peau du prototype. Offertes, jamais vendues. */
 export const SKIN_TONES: readonly string[] = Object.freeze([
   '#f3cfae',

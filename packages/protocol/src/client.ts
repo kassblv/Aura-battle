@@ -2,7 +2,6 @@ import { BALANCE } from '@aura/rules';
 import { z } from 'zod';
 import {
   amplifierSchema,
-  contentIdSchema,
   cosmeticSchema,
   matchIdSchema,
   moveSchema,
@@ -135,11 +134,6 @@ export const CLIENT_MESSAGES = {
     round: roundSchema,
     seq: seqSchema,
     style: styleSchema,
-  }),
-
-  'emote:send': z.strictObject({
-    matchId: matchIdSchema,
-    emoteId: contentIdSchema,
   }),
 } as const;
 

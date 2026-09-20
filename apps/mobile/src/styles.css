@@ -911,23 +911,151 @@ body {
   font-size: 15px;
 }
 
-.wheel {
+/*
+  La boutique, ou l'on essaie avant d'acheter.
+
+  Elle occupe la droite et laisse le personnage visible a sa gauche : c'est lui
+  l'etalage. Un panneau qui le recouvrirait ramenerait la boutique a une grille
+  de vignettes, et une vignette ne montre ni un mouvement, ni une silhouette.
+*/
+.shop {
+  position: absolute;
+  right: var(--safe-right);
+  top: 14px;
+  bottom: var(--safe-bottom);
+  width: min(340px, 42%);
+  border-radius: 18px;
+  padding: 12px 14px;
   display: flex;
+  flex-direction: column;
+  gap: 9px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.7);
+}
+
+.shop__head {
+  display: flex;
+  align-items: center;
   gap: 8px;
+}
+
+.shop__head h2 {
+  margin: 0;
+  margin-right: auto;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 19px;
+}
+
+.shop__hint {
+  margin: 0;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* Seule la liste defile : l'en-tete et la bourse restent sous les yeux. */
+.shop__scroll {
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.shop__section h3 {
+  margin: 0 0 5px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.09em;
+  color: var(--muted);
+}
+
+.shop__items {
+  display: grid;
+  gap: 6px;
   list-style: none;
   margin: 0;
   padding: 0;
 }
 
-.wheel__slot {
-  width: 52px;
-  height: 52px;
-  border-radius: 16px;
-  background: var(--chip);
+.shop__item {
+  width: 100%;
+  /* Cible tactile : au-dessus du minimum de 46 px de l'ADR 0008. */
+  min-height: 48px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 11px;
+  border-radius: 13px;
   border: 1px solid var(--line);
-  display: grid;
-  place-items: center;
-  font-size: 24px;
+  background: var(--chip);
+  color: var(--ink);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    border-color var(--d-tap) var(--e-out),
+    transform var(--d-tap) var(--e-out);
+}
+
+/* Ce qu'on porte a l'essai se distingue de ce qu'on survole. */
+.shop__item[data-trying='true'] {
+  border-color: var(--accent);
+  background: var(--accent-deep);
+}
+
+.shop__item[data-owned='true'] {
+  opacity: 0.62;
+  cursor: default;
+}
+
+.shop__item:active {
+  transform: translateY(2px);
+}
+
+.shop__glyph {
+  font-size: 17px;
+  line-height: 1;
+  flex: none;
+}
+
+.shop__swatch {
+  width: 20px;
+  height: 20px;
+  border-radius: 7px;
+  border: 1px solid var(--hud-line);
+  flex: none;
+}
+
+.shop__name {
+  margin-right: auto;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* L'etiquette dit quoi faire, pas seulement combien ca coute. */
+.shop__tag {
+  flex: none;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--gold-ink);
+}
+
+.shop__tag[data-state='buy'] {
+  color: var(--good-ink);
+}
+
+.shop__tag[data-state='poor'] {
+  color: var(--bad-ink);
+}
+
+.shop__tag[data-state='owned'] {
+  color: var(--muted);
 }
 
 .ward__glyph {
@@ -1115,12 +1243,26 @@ body {
   font-size: 12px;
   white-space: nowrap;
 }
+/**
+ * Barre d avancement de la phase.
+ *
+ * Elle etait peinte en `width` par React, a chaque image : une largeur qui
+ * change relance la mise en page, et le rendu qui la portait redessinait tout
+ * l ecran avec elle. Elle est desormais large de bout en bout et **comprimee**
+ * par la boucle de `MatchScreen` (`ui/frame.ts`) — une transformation se
+ * compose, elle ne mesure rien.
+ *
+ * `transform` appartient donc a la boucle. React ne lui donne aucun style.
+ */
 .hud__timer {
   position: absolute;
   left: 0;
   bottom: -1px;
+  width: 100%;
   height: 2px;
   background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left center;
 }
 .pips {
   color: var(--gold-ink);
@@ -1181,8 +1323,21 @@ body {
   pointer-events: auto;
 }
 
+/**
+ * Une orbe, c est un **emplacement**, pas une identite.
+ *
+ * Les trois emplacements sont montes une fois pour toute la recharge et la
+ * boucle de `MatchScreen` y fait passer les orbes : elle possede `left`,
+ * `top`, `opacity`, `data-live` et `data-kind`. React n en rend aucun — c est
+ * ce qui permet de deplacer une orbe sans redessiner l ecran.
+ *
+ * Un emplacement sans orbe est masque plutot qu absent. Masque, donc pas
+ * tapable : une cible invisible qui envoie un tap dans le vide casserait le
+ * combo du joueur sans qu il puisse comprendre pourquoi.
+ */
 .orb {
   position: absolute;
+  display: none;
   width: 58px;
   height: 58px;
   margin: -29px 0 0 -29px;
@@ -1193,7 +1348,10 @@ body {
   box-shadow: 0 0 22px var(--accent);
   animation: orb-in var(--d-chip) var(--e-over) both;
 }
-.orb--golden {
+.orb[data-live='true'] {
+  display: block;
+}
+.orb[data-kind='golden'] {
   width: 50px;
   height: 50px;
   margin: -25px 0 0 -25px;

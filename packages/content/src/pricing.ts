@@ -1,4 +1,4 @@
-import { AURA_EFFECTS, EMOTES, type Rarity } from './cosmetics.js';
+import { AURA_EFFECTS, type Rarity } from './cosmetics.js';
 
 /**
  * Le bareme : une rarete, un prix.
@@ -47,7 +47,7 @@ export interface PricedCosmetic {
  * la rarete qu'il y lit.
  */
 export function allCosmetics(): readonly PricedCosmetic[] {
-  return [...AURA_EFFECTS, ...EMOTES].map((item) => ({
+  return AURA_EFFECTS.map((item) => ({
     id: item.id,
     rarity: item.rarity,
     price: item.price,

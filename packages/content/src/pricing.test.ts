@@ -32,8 +32,8 @@ describe('catalogue complet', () => {
    * L'invariant applique a la DONNEE reellement livree.
    *
    * Le bareme ne sert a rien si les entrees du catalogue s'en ecartent une a
-   * une : c'est ainsi qu'on se retrouve avec une emote legendaire a 900 pieces
-   * a cote d'un effet epique a 1 250.
+   * une : c'est ainsi qu'on s'etait retrouve avec un legendaire a 900 pieces a
+   * cote d'un epique a 1 250.
    */
   it('facture chaque cosmetique au tarif de sa rarete', () => {
     for (const item of allCosmetics()) {
@@ -52,11 +52,9 @@ describe('catalogue complet', () => {
    * inventer une rarete apres coup, et une rarete inventee est une troisieme
    * source de verite.
    */
-  it('couvre les effets d aura et les emotes', () => {
+  it('couvre les effets d aura', () => {
     const ids = allCosmetics().map((item) => item.id);
-    for (const prefix of ['fx.', 'emote.']) {
-      expect(ids.some((id) => id.startsWith(prefix))).toBe(true);
-    }
+    expect(ids.some((id) => id.startsWith('fx.'))).toBe(true);
   });
 
   /** Aucun doublon : deux entrees du meme identifiant seraient deux prix. */

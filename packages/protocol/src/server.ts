@@ -242,11 +242,6 @@ export const SERVER_MESSAGES = {
     ),
   }),
 
-  'emote:received': z.strictObject({
-    seat: seatSchema,
-    emoteId: z.string().min(1).max(64),
-  }),
-
   /**
    * Erreur renvoyee au client.
    *

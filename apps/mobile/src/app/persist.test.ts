@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { defaultEmotes } from './emotes.js';
 import { loadProgress, saveProgress, type Progress } from './persist.js';
 import { defaultLook } from './wardrobe.js';
 
@@ -15,7 +14,6 @@ function memory(initial?: string): { read: () => string | null; write: (v: strin
 
 const progress = (over: Partial<Progress> = {}): Progress => ({
   look: defaultLook(),
-  emotes: defaultEmotes(),
   owned: [],
   wallet: { soft: 0, hard: 0 },
   ...over,

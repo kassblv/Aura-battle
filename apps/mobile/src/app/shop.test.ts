@@ -1,4 +1,4 @@
-import { EMOTES, OUTFITS } from '@aura/content';
+import { HAIRSTYLES, OUTFITS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import { memeGallery } from './memes.js';
 import { buy, shopSections, type ShopState } from './shop.js';
@@ -12,7 +12,6 @@ describe('shopSections', () => {
   it('range le catalogue par nature', () => {
     expect(shopSections().map((section) => section.id)).toEqual([
       'dance',
-      'emote',
       'outfit',
       'hair',
       'aura',
@@ -28,8 +27,8 @@ describe('shopSections', () => {
   });
 
   it('expose le catalogue reel', () => {
-    const emotes = shopSections().find((section) => section.id === 'emote');
-    expect(emotes?.items).toHaveLength(EMOTES.filter((emote) => emote.price > 0).length);
+    const tenues = shopSections().find((section) => section.id === 'outfit');
+    expect(tenues?.items).toHaveLength(OUTFITS.filter((outfit) => outfit.price > 0).length);
   });
 
   /**
@@ -85,8 +84,8 @@ describe('buy', () => {
   it('refuse d acheter ce qui est offert', () => {
     // Le debit serait de zero, mais l'objet entrerait dans la liste des
     // possessions et brouillerait la distinction entre offert et achete.
-    const free = EMOTES.find((emote) => emote.price === 0);
-    if (free === undefined) throw new Error('aucune emote offerte');
+    const free = HAIRSTYLES.find((hair) => hair.price === 0);
+    if (free === undefined) throw new Error('aucune coiffure offerte');
     const before = state(1000);
     expect(buy(before, free.id)).toBe(before);
   });

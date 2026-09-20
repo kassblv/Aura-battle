@@ -1,4 +1,4 @@
-import { AURA_COLORS, EMOTES, HAIRSTYLES, OUTFITS } from '@aura/content';
+import { AURA_COLORS, HAIRSTYLES, OUTFITS } from '@aura/content';
 import { memeGallery } from './memes.js';
 import type { Wallet } from './profile.js';
 
@@ -11,7 +11,7 @@ import type { Wallet } from './profile.js';
  * peut ainsi remonter jusqu a l etalage le jour ou le catalogue gagne un champ.
  */
 
-export type ShopSectionId = 'dance' | 'emote' | 'outfit' | 'hair' | 'aura';
+export type ShopSectionId = 'dance' | 'outfit' | 'hair' | 'aura';
 
 export interface ShopItem {
   readonly id: string;
@@ -68,16 +68,6 @@ export function shopSections(): readonly ShopSection[] {
           glyph: STYLE_GLYPHS[card.style],
           price: card.price,
         })),
-    },
-    {
-      id: 'emote',
-      title: 'Émotes',
-      items: EMOTES.filter((emote) => emote.price > 0).map((emote) => ({
-        id: emote.id,
-        name: emote.name.fr,
-        glyph: emote.glyph,
-        price: emote.price,
-      })),
     },
     {
       id: 'outfit',
