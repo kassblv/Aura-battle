@@ -402,6 +402,32 @@ body {
   text-transform: uppercase;
 }
 
+.launch__row {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+/* Le solo reste accessible mais discret : il se joue, il ne se cherche pas. */
+.launch__solo {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--ink);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 20px;
+  min-width: 74px;
+  cursor: pointer;
+  box-shadow: 0 5px 0 var(--chip-deep);
+  transition: transform var(--d-tap) var(--e-out);
+}
+
+.launch__solo:active {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 var(--chip-deep);
+}
+
 .launch__btn {
   font: inherit;
   font-family: var(--display);
@@ -410,7 +436,7 @@ body {
   letter-spacing: 0.02em;
   border: 0;
   cursor: pointer;
-  min-width: clamp(180px, 26vw, 250px);
+  min-width: clamp(150px, 22vw, 210px);
   min-height: 74px;
   padding: 0 28px;
   border-radius: 20px;
@@ -783,6 +809,65 @@ body {
 .ward__glyph {
   font-size: 18px;
   line-height: 1;
+}
+
+/* --- invitation --- */
+.invite__create {
+  font: inherit;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 17px;
+  border: 0;
+  border-radius: 16px;
+  min-height: 54px;
+  color: var(--accent-ink);
+  background: var(--accent);
+  cursor: pointer;
+  box-shadow:
+    0 5px 0 var(--accent-deep),
+    0 12px 20px -8px rgba(0, 0, 0, 0.5);
+}
+
+.invite__create:active:not(:disabled) {
+  transform: translateY(4px);
+  box-shadow: 0 1px 0 var(--accent-deep);
+}
+
+.invite__create:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.invite__join {
+  display: flex;
+  gap: 8px;
+}
+
+.invite__input {
+  font: inherit;
+  /* Un code se lit chiffre par chiffre : chasse fixe et lettres espacees. */
+  font-family: ui-monospace, 'SFMono-Regular', Menlo, monospace;
+  font-size: 18px;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  flex: 1;
+  min-width: 0;
+  min-height: 48px;
+  padding: 0 14px;
+  color: var(--ink);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+}
+
+.invite__code {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: clamp(30px, 7vw, 46px);
+  letter-spacing: 0.16em;
+  text-align: center;
+  color: var(--gold-ink);
 }
 
 /* --- file d attente --- */

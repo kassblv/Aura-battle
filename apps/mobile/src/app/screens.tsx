@@ -28,6 +28,7 @@ export interface HomeProps {
   readonly onProfile: () => void;
   readonly onWardrobe: () => void;
   readonly onShop: () => void;
+  readonly onOnline: () => void;
 }
 
 /**
@@ -51,6 +52,7 @@ export function HomeScreen({
   onProfile,
   onWardrobe,
   onShop,
+  onOnline,
 }: HomeProps): JSX.Element {
   return (
     <div className="home">
@@ -107,9 +109,15 @@ export function HomeScreen({
           Solo · contre Nova
           <small>{seasonLabel}</small>
         </p>
-        <button type="button" className="launch__btn" onClick={onPlay}>
-          Jouer
-        </button>
+        <div className="launch__row">
+          {/* Le duel d abord : c est le mode que le jeu existe pour offrir. */}
+          <button type="button" className="launch__btn" onClick={onOnline}>
+            Duel
+          </button>
+          <button type="button" className="launch__solo" onClick={onPlay}>
+            Solo
+          </button>
+        </div>
       </div>
     </div>
   );

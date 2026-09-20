@@ -10,6 +10,8 @@ import { defaultEmotes, equipEmote, type EmoteLoadout } from './emotes.js';
 import { newProfile, type PlayerProfile } from './profile.js';
 import { buy, type ShopState } from './shop.js';
 import { ShopScreen } from './ShopScreen.jsx';
+import { InviteScreen } from './InviteScreen.jsx';
+import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
@@ -26,6 +28,17 @@ export function App(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const arena = useArena(canvasRef);
   const session = useSession();
+  /**
+   * Le lien de jeu vit aussi longtemps que l application.
+   *
+   * Le monter a l entree de l ecran d invitation et le demonter a la sortie
+   * couperait la socket entre la creation d un code et l arrivee de
+   * l adversaire — c est-a-dire exactement pendant l attente.
+   */
+  const online = useOnlineMatch(session.accessToken);
+
+  /** Le serveur a ouvert un match : on quitte l ecran d invitation pour l arene. */
+  const inDuel = online.view.phase !== 'idle';
 
   /**
    * L inscription est facultative et **ne se represente pas**.
@@ -147,6 +160,9 @@ export function App(): JSX.Element {
             onShop={() => {
               go('shop');
             }}
+            onOnline={() => {
+              go('invite');
+            }}
             emotes={emotes.slots}
           />
         )}
@@ -190,6 +206,31 @@ export function App(): JSX.Element {
             wardrobe={wardrobe}
             onEquip={onEquip}
             onClose={() => {
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'invite' && !inDuel && (
+          <InviteScreen
+            status={online.status}
+            code={online.inviteCode}
+            error={online.error}
+            onCreate={online.createInvite}
+            onJoin={online.joinInvite}
+            onClose={() => {
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'invite' && inDuel && (
+          <MatchScreen
+            view={online.view}
+            actions={online.actions}
+            nowMs={online.nowMs}
+            opponentName={online.opponentName}
+            onLeave={() => {
               go('home');
             }}
           />
