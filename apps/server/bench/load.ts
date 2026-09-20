@@ -12,6 +12,7 @@ import type {
   WorkerStats,
 } from './protocol.js';
 import { WitnessClient } from './witness.js';
+import { randomBytes } from 'node:crypto';
 
 /**
  * Banc de charge du serveur de match (jalon M7).
@@ -200,6 +201,19 @@ async function portIsBusy(httpUrl: string): Promise<boolean> {
   }
 }
 
+/**
+ * Secret des routes de mesure, tire a chaque passage.
+ *
+ * Le banc lance son propre serveur : personne d'autre n'a besoin de connaitre
+ * ce secret, et rien ne justifie d'en poser un dans un fichier. Avec
+ * `--attach`, en revanche, le serveur est deja la : son secret vient alors de
+ * l'environnement, comme le sien.
+ */
+const METRICS_TOKEN = process.env.AURA_METRICS_TOKEN ?? randomBytes(24).toString('hex');
+
+/** En-tete a joindre aux deux routes de mesure. */
+const METRICS_AUTH = { authorization: `Bearer ${METRICS_TOKEN}` };
+
 function startServer(args: BenchArgs, redisUrl: string): ChildProcess {
   const cwd = fileURLToPath(new URL('..', import.meta.url));
   return spawn(process.execPath, ['--import', 'tsx', 'src/main.ts'], {
@@ -210,6 +224,7 @@ function startServer(args: BenchArgs, redisUrl: string): ChildProcess {
       REDIS_URL: redisUrl,
       DATABASE_POOL_MAX: String(args.dbPool),
       AURA_METRICS: '1',
+      AURA_METRICS_TOKEN: METRICS_TOKEN,
       /**
        * `production`, et pas `development`.
        *
@@ -334,7 +349,13 @@ async function main(): Promise<void> {
       await waitForHealth(httpUrl, 60_000);
     }
 
-    const probe = (await (await fetch(`${httpUrl}/health/metrics`)).json()) as { enabled: boolean };
+    const probeResponse = await fetch(`${httpUrl}/health/metrics`, { headers: METRICS_AUTH });
+    if (probeResponse.status === 401) {
+      throw new Error(
+        'le serveur refuse le secret de mesure : passe le sien dans AURA_METRICS_TOKEN (obligatoire avec --attach).',
+      );
+    }
+    const probe = (await probeResponse.json()) as { enabled: boolean };
     if (!probe.enabled) {
       throw new Error(
         'le serveur ne mesure rien : il lui manque AURA_METRICS=1. Un relevé pris ici serait vide.',
@@ -394,7 +415,7 @@ async function main(): Promise<void> {
     await witness.connect(httpUrl, wsUrl);
 
     // Fenetre de mesure : les deux bouts repartent de zero au meme instant.
-    await fetch(`${httpUrl}/health/metrics/reset`, { method: 'POST' });
+    await fetch(`${httpUrl}/health/metrics/reset`, { method: 'POST', headers: METRICS_AUTH });
     witness.start();
     for (const child of children) send(child, { type: 'measure' });
     const loadBefore = loadavg()[0]!;
@@ -402,7 +423,9 @@ async function main(): Promise<void> {
     console.log(`mesure ${String(args.measureMs)} ms…`);
     await sleep(args.measureMs);
 
-    const snapshot = (await (await fetch(`${httpUrl}/health/metrics`)).json()) as MetricsSnapshot;
+    const snapshot = (await (
+      await fetch(`${httpUrl}/health/metrics`, { headers: METRICS_AUTH })
+    ).json()) as MetricsSnapshot;
     const workerStats = await collectStats(children);
     const witnessRtt = witness.stop();
     const loadAfter = loadavg()[0]!;

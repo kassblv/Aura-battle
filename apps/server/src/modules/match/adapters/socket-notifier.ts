@@ -152,22 +152,51 @@ export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
   }
 
   send<N extends ServerMessageName>(playerId: string, name: N, payload: ServerMessage<N>): void {
+    /**
+     * Le chemin non mesure ne passe pas par le chronometre du tout.
+     *
+     * `observeSync` rend deja la main immediatement quand la mesure est
+     * eteinte, mais l'appeler alloue la fermeture qu'on lui passe — deux par
+     * message sortant, en permanence. La branche explicite repete trois
+     * lignes, et c'est le seul endroit du serveur ou cela se justifie : il est
+     * traverse plus souvent qu'aucun autre.
+     */
+    if (!this.metrics.enabled) {
+      const checked = serializeServerMessage(name, payload);
+      if (!checked.success) {
+        this.reportInvalid(name, checked.error);
+        return;
+      }
+      // Un joueur deconnecte n'est pas une erreur : le match continue sans lui,
+      // les actions par defaut s'appliquent, et il reprendra sur `match:rejoin`.
+      this.sessions.get(playerId)?.socket.emit(name, checked.data);
+      return;
+    }
+
     const checked = this.metrics.observeSync('outbound:validate', () =>
       serializeServerMessage(name, payload),
     );
     if (!checked.success) {
-      this.logger.error(
-        new Error(`message sortant « ${name} » invalide : ${checked.error}`),
-        undefined,
-        'SocketNotifier',
-      );
+      this.reportInvalid(name, checked.error);
       return;
     }
 
-    // Un joueur deconnecte n'est pas une erreur : le match continue sans lui,
-    // les actions par defaut s'appliquent, et il reprendra sur `match:rejoin`.
     const socket = this.sessions.get(playerId)?.socket;
     if (socket === undefined) return;
     this.metrics.observeSync('outbound:emit', () => socket.emit(name, checked.data));
+  }
+
+  /**
+   * Un message sortant qui ne passe pas son propre schema.
+   *
+   * C'est un defaut du **serveur**, jamais du joueur : il est journalise comme
+   * tel, et le message n'est pas envoye.
+   */
+  private reportInvalid(name: string, error: string): void {
+    this.logger.error(
+      new Error(`message sortant « ${name} » invalide : ${error}`),
+      undefined,
+      'SocketNotifier',
+    );
   }
 }

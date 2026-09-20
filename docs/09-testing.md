@@ -141,6 +141,14 @@ Le banc lance **son propre serveur** (port 3999, base Redis 9, `NODE_ENV=product
 `--measure-ms`, `--pairing invite|queue`, `--out fichier.json`, `--attach` (mesurer un
 serveur déjà lancé).
 
+Les deux routes de mesure — `GET /health/metrics` et `POST /health/metrics/reset` —
+exigent `Authorization: Bearer <AURA_METRICS_TOKEN>` dès que l'instrumentation tourne, et
+le serveur **refuse de démarrer** avec `AURA_METRICS=1` sans secret. La première dit
+combien de matchs vivent sur le nœud et à quelle cadence ; la seconde efface la fenêtre en
+cours, ce qui est pire qu'une absence de mesure — le relevé obtenu reste plausible et
+devient faux. Le banc tire son propre secret à chaque passage ; avec `--attach`, il faut
+lui passer celui du serveur visé dans `AURA_METRICS_TOKEN`.
+
 ### Ce qu'on mesure, et où la fenêtre commence
 
 La fenêtre va du **décodage du paquet** à la **fin du gestionnaire** : la limite de débit et

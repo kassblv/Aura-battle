@@ -212,10 +212,18 @@ export class MatchGateway implements OnGatewayConnection {
      * Socket.IO. C'est le bon instant : la limite de debit et la validation de
      * schema font partie du traitement d'un message, et une mesure qui
      * commencerait au gestionnaire ne verrait pas le cout d'un refus.
+     *
+     * L'ecouteur n'est pose que si l'on mesure. Un `if` de plus dans le
+     * rappel n'aurait pas suffi : des qu'un ecouteur attrape-tout existe,
+     * Socket.IO **recopie sa liste a chaque paquet recu** (`_anyListeners.slice()`).
+     * C'est une allocation par message entrant, en permanence, pour un banc
+     * qu'on lance quatre fois par an.
      */
-    socket.onAny((event: string) => {
-      this.metrics.received(socket, event);
-    });
+    if (this.metrics.enabled) {
+      socket.onAny((event: string) => {
+        this.metrics.received(socket, event);
+      });
+    }
 
     socket.on('disconnect', () => {
       // Rien ne doit survivre a la socket, pas meme une mesure en attente.

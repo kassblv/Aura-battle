@@ -8,6 +8,26 @@ import { z } from 'zod';
  * immediatement et bruyamment, jamais silencieusement avec une valeur par defaut
  * douteuse.
  */
+/** Seule valeur qui allume la mesure de charge. */
+const METRICS_ON = '1';
+
+/**
+ * La mesure de charge est-elle demandee par cet environnement ?
+ *
+ * Doublon apparent de `metricsEnabled`, et pourtant necessaire : NestJS decide
+ * d'enregistrer ou non l'intercepteur global **au chargement du module**,
+ * avant qu'aucun fournisseur n'existe. La regle — `AURA_METRICS=1`, et rien
+ * d'autre — reste donc definie ici, a un seul endroit, plutot que recopiee
+ * dans un module ou elle finirait par diverger.
+ *
+ * Cette fonction ne valide rien et ne leve jamais : elle est appelee a
+ * l'import, la ou une configuration invalide doit encore pouvoir echouer
+ * proprement au demarrage.
+ */
+export function metricsRequestedIn(env: NodeJS.ProcessEnv): boolean {
+  return env.AURA_METRICS === METRICS_ON;
+}
+
 const configSchema = z.object({
   nodeEnv: z.enum(['development', 'test', 'production']).default('development'),
   port: z.coerce.number().int().min(1).max(65535).default(3000),
@@ -59,7 +79,21 @@ const configSchema = z.object({
   metricsEnabled: z
     .string()
     .default('0')
-    .transform((raw) => raw === '1'),
+    .transform((raw) => raw === METRICS_ON),
+  /**
+   * Secret exige par les routes de mesure quand l'instrumentation tourne.
+   *
+   * `/health/metrics` dit combien de matchs vivent sur le noeud, a quelle
+   * cadence, et combien de memoire il occupe ; `/health/metrics/reset` efface
+   * la fenetre en cours. Les deux etaient ouvertes a qui sait former une
+   * requete HTTP. La premiere renseigne qui prepare une charge, la seconde
+   * aveugle la mesure pendant qu'elle a lieu.
+   *
+   * Vide par defaut, parce que la mesure est eteinte par defaut : le couple
+   * « allumee sans secret » est refuse au demarrage plus bas, plutot que
+   * tolere en silence.
+   */
+  metricsToken: z.string().default(''),
   corsOrigins: z
     .string()
     .default('')
@@ -102,6 +136,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     corsOrigins: env.CORS_ORIGINS,
     databasePoolMax: env.DATABASE_POOL_MAX,
     metricsEnabled: env.AURA_METRICS,
+    metricsToken: env.AURA_METRICS_TOKEN,
   });
 
   if (!parsed.success) {
@@ -109,6 +144,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
       .map((issue) => `  - ${issue.path.join('.') || '(racine)'} : ${issue.message}`)
       .join('\n');
     throw new ConfigError(`Configuration invalide :\n${details}`);
+  }
+
+  if (parsed.data.metricsEnabled && parsed.data.metricsToken.length === 0) {
+    throw new ConfigError(
+      "Configuration invalide :\n  - AURA_METRICS_TOKEN : requis des que AURA_METRICS=1, sinon les releves de charge sont lisibles et effacables par n'importe qui",
+    );
   }
 
   return Object.freeze(parsed.data);

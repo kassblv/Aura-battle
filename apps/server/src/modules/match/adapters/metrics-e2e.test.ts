@@ -271,7 +271,18 @@ it(
       (taken) => taken.messages.rejected > before.messages.rejected,
       'le message refuse n a jamais ete compte',
     );
-    expect(snapshot.messages.byEvent.nawak?.count).toBeGreaterThanOrEqual(1);
+    /**
+     * Compte, mais **pas nomme**.
+     *
+     * Le nom vient du client : lui donner sa propre entree laissait
+     * l'adversaire decider combien la table en contient. Cette epreuve
+     * exigeait justement `byEvent.nawak`, donc elle verrouillait le defaut —
+     * un test peut figer une faille aussi surement qu'il protege un
+     * comportement. Ce qu'elle voulait prouver est ailleurs : le temps passe
+     * a refuser reste visible.
+     */
+    expect(snapshot.messages.byEvent.nawak).toBeUndefined();
+    expect(snapshot.messages.byEvent.inconnu?.count).toBeGreaterThanOrEqual(1);
     expect(snapshot.unmatched).toBe(0);
 
     socket.disconnect();

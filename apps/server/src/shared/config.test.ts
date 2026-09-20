@@ -78,3 +78,37 @@ describe('databasePoolMax', () => {
     expect(() => loadConfig({ ...validEnv, DATABASE_POOL_MAX: '0' })).toThrow(ConfigError);
   });
 });
+
+/**
+ * `/health/metrics` dit combien de matchs vivent sur le noeud et a quelle
+ * cadence ; `/health/metrics/reset` efface la fenetre en cours. Les deux
+ * etaient ouvertes a qui sait former une requete HTTP : la premiere renseigne
+ * qui prepare une charge, la seconde aveugle la mesure pendant qu'elle a lieu.
+ *
+ * Le couple « mesure allumee, aucun secret » est donc refuse **au demarrage**,
+ * pas tolere en silence : un serveur qui ne demarre pas se remarque, une route
+ * ouverte non.
+ */
+describe('secret des routes de mesure', () => {
+  const base = {
+    DATABASE_URL: 'postgresql://a',
+    REDIS_URL: 'redis://a',
+    JWT_SECRET: 'un-secret-assez-long',
+  };
+
+  it('refuse de demarrer avec la mesure allumee et aucun secret', () => {
+    expect(() => loadConfig({ ...base, AURA_METRICS: '1' })).toThrow(/AURA_METRICS_TOKEN/);
+  });
+
+  it('accepte la mesure allumee quand le secret est la', () => {
+    const config = loadConfig({ ...base, AURA_METRICS: '1', AURA_METRICS_TOKEN: 'secret' });
+    expect(config.metricsEnabled).toBe(true);
+    expect(config.metricsToken).toBe('secret');
+  });
+
+  /** Eteinte, il n'y a rien a proteger : le secret n'est pas exige. */
+  it('n exige aucun secret quand la mesure est eteinte', () => {
+    expect(loadConfig(base).metricsToken).toBe('');
+    expect(loadConfig(base).metricsEnabled).toBe(false);
+  });
+});

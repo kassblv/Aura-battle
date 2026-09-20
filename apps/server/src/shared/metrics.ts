@@ -29,6 +29,7 @@ import {
   type ELDHistogram,
   type PerformanceEntry,
 } from 'node:perf_hooks';
+import { CLIENT_MESSAGE_NAMES } from '@aura/protocol';
 
 /**
  * Paliers de l'histogramme, en microsecondes.
@@ -189,6 +190,17 @@ function toMs(microseconds: number): number {
  * compte a part plutot que perdu en silence.
  */
 const MAX_PENDING_PER_CONNECTION = 32;
+
+/**
+ * Les noms d'evenements qui ont droit a leur propre histogramme.
+ *
+ * La liste du protocole est close ; celle que le client peut emettre ne l'est
+ * pas. C'est toute la difference, et c'est ce qui borne la table.
+ */
+const KNOWN_EVENTS: ReadonlySet<string> = new Set(CLIENT_MESSAGE_NAMES);
+
+/** Ou tombe tout ce que le protocole ne connait pas. */
+const UNKNOWN_EVENT = 'inconnu';
 
 /** Ce qu'on retient d'un message entrant entre son arrivee et sa fin de traitement. */
 interface Pending {
@@ -563,11 +575,26 @@ export class MessageMetrics {
     return created;
   }
 
+  /**
+   * L'histogramme d'un nom d'evenement — **et seulement d'un nom connu**.
+   *
+   * Le nom vient de `socket.onAny`, c'est-a-dire du client : il emet ce qu'il
+   * veut. Indexer la table sur ce nom revient a laisser l'adversaire choisir
+   * combien d'entrees elle contient. Des noms tires au hasard, refuses un par
+   * un par le filtre d'entree — donc soldes ici — faisaient naitre un
+   * histogramme chacun, jusqu'a epuiser la memoire du noeud.
+   *
+   * La borne ne peut pas venir du schema : un nom inconnu n'en a pas. Elle
+   * vient de la liste du protocole, qui est close. Tout le reste tombe dans
+   * `inconnu`, compte mais non nomme — le temps passe a refuser un message
+   * reste du temps serveur, et doit rester visible.
+   */
   private histogramFor(event: string): DurationHistogram {
-    const existing = this.byEvent.get(event);
+    const key = KNOWN_EVENTS.has(event) ? event : UNKNOWN_EVENT;
+    const existing = this.byEvent.get(key);
     if (existing !== undefined) return existing;
     const created = new DurationHistogram();
-    this.byEvent.set(event, created);
+    this.byEvent.set(key, created);
     return created;
   }
 

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CLIENT_MESSAGE_NAMES } from '@aura/protocol';
 import { DurationHistogram, MessageMetrics, type MetricsSnapshot } from './metrics.js';
 
 /**
@@ -286,5 +287,75 @@ describe('MessageMetrics, allumee', () => {
     metrics.settleHandled(socket, 'ping');
 
     expect(activeSnapshot(metrics).messages.total.maxMs).toBeGreaterThanOrEqual(3);
+  });
+});
+
+/**
+ * Le nom d'un evenement Socket.IO est choisi par le CLIENT.
+ *
+ * `socket.onAny` voit donc tout ce qu'une socket veut bien emettre, y compris
+ * ce que le protocole ne connait pas — et le filtre d'entree refuse ces
+ * messages-la, ce qui les fait passer par `settleRejected`, c'est-a-dire par
+ * la table indexee par nom. Une table qui grandit a chaque nom inedit est une
+ * table que l'adversaire remplit : il suffit d'emettre des noms tires au
+ * hasard pour faire naitre un histogramme par nom, jusqu'a epuiser la memoire
+ * du noeud.
+ *
+ * C'est le piege que `CLAUDE.md` enonce : **le protocole borne un message, pas
+ * la somme des messages**. La borne ne peut pas venir du schema — un nom
+ * inconnu n'a pas de schema — elle doit venir d'ici.
+ */
+describe('noms d evenements inventes par le client', () => {
+  it('ne cree pas un histogramme par nom inconnu', () => {
+    const metrics = new MessageMetrics(true);
+    const socket = {};
+
+    for (let i = 0; i < 5_000; i += 1) {
+      const invente = `truc:${i}`;
+      metrics.received(socket, invente);
+      metrics.settleRejected(socket, invente);
+    }
+
+    const snapshot = activeSnapshot(metrics);
+    expect(Object.keys(snapshot.messages.byEvent).length).toBeLessThanOrEqual(
+      CLIENT_MESSAGE_NAMES.length + 1,
+    );
+  });
+
+  /**
+   * Les refuser ne doit pas revenir a les ignorer : le temps passe a rejeter
+   * un message inconnu est du temps serveur, et il doit rester visible.
+   * Il est simplement compte ensemble, sous un seul nom.
+   */
+  it('les compte tous ensemble, sans les perdre', () => {
+    const metrics = new MessageMetrics(true);
+    const socket = {};
+
+    for (let i = 0; i < 40; i += 1) {
+      metrics.received(socket, `truc:${i}`);
+      metrics.settleRejected(socket, `truc:${i}`);
+    }
+
+    const snapshot = activeSnapshot(metrics);
+    expect(snapshot.messages.rejected).toBe(40);
+    expect(snapshot.messages.total.count).toBe(40);
+    expect(snapshot.messages.byEvent.inconnu?.count).toBe(40);
+  });
+
+  /** Un vrai nom de message garde son propre histogramme, lui. */
+  it('laisse chaque message du protocole a son propre compteur', () => {
+    const metrics = new MessageMetrics(true);
+    const socket = {};
+
+    for (const nom of CLIENT_MESSAGE_NAMES) {
+      metrics.received(socket, nom);
+      metrics.settleHandled(socket, nom);
+    }
+
+    const snapshot = activeSnapshot(metrics);
+    for (const nom of CLIENT_MESSAGE_NAMES) {
+      expect(snapshot.messages.byEvent[nom]?.count).toBe(1);
+    }
+    expect(snapshot.messages.byEvent.inconnu).toBeUndefined();
   });
 });
