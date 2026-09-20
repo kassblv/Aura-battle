@@ -2,7 +2,15 @@ import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'rea
 import { useArena, type ArenaControls } from '../arena/useArena.js';
 import { useAudio, type AudioControls } from './useAudio.js';
 import { lockLandscape } from '../platform/orientation.js';
-import { defaultLook, equip, type Look, type LookSlot, type Wardrobe } from './wardrobe.js';
+import {
+  danceFor,
+  defaultLook,
+  equip,
+  equipDance,
+  type Look,
+  type LookSlot,
+  type Wardrobe,
+} from './wardrobe.js';
 import { MatchScreen } from './MatchScreen.jsx';
 import { useSoloMatch } from './useMatch.js';
 import { canLeave, navigate, openingScreen, type Navigation } from './navigation.js';
@@ -220,6 +228,16 @@ export function App(): JSX.Element {
             meme={meme}
             onStepMeme={(delta) => {
               setMemeId((current) => stepMeme(gallery, current, delta));
+            }}
+            memeOwned={meme.free || wardrobe.owned.has(meme.animationId)}
+            memeEquipped={
+              danceFor(wardrobe.look, { style: meme.style, tier: meme.tier }) ===
+                meme.animationId ||
+              (meme.free &&
+                danceFor(wardrobe.look, { style: meme.style, tier: meme.tier }) === undefined)
+            }
+            onEquipMeme={() => {
+              setWardrobe((current) => equipDance(current, meme.animationId));
             }}
           />
         )}

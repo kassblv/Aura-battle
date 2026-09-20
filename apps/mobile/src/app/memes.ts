@@ -1,4 +1,13 @@
-import { animationsFor, animationId, STYLES, TIERS, type Style, type Tier } from '@aura/content';
+import {
+  animationsFor,
+  animationId,
+  priceForRarity,
+  STYLES,
+  TIERS,
+  type Rarity,
+  type Style,
+  type Tier,
+} from '@aura/content';
 import { ANIMATIONS } from '../content/animations.js';
 
 /**
@@ -19,7 +28,15 @@ export interface MemeCard {
   readonly name: string;
   readonly style: Style;
   readonly tier: Tier;
-  readonly rarity: string;
+  readonly rarity: Rarity;
+  /**
+   * Prix en monnaie douce, deduit de la rarete.
+   *
+   * Jamais ecrit dans le fichier d'animation : la rarete y est deja, et un
+   * prix a cote d'elle serait une seconde valeur a tenir d'accord avec la
+   * premiere. Le bareme vit dans `@aura/content`.
+   */
+  readonly price: number;
   /**
    * Offert a tous.
    *
@@ -39,13 +56,18 @@ export function memeGallery(): readonly MemeCard[] {
         const id = animationId(move, slug);
         const animation = ANIMATIONS.get(id);
         if (animation === undefined) return;
+        // La premiere animation de chaque couple style-palier est offerte
+        // (docs/01 §2) : sa rarete declaree ne peut donc pas la faire payer.
+        const free = index === 0;
+        const rarity = (free ? 'default' : (animation.rarity ?? 'default')) as Rarity;
         cards.push({
           animationId: id,
           name: animation.name.fr,
           style,
           tier,
-          rarity: animation.rarity ?? 'default',
-          free: index === 0,
+          rarity,
+          price: priceForRarity(rarity),
+          free,
         });
       });
     }

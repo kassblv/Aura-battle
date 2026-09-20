@@ -1,4 +1,5 @@
 import { AURA_COLORS, EMOTES, HAIRSTYLES, OUTFITS } from '@aura/content';
+import { memeGallery } from './memes.js';
 import type { Wallet } from './profile.js';
 
 /**
@@ -10,7 +11,7 @@ import type { Wallet } from './profile.js';
  * peut ainsi remonter jusqu a l etalage le jour ou le catalogue gagne un champ.
  */
 
-export type ShopSectionId = 'emote' | 'outfit' | 'hair' | 'aura';
+export type ShopSectionId = 'dance' | 'emote' | 'outfit' | 'hair' | 'aura';
 
 export interface ShopItem {
   readonly id: string;
@@ -35,6 +36,9 @@ export interface ShopState {
 
 const HAIR_SWATCH = '#1b1426';
 
+/** Le style d'une danse se lit d'un coup d'oeil ; son nom, non. */
+const STYLE_GLYPHS = { calme: '🧊', hype: '🔥', provoc: '😏' } as const;
+
 /**
  * L etalage.
  *
@@ -44,6 +48,27 @@ const HAIR_SWATCH = '#1b1426';
  */
 export function shopSections(): readonly ShopSection[] {
   return [
+    /**
+     * Les danses d'abord.
+     *
+     * Une aura battle est un clash ou deux personnes rejouent des memes : la
+     * danse est ce que le joueur vient chercher, pas une ligne de plus dans un
+     * etalage. Elle ne change rien au score — deux animations d'un meme
+     * mouvement sont strictement equivalentes (`docs/01` §2) — donc la vendre
+     * ne heurte pas la regle d'or n°3.
+     */
+    {
+      id: 'dance',
+      title: 'Danses',
+      items: memeGallery()
+        .filter((card) => !card.free)
+        .map((card) => ({
+          id: card.animationId,
+          name: card.name,
+          glyph: STYLE_GLYPHS[card.style],
+          price: card.price,
+        })),
+    },
     {
       id: 'emote',
       title: 'Émotes',

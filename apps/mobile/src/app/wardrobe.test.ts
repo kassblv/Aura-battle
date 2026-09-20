@@ -1,8 +1,10 @@
 import { AURA_COLORS, HAIRSTYLES, OUTFITS, SKIN_TONES } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import {
+  danceFor,
   defaultLook,
   equip,
+  equipDance,
   isOwned,
   priceOf,
   wardrobeSections,
@@ -105,5 +107,57 @@ describe('isOwned et priceOf', () => {
     expect(priceOf('outfit.dore')).toBe(700);
     expect(priceOf('color.gold')).toBe(0);
     expect(priceOf('rien')).toBe(0);
+  });
+});
+
+describe('danses equipees', () => {
+  const wardrobe = (owned: readonly string[] = []): Wardrobe => ({
+    look: defaultLook(),
+    owned: new Set(owned),
+  });
+
+  it('demarre sans aucune danse equipee', () => {
+    expect(Object.keys(defaultLook().dances)).toHaveLength(0);
+  });
+
+  /**
+   * Une danse s equipe POUR UN MOUVEMENT, pas globalement.
+   *
+   * Le catalogue range les animations par couple style-palier, et deux
+   * animations de mouvements differents ne sont pas interchangeables : le
+   * Moonwalk est un calme palier 3, il ne peut pas remplacer un dab. Un seul
+   * emplacement global obligerait a rejouer la meme danse quel que soit le
+   * mouvement joue — ou a l ignorer, ce qui revient a ne rien vendre.
+   */
+  it('equipe une danse pour son seul mouvement', () => {
+    const next = equipDance(wardrobe(['anim.calme.t3.moonwalk']), 'anim.calme.t3.moonwalk');
+    expect(danceFor(next.look, { style: 'calme', tier: 3 })).toBe('anim.calme.t3.moonwalk');
+    expect(danceFor(next.look, { style: 'calme', tier: 4 })).toBeUndefined();
+    expect(danceFor(next.look, { style: 'hype', tier: 3 })).toBeUndefined();
+  });
+
+  /** Regle d or n°3 : ce qu on ne possede pas ne se porte pas. */
+  it('refuse une danse qu on ne possede pas', () => {
+    const next = equipDance(wardrobe(), 'anim.calme.t3.moonwalk');
+    expect(danceFor(next.look, { style: 'calme', tier: 3 })).toBeUndefined();
+  });
+
+  it('accepte une danse offerte sans rien posseder', () => {
+    const next = equipDance(wardrobe(), 'anim.calme.t3.meditate');
+    expect(danceFor(next.look, { style: 'calme', tier: 3 })).toBe('anim.calme.t3.meditate');
+  });
+
+  it('remplace la danse du meme mouvement au lieu de l ajouter', () => {
+    const owned = wardrobe(['anim.calme.t3.moonwalk']);
+    const first = equipDance(owned, 'anim.calme.t3.moonwalk');
+    const second = equipDance(first, 'anim.calme.t3.meditate');
+    expect(danceFor(second.look, { style: 'calme', tier: 3 })).toBe('anim.calme.t3.meditate');
+    expect(Object.keys(second.look.dances)).toHaveLength(1);
+  });
+
+  /** Rien ne change : on rend l objet d origine, pas une copie identique. */
+  it('ignore un identifiant qui n est pas une danse du catalogue', () => {
+    const before = wardrobe();
+    expect(equipDance(before, 'anim.nawak')).toBe(before);
   });
 });

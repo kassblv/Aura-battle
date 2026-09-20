@@ -1,4 +1,4 @@
-import { STYLES, TIERS } from '@aura/content';
+import { priceForRarity, STYLES, TIERS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import { ANIMATIONS } from '../content/animations.js';
 import { memeGallery, stepMeme } from './memes.js';
@@ -90,5 +90,40 @@ describe('stepMeme', () => {
   /** Un identifiant inconnu ne doit pas bloquer la navigation. */
   it('repart du debut depuis un meme inconnu', () => {
     expect(stepMeme(gallery, 'anim.inexistant', 1)).toBe(gallery[0]!.animationId);
+  });
+});
+
+describe('prix des memes', () => {
+  it('n exige rien pour un meme offert', () => {
+    for (const card of gallery.filter((c) => c.free)) {
+      expect(card.price).toBe(0);
+    }
+  });
+
+  /**
+   * Regle d or n°3 : on ne vend que le geste.
+   *
+   * Deux animations d un meme mouvement sont strictement equivalentes au
+   * score (`docs/01` §2). Un meme paye ne doit donc jamais valoir plus qu un
+   * meme offert — ce test ne peut pas le prouver seul, mais il verrouille la
+   * moitie verifiable : le prix ne depend QUE de la rarete, jamais du palier.
+   */
+  it('fait dependre le prix de la seule rarete, pas de la puissance', () => {
+    const byRarity = new Map<string, Set<number>>();
+    for (const card of gallery) {
+      const prices = byRarity.get(card.rarity) ?? new Set<number>();
+      prices.add(card.price);
+      byRarity.set(card.rarity, prices);
+    }
+    for (const [rarity, prices] of byRarity) {
+      expect({ rarity, distincts: prices.size }).toEqual({ rarity, distincts: 1 });
+    }
+  });
+
+  it('facture chaque meme payant au tarif de sa rarete', () => {
+    for (const card of gallery.filter((c) => !c.free)) {
+      expect(card.price).toBe(priceForRarity(card.rarity));
+      expect(card.price).toBeGreaterThan(0);
+    }
   });
 });

@@ -7,7 +7,7 @@ import { viewOfSolo, type MatchView } from '../match/view.js';
 import { cuesForTransition } from '../audio/matchCues.js';
 import type { AudioControls } from './useAudio.js';
 import type { MatchActions } from './MatchScreen.jsx';
-import type { Look } from './wardrobe.js';
+import { danceFor, type Look } from './wardrobe.js';
 
 /**
  * Fait tourner un match solo et le donne a l ecran.
@@ -55,8 +55,18 @@ export function useSoloMatch(
       if (match === null) return;
       const now = performance.now() - startedAt.current;
       match.advanceTo(now);
+      /**
+       * La danse equipee pour le mouvement joue.
+       *
+       * Sans ce passage, acheter une danse n aurait aucun effet : l arene
+       * rejouerait toujours l animation offerte du mouvement. `animationFor`
+       * ignore de lui-meme un skin qui appartient a un autre mouvement.
+       */
+      const mine = match.state.seats.a.moves.at(-1);
+      const skin = mine === undefined ? undefined : danceFor(looks.a, mine);
       arena.presentation.current = present(match.state, looks, {
         showOutcome: match.state.phase === 'reveal',
+        ...(skin === undefined ? {} : { skins: { a: skin } }),
       });
 
       const seen = viewOfSolo(match);

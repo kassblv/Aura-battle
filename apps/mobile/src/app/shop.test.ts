@@ -1,5 +1,6 @@
 import { EMOTES, OUTFITS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
+import { memeGallery } from './memes.js';
 import { buy, shopSections, type ShopState } from './shop.js';
 
 const state = (soft: number, owned: string[] = []): ShopState => ({
@@ -10,6 +11,7 @@ const state = (soft: number, owned: string[] = []): ShopState => ({
 describe('shopSections', () => {
   it('range le catalogue par nature', () => {
     expect(shopSections().map((section) => section.id)).toEqual([
+      'dance',
       'emote',
       'outfit',
       'hair',
@@ -87,5 +89,44 @@ describe('buy', () => {
     if (free === undefined) throw new Error('aucune emote offerte');
     const before = state(1000);
     expect(buy(before, free.id)).toBe(before);
+  });
+});
+
+describe('danses en boutique', () => {
+  const dances = shopSections().find((section) => section.id === 'dance');
+
+  it('met les danses en tete de l etalage', () => {
+    expect(shopSections()[0]?.id).toBe('dance');
+  });
+
+  it('vend exactement les memes qui ne sont pas offerts', () => {
+    const payantes = memeGallery().filter((card) => !card.free);
+    expect(dances?.items.map((item) => item.id).sort()).toEqual(
+      payantes.map((card) => card.animationId).sort(),
+    );
+  });
+
+  /**
+   * Ce qui est offert n'est pas a vendre.
+   *
+   * L'afficher a zero franc donnerait au joueur l'impression d'avoir a
+   * l'acheter — et la premiere animation de chaque mouvement est offerte.
+   */
+  it('n expose aucune danse offerte', () => {
+    expect(dances?.items.every((item) => item.price > 0)).toBe(true);
+  });
+
+  it('laisse acheter une danse et la porte au credit du joueur', () => {
+    const cible = memeGallery().find((card) => !card.free)!;
+    const avant: ShopState = { wallet: { soft: 5_000, hard: 0 }, owned: new Set<string>() };
+    const apres = buy(avant, cible.animationId);
+    expect(apres.owned.has(cible.animationId)).toBe(true);
+    expect(apres.wallet.soft).toBe(5_000 - cible.price);
+  });
+
+  it('refuse une danse hors budget', () => {
+    const cible = memeGallery().find((card) => !card.free)!;
+    const avant: ShopState = { wallet: { soft: 0, hard: 0 }, owned: new Set<string>() };
+    expect(buy(avant, cible.animationId)).toBe(avant);
   });
 });

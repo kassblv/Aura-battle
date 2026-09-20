@@ -16,4 +16,5 @@ export * from './animation.js';
 export * from './catalogue.js';
 export * from './cosmetics.js';
 export * from './naming.js';
+export * from './pricing.js';
 export * from './validate.js';

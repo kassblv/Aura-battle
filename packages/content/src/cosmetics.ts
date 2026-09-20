@@ -40,7 +40,7 @@ export const AURA_EFFECTS: readonly AuraEffect[] = Object.freeze([
   { id: 'fx.lightning', name: { fr: 'Éclairs' }, level: 2, rarity: 'default', price: 0 },
   { id: 'fx.shock', name: { fr: 'Onde de choc' }, level: 2, rarity: 'epic', price: 850 },
   { id: 'fx.vortex', name: { fr: 'Vortex' }, level: 3, rarity: 'default', price: 0 },
-  { id: 'fx.dark', name: { fr: 'Aura noire' }, level: 3, rarity: 'epic', price: 1_250 },
+  { id: 'fx.dark', name: { fr: 'Aura noire' }, level: 3, rarity: 'epic', price: 850 },
   { id: 'fx.galaxy', name: { fr: 'Galaxie' }, level: 4, rarity: 'default', price: 0 },
 ]);
 
@@ -176,10 +176,10 @@ export const EMOTES: readonly Emote[] = Object.freeze([
   { id: 'emote.pleure', name: { fr: 'Larme' }, glyph: '😭', rarity: 'default', price: 0 },
   { id: 'emote.flamme', name: { fr: 'En feu' }, glyph: '🔥', rarity: 'common', price: 90 },
   { id: 'emote.glace', name: { fr: 'Glacial' }, glyph: '🧊', rarity: 'common', price: 90 },
-  { id: 'emote.couronne', name: { fr: 'Couronne' }, glyph: '👑', rarity: 'rare', price: 240 },
-  { id: 'emote.eclair', name: { fr: 'Éclair' }, glyph: '⚡', rarity: 'rare', price: 240 },
-  { id: 'emote.crane', name: { fr: 'Crâne' }, glyph: '💀', rarity: 'epic', price: 500 },
-  { id: 'emote.licorne', name: { fr: 'Licorne' }, glyph: '🦄', rarity: 'legendary', price: 900 },
+  { id: 'emote.couronne', name: { fr: 'Couronne' }, glyph: '👑', rarity: 'rare', price: 400 },
+  { id: 'emote.eclair', name: { fr: 'Éclair' }, glyph: '⚡', rarity: 'rare', price: 400 },
+  { id: 'emote.crane', name: { fr: 'Crâne' }, glyph: '💀', rarity: 'epic', price: 850 },
+  { id: 'emote.licorne', name: { fr: 'Licorne' }, glyph: '🦄', rarity: 'legendary', price: 1_500 },
 ]);
 
 /** Nombre d'emotes equipables en meme temps : la roue doit rester lisible au pouce. */

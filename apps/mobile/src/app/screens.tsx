@@ -26,6 +26,12 @@ export interface HomeProps {
   readonly meme: MemeCard;
   /** Parcourt la galerie : -1 precedent, +1 suivant. */
   readonly onStepMeme: (delta: number) => void;
+  /** Vrai si le joueur possede le meme montre — offert ou achete. */
+  readonly memeOwned: boolean;
+  /** Vrai si c est deja celui qu il jouera sur ce mouvement. */
+  readonly memeEquipped: boolean;
+  /** Equipe le meme montre pour son mouvement. */
+  readonly onEquipMeme: () => void;
   readonly onPlay: () => void;
   readonly onProfile: () => void;
   readonly onWardrobe: () => void;
@@ -51,6 +57,9 @@ export function HomeScreen({
   seasonLabel,
   meme,
   onStepMeme,
+  memeOwned,
+  memeEquipped,
+  onEquipMeme,
   onPlay,
   onProfile,
   onWardrobe,
@@ -119,14 +128,34 @@ export function HomeScreen({
         >
           ‹
         </button>
-        <p className="memes__card">
+        {/*
+          Une seule commande, dont le libelle dit l'etat.
+
+          Trois boutons — equiper, acheter, « deja equipe » — demanderaient au
+          joueur de lire avant d'agir. Ici le meme montre est soit le sien,
+          soit a prendre, et le bouton le dit.
+        */}
+        <button
+          type="button"
+          className="memes__card"
+          onClick={onEquipMeme}
+          disabled={!memeOwned || memeEquipped}
+          data-owned={memeOwned}
+        >
           <span className="memes__name">{meme.name}</span>
           <span className="memes__meta">
             <span aria-hidden="true">{STYLE_ICONS[meme.style]}</span>
             {tierName(meme.tier).fr}
-            {!meme.free && <span className="memes__locked">cosmétique</span>}
+            {memeEquipped && <span className="memes__state">équipé</span>}
+            {!memeEquipped && memeOwned && <span className="memes__state">équiper</span>}
+            {!memeOwned && (
+              <span className="memes__price">
+                <span aria-hidden="true">◈</span>
+                {meme.price}
+              </span>
+            )}
           </span>
-        </p>
+        </button>
         <button
           type="button"
           className="memes__arrow"

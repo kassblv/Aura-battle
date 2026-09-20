@@ -1,4 +1,5 @@
-import { AURA_COLORS, HAIRSTYLES, OUTFITS, SKIN_TONES } from '@aura/content';
+import { AURA_COLORS, HAIRSTYLES, OUTFITS, SKIN_TONES, type Move } from '@aura/content';
+import { memeGallery } from './memes.js';
 
 /**
  * Le vestiaire : ce que le joueur porte, et ce qu il a le droit de porter.
@@ -17,6 +18,23 @@ export interface Look {
   /** Teinte de peau, en hexadecimal : elle n a pas d identifiant, elle est sa valeur. */
   readonly skin: string;
   readonly aura: string;
+  /**
+   * Danse equipee par mouvement, indexee par `<style>.t<palier>`.
+   *
+   * Une danse s equipe POUR UN MOUVEMENT : le Moonwalk est un calme palier 3,
+   * il ne peut pas remplacer un dab. Un emplacement global obligerait a
+   * rejouer la meme danse quel que soit le mouvement joue — ou a l ignorer,
+   * ce qui reviendrait a ne rien vendre.
+   *
+   * Absent = l animation offerte du mouvement. On ne stocke donc que les
+   * choix, jamais les defauts.
+   */
+  readonly dances: Readonly<Record<string, string>>;
+}
+
+/** La cle d un mouvement dans `Look.dances`. */
+export function moveKey(move: Move): string {
+  return `${move.style}.t${String(move.tier)}`;
 }
 
 export interface Wardrobe {
@@ -119,6 +137,34 @@ export function defaultLook(): Look {
     hair: HAIRSTYLES.find((h) => h.price === 0)?.id ?? 'hair.court',
     skin: SKIN_TONES[0] ?? '#f3cfae',
     aura: AURA_COLORS.find((c) => c.price === 0)?.hex ?? '#ffcf3f',
+    dances: {},
+  };
+}
+
+const danceIndex = new Map(memeGallery().map((card) => [card.animationId, card]));
+
+/** La danse equipee pour ce mouvement, ou `undefined` si c est celle offerte. */
+export function danceFor(look: Look, move: Move): string | undefined {
+  return look.dances[moveKey(move)];
+}
+
+/**
+ * Equipe une danse pour son mouvement.
+ *
+ * Le mouvement se lit dans la carte du catalogue, jamais dans l identifiant
+ * decoupe a la main : `anim.calme.t3.moonwalk` se laisse decouper, jusqu au
+ * jour ou un slug contient un point.
+ */
+export function equipDance(wardrobe: Wardrobe, animationId: string): Wardrobe {
+  const card = danceIndex.get(animationId);
+  if (card === undefined) return wardrobe;
+  if (!card.free && !wardrobe.owned.has(animationId)) return wardrobe;
+
+  const key = moveKey({ style: card.style, tier: card.tier });
+  if (wardrobe.look.dances[key] === animationId) return wardrobe;
+  return {
+    ...wardrobe,
+    look: { ...wardrobe.look, dances: { ...wardrobe.look.dances, [key]: animationId } },
   };
 }
 

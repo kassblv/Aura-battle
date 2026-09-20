@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { defaultLook } from '../app/wardrobe.js';
+import { animationFor } from '../content/animations.js';
+import { animationIdsFor } from '@aura/content';
 import { present } from './presentation.js';
 import { createSoloMatch, type SoloMatch } from './solo.js';
 
@@ -118,5 +120,41 @@ describe('ferveur du public', () => {
       expect(hype).toBeLessThanOrEqual(1);
       match.advanceTo(match.state.phaseEndsAtMs);
     }
+  });
+});
+
+describe('danse equipee', () => {
+  /**
+   * Ce qu on achete doit se voir.
+   *
+   * `present` recoit deja un skin par siege ; ce test verrouille le bout de
+   * chaine que personne ne parcourait : une danse equipee pour le mouvement
+   * joue remplace bien l animation offerte.
+   */
+  it('joue la danse equipee du mouvement revele', () => {
+    const match = solo('skin');
+    runTo(match, 'reveal');
+    const move = match.state.seats.a.moves.at(-1);
+    expect(move).toBeDefined();
+    const alternative = animationIdsFor(move!).find((id) => id !== animationFor(move!).id);
+    if (alternative === undefined) return; // ce mouvement n a qu une animation
+    const scene = present(match.state, looks, { skins: { a: alternative } });
+    expect(scene.fighters.a.animationId).toBe(alternative);
+  });
+
+  /**
+   * Un skin qui appartient a un AUTRE mouvement est ignore.
+   *
+   * Sans ce garde-fou, une danse equipee pour un calme palier 3 s afficherait
+   * sur un hype palier 0 : l adversaire lirait un mouvement qui n a pas ete
+   * joue, et donc une depense d energie qui n a pas eu lieu.
+   */
+  it('ignore une danse qui appartient a un autre mouvement', () => {
+    const match = solo('skin');
+    runTo(match, 'reveal');
+    const move = match.state.seats.a.moves.at(-1)!;
+    const etranger = move.style === 'calme' ? 'anim.hype.t4.boat' : 'anim.calme.t4.backflip';
+    const scene = present(match.state, looks, { skins: { a: etranger } });
+    expect(scene.fighters.a.animationId).toBe(animationFor(move).id);
   });
 });
