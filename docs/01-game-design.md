@@ -31,13 +31,21 @@ Le score dépend d'un **mouvement** = un **style** et un **palier**. L'**animati
 
 ### Paliers
 
-| Palier | Puissance | Coût en énergie |
-|---|---|---|
-| 0 | 11 | 0 |
-| 1 | 20 | 1 |
-| 2 | 30 | 2 |
-| 3 | 42 | 3 |
-| 4 | 56 | 4 |
+| Palier | Nom affiché | Puissance | Coût en énergie |
+|---|---|---|---|
+| 0 | Souffle | 11 | 0 |
+| 1 | Éclat | 20 | 1 |
+| 2 | Vague | 30 | 2 |
+| 3 | Orage | 42 | 3 |
+| 4 | Apogée | 56 | 4 |
+
+Le nom est du vocabulaire, pas de l'équilibrage : il vit dans
+`packages/content/src/naming.ts` et aucune valeur de score n'en dépend. Il doit
+valoir pour les trois styles — un palier 4 calme est une lévitation, un palier 4
+hype une danse du bateau, et « Apogée » couvre les deux.
+
+L'interface montre le nom **et** les chiffres : cacher la puissance et le coût
+rendrait le choix opaque, et c'est sur eux que se décide une manche.
 
 ### Animations par défaut (issues du prototype)
 
@@ -53,13 +61,17 @@ La première animation de chaque case est offerte à tous. Les autres sont des c
 
 ## 3. Amplificateurs d'aura
 
-| Niveau | Multiplicateur | Coût | Effet visuel par défaut |
+L'amplificateur s'affiche sous le nom de son effet offert — il n'a pas de nom
+séparé. Deux vocabulaires pour la même chose finiraient par se contredire, et
+c'est cet effet-là que le joueur voit tourner autour de son aura.
+
+| Niveau | Nom affiché (= effet offert) | Multiplicateur | Coût |
 |---|---|---|---|
-| A0 | ×1,00 | 0 | Lueur |
-| A1 | ×1,12 | 1 | Étincelles |
-| A2 | ×1,25 | 2 | Éclairs |
-| A3 | ×1,40 | 3 | Vortex |
-| A4 | ×1,55 | 4 | Galaxie |
+| A0 | Lueur | ×1,00 | 0 |
+| A1 | Étincelles | ×1,12 | 1 |
+| A2 | Éclairs | ×1,25 | 2 |
+| A3 | Vortex | ×1,40 | 3 |
+| A4 | Galaxie | ×1,55 | 4 |
 
 Les autres effets du prototype (Flammes, Onde de choc, Aura noire) deviennent des skins cosmétiques d'un niveau.
 

@@ -10,6 +10,9 @@
 
 export type AmplifierLevel = 0 | 1 | 2 | 3 | 4;
 
+/** Les cinq niveaux, dans l'ordre. Le pendant de `TIERS` pour l'amplificateur. */
+export const AMPLIFIER_LEVELS: readonly AmplifierLevel[] = [0, 1, 2, 3, 4];
+
 export type Rarity = 'default' | 'common' | 'rare' | 'epic' | 'legendary';
 
 export interface AuraEffect {
@@ -32,9 +35,9 @@ export interface AuraEffect {
  */
 export const AURA_EFFECTS: readonly AuraEffect[] = Object.freeze([
   { id: 'fx.glow', name: { fr: 'Lueur' }, level: 0, rarity: 'default', price: 0 },
-  { id: 'fx.sparks', name: { fr: 'Etincelles' }, level: 1, rarity: 'default', price: 0 },
+  { id: 'fx.sparks', name: { fr: 'Étincelles' }, level: 1, rarity: 'default', price: 0 },
   { id: 'fx.flames', name: { fr: 'Flammes' }, level: 1, rarity: 'rare', price: 400 },
-  { id: 'fx.lightning', name: { fr: 'Eclairs' }, level: 2, rarity: 'default', price: 0 },
+  { id: 'fx.lightning', name: { fr: 'Éclairs' }, level: 2, rarity: 'default', price: 0 },
   { id: 'fx.shock', name: { fr: 'Onde de choc' }, level: 2, rarity: 'epic', price: 850 },
   { id: 'fx.vortex', name: { fr: 'Vortex' }, level: 3, rarity: 'default', price: 0 },
   { id: 'fx.dark', name: { fr: 'Aura noire' }, level: 3, rarity: 'epic', price: 1_250 },
@@ -52,7 +55,7 @@ export const AURA_COLORS: readonly AuraColor[] = Object.freeze([
   { id: 'color.gold', name: { fr: 'Or' }, hex: '#ffcf3f', price: 0 },
   { id: 'color.violet', name: { fr: 'Violet' }, hex: '#b36bff', price: 80 },
   { id: 'color.cyan', name: { fr: 'Cyan' }, hex: '#4fe3ff', price: 80 },
-  { id: 'color.pink', name: { fr: 'Rose neon' }, hex: '#ff4fa3', price: 120 },
+  { id: 'color.pink', name: { fr: 'Rose néon' }, hex: '#ff4fa3', price: 120 },
   { id: 'color.red', name: { fr: 'Rouge sang' }, hex: '#ff3b3b', price: 160 },
   { id: 'color.white', name: { fr: 'Blanc pur' }, hex: '#ffffff', price: 300 },
 ]);
@@ -99,7 +102,7 @@ export const OUTFITS: readonly Outfit[] = Object.freeze([
   },
   {
     id: 'outfit.blanc',
-    name: { fr: 'Survetement blanc' },
+    name: { fr: 'Survêtement blanc' },
     jacket: '#ece8f6',
     pants: '#bfb8d3',
     shoes: '#2a2340',
@@ -137,7 +140,7 @@ export const OUTFITS: readonly Outfit[] = Object.freeze([
   },
   {
     id: 'outfit.dore',
-    name: { fr: 'Tenue doree' },
+    name: { fr: 'Tenue dorée' },
     jacket: '#d9a520',
     pants: '#3a2a12',
     shoes: '#1b1426',
@@ -174,8 +177,8 @@ export const EMOTES: readonly Emote[] = Object.freeze([
   { id: 'emote.flamme', name: { fr: 'En feu' }, glyph: '🔥', rarity: 'common', price: 90 },
   { id: 'emote.glace', name: { fr: 'Glacial' }, glyph: '🧊', rarity: 'common', price: 90 },
   { id: 'emote.couronne', name: { fr: 'Couronne' }, glyph: '👑', rarity: 'rare', price: 240 },
-  { id: 'emote.eclair', name: { fr: 'Eclair' }, glyph: '⚡', rarity: 'rare', price: 240 },
-  { id: 'emote.crane', name: { fr: 'Crane' }, glyph: '💀', rarity: 'epic', price: 500 },
+  { id: 'emote.eclair', name: { fr: 'Éclair' }, glyph: '⚡', rarity: 'rare', price: 240 },
+  { id: 'emote.crane', name: { fr: 'Crâne' }, glyph: '💀', rarity: 'epic', price: 500 },
   { id: 'emote.licorne', name: { fr: 'Licorne' }, glyph: '🦄', rarity: 'legendary', price: 900 },
 ]);
 

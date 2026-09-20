@@ -15,4 +15,5 @@ export const CONTENT_VERSION = '1.0.0';
 export * from './animation.js';
 export * from './catalogue.js';
 export * from './cosmetics.js';
+export * from './naming.js';
 export * from './validate.js';
