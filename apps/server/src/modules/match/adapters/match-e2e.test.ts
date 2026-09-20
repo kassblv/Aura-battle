@@ -11,6 +11,7 @@ import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { InviteService } from '../application/invites.js';
 import { PLAYER_DIRECTORY } from '../domain/directory.js';
 import { MatchRuntime } from '../application/match-runtime.js';
+import { matchmakingTestProviders } from '../application/testing-wiring.js';
 import { MatchGateway } from './match.gateway.js';
 import { SocketNotifier } from './socket-notifier.js';
 import { SystemMatchClock, TimeoutScheduler } from './timeout-scheduler.js';
@@ -178,6 +179,9 @@ beforeAll(async () => {
           clock: SystemMatchClock,
         ) => new MatchRuntime(notifier, scheduler, clock, FAST),
       },
+      // Le chemin d'ouverture est commun a l'invitation et a la file : il faut
+      // donc la file, meme pour un scenario d'invitation.
+      ...matchmakingTestProviders(),
     ],
   }).compile();
 
@@ -209,6 +213,66 @@ async function seatTwoPlayers(): Promise<{
   await guest.first<ServerMessage<'match:found'>>('match:found');
   return { host, guest, matchId: found.matchId };
 }
+
+describe('ordre d ouverture', () => {
+  /**
+   * `match:found` avant `round:intro`, toujours (docs/03 § « Exemple de
+   * manche »).
+   *
+   * `createMatch` annonce la phase d'intro **synchroniquement** : il envoie
+   * `round:intro` et arme l'echeance de la manche 1 dans la foulee. L'ouvrir
+   * avant d'avoir annonce le match livrerait donc au client un `round:intro`
+   * portant un `matchId` qu'il ne connait pas encore — et le compte a rebours
+   * tournerait pendant qu'il l'ignore.
+   *
+   * C'est exactement ce qu'une lecture en base placee au mauvais endroit
+   * provoque : l'ordre des messages depend alors de la latence de Postgres.
+   */
+  it('annonce le match avant la premiere manche', async () => {
+    const host = await record();
+    const guest = await record();
+
+    host.socket.emit('invite:create');
+    const invite = await host.first<ServerMessage<'invite:created'>>('invite:created');
+    guest.socket.emit('invite:join', { code: invite.code });
+
+    await host.first<ServerMessage<'round:intro'>>('round:intro');
+    await guest.first<ServerMessage<'round:intro'>>('round:intro');
+
+    for (const player of [host, guest]) {
+      const names = player.received.map((message) => message.name);
+      expect(names.indexOf('match:found')).toBeGreaterThanOrEqual(0);
+      expect(names.indexOf('match:found')).toBeLessThan(names.indexOf('round:intro'));
+    }
+  });
+
+  /**
+   * Un joueur ne tient qu'un siege.
+   *
+   * Deux `invite:join` envoyes sans attendre entre les deux : Socket.IO les
+   * delivre dans deux tours de boucle distincts, et il suffisait d'une lecture
+   * en base au milieu du premier handler pour que le second passe les memes
+   * controles et ouvre son propre match.
+   */
+  it('refuse un second match au meme joueur', async () => {
+    const h1 = await record();
+    const h2 = await record();
+    const guest = await record();
+
+    h1.socket.emit('invite:create');
+    h2.socket.emit('invite:create');
+    const c1 = await h1.first<ServerMessage<'invite:created'>>('invite:created');
+    const c2 = await h2.first<ServerMessage<'invite:created'>>('invite:created');
+
+    guest.socket.emit('invite:join', { code: c1.code });
+    guest.socket.emit('invite:join', { code: c2.code });
+
+    await guest.first<ServerMessage<'match:found'>>('match:found');
+    await new Promise((resolve) => setTimeout(resolve, 150));
+
+    expect(guest.all('match:found')).toHaveLength(1);
+  });
+});
 
 describe('match:found', () => {
   /**

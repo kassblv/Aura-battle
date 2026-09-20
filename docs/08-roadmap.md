@@ -77,11 +77,11 @@ Référence : prototype, `docs/02-architecture.md`.
 
 Référence : `docs/05-matchmaking-ranking.md`.
 
-- [ ] File Redis, worker d'appariement, fenêtre MMR qui s'élargit, `queue:status`
-- [ ] MMR (décision Glicko-2 ou Elo consignée en ADR), LP, ligues, placements, saison
-- [ ] Enregistrement des fantômes et rejeu serveur ; LP réduits ; drapeau `ghost`
-- [ ] Écrans : partie classée, partie rapide, profil (ligue, historique), classement
-- [ ] Tests : appariement par MMR, élargissement, bascule vers fantôme, calcul des LP
+- [x] File Redis, worker d'appariement (500 ms), fenêtre MMR qui s'élargit (±50 → ±400), `queue:status` — ADR 0009. L'appariement est pur et testé ; Redis est un adaptateur derrière un port ; `queue:leave`, la déconnexion et l'ouverture d'un match retirent le ticket. **Un seul chemin d'ouverture** avec l'invitation. Le MMR est *lu* (`Rating.mmr`, 1000 par défaut), jamais calculé — c'est la ligne suivante. Une seule région (`global`) : ni le modèle de données ni le protocole n'en portent encore.
+- [ ] MMR (décision Glicko-2 ou Elo consignée en ADR), LP, ligues, placements, saison — **rien d'écrit en base ; `match:found.league` vaut encore `bronze` en dur**
+- [ ] Enregistrement des fantômes et rejeu serveur ; LP réduits ; drapeau `ghost` — **non fait ; le drapeau est toujours `false`, et la bascule vers un fantôme après 25 s / 12 s n'existe pas**
+- [ ] Écrans : partie classée, partie rapide, profil (ligue, historique), classement — **non fait : le client n'émet pas encore `queue:join`**
+- [ ] Tests : appariement par MMR ✅, élargissement ✅, entrée/sortie de file et tickets fantômes ✅ (e2e à deux clients) — **bascule vers fantôme et calcul des LP : non faits**
 
 ## M6 — Application mobile
 

@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import {
   ConnectedSocket,
@@ -16,19 +15,13 @@ import {
   type ServerMessageName,
 } from '@aura/protocol';
 import type { Seat } from '@aura/rules';
-import { PROTOCOL_VERSION } from '@aura/protocol';
-import { RULES_VERSION } from '@aura/rules';
-import { CONTENT_VERSION } from '@aura/content';
 import type { Socket } from 'socket.io';
 import { PinoLoggerService } from '../../../shared/logger.js';
 import { TokenBucket } from '../../../shared/rate-limit.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
-import {
-  PLAYER_DIRECTORY,
-  UNKNOWN_PLAYER_NAME,
-  type PlayerDirectory,
-} from '../domain/directory.js';
+import { MatchmakingQueue } from '../../matchmaking/application/queue.service.js';
 import { InviteService } from '../application/invites.js';
+import { MatchOpener } from '../application/match-opener.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { SocketNotifier } from './socket-notifier.js';
 
@@ -76,7 +69,8 @@ export class MatchGateway implements OnGatewayConnection {
     @Inject(MatchRuntime) private readonly runtime: MatchRuntime,
     @Inject(InviteService) private readonly invites: InviteService,
     @Inject(SocketNotifier) private readonly notifier: SocketNotifier,
-    @Inject(PLAYER_DIRECTORY) private readonly directory: PlayerDirectory,
+    @Inject(MatchOpener) private readonly opener: MatchOpener,
+    @Inject(MatchmakingQueue) private readonly queue: MatchmakingQueue,
   ) {}
 
   /** Identifiant du joueur derriere une socket authentifiee. */
@@ -151,6 +145,21 @@ export class MatchGateway implements OnGatewayConnection {
       this.notifier.unregister(state.playerId, socket);
       // Le match continue sans lui ; il a quarante-cinq secondes pour revenir.
       this.runtime.notePlayerDisconnected(state.playerId);
+      /**
+       * La file, elle, ne fait pas credit.
+       *
+       * Un ticket qui survit a son joueur fait apparier un absent : son
+       * adversaire recoit un `match:found` contre personne, puis un forfait au
+       * bout de la periode de grace. Le worker ecarte deja les joueurs
+       * deconnectes a chaque tour ; ceci ferme la fenetre de 500 ms entre les
+       * deux.
+       */
+      void this.queue.leave(state.playerId).catch((cause: unknown) => {
+        this.logger.warn(
+          `sortie de file impossible pour ${state.playerId} : ${String(cause)}`,
+          'MatchGateway',
+        );
+      });
     });
 
     // Un seul point de passage pour tout l'entrant : la limite de debit et la
@@ -255,88 +264,91 @@ export class MatchGateway implements OnGatewayConnection {
       return;
     }
 
-    const matchId = `m_${randomUUID()}`;
-    const seats = { a: result.hostId, b: guestId } as const;
-    const seed = randomUUID();
-
     /**
-     * Le match est ouvert **avant** toute attente, et c'est l'ordre qui compte.
-     *
-     * L'inverse — lire les noms puis ouvrir — laissait un aller-retour Postgres
-     * entre les controles et la reservation des sieges. Socket.IO delivrant
-     * chaque paquet dans son propre tour de boucle, deux `invite:join` envoyes
-     * dans la meme salve s'entrelacaient : les deux handlers passaient les
-     * controles, puis ouvraient chacun leur match. Le joueur tenait deux
-     * sieges, et la deconnexion n'armait l'abandon que sur l'un des deux.
-     *
-     * Ouvrir d'abord referme la fenetre au lieu de la surveiller : il n'y a
-     * plus rien a intercaler. Le refus, lui, est verifie par le moteur
-     * lui-meme, qui est le seul point de passage commun a tous les modes.
+     * Ouverture par le **chemin unique**, celui qu'emprunte aussi la file
+     * d'attente (`application/match-opener.ts`). Deux chemins d'ouverture
+     * separes divergent toujours : l'un finit par annoncer le bon nom
+     * d'adversaire et pas l'autre, l'un verifie que les sieges sont libres et
+     * pas l'autre. C'est aussi la que vit l'ordre des messages — `match:found`
+     * avant `round:intro` — et la fenetre de course qu'il referme.
      */
-    if (!this.runtime.createMatch({ matchId, seed, seats })) {
+    const matchId = await this.opener.open({
+      playerA: result.hostId,
+      playerB: guestId,
+      mode: 'INVITE',
+    });
+
+    if (matchId === null) {
       this.emit(socket, 'error', {
         code: 'ALREADY_IN_MATCH',
         message: 'un des deux joueurs est deja en match',
         retryable: false,
       });
-      return;
-    }
-
-    /**
-     * Le nom de l'adversaire, lu une fois le match ouvert.
-     *
-     * Il etait code en dur : les deux joueurs voyaient « Adversaire », et le
-     * bandeau de match ne designait donc personne. Une lecture ratee retombe
-     * sur ce meme mot plutot que de faire echouer l'ouverture — un nom manquant
-     * ne vaut pas un duel annule.
-     */
-    const names = await this.namesOf(Object.values(seats));
-
-    for (const [seat, playerId] of Object.entries(seats) as [Seat, string][]) {
-      const opponentId = seat === 'a' ? seats.b : seats.a;
-      this.notifier.send(playerId, 'match:found', {
-        matchId,
-        seat,
-        opponent: {
-          displayName: names.get(opponentId) ?? UNKNOWN_PLAYER_NAME,
-          league: 'bronze',
-          cosmetics: {},
-        },
-        protocolVersion: PROTOCOL_VERSION,
-        rulesVersion: RULES_VERSION,
-        contentVersion: CONTENT_VERSION,
-        ghost: false,
-      });
-    }
-
-    /**
-     * Un siege deja vide a l'arrivee.
-     *
-     * La presence de l'hote est verifiee avant l'ouverture, mais il peut avoir
-     * ferme sa socket pendant la lecture des noms. Son evenement `disconnect`
-     * trouve alors le match — il existe depuis le debut de cette methode — et
-     * arme l'abandon tout seul. Ce controle couvre le cas inverse, ou la
-     * fermeture a precede l'evenement : sans lui, le match vivrait avec un
-     * siege absent et aucun compte a rebours, et l'autre joueur subirait trois
-     * manches d'actions par defaut au lieu d'un forfait en 45 s.
-     */
-    for (const playerId of Object.values(seats)) {
-      if (!this.notifier.isConnected(playerId)) {
-        this.runtime.notePlayerDisconnected(playerId);
-      }
     }
   }
 
-  /** Les noms, ou une carte vide si l'annuaire ne repond pas. */
-  private async namesOf(playerIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
+  /**
+   * Entre en file d'attente (docs/05, § « File d'attente »).
+   *
+   * Seul le mode demande vient du client, et son schema l'a deja valide. Tout
+   * le reste — classement, region, anciennete — est etabli par le serveur.
+   *
+   * Un joueur deja assis a un duel est refuse : l'apparier une seconde fois
+   * ferait basculer son client sur une autre arene et lui ferait perdre la
+   * partie en cours.
+   */
+  @SubscribeMessage('queue:join')
+  async queueJoin(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: ClientMessage<'queue:join'>,
+  ): Promise<void> {
+    const playerId = this.playerOf(socket);
+
+    if (this.runtime.isBusy(playerId)) {
+      this.emit(socket, 'error', {
+        code: 'ALREADY_IN_MATCH',
+        message: 'un duel est deja en cours',
+        retryable: false,
+      });
+      return;
+    }
+
     try {
-      return await this.directory.displayNames(playerIds);
+      await this.queue.join(playerId, body.mode, Date.now());
     } catch (cause) {
-      this.logger.warn(
-        `annuaire indisponible a l'ouverture du match : ${String(cause)}`,
+      /**
+       * Rien n'est renvoye au client, et c'est delibere.
+       *
+       * L'entree en file est acquittee par le premier `queue:status` : son
+       * absence dit deja que la recherche n'a pas demarre. Le protocole n'a
+       * pas de code pour « panne interne », et detourner un code existant
+       * ferait dire au reseau quelque chose de faux.
+       */
+      this.logger.error(
+        cause instanceof Error ? cause : new Error(String(cause)),
+        undefined,
         'MatchGateway',
       );
-      return new Map();
+    }
+  }
+
+  /**
+   * Quitte la file.
+   *
+   * Aucun accuse en retour : l'arret des `queue:status` dit tout, et le
+   * protocole ne prevoit pas de message pour cela. Renvoyer la demande deux
+   * fois n'est pas une erreur.
+   */
+  @SubscribeMessage('queue:leave')
+  async queueLeave(@ConnectedSocket() socket: Socket): Promise<void> {
+    const playerId = this.playerOf(socket);
+    try {
+      await this.queue.leave(playerId);
+    } catch (cause) {
+      this.logger.warn(
+        `sortie de file impossible pour ${playerId} : ${String(cause)}`,
+        'MatchGateway',
+      );
     }
   }
 

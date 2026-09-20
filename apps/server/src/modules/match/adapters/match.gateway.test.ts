@@ -10,6 +10,7 @@ import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { InviteService } from '../application/invites.js';
 import { PLAYER_DIRECTORY } from '../domain/directory.js';
 import { MatchRuntime } from '../application/match-runtime.js';
+import { matchmakingTestProviders } from '../application/testing-wiring.js';
 import { MatchGateway } from './match.gateway.js';
 import { SocketNotifier } from './socket-notifier.js';
 import { SystemMatchClock, TimeoutScheduler } from './timeout-scheduler.js';
@@ -123,6 +124,9 @@ beforeAll(async () => {
         provide: PinoLoggerService,
         useValue: new PinoLoggerService(createLogger(config)),
       },
+      // File d'attente en memoire : la passerelle la recoit, ce fichier ne
+      // l'exerce pas (voir `queue-e2e.test.ts`).
+      ...matchmakingTestProviders(),
     ],
   }).compile();
 

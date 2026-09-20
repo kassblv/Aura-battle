@@ -17,6 +17,29 @@
 - Éviter de rematcher le même adversaire deux fois de suite dans les 10 minutes quand c'est possible.
 - Classé : fantôme après **25 s**. Partie rapide : fantôme après **12 s**.
 
+### Précisions d'implémentation (jalon M5, ADR 0009)
+
+Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste laissait ouvert.
+
+- **La fenêtre s'élargit par secondes entières** (±50, ±75, ±100…). `queue:status.searchRange`
+  transporte un entier, et un palier visible vaut mieux qu'un nombre qui tremble à chaque tour.
+- **Les deux fenêtres doivent accepter l'écart.** Un joueur qui attend depuis dix secondes
+  n'impose pas son ±300 à quelqu'un qui vient d'entrer : le second hériterait d'un adversaire
+  qu'il n'a jamais accepté de chercher.
+- **Parmi les candidats acceptables, le MMR le plus proche gagne**, puis l'ancienneté. La
+  fenêtre autorise un écart, elle ne le recherche pas.
+- **Les adversaires récents sont lus à l'entrée en file** et transportés dans le ticket : la
+  liste d'un joueur ne peut changer qu'en finissant un match, or on ne finit pas de match en
+  faisant la queue.
+- **MMR de départ : 1000**, celui de `Rating.mmr` (docs/04), pour un joueur sans classement —
+  et aussi quand la base est illisible : une panne de classement ne doit pas empêcher de jouer.
+- **Une seule région (`global`)** tant que ni le modèle de données ni le protocole n'en portent.
+  L'appariement ne marie déjà que des tickets de même région.
+- **Un ticket par joueur, toujours.** Renvoyer `queue:join` dans le même mode ne crée pas de
+  second ticket et ne remet pas l'attente à zéro ; changer de mode est une autre recherche.
+- **`queue:status` ne porte que ce qui appartient au destinataire** : son mode, son attente, sa
+  fenêtre. Ni MMR, ni taille de la file, ni position dedans.
+
 ## MMR et ligues
 
 - MMR caché : **Glicko-2** (ou Elo à K variable si plus simple au départ ; décision à consigner en ADR).
