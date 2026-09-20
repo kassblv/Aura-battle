@@ -107,3 +107,24 @@ describe('file d attente', () => {
     expect(navigate(playing, 'queue')).toBe(playing);
   });
 });
+
+describe('reglages', () => {
+  it('s ouvre depuis l accueil', () => {
+    expect(navigate(openingScreen(), 'settings').screen).toBe('settings');
+  });
+
+  /*
+    Les reglages ne sont pas le vestiaire : ils ne touchent a rien qui compte
+    dans une manche, et quelqu un dont l image saccade doit pouvoir descendre
+    la qualite sans abandonner sa partie.
+  */
+  it('reste ouvert pendant un match, contrairement au vestiaire', () => {
+    const playing = navigate(openingScreen(), 'match');
+    expect(navigate(playing, 'settings').screen).toBe('settings');
+    expect(navigate(playing, 'wardrobe').screen).toBe('match');
+  });
+
+  it('ne compte pas comme un match en cours', () => {
+    expect(navigate(openingScreen(), 'settings').matchRunning).toBe(false);
+  });
+});

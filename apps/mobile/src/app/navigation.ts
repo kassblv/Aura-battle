@@ -6,7 +6,15 @@
  * `onClick`, et une regle eparpillee est une regle qu on oublie.
  */
 
-export type Screen = 'home' | 'profile' | 'wardrobe' | 'shop' | 'queue' | 'invite' | 'match';
+export type Screen =
+  | 'home'
+  | 'profile'
+  | 'settings'
+  | 'wardrobe'
+  | 'shop'
+  | 'queue'
+  | 'invite'
+  | 'match';
 
 export interface Navigation {
   readonly screen: Screen;

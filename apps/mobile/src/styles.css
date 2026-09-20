@@ -663,6 +663,92 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* --- reglages : un choix parmi plusieurs --- */
+
+/*
+  Deux colonnes, pas une pile.
+
+  En paysage la hauteur est la ressource rare — 390 px moins les zones sures —
+  et la largeur ne sert a rien. Quatre choix empiles debordaient du panneau et
+  coupaient la phrase qui dit le palier applique : la seule ligne de l ecran
+  qui apprend vraiment quelque chose.
+*/
+.choices {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+/*
+  Enfants directs, jamais descendants.
+
+  Un `.choice b` attraperait le premier gras venu si la ligne gagnait un jour
+  un badge ou un prix — c est exactement ce que `.rail__btn span` a fait, et ca
+  ne se voit qu a l ecran.
+*/
+.choice {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  /* Cible tactile : 46 px, ADR 0008. */
+  min-height: 46px;
+  padding: 7px 11px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  transition:
+    transform var(--d-tap) var(--e-out),
+    border-color var(--d-tap) var(--e-out);
+}
+
+.choice > b {
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.choice > small {
+  font-size: 11px;
+  color: var(--muted);
+  line-height: 1.3;
+}
+
+.choice:active {
+  transform: translateY(1px);
+}
+
+/*
+  L etat choisi ne tient pas qu a la couleur.
+
+  Un lisere accentue et une pastille : la couleur seule laisse dehors qui la
+  distingue mal, et l `aria-checked` ne se voit pas.
+*/
+.choice--on {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(179, 107, 255, 0.22), var(--chip));
+}
+
+/*
+  Une pastille peinte, pas un caractere.
+
+  `content: '●'` entre dans l arbre d accessibilite : le lecteur d ecran
+  annoncait « point Fluide » alors que `aria-checked` le disait deja. Un
+  contenu vide ne se lit pas, et la forme vient du fond.
+*/
+.choice--on > b::before {
+  content: '';
+  display: inline-block;
+  width: 7px;
+  height: 7px;
+  margin-right: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+  vertical-align: middle;
+}
+
 .ward__items {
   display: flex;
   flex-wrap: wrap;

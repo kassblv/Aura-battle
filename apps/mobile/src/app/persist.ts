@@ -1,3 +1,8 @@
+import {
+  QUALITY_TIERS,
+  type QualitySetting,
+  type QualityTier,
+} from '../platform/quality.js';
 import { memeGallery } from './memes.js';
 import { priceOf } from './wardrobe.js';
 import type { Wallet } from './profile.js';
@@ -50,6 +55,31 @@ export interface Progress {
    * valide, et quelqu'un qui n'a jamais fini de match n'a rien a compter.
    */
   readonly record?: PlayerRecord;
+  /**
+   * Le reglage de qualite graphique choisi par le joueur : `auto`, ou un
+   * palier impose.
+   */
+  readonly quality?: QualitySetting;
+  /**
+   * Le palier que l automatique a trouve a la session precedente.
+   *
+   * Sans lui, un appareil modeste repart du palier le plus haut a chaque
+   * lancement et repaye une premiere manche hachee avant de redescendre.
+   */
+  readonly qualityTier?: QualityTier;
+}
+
+function isTier(value: unknown): value is QualityTier {
+  return QUALITY_TIERS.some((tier) => tier === value);
+}
+
+/*
+  Le stockage est editable a la main, et ce qui en sort sert d index dans
+  `QUALITY_PROFILES`. Un palier invente y vaudrait `undefined` et ferait
+  tomber l arene au premier acces : on l oublie plutot que de le croire.
+*/
+function isSetting(value: unknown): value is QualitySetting {
+  return value === 'auto' || isTier(value);
 }
 
 /** Le strict necessaire d'un trousseau, injecte pour rester testable. */
@@ -135,6 +165,8 @@ export function loadProgress(store: ProgressStore): Progress | null {
     )
       ? { record: data.record as unknown as PlayerRecord }
       : {}),
+    ...(isSetting(data.quality) ? { quality: data.quality } : {}),
+    ...(isTier(data.qualityTier) ? { qualityTier: data.qualityTier } : {}),
     // Un cosmetique retire du catalogue s'afficherait comme equipe sans
     // exister : on l'oublie plutot que de montrer un emplacement vide.
     owned: data.owned.filter(isKnown),

@@ -100,3 +100,49 @@ describe('loadProgress / saveProgress', () => {
     expect(loadProgress(store)).toBeNull();
   });
 });
+
+describe('qualite graphique', () => {
+  /*
+    Deux valeurs, et pas une : le reglage que le joueur a choisi, et le palier
+    que l automatique a trouve. Sans le second, un appareil modeste repaye une
+    premiere manche hachee a chaque lancement — le gouverneur repart du plus
+    haut palier et redescend.
+  */
+  it('range le reglage et le palier trouve', () => {
+    const store = memory();
+    const saved = progress({ quality: 'auto', qualityTier: 'balanced' });
+    saveProgress(store, saved);
+    expect(loadProgress(store)).toEqual(saved);
+  });
+
+  it('range un palier impose a la main', () => {
+    const store = memory();
+    saveProgress(store, progress({ quality: 'smooth', qualityTier: 'smooth' }));
+    expect(loadProgress(store)?.quality).toBe('smooth');
+  });
+
+  it('accepte une sauvegarde d avant les paliers', () => {
+    const store = memory();
+    saveProgress(store, progress());
+    const loaded = loadProgress(store);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.quality).toBeUndefined();
+    expect(loaded?.qualityTier).toBeUndefined();
+  });
+
+  /*
+    Le stockage est editable a la main. Un palier invente ne doit pas se
+    propager jusqu a `QUALITY_PROFILES[tier]`, ou il vaudrait `undefined` et
+    ferait tomber l arene au premier acces.
+  */
+  it('oublie un palier qui n existe pas', () => {
+    const store = memory();
+    saveProgress(store, progress());
+    const raw = JSON.parse(store.read() ?? '{}') as Record<string, unknown>;
+    store.write(JSON.stringify({ ...raw, quality: 'ultra', qualityTier: 'cinema' }));
+    const loaded = loadProgress(store);
+    expect(loaded).not.toBeNull();
+    expect(loaded?.quality).toBeUndefined();
+    expect(loaded?.qualityTier).toBeUndefined();
+  });
+});

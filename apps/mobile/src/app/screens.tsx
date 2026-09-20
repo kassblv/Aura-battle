@@ -36,6 +36,7 @@ export interface HomeProps {
   readonly onEquipMeme: () => void;
   readonly onPlay: () => void;
   readonly onProfile: () => void;
+  readonly onSettings: () => void;
   readonly onWardrobe: () => void;
   readonly onShop: () => void;
   /** Cherche un adversaire : c est le chemin normal vers un duel. */
@@ -68,6 +69,7 @@ export function HomeScreen({
   onEquipMeme,
   onPlay,
   onProfile,
+  onSettings,
   onWardrobe,
   onShop,
   onOnline,
@@ -133,6 +135,20 @@ export function HomeScreen({
             </span>
             <span className="rail__label" aria-hidden="true">
               Boutique
+            </span>
+          </button>
+          {/*
+            Dernier du rail, et c'est voulu : on vient ici quand quelque chose
+            ne va pas, pas a chaque partie. Sous 780 px le libelle disparait
+            comme celui des autres et il ne reste que l'icone — la rangee du
+            bas ne gagne alors que 54 px.
+          */}
+          <button type="button" className="rail__btn" onClick={onSettings} aria-label="Réglages">
+            <span className="rail__icon" aria-hidden="true">
+              ⚙️
+            </span>
+            <span className="rail__label" aria-hidden="true">
+              Réglages
             </span>
           </button>
         </nav>

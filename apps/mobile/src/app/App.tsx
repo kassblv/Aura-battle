@@ -18,6 +18,7 @@ import { needsOnboarding } from './onboarding.js';
 import { OnboardingScreen } from './OnboardingScreen.jsx';
 import { newProfile, type PlayerProfile } from './profile.js';
 import { buy, type ShopState } from './shop.js';
+import { SettingsScreen } from './SettingsScreen.jsx';
 import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
 import { QueueScreen } from './QueueScreen.jsx';
@@ -28,6 +29,11 @@ import { tryOn } from './tryOn.js';
 import { leagueLabel } from './leagues.js';
 import { inviteFromUrl } from './deepLink.js';
 import { emptyRecord, recordMatch } from './record.js';
+import {
+  createQualityGovernor,
+  type QualitySetting,
+  type QualityTier,
+} from '../platform/quality.js';
 import { browserStore, loadProgress, saveProgress } from './persist.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
@@ -49,7 +55,37 @@ export function App(): JSX.Element {
    * l entree du match arriverait apres ce geste-la, et iOS resterait muet tout
    * le premier duel.
    */
+  /**
+   * Ce que le joueur a deja fait, relu une seule fois au demarrage.
+   *
+   * Sans ce rangement, equiper un meme ou acheter une danse s'oubliait au
+   * rechargement — et le joueur n'en conclut pas que c'est provisoire, il en
+   * conclut que le jeu ne l'a pas ecoute.
+   */
+  const store = useMemo(() => browserStore(), []);
+  const saved = useMemo(() => loadProgress(store), [store]);
+
   const audio = useAudio();
+
+  /**
+   * La qualite graphique.
+   *
+   * Un seul gouverneur pour l arene, qui le nourrit de ses ecarts d image et
+   * applique ses descentes, et pour l ecran Reglages, qui le pilote a la main.
+   * Deux objets afficheraient un palier et en dessineraient un autre.
+   *
+   * L etat React qui suit n est la que pour **montrer** le palier : c est le
+   * gouverneur qui fait foi, pas lui.
+   */
+  const quality = useRef(
+    createQualityGovernor({
+      ...(saved?.quality === undefined ? {} : { setting: saved.quality }),
+      ...(saved?.qualityTier === undefined ? {} : { start: saved.qualityTier }),
+    }),
+  );
+  const [qualitySetting, setQualitySetting] = useState<QualitySetting>(quality.current.setting);
+  const [qualityTier, setQualityTier] = useState<QualityTier>(quality.current.tier);
+
   const arena = useArena(
     canvasRef,
     useCallback(
@@ -58,6 +94,10 @@ export function App(): JSX.Element {
       },
       [audio],
     ),
+    quality.current,
+    useCallback((tier: QualityTier) => {
+      setQualityTier(tier);
+    }, []),
   );
 
   /**
@@ -82,16 +122,6 @@ export function App(): JSX.Element {
   }, []);
 
   const session = useSession();
-
-  /**
-   * Ce que le joueur a deja fait, relu une seule fois au demarrage.
-   *
-   * Sans ce rangement, equiper un meme ou acheter une danse s'oubliait au
-   * rechargement — et le joueur n'en conclut pas que c'est provisoire, il en
-   * conclut que le jeu ne l'a pas ecoute.
-   */
-  const store = useMemo(() => browserStore(), []);
-  const saved = useMemo(() => loadProgress(store), [store]);
 
   const [wardrobe, setWardrobe] = useState<Wardrobe>(() => ({
     look: saved?.look ?? defaultLook(),
@@ -263,8 +293,10 @@ export function App(): JSX.Element {
       wallet: shop.wallet,
       ...(league === '' ? {} : { league }),
       ...(record.matches === 0 ? {} : { record }),
+      quality: qualitySetting,
+      qualityTier,
     });
-  }, [store, wardrobe.look, shop.owned, shop.wallet, league, record]);
+  }, [store, wardrobe.look, shop.owned, shop.wallet, league, record, qualitySetting, qualityTier]);
 
   /**
    * Le profil.
@@ -363,6 +395,9 @@ export function App(): JSX.Element {
             onProfile={() => {
               go('profile');
             }}
+            onSettings={() => {
+              go('settings');
+            }}
             onWardrobe={() => {
               go('wardrobe');
             }}
@@ -421,6 +456,21 @@ export function App(): JSX.Element {
         {!showOnboarding && nav.screen === 'profile' && (
           <ProfileScreen
             profile={profile}
+            onClose={() => {
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'settings' && (
+          <SettingsScreen
+            setting={qualitySetting}
+            tier={qualityTier}
+            onQuality={(next) => {
+              quality.current.select(next);
+              setQualitySetting(next);
+              setQualityTier(quality.current.tier);
+            }}
             onClose={() => {
               go('home');
             }}
