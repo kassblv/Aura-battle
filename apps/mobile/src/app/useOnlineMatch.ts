@@ -202,7 +202,19 @@ export function useOnlineMatch(
         });
       }
 
-      force((n) => n + 1);
+      /**
+       * On ne refait un rendu React que pendant un duel.
+       *
+       * Cette boucle tourne aussi longtemps que l application : forcer un
+       * rendu a chaque image redessinait tout l arbre soixante fois par
+       * seconde **sur l accueil**, ou rien de ce que React affiche ne depend
+       * du temps. L arene, elle, n a pas besoin de React : elle lit ses
+       * references dans sa propre boucle.
+       *
+       * Pendant le duel le rendu par image reste necessaire — le compte a
+       * rebours, les orbes et la jauge sont du DOM, et ils suivent l horloge.
+       */
+      if (state.phase !== 'idle') force((n) => n + 1);
     };
     frame = requestAnimationFrame(tick);
 

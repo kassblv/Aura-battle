@@ -69,6 +69,38 @@ l'adversaire codé en dur côté serveur ; un seul combattant affiché en ligne 
 la jauge qui peignait ses zones à une position différente de celle que le moteur
 jugeait. Aucun de ces trois défauts n'a fait échouer un test.
 
+## Budget d'images, et comment il se mesure
+
+M6 vise **60 i/s**, avec **30 i/s** comme plancher sur un appareil milieu de
+gamme. On l'approche en ralentissant le processeur d'un facteur **4** dans
+Chrome, fenêtre à 844×390 — le format cible.
+
+La mesure ne passe pas par une trace : elle est trop volumineuse à exporter, et
+ce qu'on veut tient en trois nombres. On compte les écarts entre images sur
+plusieurs secondes et on lit :
+
+- la **moyenne**, qui dit le confort général ;
+- la **médiane**, qui dit si le problème est de fond ou par à-coups ;
+- le **nombre d'images au-dessus de 33 ms**, c'est-à-dire sous le plancher.
+
+C'est cet écart moyenne/médiane qui a désigné le coupable : une médiane à 58,5
+avec une moyenne à 42 ne décrit pas un moteur lent, elle décrit une pile qui
+cale régulièrement.
+
+Relevés au 20 septembre 2026, ralenti ×4 :
+
+| Écran | Moyenne | Images > 33 ms |
+|---|---|---|
+| Accueil, avant | 42,1 i/s | 28 sur 209 (13 %) |
+| Accueil, après | **60,0 i/s** | **0** |
+| Match | 40,6 i/s | 69 sur 243 (28 %) |
+
+L'accueil rendait tout l'arbre React soixante fois par seconde alors que rien
+de ce qu'il affiche ne dépend du temps ; l'arène, elle, lit ses références dans
+sa propre boucle et n'a jamais eu besoin de React. En match, le rendu par image
+reste nécessaire — mais redessiner trente boutons pour déplacer une aiguille
+reste à traiter.
+
 ## Équilibrage par simulation
 
 `pnpm sim` fait jouer des stratégies entre elles et produit :
