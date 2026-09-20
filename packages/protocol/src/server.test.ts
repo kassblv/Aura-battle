@@ -115,6 +115,46 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
     expect(parseServerMessage('round:intro', { ...valide, opponentUlt: 40 }).success).toBe(false);
   });
 
+  /**
+   * Le nom de l'adversaire survit a une reprise.
+   *
+   * Il n'etait annonce que dans `match:found`. Une application mobile tuee en
+   * arriere-plan — le cas le plus frequent de tous — revient par
+   * `match:rejoin`, et le joueur finissait sa partie contre « Adversaire ».
+   *
+   * Ce n'est pas une fuite : il l'avait deja recu a l'ouverture. Le champ est
+   * optionnel parce qu'un annuaire injoignable ne doit pas empecher une
+   * reprise.
+   */
+  it('accepte un match:state qui rappelle le nom de l adversaire', () => {
+    const base = {
+      matchId: 'm_01',
+      seat: 'a',
+      phase: 'choice',
+      round: 2,
+      endsAt: 1_700_000_050_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 11,
+      ult: 57.5,
+      opponentLocked: true,
+      history: [],
+    };
+    expect(parseServerMessage('match:state', base).success).toBe(true);
+    expect(
+      parseServerMessage('match:state', {
+        ...base,
+        opponent: { displayName: 'Nova', league: 'bronze', cosmetics: {} },
+      }).success,
+    ).toBe(true);
+    // Et rien de plus que ce que `match:found` annoncait deja.
+    expect(
+      parseServerMessage('match:state', {
+        ...base,
+        opponent: { displayName: 'Nova', league: 'bronze', cosmetics: {}, mmr: 1200 },
+      }).success,
+    ).toBe(false);
+  });
+
   it('refuse un match:state qui contiendrait le choix verrouille de l adversaire', () => {
     const valide = {
       matchId: 'm_01',

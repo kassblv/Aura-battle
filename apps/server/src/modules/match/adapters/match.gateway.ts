@@ -460,8 +460,37 @@ export class MatchGateway implements OnGatewayConnection {
 
     const snapshot = this.runtime.snapshotFor(body.matchId, seat);
     if (snapshot !== null) {
-      this.emit(socket, 'match:state', snapshot);
+      this.emit(socket, 'match:state', this.withOpponent(snapshot, body.matchId, seat));
     }
+  }
+
+  /**
+   * Rappelle a l'instantane le nom de l'adversaire.
+   *
+   * Il n'etait annonce que dans `match:found` : une application mobile tuee en
+   * arriere-plan — le cas le plus frequent de tous — revenait par
+   * `match:rejoin` et finissait la partie contre « Adversaire ».
+   *
+   * Ce n'est pas une fuite : le destinataire l'avait deja recu a l'ouverture,
+   * et l'instantane ne promet rien d'autre que ce qu'il avait le droit de
+   * voir. Le champ reste absent si le siege d'en face est introuvable, plutot
+   * que d'inventer un nom.
+   */
+  private withOpponent(
+    snapshot: ServerMessage<'match:state'>,
+    matchId: string,
+    seat: Seat,
+  ): ServerMessage<'match:state'> {
+    const opponentId = this.runtime.opponentIn(matchId, seat);
+    if (opponentId === null) return snapshot;
+    return {
+      ...snapshot,
+      opponent: {
+        displayName: this.notifier.displayNameOf(opponentId),
+        league: 'bronze',
+        cosmetics: {},
+      },
+    };
   }
 
   /** Assets charges : le client confirme qu'il suit. */
@@ -475,7 +504,7 @@ export class MatchGateway implements OnGatewayConnection {
 
     const snapshot = this.runtime.snapshotFor(body.matchId, seat);
     if (snapshot !== null) {
-      this.emit(socket, 'match:state', snapshot);
+      this.emit(socket, 'match:state', this.withOpponent(snapshot, body.matchId, seat));
     }
   }
 

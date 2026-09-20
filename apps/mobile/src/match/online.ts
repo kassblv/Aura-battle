@@ -218,7 +218,15 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       ...EMPTY_ONLINE_STATE,
       matchId: data.matchId,
       seat: data.seat,
-      opponentName: state.opponentName,
+      /**
+       * Le serveur d'abord, notre memoire ensuite.
+       *
+       * Apres un rechargement, il n'y a plus de memoire du tout : c'est
+       * exactement le cas d'une application mobile tuee en arriere-plan, et le
+       * joueur finissait sa partie contre « Adversaire ». Le repli garde le
+       * nom quand un annuaire injoignable prive l'instantane du sien.
+       */
+      opponentName: data.opponent?.displayName ?? state.opponentName,
       phase: data.phase,
       round: data.round,
       phaseEndsAtMs: toLocal(data.endsAt),

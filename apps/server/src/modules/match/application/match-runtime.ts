@@ -358,6 +358,12 @@ export class MatchRuntime {
   }
 
   /** Instantane de reprise pour un siege, sans information cachee. */
+  /** Qui occupe l'autre siege, ou `null` si le match n'existe pas (ou plus). */
+  opponentIn(matchId: string, seat: Seat): string | null {
+    const match = this.matches.get(matchId);
+    return match === undefined ? null : match.seats[opponentOf(seat)];
+  }
+
   snapshotFor(matchId: string, seat: Seat): ServerMessage<'match:state'> | null {
     const match = this.matches.get(matchId);
     return match === undefined ? null : matchStateFor(seat, match.state, matchId);

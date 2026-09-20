@@ -495,6 +495,16 @@ describe('securite du match', () => {
     expect(snapshot.seat).toBe('a');
     // Le choix de l'adversaire n'apparait nulle part dans l'instantane.
     expect(JSON.stringify(snapshot)).not.toContain('hype');
+    /**
+     * Le nom de l'adversaire survit a la reprise.
+     *
+     * Il n'etait annonce que dans `match:found` : une application mobile tuee
+     * en arriere-plan — le cas le plus frequent de tous — revenait par
+     * `match:rejoin` et finissait la partie contre « Adversaire ».
+     */
+    const annonce = host.all<ServerMessage<'match:found'>>('match:found')[0];
+    expect(annonce).toBeDefined();
+    expect(snapshot.opponent?.displayName).toBe(annonce!.opponent.displayName);
 
     close(host, guest);
   });

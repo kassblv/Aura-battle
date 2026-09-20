@@ -82,6 +82,19 @@ const roundSideSchema = z.strictObject({
   ultAfter: z.number().min(0),
 });
 
+/**
+ * Ce qu'on dit de l'adversaire, et rien de plus.
+ *
+ * Une liste fermee, partagee par `match:found` et `match:state` : deux
+ * definitions separees finiraient par diverger, et c'est du cote de la reprise
+ * qu'on aurait ajoute le champ de trop sans que l'autre le refuse.
+ */
+const opponentSchema = z.strictObject({
+  displayName: z.string().min(1).max(40),
+  league: z.string().min(1).max(32),
+  cosmetics: opponentCosmeticsSchema,
+});
+
 export const SERVER_MESSAGES = {
   pong: z.strictObject({ t: z.number(), serverTime: serverTimeSchema }),
 
@@ -104,11 +117,7 @@ export const SERVER_MESSAGES = {
   'match:found': z.strictObject({
     matchId: matchIdSchema,
     seat: seatSchema,
-    opponent: z.strictObject({
-      displayName: z.string().min(1).max(40),
-      league: z.string().min(1).max(32),
-      cosmetics: opponentCosmeticsSchema,
-    }),
+    opponent: opponentSchema,
     protocolVersion: z.string().max(16),
     rulesVersion: z.string().max(16),
     contentVersion: z.string().max(16),
@@ -203,6 +212,18 @@ export const SERVER_MESSAGES = {
     energy: z.number().int().min(0),
     ult: z.number().min(0),
     opponentLocked: z.boolean(),
+    /**
+     * Rappel du nom de l'adversaire.
+     *
+     * Il n'etait annonce que dans `match:found`, donc une application tuee en
+     * arriere-plan revenait par `match:rejoin` et finissait la partie contre
+     * « Adversaire ». Ce n'est pas une fuite : le destinataire l'avait deja
+     * recu a l'ouverture, et c'est exactement ce que cet instantane promet —
+     * rien de plus que ce qu'il avait le droit de voir.
+     *
+     * Optionnel : un annuaire injoignable ne doit pas empecher une reprise.
+     */
+    opponent: opponentSchema.optional(),
     orbs: z.array(orbSpecSchema).max(MAX_ORBS_PER_ROUND).optional(),
     meter: z
       .strictObject({
