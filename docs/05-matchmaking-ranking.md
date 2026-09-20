@@ -39,6 +39,22 @@ Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste l
   second ticket et ne remet pas l'attente à zéro ; changer de mode est une autre recherche.
 - **`queue:status` ne porte que ce qui appartient au destinataire** : son mode, son attente, sa
   fenêtre. Ni MMR, ni taille de la file, ni position dedans.
+- **Perdre sa socket n'est pas quitter la file.** Le ticket sort de la file — on n'apparie
+  jamais un absent — mais il est *garé* pendant **45 s**, la même grâce que pour un match en
+  cours (`docs/03`), qui demande d'ailleurs au client de fermer sa socket quand l'application
+  passe en arrière-plan. À la reconnexion, le serveur remet le ticket en jeu avec son
+  ancienneté et renvoie un `queue:status` : le joueur n'a rien à redemander. Au-delà des 45 s,
+  le ticket est oublié. Quitter volontairement la file, en revanche, est définitif.
+- **Une paire appariée mais dont le match ne s'ouvre pas retourne en file**, ancienneté
+  intacte. Le tour d'appariement retire les deux tickets *avant* de tenter l'ouverture ; sans
+  ce retour, un refus tardif — un siège pris entre-temps par une invitation — laisserait les
+  deux joueurs hors de la file et sans match, devant un écran de recherche que plus rien
+  n'alimente. Celui qui vient de s'asseoir ailleurs n'y retourne pas, lui — ni celui qui a
+  envoyé `queue:leave` entre-temps : son ticket était déjà réclamé, donc l'annulation n'avait
+  rien à retirer, et le remettre en file le rendrait appariable alors que son client a quitté
+  l'écran de recherche. Il encaisserait le `match:found` suivant sans le jouer, c'est-à-dire
+  une défaite classée sur une recherche annulée. L'annulation reste donc opposable pendant une
+  minute, et un nouveau `queue:join` l'efface.
 
 ## MMR et ligues
 

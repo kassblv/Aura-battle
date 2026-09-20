@@ -1,7 +1,7 @@
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
 import { PROTOCOL_VERSION } from '@aura/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
-import { UNKNOWN_PLAYER_NAME, type PlayerDirectory } from '../domain/directory.js';
+import { UNKNOWN_PLAYER_NAME } from '../domain/directory.js';
 import type { MatchNotifier } from '../domain/ports.js';
 import {
   MatchOpener,
@@ -73,21 +73,22 @@ class FakeRuntime implements MatchStarter {
   }
 }
 
-/** Presence : tout le monde est connecte, sauf ce qu'on retire. */
+/**
+ * Presence : tout le monde est connecte sous son nom, sauf ce qu'on retire.
+ *
+ * Les deux reponses sont **synchrones**, comme le registre de sessions reel :
+ * c'est ce qui permet a l'ouverture de n'avoir aucun point de suspension.
+ */
 class FakePresence implements PlayerPresence {
   readonly absent = new Set<string>();
+  readonly anonymous = new Set<string>();
 
   isConnected(playerId: string): boolean {
     return !this.absent.has(playerId);
   }
-}
 
-class FakeDirectory implements PlayerDirectory {
-  failure: Error | null = null;
-
-  displayNames(playerIds: readonly string[]): Promise<ReadonlyMap<string, string>> {
-    if (this.failure !== null) return Promise.reject(this.failure);
-    return Promise.resolve(new Map(playerIds.map((id) => [id, `Nom de ${id}`])));
+  displayNameOf(playerId: string): string {
+    return this.anonymous.has(playerId) ? UNKNOWN_PLAYER_NAME : `Nom de ${playerId}`;
   }
 }
 
@@ -104,7 +105,6 @@ class FakeQueue implements QueueEviction {
 let notifier: RecordingNotifier;
 let runtime: FakeRuntime;
 let presence: FakePresence;
-let directory: FakeDirectory;
 let queue: FakeQueue;
 let opener: MatchOpener;
 
@@ -112,17 +112,16 @@ beforeEach(() => {
   notifier = new RecordingNotifier();
   runtime = new FakeRuntime(notifier);
   presence = new FakePresence();
-  directory = new FakeDirectory();
   queue = new FakeQueue();
-  opener = new MatchOpener(runtime, notifier, presence, directory, queue);
+  opener = new MatchOpener(runtime, notifier, presence, queue);
 });
 
-const open = (mode: 'RANKED' | 'CASUAL' | 'INVITE' = 'RANKED'): Promise<string | null> =>
+const open = (mode: 'RANKED' | 'CASUAL' | 'INVITE' = 'RANKED'): string | null =>
   opener.open({ playerA: 'p1', playerB: 'p2', mode });
 
 describe('MatchOpener', () => {
-  it('assoit les deux joueurs a des places differentes dans le meme match', async () => {
-    const matchId = await open();
+  it('assoit les deux joueurs a des places differentes dans le meme match', () => {
+    const matchId = open();
 
     expect(matchId).not.toBeNull();
     expect(notifier.foundBy('p1')?.matchId).toBe(matchId);
@@ -131,23 +130,23 @@ describe('MatchOpener', () => {
     expect(runtime.opened).toHaveLength(1);
   });
 
-  it('annonce a chaque joueur le nom de son ADVERSAIRE', async () => {
-    await open();
+  it('annonce a chaque joueur le nom de son ADVERSAIRE', () => {
+    open();
 
     expect(notifier.foundBy('p1')?.opponent.displayName).toBe('Nom de p2');
     expect(notifier.foundBy('p2')?.opponent.displayName).toBe('Nom de p1');
   });
 
   /** Un nom manquant ne vaut pas un duel annule. */
-  it('ouvre quand meme si l annuaire ne repond pas', async () => {
-    directory.failure = new Error('base injoignable');
+  it('ouvre quand meme avec un nom inconnu', () => {
+    presence.anonymous.add('p2');
 
-    expect(await open()).not.toBeNull();
+    expect(open()).not.toBeNull();
     expect(notifier.foundBy('p1')?.opponent.displayName).toBe(UNKNOWN_PLAYER_NAME);
   });
 
-  it('annonce les versions du protocole, des regles et du contenu', async () => {
-    await open();
+  it('annonce les versions du protocole, des regles et du contenu', () => {
+    open();
     const found = notifier.foundBy('p1');
 
     expect(found?.protocolVersion).toBe(PROTOCOL_VERSION);
@@ -155,18 +154,26 @@ describe('MatchOpener', () => {
     expect(found?.ghost).toBe(false);
   });
 
-  it('sort les deux joueurs de la file avant d ouvrir', async () => {
-    await open();
+  /**
+   * Le retrait est declenche par l'**ouverture**, pas par l'appariement :
+   * sinon une invitation acceptee pendant l'attente laisse son ticket derriere
+   * elle, et le worker apparie un joueur deja en duel.
+   */
+  it('sort les deux joueurs de la file', () => {
+    open();
     expect(queue.evicted.sort()).toEqual(['p1', 'p2']);
   });
 
   it('ouvre quand meme si la file ne repond pas', async () => {
     queue.failure = new Error('Redis injoignable');
-    expect(await open()).not.toBeNull();
+    expect(open()).not.toBeNull();
+    // Le rejet est avale par l'ouverture ; sans ce tour de boucle, il
+    // remonterait en rejet non gere apres la fin du test.
+    await Promise.resolve();
   });
 
-  it('conserve le mode d ouverture pour l enregistrement', async () => {
-    await open('CASUAL');
+  it('conserve le mode d ouverture pour l enregistrement', () => {
+    open('CASUAL');
     expect(runtime.opened[0]?.mode).toBe('CASUAL');
   });
 
@@ -175,10 +182,10 @@ describe('MatchOpener', () => {
    * deja. Son client bascule sur une arene dont le serveur ne sait rien, et il
    * perd la partie en cours.
    */
-  it('n annonce rien quand un joueur occupe deja un siege', async () => {
+  it('n annonce rien quand un joueur occupe deja un siege', () => {
     runtime.busy.add('p2');
 
-    expect(await open()).toBeNull();
+    expect(open()).toBeNull();
     expect(notifier.sent).toHaveLength(0);
     expect(runtime.opened).toHaveLength(0);
   });
@@ -187,8 +194,8 @@ describe('MatchOpener', () => {
    * `createMatch` annonce la premiere manche sur-le-champ : un `round:intro`
    * qui precederait `match:found` porterait un `matchId` inconnu du client.
    */
-  it('annonce le match avant de l ouvrir', async () => {
-    await open();
+  it('annonce le match avant de l ouvrir', () => {
+    open();
     expect(runtime.opened[0]?.sentBefore).toBe(2);
   });
 
@@ -197,27 +204,72 @@ describe('MatchOpener', () => {
    * `disconnect` est passe avant l'existence du match, plus rien n'armerait
    * l'abandon et son adversaire subirait trois manches d'actions par defaut.
    */
-  it('arme l abandon d un joueur deja parti a l ouverture', async () => {
+  it('arme l abandon d un joueur deja parti a l ouverture', () => {
     presence.absent.add('p2');
 
-    await open();
+    open();
 
     expect(runtime.abandonArmed).toEqual(['p2']);
   });
 
-  it('n arme rien quand les deux joueurs sont la', async () => {
-    await open();
+  it('n arme rien quand les deux joueurs sont la', () => {
+    open();
     expect(runtime.abandonArmed).toEqual([]);
   });
 
-  it('signale un refus d ouverture survenu apres l annonce', async () => {
+  /**
+   * Un joueur assis des deux cotes controle les deux choix et gagne a coup
+   * sur — et la partie part en base comme un match classe. `createMatch` le
+   * refuse deja ; le refuser **ici** evite d'avoir annonce le match a
+   * quelqu'un avant de se raviser, et vaut pour tous les appelants a la fois.
+   */
+  it('refuse d asseoir un joueur contre lui-meme', () => {
+    expect(opener.open({ playerA: 'p1', playerB: 'p1', mode: 'RANKED' })).toBeNull();
+
+    expect(notifier.sent).toHaveLength(0);
+    expect(runtime.opened).toHaveLength(0);
+    expect(queue.evicted).toEqual([]);
+  });
+
+  it('signale le refus d un joueur contre lui-meme', () => {
     const warnings: string[] = [];
-    opener = new MatchOpener(runtime, notifier, presence, directory, queue, {
+    opener = new MatchOpener(runtime, notifier, presence, queue, {
+      warn: (message: string) => warnings.push(message),
+    });
+
+    opener.open({ playerA: 'p1', playerB: 'p1', mode: 'INVITE' });
+
+    expect(warnings).toHaveLength(1);
+  });
+
+  /**
+   * Le journal ne recopie pas la cause brute : `String(cause)` rend
+   * « nom: message », et le message d'une erreur ecrite par une bibliotheque
+   * recopie volontiers les arguments qu'elle vient de refuser.
+   */
+  it('resume la panne de la file sans recopier son message', async () => {
+    const warnings: string[] = [];
+    opener = new MatchOpener(runtime, notifier, presence, queue, {
+      warn: (message: string) => warnings.push(message),
+    });
+    queue.failure = new Error('ECONNREFUSED\n  mm:ticket:p1 = { mmr: 1337 }');
+
+    open();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(warnings.join(' ')).not.toContain('1337');
+    expect(warnings.join(' ')).toContain('Error');
+  });
+
+  it('signale un refus d ouverture survenu apres l annonce', () => {
+    const warnings: string[] = [];
+    opener = new MatchOpener(runtime, notifier, presence, queue, {
       warn: (message: string) => warnings.push(message),
     });
     runtime.refuse = true;
 
-    expect(await open()).toBeNull();
+    expect(open()).toBeNull();
     expect(warnings).toHaveLength(1);
   });
 });

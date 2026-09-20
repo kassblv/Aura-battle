@@ -3,7 +3,11 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { MemoryQueueStore } from '../adapters/memory-queue.store.js';
 import type { QueueNotifier, RatingReader } from '../domain/ports.js';
 import { DEFAULT_MMR } from '../domain/ticket.js';
-import { MatchmakingQueue } from './queue.service.js';
+import {
+  MatchmakingQueue,
+  QUEUE_CANCELLATION_MEMORY_MS,
+  QUEUE_PARKING_MS,
+} from './queue.service.js';
 
 /**
  * File d'attente : entree, sortie, tours d'appariement (docs/05 ; jalon M5).
@@ -150,6 +154,13 @@ describe('queue:leave', () => {
 
   it('accepte une sortie de file sans ticket', async () => {
     await expect(queue.leave('jamais-entre')).resolves.toBeUndefined();
+  });
+
+  it('retire aussi le ticket quand c est le joueur qui annule', async () => {
+    await queue.join('p1', 'ranked', 0);
+    await queue.cancel('p1', 1_000);
+
+    expect(await queue.isQueued('p1')).toBe(false);
   });
 });
 
@@ -310,5 +321,210 @@ describe('tour d appariement', () => {
 
     expect(pairs).toHaveLength(0);
     expect(await queue.isQueued('p1')).toBe(true);
+  });
+});
+
+describe('retour en file apres un match non ouvert', () => {
+  /**
+   * `tick` a deja reclame les deux tickets quand l'ouverture est tentee : si
+   * elle echoue, les deux joueurs sont hors de la file **et** sans match. Rien
+   * ne les y remettrait, leur minuteur continue de tourner, et ils attendent
+   * un appariement qui ne viendra jamais.
+   */
+  it('remet le ticket en file sans toucher a l anciennete', async () => {
+    const { ticket } = await queue.join('p1', 'ranked', 1_000);
+    await queue.join('p2', 'ranked', 1_000);
+    // Le tour reclame les deux tickets : les voila hors de la file, en attente
+    // d'une ouverture qui, ici, n'aboutit pas.
+    await queue.tick(2_000, TOUS_DISPONIBLES);
+    expect(await queue.isQueued('p1')).toBe(false);
+
+    await queue.requeue(ticket, 5_000);
+
+    expect((await store.get('p1'))?.enqueuedAtMs).toBe(1_000);
+  });
+
+  /**
+   * L'anciennete est conservee parce que la faute n'est pas celle du joueur
+   * remis en file : c'est son adversaire qui s'est assis ailleurs. Repartir au
+   * bout de la queue lui couterait sa fenetre de recherche elargie.
+   */
+  it('annonce une attente qui continue, pas une recherche qui redemarre', async () => {
+    const { ticket } = await queue.join('p1', 'ranked', 1_000);
+    await queue.join('p2', 'ranked', 1_000);
+    await queue.tick(2_000, TOUS_DISPONIBLES);
+    notifier.sent.length = 0;
+
+    await queue.requeue(ticket, 11_000);
+
+    expect(notifier.lastStatusFor('p1')).toEqual({
+      mode: 'ranked',
+      elapsedMs: 10_000,
+      searchRange: 300,
+    });
+  });
+
+  /**
+   * Le cas qui coute une defaite au classement.
+   *
+   * Le tour reclame les deux tickets, PUIS le joueur annule : `leave` ne
+   * trouve plus rien a retirer et ne laisse aucune trace. Si `requeue` le
+   * remet en file, il redevient appariable — et son client, qui a quitte
+   * l'ecran de recherche, encaisse le `match:found` suivant sans le jouer :
+   * trois manches d'actions par defaut, puis une defaite classee sur une
+   * recherche qu'il avait annulee.
+   */
+  it('ne remet pas en file un joueur qui vient d annuler sa recherche', async () => {
+    const { ticket } = await queue.join('p1', 'ranked', 1_000);
+    await queue.join('p2', 'ranked', 1_000);
+    await queue.tick(2_000, TOUS_DISPONIBLES);
+
+    await queue.cancel('p1', 2_001);
+    notifier.sent.length = 0;
+    await queue.requeue(ticket, 2_002);
+
+    expect(await queue.isQueued('p1')).toBe(false);
+    // Et rien ne lui laisse croire qu'il cherche encore.
+    expect(notifier.statusesFor('p1')).toHaveLength(0);
+  });
+
+  /** L'annulation ne vaut que pour elle-meme : redemander efface tout. */
+  it('remet en file un joueur qui a annule puis redemande un duel', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+    await queue.join('p2', 'ranked', 1_000);
+    await queue.tick(2_000, TOUS_DISPONIBLES);
+    await queue.cancel('p1', 2_001);
+
+    const { ticket } = await queue.join('p1', 'ranked', 3_000);
+    await queue.join('p3', 'ranked', 3_000);
+    await queue.tick(4_000, TOUS_DISPONIBLES);
+    await queue.requeue(ticket, 4_001);
+
+    expect(await queue.isQueued('p1')).toBe(true);
+  });
+
+  /** La memoire des annulations est bornee : elle ne vit qu'un tour. */
+  it('oublie les annulations que plus aucun tour ne peut concerner', async () => {
+    const { ticket } = await queue.join('p1', 'ranked', 1_000);
+    await queue.join('p2', 'ranked', 1_000);
+    await queue.tick(2_000, TOUS_DISPONIBLES);
+    await queue.cancel('p1', 2_001);
+
+    await queue.tick(2_001 + QUEUE_CANCELLATION_MEMORY_MS, TOUS_DISPONIBLES);
+    await queue.requeue(ticket, 2_002 + QUEUE_CANCELLATION_MEMORY_MS);
+
+    expect(await queue.isQueued('p1')).toBe(true);
+  });
+
+  /** Un ticket plus recent a ete ecrit entre-temps : il gagne. */
+  it('n ecrase pas un ticket que le joueur a redemande depuis', async () => {
+    const { ticket } = await queue.join('p1', 'ranked', 1_000);
+    await queue.join('p2', 'ranked', 1_000);
+    await queue.tick(2_000, TOUS_DISPONIBLES);
+    await queue.join('p1', 'casual', 9_000);
+
+    await queue.requeue(ticket, 9_500);
+
+    expect((await store.get('p1'))?.mode).toBe('casual');
+  });
+});
+
+describe('deconnexion pendant l attente', () => {
+  /**
+   * Un ticket gare n'est plus appariable, mais il n'est pas perdu.
+   *
+   * docs/03 demande au client de **fermer sa socket** quand l'application
+   * passe en arriere-plan et de revenir ensuite ; il accorde 45 s pour
+   * reprendre un match en cours. Une file plus severe que cela punirait le
+   * comportement que le protocole prescrit : passer sous un tunnel ferait
+   * perdre sa place, sans que rien ne le dise au joueur.
+   *
+   * Pendant ce temps il n'apparait dans aucun tour d'appariement : l'invariant
+   * « on n'apparie jamais un absent » tient toujours.
+   */
+  it('garde le ticket hors de la file tant que le joueur est absent', async () => {
+    await queue.join('parti', 'ranked', 0);
+    await queue.join('present', 'ranked', 0);
+
+    await queue.park('parti', 1_000);
+
+    expect(await queue.tick(1_500, TOUS_DISPONIBLES)).toHaveLength(0);
+    expect(await queue.isQueued('parti')).toBe(false);
+  });
+
+  it('rend sa place et son anciennete au joueur qui revient', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+    await queue.park('p1', 2_000);
+
+    expect(await queue.resume('p1', 12_000)).toBe(true);
+    expect((await store.get('p1'))?.enqueuedAtMs).toBe(1_000);
+    expect(notifier.lastStatusFor('p1')).toEqual({
+      mode: 'ranked',
+      elapsedMs: 11_000,
+      searchRange: 325,
+    });
+  });
+
+  /** Au-dela de la grace, le ticket n'existe plus : rien a reprendre. */
+  it('ne rend rien passe le delai de grace', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+    await queue.park('p1', 2_000);
+
+    expect(await queue.resume('p1', 2_000 + QUEUE_PARKING_MS + 1)).toBe(false);
+    expect(await queue.isQueued('p1')).toBe(false);
+    expect(notifier.statusesFor('p1')).toHaveLength(1);
+  });
+
+  it('ne rend rien a un joueur qui n attendait pas', async () => {
+    expect(await queue.resume('jamais-entre', 1_000)).toBe(false);
+  });
+
+  /**
+   * Une sortie volontaire est definitive : sans cela, un joueur qui annule sa
+   * recherche puis se reconnecte se retrouverait a chercher un duel qu'il
+   * n'a plus demande.
+   */
+  it('oublie le ticket gare quand le joueur quitte la file', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+    await queue.park('p1', 2_000);
+    await queue.cancel('p1', 2_500);
+
+    expect(await queue.resume('p1', 3_000)).toBe(false);
+  });
+
+  it('reprend l anciennete garee quand c est le client qui redemande', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+    await queue.park('p1', 2_000);
+
+    const again = await queue.join('p1', 'ranked', 12_000);
+
+    expect(again.resumed).toBe(true);
+    expect(again.ticket.enqueuedAtMs).toBe(1_000);
+    expect(await queue.isQueued('p1')).toBe(true);
+  });
+
+  it('repart de zero quand le joueur revient dans un autre mode', async () => {
+    await queue.join('p1', 'ranked', 1_000);
+    await queue.park('p1', 2_000);
+
+    const again = await queue.join('p1', 'casual', 12_000);
+
+    expect(again.resumed).toBe(false);
+    expect(again.ticket.enqueuedAtMs).toBe(12_000);
+    expect(await queue.resume('p1', 12_001)).toBe(false);
+  });
+
+  /** Les tickets de ceux qui ne reviennent jamais ne doivent pas s'entasser. */
+  it('oublie les tickets gares dont la grace a expire', async () => {
+    await queue.join('p1', 'ranked', 0);
+    await queue.park('p1', 0);
+
+    await queue.tick(QUEUE_PARKING_MS + 1, TOUS_DISPONIBLES);
+
+    expect(await queue.resume('p1', QUEUE_PARKING_MS + 2)).toBe(false);
+  });
+
+  it('accepte de garer un joueur qui n a pas de ticket', async () => {
+    await expect(queue.park('jamais-entre', 1_000)).resolves.toBeUndefined();
   });
 });

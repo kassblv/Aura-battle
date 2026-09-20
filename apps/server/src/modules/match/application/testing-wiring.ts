@@ -1,5 +1,4 @@
 import type { Provider } from '@nestjs/common';
-import { PLAYER_DIRECTORY, type PlayerDirectory } from '../domain/directory.js';
 import { MemoryQueueStore } from '../../matchmaking/adapters/memory-queue.store.js';
 import { QueueWorker } from '../../matchmaking/application/queue-worker.js';
 import { MatchmakingQueue } from '../../matchmaking/application/queue.service.js';
@@ -58,13 +57,9 @@ export function matchmakingTestProviders(options: { withWorker?: boolean } = {})
     },
     {
       provide: MatchOpener,
-      inject: [MatchRuntime, SocketNotifier, PLAYER_DIRECTORY, MatchmakingQueue],
-      useFactory: (
-        runtime: MatchRuntime,
-        notifier: SocketNotifier,
-        directory: PlayerDirectory,
-        queue: MatchmakingQueue,
-      ) => new MatchOpener(runtime, notifier, notifier, directory, queue),
+      inject: [MatchRuntime, SocketNotifier, MatchmakingQueue],
+      useFactory: (runtime: MatchRuntime, notifier: SocketNotifier, queue: MatchmakingQueue) =>
+        new MatchOpener(runtime, notifier, notifier, queue),
     },
   ];
 

@@ -294,9 +294,11 @@ describe('sortie de file', () => {
   });
 
   /**
-   * Le defaut le plus couteux de la file : un ticket qui survit a son joueur.
-   * Son adversaire recevrait un `match:found` contre personne, puis un forfait
-   * au bout de la periode de grace.
+   * Le defaut le plus couteux de la file : apparier un joueur qui n'est plus
+   * la. Son adversaire recevrait un `match:found` contre personne, puis un
+   * forfait au bout de la periode de grace. Le ticket n'est pas detruit pour
+   * autant — il est **gare** (voir le scenario de reconnexion ci-dessous) —
+   * mais il a quitte la file, et c'est tout ce qui compte ici.
    */
   it('cesse d apparier apres une deconnexion', async () => {
     const fantome = await record();
@@ -311,6 +313,101 @@ describe('sortie de file', () => {
     await seul.never('match:found', 3 * QUEUE_TICK_MS);
 
     close(seul);
+  });
+});
+
+describe('reconnexion pendant l attente', () => {
+  /**
+   * Une reconnexion n'est pas une sortie de file.
+   *
+   * `register` ferme la socket precedente et Socket.IO emet `disconnect`
+   * synchroniquement : le handler de l'ancienne socket se declenche au beau
+   * milieu d'un retour parfaitement legitime. S'il vidait la file, un joueur
+   * qui passe sous un tunnel perdrait sa place — et son anciennete — sans que
+   * rien ne le lui dise.
+   *
+   * C'est le seul scenario de ce fichier qui reutilise volontairement une
+   * identite : c'est precisement ce qu'on teste.
+   */
+  it('garde sa place et son anciennete', async () => {
+    const playerId = nextPlayerId();
+    const avant = await record(playerId);
+
+    avant.socket.emit('queue:join', { mode: 'ranked' });
+    await avant.first<ServerMessage<'queue:status'>>('queue:status');
+    await wait(2 * QUEUE_TICK_MS);
+
+    // Meme joueur, nouvelle socket : le serveur ferme la precedente.
+    const apres = await record(playerId);
+    const repris = await apres.first<ServerMessage<'queue:status'>>('queue:status');
+
+    expect(repris.elapsedMs).toBeGreaterThan(0);
+
+    // Et il est toujours appariable : un adversaire le trouve.
+    const adversaire = await record();
+    adversaire.socket.emit('queue:join', { mode: 'ranked' });
+    await apres.first<ServerMessage<'match:found'>>('match:found');
+
+    close(apres, adversaire);
+  });
+
+  /**
+   * La vraie coupure : la socket meurt, et le joueur revient plus tard.
+   *
+   * C'est le cas de tous les jours sur mobile — tunnel, appel entrant, et
+   * surtout le passage en arriere-plan, ou `docs/03` demande explicitement au
+   * client de **fermer sa socket** et de se reconnecter au retour. Detruire le
+   * ticket a ce moment-la punirait le comportement que le protocole prescrit.
+   *
+   * Le ticket est donc garde de cote — hors de la file, personne ne peut etre
+   * apparie contre un absent — puis remis en jeu au retour, avec son
+   * anciennete. Ce que voit le joueur : son `queue:status` reprend la ou il
+   * s'etait arrete, sans qu'il ait rien a redemander.
+   */
+  it('retrouve sa place apres une coupure, sans rien redemander', async () => {
+    const playerId = nextPlayerId();
+    const avant = await record(playerId);
+
+    avant.socket.emit('queue:join', { mode: 'ranked' });
+    await avant.first<ServerMessage<'queue:status'>>('queue:status');
+    await wait(2 * QUEUE_TICK_MS);
+
+    // Coupure franche, puis quelques tours d'appariement sans lui.
+    avant.socket.disconnect();
+    await wait(2 * QUEUE_TICK_MS);
+
+    const apres = await record(playerId);
+    const repris = await apres.first<ServerMessage<'queue:status'>>('queue:status');
+
+    // L'attente n'a pas ete remise a zero : elle couvre au moins l'absence.
+    expect(repris.mode).toBe('ranked');
+    expect(repris.elapsedMs).toBeGreaterThanOrEqual(2 * QUEUE_TICK_MS);
+
+    const adversaire = await record();
+    adversaire.socket.emit('queue:join', { mode: 'ranked' });
+    await apres.first<ServerMessage<'match:found'>>('match:found');
+
+    close(apres, adversaire);
+  });
+
+  /**
+   * Une sortie volontaire ne se rattrape pas par une reconnexion : le joueur a
+   * ferme sa recherche, il ne doit pas la retrouver ouverte en revenant.
+   */
+  it('ne ressuscite pas une recherche annulee', async () => {
+    const playerId = nextPlayerId();
+    const avant = await record(playerId);
+
+    avant.socket.emit('queue:join', { mode: 'ranked' });
+    await avant.first<ServerMessage<'queue:status'>>('queue:status');
+    avant.socket.emit('queue:leave', {});
+    await wait(QUEUE_TICK_MS);
+    avant.socket.disconnect();
+
+    const apres = await record(playerId);
+    await apres.never('queue:status', 3 * QUEUE_TICK_MS);
+
+    close(apres);
   });
 });
 

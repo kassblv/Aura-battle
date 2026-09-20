@@ -17,7 +17,7 @@ import {
 } from '../matchmaking/domain/ports.js';
 import { MatchGateway } from './adapters/match.gateway.js';
 import { PrismaPlayerDirectory } from './adapters/prisma-directory.js';
-import { PLAYER_DIRECTORY, type PlayerDirectory } from './domain/directory.js';
+import { PLAYER_DIRECTORY } from './domain/directory.js';
 import { PrismaMatchRepository } from './adapters/prisma-match.repository.js';
 import { SocketNotifier } from './adapters/socket-notifier.js';
 import { SystemMatchClock, TimeoutScheduler } from './adapters/timeout-scheduler.js';
@@ -121,18 +121,17 @@ import { MatchRuntime } from './application/match-runtime.js';
      */
     {
       provide: MatchOpener,
-      inject: [MatchRuntime, SocketNotifier, PLAYER_DIRECTORY, MatchmakingQueue, PinoLoggerService],
+      inject: [MatchRuntime, SocketNotifier, MatchmakingQueue, PinoLoggerService],
       useFactory: (
         runtime: MatchRuntime,
         notifier: SocketNotifier,
-        directory: PlayerDirectory,
         queue: MatchmakingQueue,
         logger: PinoLoggerService,
       ) =>
-        // `SocketNotifier` tient les deux roles : envoyer un message et dire
-        // qui est encore au bout d'une socket. Ce sont deux ports distincts,
-        // parce que ce sont deux questions distinctes.
-        new MatchOpener(runtime, notifier, notifier, directory, queue, logger),
+        // `SocketNotifier` tient les deux roles : envoyer un message, et dire
+        // qui est la et sous quel nom. Ce sont deux ports distincts, parce que
+        // ce sont deux questions distinctes.
+        new MatchOpener(runtime, notifier, notifier, queue, logger),
     },
 
     {

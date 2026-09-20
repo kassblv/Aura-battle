@@ -16,9 +16,15 @@ import {
 } from '@aura/protocol';
 import type { Seat } from '@aura/rules';
 import type { Socket } from 'socket.io';
+import { describeCause } from '../../../shared/describe-cause.js';
 import { PinoLoggerService } from '../../../shared/logger.js';
 import { TokenBucket } from '../../../shared/rate-limit.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
+import {
+  PLAYER_DIRECTORY,
+  UNKNOWN_PLAYER_NAME,
+  type PlayerDirectory,
+} from '../domain/directory.js';
 import { MatchmakingQueue } from '../../matchmaking/application/queue.service.js';
 import { InviteService } from '../application/invites.js';
 import { MatchOpener } from '../application/match-opener.js';
@@ -60,6 +66,19 @@ interface SocketState {
   rateLimitReplies: number;
 }
 
+/**
+ * Le nom affiche est une propriete de la **session**, pas du match.
+ *
+ * Le resoudre ici — dans le seul endroit qui attend deja, pour
+ * l'authentification — est ce qui permet a l'ouverture d'un match de rester
+ * entierement synchrone. Une lecture en base entre le controle des sieges et
+ * leur reservation suffirait a laisser deux `invite:join` de la meme salve
+ * asseoir un joueur a deux matchs.
+ *
+ * Le cout passe d'une requete par ouverture de match — au moment precis ou deux
+ * joueurs attendent — a une requete par connexion, sur cle primaire.
+ */
+
 @Injectable()
 @WebSocketGateway({ cors: { origin: true }, transports: ['websocket'] })
 export class MatchGateway implements OnGatewayConnection {
@@ -71,6 +90,7 @@ export class MatchGateway implements OnGatewayConnection {
     @Inject(SocketNotifier) private readonly notifier: SocketNotifier,
     @Inject(MatchOpener) private readonly opener: MatchOpener,
     @Inject(MatchmakingQueue) private readonly queue: MatchmakingQueue,
+    @Inject(PLAYER_DIRECTORY) private readonly directory: PlayerDirectory,
   ) {}
 
   /** Identifiant du joueur derriere une socket authentifiee. */
@@ -118,6 +138,25 @@ export class MatchGateway implements OnGatewayConnection {
     return true;
   }
 
+  /**
+   * Nom affiche du joueur, ou le nom de repli.
+   *
+   * Une lecture ratee ne doit pas empecher de se connecter : le joueur verra
+   * « Adversaire » au lieu de son nom, ce qui est infiniment preferable a une
+   * socket refusee parce que Postgres a hoquete.
+   */
+  private async displayNameOf(playerId: string): Promise<string> {
+    try {
+      return (await this.directory.displayNames([playerId])).get(playerId) ?? UNKNOWN_PLAYER_NAME;
+    } catch (cause) {
+      this.logger.warn(
+        `annuaire indisponible a la connexion de ${playerId} : ${describeCause(cause)}`,
+        'MatchGateway',
+      );
+      return UNKNOWN_PLAYER_NAME;
+    }
+  }
+
   async handleConnection(socket: Socket): Promise<void> {
     const result = await this.auth.authenticate(socket.handshake.auth);
     if (!result.ok) {
@@ -136,27 +175,40 @@ export class MatchGateway implements OnGatewayConnection {
       rateLimitReplies: 0,
     };
     socket.data = state;
-    this.notifier.register(state.playerId, socket);
-
-    // Revenu a temps : le compte a rebours d'abandon est desarme.
-    this.runtime.notePlayerReconnected(state.playerId);
 
     socket.on('disconnect', () => {
-      this.notifier.unregister(state.playerId, socket);
+      /**
+       * Une fermeture ne vaut deconnexion que si c'etait la socket **courante**.
+       *
+       * `register` ferme la socket precedente, et Socket.IO emet `disconnect`
+       * synchroniquement dans la meme pile : ce handler se declenche donc au
+       * beau milieu d'une reconnexion parfaitement legitime. Armer un abandon
+       * et vider la file a ce moment-la punirait le joueur qui revient. Cela
+       * fonctionnait jusqu'ici par chance d'ordonnancement — la ligne suivante
+       * annulait le minuteur juste apres ; on ne depend plus de cet ordre.
+       */
+      if (!this.notifier.unregister(state.playerId, socket)) return;
+
       // Le match continue sans lui ; il a quarante-cinq secondes pour revenir.
       this.runtime.notePlayerDisconnected(state.playerId);
+
       /**
-       * La file, elle, ne fait pas credit.
+       * Le ticket quitte la file, mais n'est pas detruit.
        *
-       * Un ticket qui survit a son joueur fait apparier un absent : son
-       * adversaire recoit un `match:found` contre personne, puis un forfait au
-       * bout de la periode de grace. Le worker ecarte deja les joueurs
-       * deconnectes a chaque tour ; ceci ferme la fenetre de 500 ms entre les
-       * deux.
+       * Un ticket qui reste appariable sans son joueur offre a son adversaire
+       * un `match:found` contre personne, puis un forfait : il doit sortir de
+       * la file sur-le-champ — le worker ecarte deja les absents a chaque
+       * tour, ceci ferme la fenetre de 500 ms entre les deux.
+       *
+       * Le detruire serait excessif pour autant. `docs/03` demande au client de
+       * **fermer proprement sa socket** quand l'application passe en
+       * arriere-plan, et accorde 45 s pour revenir dans un match : la file n'a
+       * aucune raison d'etre plus severe. Le ticket est donc gare le temps de
+       * la meme grace, et `resume` le remet en jeu si le joueur revient.
        */
-      void this.queue.leave(state.playerId).catch((cause: unknown) => {
+      void this.queue.park(state.playerId, Date.now()).catch((cause: unknown) => {
         this.logger.warn(
-          `sortie de file impossible pour ${state.playerId} : ${String(cause)}`,
+          `sortie de file impossible pour ${state.playerId} : ${describeCause(cause)}`,
           'MatchGateway',
         );
       });
@@ -211,6 +263,44 @@ export class MatchGateway implements OnGatewayConnection {
       next();
     });
 
+    /**
+     * Le nom est lu **apres** avoir pose le filtre entrant.
+     *
+     * C'est la seule attente de cette methode, et rien ne doit pouvoir en
+     * profiter : tant que `socket.use` n'est pas installe, un client presse
+     * enverrait ses messages sans limite de debit ni validation de schema.
+     */
+    const displayName = await this.displayNameOf(state.playerId);
+
+    // Parti pendant la lecture : l'enregistrer maintenant laisserait une
+    // session fantome que `isConnected` declarerait vivante pour toujours.
+    if (!socket.connected) return;
+
+    this.notifier.register(state.playerId, socket, displayName);
+
+    // Revenu a temps : le compte a rebours d'abandon est desarme.
+    this.runtime.notePlayerReconnected(state.playerId);
+
+    /**
+     * Revenu a temps la aussi : sa recherche reprend ou elle s'etait arretee.
+     *
+     * C'est le serveur qui la relance, pas le client : le client d'aujourd'hui
+     * ne renvoie pas `queue:join` en se reconnectant, et son ecran de
+     * recherche est toujours affiche. Sans ce rappel, il regarderait un
+     * compte a rebours que plus aucun ticket n'alimente.
+     *
+     * Rien a reprendre pour un joueur en duel : son ticket a quitte la file a
+     * l'ouverture du match, et c'est `match:rejoin` qui le fait revenir.
+     */
+    if (!this.runtime.isBusy(state.playerId)) {
+      void this.queue.resume(state.playerId, Date.now()).catch((cause: unknown) => {
+        this.logger.warn(
+          `reprise de file impossible pour ${state.playerId} : ${describeCause(cause)}`,
+          'MatchGateway',
+        );
+      });
+    }
+
     this.logger.debug(`socket authentifiee pour ${state.playerId}`, 'MatchGateway');
   }
 
@@ -240,10 +330,10 @@ export class MatchGateway implements OnGatewayConnection {
    * des le depart ne ferait qu'infliger un forfait a quelqu'un qui est parti.
    */
   @SubscribeMessage('invite:join')
-  async inviteJoin(
+  inviteJoin(
     @ConnectedSocket() socket: Socket,
     @MessageBody() body: ClientMessage<'invite:join'>,
-  ): Promise<void> {
+  ): void {
     const guestId = this.playerOf(socket);
     const result = this.invites.join(body.code, guestId, Date.now());
     if (!result.ok) {
@@ -272,7 +362,7 @@ export class MatchGateway implements OnGatewayConnection {
      * pas l'autre. C'est aussi la que vit l'ordre des messages — `match:found`
      * avant `round:intro` — et la fenetre de course qu'il referme.
      */
-    const matchId = await this.opener.open({
+    const matchId = this.opener.open({
       playerA: result.hostId,
       playerB: guestId,
       mode: 'INVITE',
@@ -323,9 +413,13 @@ export class MatchGateway implements OnGatewayConnection {
        * absence dit deja que la recherche n'a pas demarre. Le protocole n'a
        * pas de code pour « panne interne », et detourner un code existant
        * ferait dire au reseau quelque chose de faux.
+       *
+       * La cause est **resumee**, pas recopiee : le message d'une erreur de
+       * Redis ou de Prisma reproduit les arguments qu'elle a refuses, et la
+       * pile avec. C'est la meme politique qu'a l'ecriture d'un match.
        */
       this.logger.error(
-        cause instanceof Error ? cause : new Error(String(cause)),
+        new Error(`entree en file impossible pour ${playerId} : ${describeCause(cause)}`),
         undefined,
         'MatchGateway',
       );
@@ -343,10 +437,13 @@ export class MatchGateway implements OnGatewayConnection {
   async queueLeave(@ConnectedSocket() socket: Socket): Promise<void> {
     const playerId = this.playerOf(socket);
     try {
-      await this.queue.leave(playerId);
+      // `cancel`, pas `leave` : le joueur ne quitte pas seulement la file, il
+      // annule sa recherche. La nuance compte quand son ticket vient d'etre
+      // reclame par un tour d'appariement — voir `MatchmakingQueue.cancel`.
+      await this.queue.cancel(playerId, Date.now());
     } catch (cause) {
       this.logger.warn(
-        `sortie de file impossible pour ${playerId} : ${String(cause)}`,
+        `sortie de file impossible pour ${playerId} : ${describeCause(cause)}`,
         'MatchGateway',
       );
     }

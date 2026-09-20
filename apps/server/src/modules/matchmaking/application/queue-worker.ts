@@ -1,4 +1,6 @@
+import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
+import type { QueuePair } from '../domain/pairing.js';
 import type { MatchOpening, QueueClock } from '../domain/ports.js';
 import { QUEUE_TICK_MS, type MatchmakingQueue } from './queue.service.js';
 
@@ -75,32 +77,67 @@ export class QueueWorker {
       let opened = 0;
 
       for (const pair of pairs) {
+        let matchId: string | null = null;
         try {
-          const matchId = await this.opener.open({
+          // Ouverture **synchrone** : rien ne peut s'intercaler entre deux
+          // paires d'un meme tour, ni entre le controle et la reservation.
+          matchId = this.opener.open({
             // Siege `a` au plus ancien : l'ordre n'a aucun effet de jeu, mais
             // il rend les journaux lisibles.
             playerA: pair.a.playerId,
             playerB: pair.b.playerId,
             mode: MATCH_MODES[pair.a.mode],
           });
-          if (matchId === null) {
-            this.log?.warn(
-              `paire ${pair.a.playerId}/${pair.b.playerId} appariee mais match non ouvert`,
-            );
-            continue;
-          }
-          opened += 1;
         } catch (cause) {
-          this.log?.warn(`ouverture de match impossible : ${String(cause)}`);
+          this.log?.warn(`ouverture de match impossible : ${describeCause(cause)}`);
         }
+
+        if (matchId !== null) {
+          opened += 1;
+          continue;
+        }
+
+        this.log?.warn(
+          `paire ${pair.a.playerId}/${pair.b.playerId} appariee mais match non ouvert : retour en file`,
+        );
+        await this.requeue(pair, nowMs);
       }
 
       return opened;
     } catch (cause) {
-      this.log?.warn(`tour d'appariement abandonne : ${String(cause)}`);
+      this.log?.warn(`tour d'appariement abandonne : ${describeCause(cause)}`);
       return 0;
     } finally {
       this.running = false;
+    }
+  }
+
+  /**
+   * Remet en file une paire dont le match ne s'est pas ouvert.
+   *
+   * **C'est ici, et pas dans l'ouverture, que le retour en file se fait.** Le
+   * tour a reclame les deux tickets avant de tenter d'ouvrir : lui seul les a
+   * encore en main, avec leur anciennete. Et `open` est synchrone par
+   * contrainte — une attente entre le controle des sieges et leur reservation
+   * suffit a asseoir un joueur a deux matchs — donc il ne peut de toute facon
+   * pas ecrire dans la file.
+   *
+   * Celui qui vient de s'asseoir ailleurs n'est pas remis en file : c'est son
+   * adversaire pressenti qu'on sauve, pas lui. `isAvailable` repond aux deux
+   * questions d'un coup — toujours connecte, et pas deja en duel.
+   */
+  private async requeue(pair: QueuePair, nowMs: number): Promise<void> {
+    for (const ticket of [pair.a, pair.b]) {
+      if (!this.isAvailable(ticket.playerId)) continue;
+      try {
+        await this.queue.requeue(ticket, nowMs);
+      } catch (cause) {
+        // Au mieux : un retour en file rate laisse un joueur devant un ecran
+        // de recherche muet, mais ne doit pas emporter le tour suivant.
+        this.log?.warn(
+          `retour en file impossible pour ${ticket.playerId} : ${describeCause(cause)}`,
+        );
+      }
     }
   }
 }

@@ -29,16 +29,18 @@ class FakeOpener implements MatchOpening {
   readonly opened: { playerA: string; playerB: string; mode: string }[] = [];
   refuse = false;
   failure: Error | null = null;
+  /** Refuse d'ouvrir, en produisant au passage la cause du refus. */
+  refuseWith: (() => void) | null = null;
 
-  open(request: {
-    playerA: string;
-    playerB: string;
-    mode: 'RANKED' | 'CASUAL';
-  }): Promise<string | null> {
-    if (this.failure !== null) return Promise.reject(this.failure);
-    if (this.refuse) return Promise.resolve(null);
+  open(request: { playerA: string; playerB: string; mode: 'RANKED' | 'CASUAL' }): string | null {
+    if (this.failure !== null) throw this.failure;
+    if (this.refuseWith !== null) {
+      this.refuseWith();
+      return null;
+    }
+    if (this.refuse) return null;
     this.opened.push(request);
-    return Promise.resolve(`m_${String(this.opened.length)}`);
+    return `m_${String(this.opened.length)}`;
   }
 }
 
@@ -117,7 +119,140 @@ describe('QueueWorker.runOnce', () => {
     await queue.join('p2', 'ranked', 1);
 
     await expect(build().runOnce()).resolves.toBe(0);
-    expect(warnings).toHaveLength(1);
+    // Deux lignes : la panne, puis le retour en file des deux joueurs.
+    expect(warnings.join(' ')).toContain('annuaire en feu');
+  });
+
+  /**
+   * Ne recopie jamais la cause brute dans un journal.
+   *
+   * `String(cause)` rend « nom: message », et le message d'une erreur ecrite
+   * par une bibliotheque recopie volontiers les arguments qu'elle a refuses.
+   * Le resume partage ne garde que le nom et la premiere ligne.
+   */
+  it('resume la cause d une ouverture ratee sans la recopier', async () => {
+    opener.failure = new Error('echec\n  playerId: "p1",\n  seed: "graine"');
+    await queue.join('p1', 'ranked', 0);
+    await queue.join('p2', 'ranked', 1);
+
+    await build().runOnce();
+
+    expect(warnings.join(' ')).not.toContain('graine');
+  });
+
+  /**
+   * Le tour a **deja** reclame les deux tickets quand il tente d'ouvrir : une
+   * ouverture refusee laisse donc deux joueurs hors de la file et sans match.
+   * Personne ne les apparie plus, leur minuteur continue de tourner, et rien
+   * ne le leur dit — jusqu'a ce qu'ils relancent l'application.
+   */
+  it('remet en file les joueurs d une paire que le match refuse d ouvrir', async () => {
+    opener.refuse = true;
+    await queue.join('p1', 'ranked', 0);
+    await queue.join('p2', 'ranked', 1);
+
+    await build().runOnce();
+
+    expect((await store.listWaiting()).map((t) => t.playerId).sort()).toEqual(['p1', 'p2']);
+  });
+
+  it('remet aussi en file apres une ouverture qui a jete', async () => {
+    opener.failure = new Error('annuaire en feu');
+    await queue.join('p1', 'ranked', 0);
+    await queue.join('p2', 'ranked', 1);
+
+    await build().runOnce();
+
+    expect(await store.listWaiting()).toHaveLength(2);
+  });
+
+  /**
+   * L'anciennete ne se perd pas dans l'operation : le joueur remis en file n'a
+   * rien fait de mal, et repartir au bout de la queue lui couterait la fenetre
+   * de recherche qu'il avait elargie en patientant.
+   */
+  it('leur rend leur anciennete, pas une place en fin de queue', async () => {
+    opener.refuse = true;
+    await queue.join('ancien', 'ranked', 1_000);
+    await queue.join('recent', 'ranked', 2_000);
+
+    now = 30_000;
+    await build().runOnce();
+
+    const waiting = await store.listWaiting();
+    expect(waiting.map((t) => t.enqueuedAtMs)).toEqual([1_000, 2_000]);
+  });
+
+  /**
+   * Le cas qui produit le defaut : celui des deux qui vient de s'asseoir
+   * ailleurs — une invitation acceptee pendant l'attente — fait echouer
+   * l'ouverture. Lui n'a rien a faire en file ; sa victime, si.
+   */
+  it('ne remet pas en file celui qui est parti s asseoir ailleurs', async () => {
+    await queue.join('assis', 'ranked', 0);
+    await queue.join('victime', 'ranked', 1);
+
+    // Il etait libre quand le tour l'a apparie, et occupe quand le match a
+    // tente de s'ouvrir : c'est exactement ce qu'une invitation acceptee
+    // pendant l'attente produit.
+    let seated = false;
+    opener.refuseWith = () => {
+      seated = true;
+    };
+
+    await build((id) => !(id === 'assis' && seated)).runOnce();
+
+    expect((await store.listWaiting()).map((t) => t.playerId)).toEqual(['victime']);
+  });
+
+  /**
+   * L'annulation qui arrive pile entre la reclamation et l'ouverture ratee.
+   *
+   * C'est la sequence complete, au niveau ou elle se produit : le tour reclame
+   * les deux tickets, le joueur envoie `queue:leave` pendant que l'ouverture
+   * echoue, et il ne doit PAS revenir en file — sinon il redevient appariable
+   * alors que son client a quitte l'ecran de recherche, et la partie suivante
+   * se joue sans lui.
+   */
+  it('ne ramene pas en file un joueur qui a annule pendant l ouverture', async () => {
+    await queue.join('annule', 'ranked', 0);
+    await queue.join('autre', 'ranked', 1);
+
+    opener.refuseWith = () => {
+      // Comme la passerelle : l'annulation est inscrite tout de suite, meme si
+      // le retrait du ticket, lui, se termine plus tard.
+      void queue.cancel('annule', now);
+    };
+
+    await build().runOnce();
+
+    expect((await store.listWaiting()).map((t) => t.playerId)).toEqual(['autre']);
+  });
+
+  /** Une file injoignable au retour ne doit pas arreter le tour suivant. */
+  it('survit a un retour en file impossible', async () => {
+    opener.refuse = true;
+    await queue.join('p1', 'ranked', 0);
+    await queue.join('p2', 'ranked', 1);
+    store.add = () => Promise.reject(new Error('Redis injoignable'));
+
+    await expect(build().runOnce()).resolves.toBe(0);
+  });
+
+  /**
+   * La question qu'on se pose a chaque tour : un joueur peut-il sortir deux
+   * fois de la meme salve ? Non — un ticket par joueur dans le rangement, et
+   * un index reclame au plus une fois par `pairTickets`.
+   */
+  it('ne sort jamais le meme joueur dans deux paires du meme tour', async () => {
+    for (let i = 0; i < 8; i += 1) {
+      await queue.join(`p${String(i)}`, 'ranked', i);
+    }
+
+    await build().runOnce();
+
+    const seated = opener.opened.flatMap((m) => [m.playerA, m.playerB]);
+    expect(new Set(seated).size).toBe(seated.length);
   });
 
   /**
@@ -131,7 +266,13 @@ describe('QueueWorker.runOnce', () => {
     expect(warnings).toHaveLength(1);
   });
 
-  /** Un tour lent ne doit pas voir le suivant lui passer dessus. */
+  /**
+   * Un tour lent ne doit pas voir le suivant lui passer dessus.
+   *
+   * L'ouverture est synchrone, mais la lecture de la file ne l'est pas : c'est
+   * la que deux tours peuvent se chevaucher, et se chevaucher voudrait dire
+   * lire deux fois les memes tickets avant de les avoir reclames.
+   */
   it('ne superpose pas deux tours', async () => {
     await queue.join('p1', 'ranked', 0);
     await queue.join('p2', 'ranked', 1);
@@ -142,9 +283,10 @@ describe('QueueWorker.runOnce', () => {
     const blocked = new Promise<void>((resolve) => {
       release = resolve;
     });
-    opener.open = async (request) => {
+    const honest = store.listWaiting.bind(store);
+    store.listWaiting = async () => {
       await blocked;
-      return `m_${request.playerA}`;
+      return honest();
     };
 
     const worker = build();

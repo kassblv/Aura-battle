@@ -40,8 +40,16 @@ tickets et un instant, elle rend des paires. Le temps est un paramètre, jamais 
 quinze secondes.
 
 **Un seul chemin d'ouverture** (`match/application/match-opener.ts`), emprunté par
-l'invitation comme par la file. Il sort les deux joueurs de la file, lit les noms, annonce
-`match:found` à chacun avec le nom de l'**adversaire**, puis ouvre le match.
+l'invitation comme par la file. Il refuse d'asseoir un joueur en face de lui-même, vérifie
+que les deux sièges sont libres, annonce `match:found` à chacun avec le nom de
+l'**adversaire** — nom résolu à la connexion, pas ici — ouvre le match, puis sort les deux
+joueurs de la file. **Aucune attente nulle part** : un `await` entre le contrôle des sièges
+et leur réservation suffit à asseoir un joueur à deux matchs.
+
+**Le retour en file appartient à l'appelant, pas à l'ouverture.** Quand `open` rend `null`,
+les deux tickets ont déjà quitté la file : c'est le tour d'appariement qui les a réclamés, et
+lui seul les a encore en main — avec leur ancienneté, qui est conservée. L'ouverture, elle,
+ne peut rien y reposer : elle n'a jamais eu les tickets, et elle n'a pas le droit d'attendre.
 
 **Le câblage NestJS de la file vit dans `MatchModule`**, pas dans un module à part. La
 passerelle doit traiter `queue:join` — il n'y a qu'une socket authentifiée, donc qu'une
@@ -74,5 +82,9 @@ module match, il ne voit que ses ports.
 - Redis devient une dépendance de démarrage : `RedisService` ouvre la connexion au boot et
   échoue bruyamment si l'instance est absente. Un serveur qui démarrerait quand même
   accepterait des `queue:join` qu'il ne pourrait jamais honorer.
+- Les tickets garés le temps d'une reconnexion vivent **en mémoire de processus**, comme la
+  présence. C'est cohérent : un ticket appartient déjà à l'instance qui l'a écrit, seule
+  capable de joindre son joueur. Un joueur qui se reconnecterait sur une *autre* instance ne
+  retrouverait donc pas sa place — même limite, et même remède, que pour la présence.
 - Détacher la file dans son propre module Nest restera mécanique le jour où la passerelle
   sera extraite dans un module de transport.

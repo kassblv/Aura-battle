@@ -110,13 +110,20 @@ export const QUEUE_NOTIFIER = 'QUEUE_NOTIFIER';
  * modes ne puissent pas diverger.
  *
  * Rend l'identifiant du match, ou `null` si un siege n'etait plus libre.
+ *
+ * **`null` oblige l'appelant a remettre les tickets en file.** Ils en sont
+ * sortis avant l'appel — `tick` les a reclames, sans quoi le tour suivant
+ * rapparierait les memes joueurs — et l'ouverture ne peut pas les y reposer :
+ * elle ne les a jamais eus, et elle n'a pas le droit d'attendre. Un refus non
+ * compense laisse deux joueurs hors de la file et sans match, devant un ecran
+ * de recherche que plus rien n'alimente.
+ *
+ * **Synchrone, et c'est une contrainte, pas une commodite** : une attente entre
+ * le controle des sieges et leur reservation suffit a asseoir un joueur a deux
+ * matchs. Le port l'impose donc a toute realisation future.
  */
 export interface MatchOpening {
-  open(request: {
-    playerA: string;
-    playerB: string;
-    mode: 'RANKED' | 'CASUAL';
-  }): Promise<string | null>;
+  open(request: { playerA: string; playerB: string; mode: 'RANKED' | 'CASUAL' }): string | null;
 }
 
 export const MATCH_OPENING = 'MATCH_OPENING';
