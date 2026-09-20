@@ -8,9 +8,12 @@ import { gestureCues } from '../audio/gestures.js';
 import type { AudioCue } from '../audio/cues.js';
 import type { Presentation } from '../match/presentation.js';
 import { watchReducedMotion } from '../platform/reducedMotion.js';
-import { previewFraming, wideFraming } from './camera.js';
+import { focusFraming, previewFraming, wideFraming, type CameraFraming } from './camera.js';
+import { CHEST_HEIGHT, type ClashColors, type ClashEnds } from './clash.js';
+import { createArenaDirector } from './director.js';
 import { createOrbitControl } from './orbit.js';
 import { createArenaRenderer } from './renderer.js';
+import { storyOfRound, type RoundReport } from './round.js';
 import { createArenaScene } from './scene.js';
 import { createArenaTextures } from './textures.js';
 
@@ -56,6 +59,16 @@ export interface ArenaControls {
    */
   readonly showcase: RefObject<boolean>;
   /**
+   * La derniere manche tranchee, telle que le serveur l a annoncee.
+   *
+   * C est la seule chose que l arene apprend du match en dehors des poses : le
+   * reste — qui se revele en premier, quand les auras se percutent, qui recule
+   * — se deduit ici, dans `round.ts`. L appelant se contente d y poser
+   * `view.lastRound` a chaque image ; l arene reconnait une manche NOUVELLE a
+   * son numero et ne rejoue jamais la meme.
+   */
+  readonly round: RefObject<RoundReport | null>;
+  /**
    * Ramene le personnage de face dans la vitrine.
    *
    * Appele tout seul quand un duel commence ; expose pour qu un bouton
@@ -88,6 +101,7 @@ export function useArena(
   cueRef.current = onCue;
   const presentation = useRef<Presentation | null>(null);
   const showcase = useRef(true);
+  const round = useRef<RoundReport | null>(null);
   // Cree une seule fois : l angle doit survivre aux rendus de React, pas
   // repartir de zero a chaque fois que l accueil se redessine.
   const orbit = useRef(createOrbitControl());
@@ -106,10 +120,11 @@ export function useArena(
 
     const motion = watchReducedMotion();
     const control = orbit.current;
+    const director = createArenaDirector({ reducedMotion: motion.reduced });
 
     const resize = (): void => {
       const { clientWidth, clientHeight } = canvas;
-      arena.setSize(clientWidth, clientHeight);
+      arena.setSize(clientWidth, clientHeight, window.devicePixelRatio);
       renderer.setSize(clientWidth, clientHeight, window.devicePixelRatio);
       control.setViewport(clientWidth, clientHeight);
     };
@@ -167,6 +182,19 @@ export function useArena(
     let frame = 0;
     let previous = performance.now();
     let wasShowcase = showcase.current;
+    let stagedRound: number | null = null;
+    /**
+     * Horloge des danses, qui n est pas celle de la salle.
+     *
+     * Elle s accumule au lieu de suivre `performance.now()`, parce qu elle est
+     * la seule a subir le ralenti : un timing parfait ou un Ultime fige un
+     * instant les combattants pendant que la camera, la foule et les
+     * projecteurs continuent a vitesse reelle. Une horloge absolue ne peut pas
+     * ralentir sans sauter en arriere.
+     */
+    let danceClock = 0;
+    /** Abscisse de repos du siege de gauche, avant recul. */
+    let restingX = arena.fighters.a.root.position.x;
 
     const tick = (now: number): void => {
       frame = requestAnimationFrame(tick);
@@ -178,6 +206,42 @@ export function useArena(
 
       const scene = presentation.current;
       const solo = showcase.current;
+
+      director.setReducedMotion(motion.reduced);
+
+      /**
+       * Une manche tranchee met l arene en scene, une seule fois.
+       *
+       * Le numero de manche est ce qui distingue « ca vient d arriver » de
+       * « c est encore le resultat d avant » : en ligne, `lastRound` survit a
+       * sa manche, et le rejouer relancerait le choc pendant la recharge
+       * suivante.
+       */
+      const report = round.current;
+      if (solo || report === null) {
+        if (stagedRound !== null) {
+          stagedRound = null;
+          director.cancel();
+        }
+      } else if (report.round !== stagedRound) {
+        stagedRound = report.round;
+        director.play(storyOfRound(report));
+      }
+
+      const colors: ClashColors = {
+        a: scene?.fighters.a.look.aura ?? '#ffffff',
+        b: scene?.fighters.b.look.aura ?? '#ffffff',
+      };
+      const ends: ClashEnds = {
+        a: { x: arena.fighters.a.root.position.x, y: CHEST_HEIGHT, z: 0 },
+        b: { x: arena.fighters.b.root.position.x, y: CHEST_HEIGHT, z: 0 },
+      };
+      director.update({ deltaMs: delta * 1000, ends, colors });
+
+      // Le ralenti ne touche que les danses : `danceClock` avance moins vite
+      // que `elapsed`, et c est elle que lisent l echantillonnage et les accents.
+      const danceDelta = delta * director.timeScale;
+      danceClock += danceDelta;
 
       /**
        * Un duel qui commence remet le personnage de face.
@@ -202,8 +266,8 @@ export function useArena(
         if (seat === 'a') showcaseAnimation = animation;
         // Le decalage de phase evite que les deux respirent a l unisson.
         const offset = seat === 'a' ? 0 : 1.7;
-        const target = breatheInto(samplePose(animation, elapsed, offset), elapsed, offset);
-        fighter.pose(smoothers[seat].step(target, delta), animation, elapsed, delta);
+        const target = breatheInto(samplePose(animation, danceClock, offset), danceClock, offset);
+        fighter.pose(smoothers[seat].step(target, danceDelta), animation, danceClock, danceDelta);
 
         /**
          * Les temps forts du geste, sonnes au passage.
@@ -214,7 +278,8 @@ export function useArena(
          */
         const cue = cueRef.current;
         if (cue !== undefined) {
-          for (const accent of gestureCues(animation, elapsed - delta + offset, elapsed + offset)) {
+          const from = danceClock - danceDelta + offset;
+          for (const accent of gestureCues(animation, from, danceClock + offset)) {
             cue(accent);
           }
         }
@@ -232,8 +297,19 @@ export function useArena(
        * ecrans casserait la continuite de la vitrine.
        */
       const restX = solo ? 0 : -1.45;
+      restingX += (restX - restingX) * Math.min(1, delta * 4);
+
+      /**
+       * Le recul du perdant s ajoute a sa place, il ne la remplace pas.
+       *
+       * Deux mouvements se superposent : celui de la mise en page — le joueur
+       * qui revient au centre en quittant le duel — et celui du coup encaisse.
+       * Les fondre en une seule abscisse ferait annuler l un par l autre au
+       * pire moment, et le personnage frappe ne bougerait pas.
+       */
       const fighter = arena.fighters.a.root;
-      fighter.position.x += (restX - fighter.position.x) * Math.min(1, delta * 4);
+      fighter.position.x = restingX + director.knockback('a');
+      arena.fighters.b.root.position.x = 1.45 + director.knockback('b');
 
       /**
        * Le cadrage de la vitrine suit le meme joue.
@@ -242,26 +318,53 @@ export function useArena(
        * l identifiant de l animation, et sa mesure dit quelle distance il
        * faut. Une danse qui saute plus haut se cadre toute seule.
        */
-      const framing =
-        solo && showcaseAnimation !== undefined
-          ? previewFraming({
-              worldX: fighter.position.x,
-              bounds: boundsOf(showcaseAnimation),
-              shot: showcaseAnimation.framing?.shot,
-              orbit: control.yaw,
-              tilt: control.tilt,
-            })
-          : wideFraming();
+      const focus = director.focus;
+      let framing: CameraFraming;
+      if (solo && showcaseAnimation !== undefined) {
+        framing = previewFraming({
+          worldX: fighter.position.x,
+          bounds: boundsOf(showcaseAnimation),
+          shot: showcaseAnimation.framing?.shot,
+          orbit: control.yaw,
+          tilt: control.tilt,
+        });
+      } else if (focus !== null) {
+        // Le cadrage du duel appartient a la mise en scene, pas au doigt : on
+        // se rapproche de celui qui se revele, puis de celui qui l emporte.
+        framing = focusFraming({
+          worldX: arena.fighters[focus.seat].root.position.x,
+          worldY: CHEST_HEIGHT,
+          facing: arena.fighters[focus.seat].placement.facing,
+          zoom: focus.zoom,
+        });
+      } else {
+        framing = wideFraming();
+      }
 
       arena.update({
         elapsed,
         delta,
         framing,
-        hype: scene?.hype ?? 0.2,
-        shake: 0,
+        // La ferveur est la plus haute des deux : celle que la phase justifie,
+        // et celle que le choc vient d allumer.
+        hype: Math.max(scene?.hype ?? 0.2, director.hype),
+        shake: director.shake,
+        flash: director.flash,
         reducedMotion: motion.reduced,
         showcase: solo,
       });
+
+      /**
+       * Les particules de l arene, posees juste avant le rendu.
+       *
+       * `begin` / `draw` / `commit` a chaque image : rien n est conserve d une
+       * image sur l autre, et tout ce qui est pose ici — faisceaux du choc,
+       * gerbes, ondes — tient dans les deux memes tampons.
+       */
+      arena.particles.begin();
+      director.draw(arena.particles, now);
+      arena.particles.commit();
+
       renderer.renderer.render(arena.scene, arena.camera);
     };
 
@@ -294,6 +397,7 @@ export function useArena(
     () => ({
       presentation,
       showcase,
+      round,
       resetOrbit(): void {
         orbit.current.reset();
       },

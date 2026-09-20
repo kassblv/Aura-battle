@@ -1,6 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import type { ArenaEvent } from './events.js';
-import { IDLE_IMPULSE, applyImpulse, decayImpulse, impulseFor } from './events.js';
+import {
+  IDLE_IMPULSE,
+  REVEAL_FOCUS_MS,
+  VICTORY_FOCUS_MS,
+  applyImpulse,
+  decayImpulse,
+  impulseFor,
+} from './events.js';
 
 const full = { reducedMotion: false };
 const sober = { reducedMotion: true };
@@ -17,7 +24,11 @@ const reveal = (over: Partial<Extract<ArenaEvent, { type: 'reveal' }>> = {}): Ar
 
 describe('impulseFor — revelation', () => {
   it('cadre sur le combattant qui se revele', () => {
-    expect(impulseFor(reveal(), full).focus).toEqual({ seat: 'a', durationMs: 1050, zoom: 1.16 });
+    expect(impulseFor(reveal(), full).focus).toEqual({
+      seat: 'a',
+      durationMs: REVEAL_FOCUS_MS,
+      zoom: 1.16,
+    });
   });
 
   it('chauffe la foule a proportion du score annonce par le serveur', () => {
@@ -53,8 +64,8 @@ describe('impulseFor — revelation', () => {
 
 describe('impulseFor — choc', () => {
   it('frappe plus fort sur un contre', () => {
-    const counter = impulseFor({ type: 'clash', winner: 'a', counter: 'a' }, full);
-    const plain = impulseFor({ type: 'clash', winner: 'a', counter: null }, full);
+    const counter = impulseFor({ type: 'clash', winner: 'a', counter: 'a', ultimate: null }, full);
+    const plain = impulseFor({ type: 'clash', winner: 'a', counter: null, ultimate: null }, full);
     expect(counter.shake).toBe(13);
     expect(plain.shake).toBe(8);
     expect(counter.hype).toBe(1);
@@ -63,15 +74,44 @@ describe('impulseFor — choc', () => {
     expect(plain.flash).toBeCloseTo(0.25, 10);
   });
 
+  /*
+    La hierarchie est la promesse : le joueur doit lire l issue d une manche
+    sans lire le verdict. Un Ultime ne doit pas ressembler a un contre, ni un
+    contre a une manche gagnee au score, ni celle-ci a une manche nulle.
+  */
+  it('classe les quatre issues de la plus forte a la plus faible', () => {
+    const shake = (over: Partial<Extract<ArenaEvent, { type: 'clash' }>>): number =>
+      impulseFor({ type: 'clash', winner: 'a', counter: null, ultimate: null, ...over }, full)
+        .shake;
+
+    const ultimate = shake({ ultimate: 'a' });
+    const counter = shake({ counter: 'a' });
+    const plain = shake({});
+    const draw = shake({ winner: null });
+
+    expect(ultimate).toBeGreaterThan(counter);
+    expect(counter).toBeGreaterThan(plain);
+    expect(plain).toBeGreaterThan(draw);
+  });
+
+  it('ralentit et eblouit davantage sur un Ultime', () => {
+    const ultimate = impulseFor({ type: 'clash', winner: 'a', counter: null, ultimate: 'a' }, full);
+    const plain = impulseFor({ type: 'clash', winner: 'a', counter: null, ultimate: null }, full);
+    expect(ultimate.flash).toBeGreaterThan(plain.flash);
+    expect(ultimate.timeScale).toBeLessThan(plain.timeScale);
+  });
+
   it('ne cadre personne : le choc se joue au milieu', () => {
-    expect(impulseFor({ type: 'clash', winner: null, counter: null }, full).focus).toBeNull();
+    expect(
+      impulseFor({ type: 'clash', winner: null, counter: null, ultimate: null }, full).focus,
+    ).toBeNull();
   });
 });
 
 describe('impulseFor — victoire', () => {
   it('cadre longuement le vainqueur', () => {
     const i = impulseFor({ type: 'victory', seat: 'b' }, full);
-    expect(i.focus).toEqual({ seat: 'b', durationMs: 2600, zoom: 1.12 });
+    expect(i.focus).toEqual({ seat: 'b', durationMs: VICTORY_FOCUS_MS, zoom: 1.12 });
     expect(i.shake).toBe(6);
     expect(i.hype).toBe(1);
   });
@@ -87,7 +127,9 @@ describe('impulseFor — mouvement reduit', () => {
   it('supprime tout flash plein ecran', () => {
     expect(impulseFor(reveal({ quality: 'perfect' }), sober).flash).toBe(0);
     expect(impulseFor(reveal({ ultimate: true }), sober).flash).toBe(0);
-    expect(impulseFor({ type: 'clash', winner: 'a', counter: null }, sober).flash).toBe(0);
+    expect(
+      impulseFor({ type: 'clash', winner: 'a', counter: null, ultimate: null }, sober).flash,
+    ).toBe(0);
   });
 
   it('garde le reste de la mise en scene', () => {

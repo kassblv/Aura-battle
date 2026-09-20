@@ -134,11 +134,15 @@ describe('cueForArenaEvent', () => {
   });
 
   it('reconnait un contre au siege qui l a porte', () => {
-    expect(cueForArenaEvent({ type: 'clash', winner: 'a', counter: 'a' }, 'a')).toEqual({
+    expect(
+      cueForArenaEvent({ type: 'clash', winner: 'a', counter: 'a', ultimate: null }, 'a'),
+    ).toEqual({
       type: 'clash',
       counter: true,
     });
-    expect(cueForArenaEvent({ type: 'clash', winner: 'b', counter: null }, 'a')).toEqual({
+    expect(
+      cueForArenaEvent({ type: 'clash', winner: 'b', counter: null, ultimate: null }, 'a'),
+    ).toEqual({
       type: 'clash',
       counter: false,
     });

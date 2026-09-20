@@ -29,6 +29,10 @@ describe('createArenaScene', () => {
       'crowd',
       'fighter',
       'fighter',
+      // Deux tampons pour toutes les particules de l arene, et la camera, qui
+      // entre dans le graphe parce qu elle porte le voile plein ecran.
+      'particles',
+      'camera',
     ]);
   });
 

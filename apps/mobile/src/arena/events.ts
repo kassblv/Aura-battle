@@ -23,6 +23,14 @@ export type ArenaEvent =
       readonly type: 'clash';
       readonly winner: Seat | null;
       readonly counter: Seat | null;
+      /**
+       * Siege qui a lache son Ultime, s il y en a un et un seul.
+       *
+       * L Ultime vaut ×1,5 **et** annule le contre adverse : c est la plus
+       * forte des trois issues, et le choc doit le montrer. Deux Ultimes dans
+       * la meme manche ne designent personne — d ou `null` dans ce cas.
+       */
+      readonly ultimate: Seat | null;
     }
   | {
       readonly type: 'victory';
@@ -68,23 +76,27 @@ export interface ImpulseOptions {
 /** Score au-dela duquel le public est a fond. */
 const HYPE_SCORE = 110;
 
+/**
+ * Duree du cadrage sur un combattant qui se revele.
+ *
+ * Le prototype tenait 1 050 ms parce que ses revelations etaient espacees de
+ * 1 150 ms. Ici la manche entiere — deux revelations, le choc, le verdict —
+ * doit tenir dans les 1 400 ms qui precedent la pose de victoire : un cadrage
+ * qui durerait une seconde serait encore colle au second combattant quand les
+ * auras se percutent, et le choc se jouerait hors champ.
+ */
+export const REVEAL_FOCUS_MS = 480;
+
+/** Le vainqueur, lui, a tout le temps : plus rien ne se joue apres. */
+export const VICTORY_FOCUS_MS = 2_600;
+
 /** Traduit un evenement de match en mise en scene. Fonction pure. */
 export function impulseFor(event: ArenaEvent, options: ImpulseOptions): ArenaImpulse {
   switch (event.type) {
     case 'reveal':
       return revealImpulse(event, options);
-    case 'clash': {
-      // Un contre est le moment le plus lisible du jeu : il frappe plus fort.
-      const flash = options.reducedMotion ? 0 : 0.25;
-      return {
-        shake: event.counter ? 13 : 8,
-        flash,
-        hype: 1,
-        timeScale: 0.15,
-        // Le choc se joue entre les deux combattants : personne a suivre.
-        focus: null,
-      };
-    }
+    case 'clash':
+      return clashImpulse(event, options);
     case 'victory':
       return event.seat === null
         ? IDLE_IMPULSE
@@ -93,9 +105,35 @@ export function impulseFor(event: ArenaEvent, options: ImpulseOptions): ArenaImp
             flash: 0,
             hype: 1,
             timeScale: 1,
-            focus: { seat: event.seat, durationMs: 2600, zoom: 1.12 },
+            focus: { seat: event.seat, durationMs: VICTORY_FOCUS_MS, zoom: 1.12 },
           };
   }
+}
+
+/**
+ * Trois issues, trois intensites — et l ordre n est pas negociable.
+ *
+ * Le joueur doit pouvoir lire le resultat de la manche sans lire le bandeau.
+ * L Ultime frappe plus fort que le contre, qui frappe plus fort qu une manche
+ * gagnee au score ; une manche nulle, elle, ne recompense personne et se
+ * contente d un heurt sourd.
+ */
+function clashImpulse(
+  event: Extract<ArenaEvent, { type: 'clash' }>,
+  options: ImpulseOptions,
+): ArenaImpulse {
+  const shake =
+    event.ultimate !== null ? 16 : event.counter !== null ? 13 : event.winner !== null ? 8 : 5;
+  const flash = event.ultimate !== null ? 0.35 : 0.25;
+  return {
+    shake,
+    flash: options.reducedMotion ? 0 : flash,
+    hype: 1,
+    timeScale: event.ultimate !== null ? 0.12 : 0.15,
+    // Le choc se joue entre les deux combattants : personne a suivre. Un
+    // `focus` nul relache le cadrage pose par la revelation precedente.
+    focus: null,
+  };
 }
 
 function revealImpulse(
@@ -128,7 +166,7 @@ function revealImpulse(
     flash,
     timeScale,
     hype: clamp(event.score / HYPE_SCORE, 0, 1),
-    focus: { seat: event.seat, durationMs: 1050, zoom: 1.16 },
+    focus: { seat: event.seat, durationMs: REVEAL_FOCUS_MS, zoom: 1.16 },
   };
 }
 

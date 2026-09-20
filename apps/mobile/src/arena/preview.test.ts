@@ -150,7 +150,7 @@ describe('previewFraming', () => {
   });
 });
 
-describe('les 26 memes tiennent dans le cadre', () => {
+describe('chaque meme livre tient dans le cadre', () => {
   /**
    * Le critere d acceptation du jalon : la camera ne coupe pas les pieds.
    *
@@ -172,7 +172,16 @@ describe('les 26 memes tiennent dans le cadre', () => {
     }
   });
 
-  it('sous n importe quel angle d orbite et d inclinaison', () => {
+  /**
+   * Le delai est explicite parce que ce test grandit avec le catalogue.
+   *
+   * Il croise chaque animation livree avec chaque angle d orbite et chaque
+   * inclinaison : passer de 21 a 33 memes l a fait depasser les cinq secondes
+   * par defaut, sous charge parallele. Ce n est pas une lenteur a corriger,
+   * c est une couverture qui augmente — et l echantillonnage ne doit pas etre
+   * rabote pour rentrer dans un delai arbitraire.
+   */
+  it('sous n importe quel angle d orbite et d inclinaison', { timeout: 30_000 }, () => {
     // Le joueur peut tourner autour et lever la camera : le geste doit rester
     // lisible de dos et de trois quarts, pas seulement de face.
     for (const animation of all) {
