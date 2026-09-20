@@ -21,7 +21,6 @@ const percent = (value: number): string => `${(value * 100).toFixed(1).replace('
 
 export interface HomeProps {
   readonly profile: PlayerProfile;
-  readonly seasonLabel: string;
   /** Mode que lancera le gros bouton. */
   readonly mode: 'ranked' | 'casual';
   readonly onToggleMode: () => void;
@@ -60,7 +59,6 @@ export interface HomeProps {
  */
 export function HomeScreen({
   profile,
-  seasonLabel,
   mode,
   onToggleMode,
   meme,
@@ -102,22 +100,44 @@ export function HomeScreen({
         </span>
       </div>
 
-      <nav className="rail" aria-label="Menus">
-        <button type="button" className="rail__btn" onClick={onWardrobe}>
-          <span aria-hidden="true">👕</span>
-          Vestiaire
-        </button>
-        <button type="button" className="rail__btn" onClick={onProfile}>
-          <span aria-hidden="true">📊</span>
-          Profil
-        </button>
-        <button type="button" className="rail__btn" onClick={onShop}>
-          <span aria-hidden="true">🛒</span>
-          Boutique
-        </button>
-      </nav>
-
       {/*
+        Les trois grappes du bas vivent dans UNE rangee.
+
+        Positionnees en absolu, elles se recouvraient des que l'ecran
+        retrecissait : a 667 px le bouton de duel passait par-dessus la galerie
+        et la boutique disparaissait derriere. Une rangee ne peut pas se
+        chevaucher — c'est la mise en page qui l'interdit, pas un reglage a
+        retoucher a chaque format.
+      */}
+      <div className="home__bottom">
+        <nav className="rail" aria-label="Menus">
+          <button type="button" className="rail__btn" onClick={onWardrobe} aria-label="Vestiaire">
+            <span className="rail__icon" aria-hidden="true">
+              👕
+            </span>
+            <span className="rail__label" aria-hidden="true">
+              Vestiaire
+            </span>
+          </button>
+          <button type="button" className="rail__btn" onClick={onProfile} aria-label="Profil">
+            <span className="rail__icon" aria-hidden="true">
+              📊
+            </span>
+            <span className="rail__label" aria-hidden="true">
+              Profil
+            </span>
+          </button>
+          <button type="button" className="rail__btn" onClick={onShop} aria-label="Boutique">
+            <span className="rail__icon" aria-hidden="true">
+              🛒
+            </span>
+            <span className="rail__label" aria-hidden="true">
+              Boutique
+            </span>
+          </button>
+        </nav>
+
+        {/*
         La galerie de memes.
 
         Une aura battle est un clash ou deux personnes rejouent des memes : ce
@@ -126,78 +146,76 @@ export function HomeScreen({
         qu'une grille de vignettes — un mème est un mouvement, une vignette ne
         le montre pas.
       */}
-      <div className="memes" aria-label="Galerie de mèmes">
-        <button
-          type="button"
-          className="memes__arrow"
-          onClick={() => {
-            onStepMeme(-1);
-          }}
-          aria-label="Mème précédent"
-        >
-          ‹
-        </button>
-        {/*
+        <div className="memes" aria-label="Galerie de mèmes">
+          <button
+            type="button"
+            className="memes__arrow"
+            onClick={() => {
+              onStepMeme(-1);
+            }}
+            aria-label="Mème précédent"
+          >
+            ‹
+          </button>
+          {/*
           Une seule commande, dont le libelle dit l'etat.
 
           Trois boutons — equiper, acheter, « deja equipe » — demanderaient au
           joueur de lire avant d'agir. Ici le meme montre est soit le sien,
           soit a prendre, et le bouton le dit.
         */}
-        <button
-          type="button"
-          className="memes__card"
-          onClick={onEquipMeme}
-          disabled={!memeOwned || memeEquipped}
-          data-owned={memeOwned}
-        >
-          <span className="memes__name">{meme.name}</span>
-          <span className="memes__meta">
-            <span aria-hidden="true">{STYLE_ICONS[meme.style]}</span>
-            {tierName(meme.tier).fr}
-            {memeEquipped && <span className="memes__state">équipé</span>}
-            {!memeEquipped && memeOwned && <span className="memes__state">équiper</span>}
-            {!memeOwned && (
-              <span className="memes__price">
-                <span aria-hidden="true">◈</span>
-                {meme.price}
-              </span>
-            )}
-          </span>
-        </button>
-        <button
-          type="button"
-          className="memes__arrow"
-          onClick={() => {
-            onStepMeme(1);
-          }}
-          aria-label="Mème suivant"
-        >
-          ›
-        </button>
-      </div>
+          <button
+            type="button"
+            className="memes__card"
+            onClick={onEquipMeme}
+            disabled={!memeOwned || memeEquipped}
+            data-owned={memeOwned}
+          >
+            <span className="memes__name">{meme.name}</span>
+            <span className="memes__meta">
+              <span aria-hidden="true">{STYLE_ICONS[meme.style]}</span>
+              {tierName(meme.tier).fr}
+              {memeEquipped && <span className="memes__state">équipé</span>}
+              {!memeEquipped && memeOwned && <span className="memes__state">équiper</span>}
+              {!memeOwned && (
+                <span className="memes__price">
+                  <span aria-hidden="true">◈</span>
+                  {meme.price}
+                </span>
+              )}
+            </span>
+          </button>
+          <button
+            type="button"
+            className="memes__arrow"
+            onClick={() => {
+              onStepMeme(1);
+            }}
+            aria-label="Mème suivant"
+          >
+            ›
+          </button>
+        </div>
 
-      <div className="launch">
-        {/*
+        <div className="launch">
+          {/*
           Le mode se choisit ici, pas dans un menu.
 
           Classé et rapide se jouent exactement pareil — seul compte ce qu'on
           risque. Enterrer ce choix dans un ecran d'options ferait jouer la
           moitie des gens dans le mode qu'ils n'ont pas choisi.
         */}
-        <button
-          type="button"
-          className="launch__mode"
-          onClick={onToggleMode}
-          aria-pressed={mode === 'ranked'}
-        >
-          <b>{mode === 'ranked' ? 'Classé' : 'Partie rapide'}</b>
-          <small>
-            {mode === 'ranked' ? 'Ta ligue bouge' : 'Rien à perdre'} · {seasonLabel}
-          </small>
-        </button>
-        <div className="launch__row">
-          {/*
+          <button
+            type="button"
+            className="launch__mode"
+            onClick={onToggleMode}
+            aria-pressed={mode === 'ranked'}
+          >
+            <b>{mode === 'ranked' ? 'Classé' : 'Partie rapide'}</b>
+            <small>{mode === 'ranked' ? 'Ta ligue bouge' : 'Rien à perdre'}</small>
+          </button>
+          <div className="launch__row">
+            {/*
             Un seul gros bouton, et il cherche un adversaire.
 
             C'est le mode que le jeu existe pour offrir, et il ne doit rien
@@ -205,16 +223,17 @@ export function HomeScreen({
             code d'invitation et le solo restent accessibles, mais en second —
             ce sont des detours, pas le chemin.
           */}
-          <button type="button" className="launch__btn" onClick={onOnline}>
-            Duel
-          </button>
-          <div className="launch__side">
-            <button type="button" className="launch__alt" onClick={onInvite}>
-              Code
+            <button type="button" className="launch__btn" onClick={onOnline}>
+              Duel
             </button>
-            <button type="button" className="launch__alt" onClick={onPlay}>
-              Solo
-            </button>
+            <div className="launch__side">
+              <button type="button" className="launch__alt" onClick={onInvite}>
+                Code
+              </button>
+              <button type="button" className="launch__alt" onClick={onPlay}>
+                Solo
+              </button>
+            </div>
           </div>
         </div>
       </div>

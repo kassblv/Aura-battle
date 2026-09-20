@@ -3,7 +3,7 @@ import { fileURLToPath } from 'node:url';
 import { allAnimationIds, AURA_COLORS, AURA_EFFECTS, HAIRSTYLES, OUTFITS } from '@aura/content';
 import { RULES_VERSION } from '@aura/rules';
 import { PrismaPg } from '@prisma/adapter-pg';
-import { Prisma, PrismaClient, type CosmeticKind } from '@prisma/client';
+import { PrismaClient, type CosmeticKind, type Prisma } from '@prisma/client';
 import { SEED_GHOST_PREFIX } from '../src/modules/matchmaking/domain/ghost.js';
 import { buildSeedGhosts } from '../src/modules/matchmaking/domain/ghost-seeding.js';
 

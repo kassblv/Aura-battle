@@ -337,10 +337,27 @@ body {
 }
 
 /* rail : arc du pouce gauche */
-.rail {
+/*
+  La bande du bas : menus, galerie, lancement.
+
+  Une rangee, pas trois blocs absolus. Positionnees independamment, les trois
+  grappes se recouvraient des que l'ecran retrecissait — a 667 px le bouton de
+  duel passait par-dessus la galerie et la boutique disparaissait derriere.
+  Une rangee ne peut pas se chevaucher : c'est la mise en page qui l'interdit,
+  pas un reglage a reprendre a chaque format.
+*/
+.home__bottom {
   position: absolute;
   left: var(--safe-left);
+  right: var(--safe-right);
   bottom: var(--safe-bottom);
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+}
+
+.rail {
+  flex: none;
   display: flex;
   gap: 8px;
 }
@@ -370,7 +387,7 @@ body {
     box-shadow var(--d-tap) var(--e-out);
 }
 
-.rail__btn span {
+.rail__icon {
   font-size: 22px;
   line-height: 1;
 }
@@ -395,11 +412,33 @@ body {
   transform: none;
 }
 
+/*
+  Sous 780 px, le rail se reduit a ses pictogrammes.
+
+  Le seuil n'est pas choisi a l'oeil : en dessous, la galerie de memes ne garde
+  plus assez de largeur pour montrer un nom entre ses deux fleches, et c'est
+  elle qui doit rester lisible — un menu se reconnait a son icone, un nom de
+  meme ne se devine pas. Le nom accessible du bouton reste porte par son
+  `aria-label`, donc rien ne se perd pour qui ne voit pas l'ecran.
+
+  Place APRES `.rail__btn` : meme specificite, donc c'est l'ordre qui tranche.
+  Ecrit au-dessus, le media query perdait contre le `min-width: 82px` qu'il
+  etait cense corriger — sans que rien ne le signale.
+*/
+@media (max-width: 780px) {
+  .rail__btn {
+    min-width: 46px;
+    padding: 9px;
+  }
+
+  .rail__label {
+    display: none;
+  }
+}
+
 /* action : arc du pouce droit, et le plus gros element de l ecran */
 .launch {
-  position: absolute;
-  right: var(--safe-right);
-  bottom: var(--safe-bottom);
+  flex: none;
   display: flex;
   flex-direction: column;
   align-items: stretch;
@@ -411,6 +450,8 @@ body {
 .launch__mode {
   margin: 0;
   padding: 5px 14px;
+  /* Cible tactile : 46 px, ADR 0008. */
+  min-height: 46px;
   border-radius: 13px;
   border: 1px solid var(--hud-line);
   background: var(--hud);
@@ -471,10 +512,10 @@ body {
   background: var(--chip);
   border: 1px solid var(--line);
   border-radius: 14px;
-  /* Cible tactile : deux boutons empiles restent au-dessus du minimum de
-     l'ADR 0008 une fois l'espacement retire. */
+  /* Cible tactile : 46 px chacun, ADR 0008. Le gros bouton s'etire pour
+     suivre (`align-items: stretch`), donc la rangee reste alignee. */
   min-width: 72px;
-  min-height: 34px;
+  min-height: 46px;
   padding: 0 12px;
   cursor: pointer;
   box-shadow: 0 3px 0 var(--chip-deep);
@@ -799,7 +840,10 @@ body {
   color: var(--muted);
   background: none;
   border: 0;
-  padding: 6px;
+  /* Discret a l oeil, mais 46 px sous le pouce (ADR 0008) : c est le premier
+     bouton que touche un joueur presse, et le rater le condamne a relire. */
+  min-height: 46px;
+  padding: 6px 16px;
   cursor: pointer;
 }
 
@@ -811,21 +855,28 @@ body {
   deux arcs de pouce (ADR 0008) appartiennent au rail a gauche et aux boutons
   de lancement a droite.
 */
+/*
+  La galerie prend ce qui reste entre les deux grappes, et pas un pixel de
+  plus : c'est elle qui absorbe l'etroitesse, parce qu'un nom de meme se
+  tronque proprement alors qu'un bouton rate ne se touche pas.
+*/
 .memes {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(var(--safe-bottom) + 10px);
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
-  max-width: min(320px, 46vw);
+  max-width: 320px;
+  margin: 0 auto;
 }
 
 .memes__arrow {
   flex: none;
-  width: 38px;
-  height: 38px;
+  /* Cible tactile : l'ADR 0008 impose 46 px, et une fleche qu'on rate fait
+     defiler la galerie deux fois plus lentement qu'elle ne devrait. */
+  width: 46px;
+  height: 46px;
   border-radius: 12px;
   border: 1px solid var(--hud-line);
   background: var(--hud);
