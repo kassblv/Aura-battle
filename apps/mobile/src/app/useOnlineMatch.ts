@@ -7,7 +7,7 @@ import { createOnlineMatch, type OnlineMatch, type OnlinePhase } from '../match/
 import { presentOnline } from '../match/onlinePresentation.js';
 import { cuesForTransition } from '../audio/matchCues.js';
 import { viewOfOnline, type MatchView } from '../match/view.js';
-import { resolveServerUrl } from '../net/serverUrl.js';
+import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { ArenaControls } from '../arena/useArena.js';
 import type { AudioControls } from './useAudio.js';
@@ -136,7 +136,11 @@ export function useOnlineMatch(
   useEffect(() => {
     if (accessToken === null) return;
 
-    const url = resolveServerUrl(import.meta.env.VITE_SERVER_URL, window.location.hostname);
+    const url = resolveServerUrl(
+      import.meta.env.VITE_SERVER_URL,
+      window.location.hostname,
+      currentPageLocation(),
+    );
     const client = createGameClient(createSocketTransport({ url, accessToken }));
     const match = createOnlineMatch(client);
     clientRef.current = client;

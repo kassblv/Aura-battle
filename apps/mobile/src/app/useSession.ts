@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { AuthError, authenticateDevice, renameProfile } from '../net/auth.js';
 import { deviceSecret } from '../net/identity.js';
 import { loadIdentity, saveIdentity, type StoredIdentity } from '../net/session.js';
-import { resolveServerUrl } from '../net/serverUrl.js';
+import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 
 /**
  * La session du joueur, du premier lancement au nom choisi.
@@ -43,7 +43,7 @@ export function useSession(): SessionState {
 
   useEffect(() => {
     let cancelled = false;
-    const baseUrl = resolveServerUrl(import.meta.env.VITE_SERVER_URL, window.location.hostname);
+    const baseUrl = resolveServerUrl(import.meta.env.VITE_SERVER_URL, window.location.hostname, currentPageLocation());
 
     void (async () => {
       try {
@@ -81,7 +81,7 @@ export function useSession(): SessionState {
       setBusy(true);
       setError(null);
       try {
-        const baseUrl = resolveServerUrl(import.meta.env.VITE_SERVER_URL, window.location.hostname);
+        const baseUrl = resolveServerUrl(import.meta.env.VITE_SERVER_URL, window.location.hostname, currentPageLocation());
         const renamed = await renameProfile(baseUrl, accessToken, displayName);
         const next = { playerId: renamed.id, displayName: renamed.displayName };
         saveIdentity(next);

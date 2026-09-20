@@ -1,10 +1,22 @@
 import 'reflect-metadata';
 import { fileURLToPath } from 'node:url';
+import {
+  Catch,
+  NotFoundException,
+  type ArgumentsHost,
+  type ExceptionFilter,
+} from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
+// L import de type seul suffit : il charge l augmentation de module de
+// `@fastify/static`, qui ajoute `sendFile` a `FastifyReply`. Sans lui, le
+// decorateur existe a l execution mais pas pour le compilateur.
+import type {} from '@fastify/static';
+import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppModule } from './app.module.js';
-import { loadConfig } from './shared/config.js';
+import { loadConfig, type ServerConfig } from './shared/config.js';
 import { PinoLoggerService } from './shared/logger.js';
+import { servesIndex } from './shared/static-client.js';
 
 /**
  * Point d'entree du serveur.
@@ -31,6 +43,55 @@ function loadDotEnv(): void {
   } catch {
     // Ni fichier, ni probleme.
   }
+}
+
+/**
+ * Repli de l application a page unique.
+ *
+ * Une 404 de Nest devient `index.html` quand la requete est une navigation.
+ * Le repli passe par la couche d'exceptions **et non** par
+ * `setNotFoundHandler` : Nest pose le sien pendant `init()`, et Fastify refuse
+ * le second avec « Not found handler already set » — au demarrage, donc apres
+ * un deploiement reussi.
+ *
+ * `servesIndex` decide, et se teste sans serveur.
+ */
+@Catch(NotFoundException)
+class ClientFallbackFilter implements ExceptionFilter {
+  catch(_exception: NotFoundException, host: ArgumentsHost): void {
+    const http = host.switchToHttp();
+    const request = http.getRequest<FastifyRequest>();
+    const reply = http.getResponse<FastifyReply>();
+
+    if (servesIndex(request.method, request.url)) {
+      // La page n'est jamais mise en cache : c'est elle qui porte les noms de
+      // fichiers du build, et un cache la ferait charger les scripts de la
+      // version precedente apres un deploiement.
+      void reply.header('cache-control', 'no-cache').sendFile('index.html');
+      return;
+    }
+    void reply.code(404).send({ code: 'NOT_FOUND' });
+  }
+}
+
+/**
+ * Sert le client depuis le meme hote que l API.
+ *
+ * Deux serveurs signifieraient deux domaines, du CORS a declarer, et l adresse
+ * de l API figee dans le build du client — trois problemes crees pour rien
+ * quand un seul conteneur suffit.
+ */
+function serveClient(app: NestFastifyApplication, config: ServerConfig): void {
+  if (config.clientDir === '') return;
+
+  app.useStaticAssets({
+    root: config.clientDir,
+    // `false` : c'est le filtre ci-dessus qui decide du repli, pas le service
+    // de fichiers. Deux regles pour la meme question finiraient par diverger.
+    wildcard: false,
+    index: false,
+  });
+  app.useGlobalFilters(new ClientFallbackFilter());
 }
 
 async function bootstrap(): Promise<void> {
@@ -67,11 +128,14 @@ async function bootstrap(): Promise<void> {
   app.useLogger(logger);
   app.enableShutdownHooks();
 
+  serveClient(app, config);
+
   // 0.0.0.0 : le serveur doit etre joignable depuis un telephone sur le meme
   // reseau, pas seulement depuis la machine de developpement.
   await app.listen({ port: config.port, host: '0.0.0.0' });
 
   logger.log(`serveur pret sur le port ${config.port} — environnement ${config.nodeEnv}`);
+  if (config.clientDir !== '') logger.log(`client servi depuis ${config.clientDir}`);
 }
 
 void bootstrap();

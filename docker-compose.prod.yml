@@ -1,0 +1,80 @@
+# Pile de production d'Aura Battle, telle que Coolify la deploie.
+#
+# Trois services, une seule porte : seul `app` est joignable de l'exterieur,
+# par le Traefik de Coolify. Postgres et Redis ne publient aucun port sur
+# l'hote — ils ne sont joignables que par le reseau interne de la pile. Le
+# serveur qui l'heberge fait déjà tourner d'autres applications (voir
+# docs/adr/0012), et une base exposee y serait exposee a tout le monde.
+#
+# Les variables `SERVICE_*` sont remplies par Coolify : `SERVICE_FQDN_APP_3000`
+# fabrique le domaine et le certificat, `SERVICE_PASSWORD_*` tire un secret et
+# le garde. Rien de secret n'est donc ecrit dans ce fichier, qui vit dans un
+# depot.
+
+services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      - SERVICE_FQDN_APP_3000
+      - NODE_ENV=production
+      - PORT=3000
+      - CLIENT_DIR=/repo/client
+      - DATABASE_URL=postgresql://aura:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/aura
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${SERVICE_PASSWORD_JWT}
+      # Le client est servi par cette meme origine : aucune origine etrangere
+      # n'a besoin d'etre autorisee, et la liste vide veut dire « aucune ».
+      - CORS_ORIGINS=
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:3000/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 5s
+      start_period: 60s
+      retries: 5
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      - POSTGRES_USER=aura
+      - POSTGRES_PASSWORD=${SERVICE_PASSWORD_POSTGRES}
+      - POSTGRES_DB=aura
+    volumes:
+      - aura-postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U aura -d aura']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # `appendonly` : la file d'attente et les verrous survivent a un
+    # redemarrage. Une file perdue remet tout le monde dehors en silence.
+    command: ['redis-server', '--appendonly', 'yes']
+    volumes:
+      - aura-redis:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+volumes:
+  aura-postgres:
+  aura-redis:

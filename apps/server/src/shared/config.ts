@@ -94,6 +94,23 @@ const configSchema = z.object({
    * tolere en silence.
    */
   metricsToken: z.string().default(''),
+  /**
+   * Dossier du build du client, servi par ce serveur.
+   *
+   * Vide par defaut, et c est le bon defaut en developpement : Vite sert le
+   * client lui-meme, sur un autre port. En production la variable designe le
+   * build, le jeu et son API partagent une seule origine — c est l hypothese
+   * sur laquelle `corsOrigins` repose deja — et il n y a qu un conteneur a
+   * deployer.
+   *
+   * Un dossier fait d espaces vaut une absence : sinon une variable laissee a
+   * blanc dans un panneau de deploiement ferait echouer le service de
+   * fichiers sur un chemin qui n existe pas.
+   */
+  clientDir: z
+    .string()
+    .default('')
+    .transform((raw) => raw.trim()),
   corsOrigins: z
     .string()
     .default('')
@@ -137,6 +154,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     databasePoolMax: env.DATABASE_POOL_MAX,
     metricsEnabled: env.AURA_METRICS,
     metricsToken: env.AURA_METRICS_TOKEN,
+    clientDir: env.CLIENT_DIR,
   });
 
   if (!parsed.success) {

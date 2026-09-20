@@ -112,3 +112,23 @@ describe('secret des routes de mesure', () => {
     expect(loadConfig(base).metricsEnabled).toBe(false);
   });
 });
+
+describe('client statique', () => {
+  /*
+    Vide par defaut, et ce defaut est un choix : en developpement c est Vite
+    qui sert le client, sur un autre port. En production la variable designe le
+    build, et le serveur sert les deux depuis la meme origine — ce que le
+    commentaire de `corsOrigins` suppose deja.
+  */
+  it('ne sert rien par defaut', () => {
+    expect(loadConfig(validEnv).clientDir).toBe('');
+  });
+
+  it('retient le dossier du build', () => {
+    expect(loadConfig({ ...validEnv, CLIENT_DIR: '/app/client' }).clientDir).toBe('/app/client');
+  });
+
+  it('traite un dossier vide comme une absence', () => {
+    expect(loadConfig({ ...validEnv, CLIENT_DIR: '   ' }).clientDir).toBe('');
+  });
+});
