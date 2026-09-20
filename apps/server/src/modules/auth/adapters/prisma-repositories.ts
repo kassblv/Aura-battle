@@ -5,6 +5,7 @@ import { DeviceIdentityConflictError } from '../domain/ports.js';
 import type {
   PlayerRecord,
   PlayerRepository,
+  RecoveryIdentityRepository,
   RefreshTokenRecord,
   RefreshTokenRepository,
 } from '../domain/ports.js';
@@ -18,7 +19,7 @@ import type {
  */
 
 @Injectable()
-export class PrismaPlayerRepository implements PlayerRepository {
+export class PrismaPlayerRepository implements PlayerRepository, RecoveryIdentityRepository {
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir auth.controller.ts).
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
@@ -35,6 +36,51 @@ export class PrismaPlayerRepository implements PlayerRepository {
       where: { id: playerId },
       select: { id: true, displayName: true },
     });
+  }
+
+  /**
+   * Rattache une identite d'appareil a un joueur existant.
+   *
+   * `P2002` veut dire que cette identite appartient deja a quelqu'un : traduit
+   * en erreur du domaine, comme pour la creation.
+   */
+  async linkDeviceIdentity(playerId: string, deviceHash: string): Promise<void> {
+    try {
+      await this.prisma.authIdentity.create({
+        data: { playerId, provider: 'DEVICE', subject: deviceHash },
+      });
+    } catch (cause) {
+      if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
+        throw new DeviceIdentityConflictError(cause);
+      }
+      throw cause;
+    }
+  }
+
+  async findByRecoveryHash(codeHash: string): Promise<PlayerRecord | null> {
+    const identity = await this.prisma.authIdentity.findUnique({
+      where: { provider_subject: { provider: 'RECOVERY', subject: codeHash } },
+      select: { player: { select: { id: true, displayName: true } } },
+    });
+    return identity?.player ?? null;
+  }
+
+  /**
+   * Pose le code de recuperation du joueur, en remplacant le precedent.
+   *
+   * Suppression puis creation **dans une transaction**, et non un `upsert` :
+   * la contrainte d'unicite porte sur `(provider, subject)`, pas sur
+   * `(provider, playerId)`, donc il n'existe pas de cle sur laquelle poser un
+   * `upsert`. Hors transaction, une panne entre les deux laisserait le joueur
+   * sans aucun code — avec un code note sur un papier qui n'ouvre plus rien.
+   */
+  async setRecoveryIdentity(playerId: string, codeHash: string): Promise<void> {
+    await this.prisma.$transaction([
+      this.prisma.authIdentity.deleteMany({ where: { playerId, provider: 'RECOVERY' } }),
+      this.prisma.authIdentity.create({
+        data: { playerId, provider: 'RECOVERY', subject: codeHash },
+      }),
+    ]);
   }
 
   /**

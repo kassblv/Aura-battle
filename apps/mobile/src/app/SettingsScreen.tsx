@@ -1,5 +1,6 @@
 import type { JSX } from 'react';
 import type { QualitySetting, QualityTier } from '../platform/quality.js';
+import { AccountSection, type AccountSectionProps } from './AccountSection.jsx';
 import { qualityNote, qualityOptions } from './settings.js';
 
 /**
@@ -19,11 +20,18 @@ export interface SettingsProps {
   readonly tier: QualityTier;
   readonly onQuality: (setting: QualitySetting) => void;
   readonly onClose: () => void;
+  readonly account: AccountSectionProps;
 }
 
-export function SettingsScreen({ setting, tier, onQuality, onClose }: SettingsProps): JSX.Element {
+export function SettingsScreen({
+  setting,
+  tier,
+  onQuality,
+  onClose,
+  account,
+}: SettingsProps): JSX.Element {
   return (
-    <section className="sheet" aria-label="Réglages">
+    <section className="sheet sheet--wide" aria-label="Réglages">
       <header className="sheet__head">
         <h2>Réglages</h2>
         <button type="button" className="mini" onClick={onClose}>
@@ -31,27 +39,42 @@ export function SettingsScreen({ setting, tier, onQuality, onClose }: SettingsPr
         </button>
       </header>
 
-      <h3>Qualité graphique</h3>
+      {/*
+        Deux colonnes, sur toute la largeur.
 
-      <div className="choices" role="radiogroup" aria-label="Qualité graphique">
-        {qualityOptions(setting).map((option) => (
-          <button
-            key={option.id}
-            type="button"
-            role="radio"
-            aria-checked={option.selected}
-            className={option.selected ? 'choice choice--on' : 'choice'}
-            onClick={() => {
-              onQuality(option.id);
-            }}
-          >
-            <b>{option.label}</b>
-            <small>{option.hint}</small>
-          </button>
-        ))}
+        En paysage l'ecran est large et bas : empiler deux sections dans un
+        panneau de droite les faisait deborder de la hauteur — la seule
+        ressource rare — pendant que la moitie gauche ne servait a rien. Cote
+        a cote, chaque section tient sans defilement, et les deux restent dans
+        les arcs de pouce plutot qu'au centre, ou personne n'a de doigt.
+      */}
+      <div className="sheet__cols">
+        <div className="sheet__col">
+          <h3>Qualité graphique</h3>
+
+          <div className="choices" role="radiogroup" aria-label="Qualité graphique">
+            {qualityOptions(setting).map((option) => (
+              <button
+                key={option.id}
+                type="button"
+                role="radio"
+                aria-checked={option.selected}
+                className={option.selected ? 'choice choice--on' : 'choice'}
+                onClick={() => {
+                  onQuality(option.id);
+                }}
+              >
+                <b>{option.label}</b>
+                <small>{option.hint}</small>
+              </button>
+            ))}
+          </div>
+
+          <p className="sheet__note">{qualityNote(setting, tier)}</p>
+        </div>
+
+        <AccountSection {...account} />
       </div>
-
-      <p className="sheet__note">{qualityNote(setting, tier)}</p>
     </section>
   );
 }

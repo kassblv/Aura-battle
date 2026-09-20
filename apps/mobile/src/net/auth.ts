@@ -1,4 +1,9 @@
-import { displayNameSchema, sessionResponseSchema, type SessionResponse } from '@aura/protocol';
+import {
+  displayNameSchema,
+  recoveryCodeResponseSchema,
+  sessionResponseSchema,
+  type SessionResponse,
+} from '@aura/protocol';
 
 /**
  * Les appels HTTP d authentification.
@@ -116,4 +121,83 @@ export async function renameProfile(
   const parsed = body as ProfileResponse;
   if (typeof parsed?.displayName !== 'string') throw new AuthError('MALFORMED');
   return parsed;
+}
+
+/**
+ * Demande un code de recuperation pour la session en cours.
+ *
+ * Le serveur n en garde que le hache : il ne saura pas le reafficher. C est
+ * donc au joueur de le noter, et a l interface de le dire clairement.
+ */
+export async function issueRecoveryCode(
+  baseUrl: string,
+  accessToken: string,
+  options: AuthOptions = {},
+): Promise<string> {
+  const body = await send(
+    endpoint(baseUrl, '/auth/recovery'),
+    {
+      method: 'POST',
+      headers: { authorization: `Bearer ${accessToken}` },
+    },
+    options.fetcher ?? globalThis.fetch.bind(globalThis),
+  );
+
+  const parsed = recoveryCodeResponseSchema.safeParse(body);
+  if (!parsed.success) throw new AuthError('MALFORMED');
+  return parsed.data.code;
+}
+
+/**
+ * Presente un code et ouvre la session du compte qu il designe.
+ *
+ * Le code part dans le **corps**, jamais dans l URL : une URL est journalisee
+ * par tous les mandataires de la chaine, et ce code vaut mot de passe — il
+ * ouvre le compte a qui le lit.
+ */
+export async function claimRecoveryCode(
+  baseUrl: string,
+  code: string,
+  options: AuthOptions = {},
+): Promise<SessionResponse> {
+  const body = await send(
+    endpoint(baseUrl, '/auth/recovery/claim'),
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ code }),
+    },
+    options.fetcher ?? globalThis.fetch.bind(globalThis),
+  );
+
+  const parsed = sessionResponseSchema.safeParse(body);
+  if (!parsed.success) throw new AuthError('MALFORMED');
+  return parsed.data;
+}
+
+/**
+ * Rattache le secret d appareil courant au compte de la session.
+ *
+ * Appele juste apres `claimRecoveryCode`. Sans lui, le navigateur garderait
+ * son propre secret et rouvrirait le compte invite local au rechargement
+ * suivant : le joueur verrait son compte revenir, puis disparaitre.
+ */
+export async function linkDevice(
+  baseUrl: string,
+  accessToken: string,
+  deviceSecret: string,
+  options: AuthOptions = {},
+): Promise<void> {
+  await send(
+    endpoint(baseUrl, '/auth/device/link'),
+    {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        authorization: `Bearer ${accessToken}`,
+      },
+      body: JSON.stringify({ deviceSecret }),
+    },
+    options.fetcher ?? globalThis.fetch.bind(globalThis),
+  );
 }

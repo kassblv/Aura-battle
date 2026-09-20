@@ -11,6 +11,7 @@ import {
   PrismaRefreshTokenRepository,
 } from './adapters/prisma-repositories.js';
 import { ProfileService } from './application/profile.js';
+import { RecoveryService } from './application/recovery.js';
 import { SessionService } from './application/session.js';
 import { SocketAuthenticator } from './application/socket-auth.js';
 
@@ -52,6 +53,11 @@ import { SocketAuthenticator } from './application/socket-auth.js';
       provide: ProfileService,
       inject: [PrismaPlayerRepository],
       useFactory: (players: PrismaPlayerRepository) => new ProfileService({ players }),
+    },
+    {
+      provide: RecoveryService,
+      inject: [PrismaPlayerRepository],
+      useFactory: (players: PrismaPlayerRepository) => new RecoveryService({ players }),
     },
     // Jeton nomme : le controleur depend du **port**, pas de l'implementation
     // JWT. Remplacer la verification ne demanderait de toucher qu'ici.

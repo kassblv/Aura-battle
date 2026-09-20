@@ -3,7 +3,9 @@ import {
   DISPLAY_NAME_MAX,
   displayNameSchema,
   parseAuthDeviceRequest,
+  parseAuthRecoveryClaimRequest,
   parseAuthRefreshRequest,
+  recoveryCodeResponseSchema,
   parseAuthRenameRequest,
   sessionResponseSchema,
 } from './auth.js';
@@ -121,5 +123,54 @@ describe('parseAuthRenameRequest', () => {
   it('refuse un champ surnumeraire', () => {
     // Un champ en trop trahit un client qui n'est pas celui qu'on croit.
     expect(parseAuthRenameRequest({ displayName: 'Kassim', admin: true }).success).toBe(false);
+  });
+});
+
+describe('code de recuperation', () => {
+  /*
+    Le schema borne la SAISIE, pas le code.
+
+    Un joueur recopie son code avec des tirets, des espaces, parfois le
+    prefixe. Le serveur normalise ensuite — mais il faut d'abord qu'il recoive
+    la chaine. Une borne trop serree ici refuserait des codes valables avant
+    meme que quiconque les regarde.
+  */
+  it('accepte un code tel qu il est affiche', () => {
+    expect(parseAuthRecoveryClaimRequest({ code: 'AURA-7K2M-94PX-QTJD-3HVN' }).success).toBe(true);
+  });
+
+  it('accepte les variantes qu un humain produit', () => {
+    for (const code of ['7K2M94PXQTJD3HVN', 'aura 7k2m 94px qtjd 3hvn', ' AURA-7K2M94PXQTJD3HVN ']) {
+      expect(parseAuthRecoveryClaimRequest({ code }).success).toBe(true);
+    }
+  });
+
+  /*
+    Mais elle reste bornee. Sans plafond, un client peut envoyer un megaoctet
+    par tentative — c'est la meme lecon que « le protocole borne un message,
+    pas la somme des messages », appliquee a un seul champ.
+  */
+  it('refuse une saisie demesuree', () => {
+    expect(parseAuthRecoveryClaimRequest({ code: 'A'.repeat(200) }).success).toBe(false);
+  });
+
+  it('refuse une saisie vide ou absente', () => {
+    expect(parseAuthRecoveryClaimRequest({ code: '' }).success).toBe(false);
+    expect(parseAuthRecoveryClaimRequest({}).success).toBe(false);
+  });
+
+  it('refuse un champ inconnu', () => {
+    expect(
+      parseAuthRecoveryClaimRequest({ code: '7K2M94PXQTJD3HVN', playerId: 'p-1' }).success,
+    ).toBe(false);
+  });
+
+  it('decrit la reponse : un code affichable, et rien de plus', () => {
+    const ok = recoveryCodeResponseSchema.safeParse({ code: 'AURA-7K2M-94PX-QTJD-3HVN' });
+    expect(ok.success).toBe(true);
+    // Surtout pas le hache : il n'a aucune raison de sortir du serveur.
+    expect(
+      recoveryCodeResponseSchema.safeParse({ code: 'AURA-7K2M', hash: 'abc' }).success,
+    ).toBe(false);
   });
 });

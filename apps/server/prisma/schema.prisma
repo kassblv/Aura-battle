@@ -55,6 +55,12 @@ model AuthIdentity {
 
 enum AuthProvider {
   DEVICE
+  /// Code de recuperation : une deuxieme facon de prouver qu'on est ce joueur.
+  ///
+  /// Un compte invite vit dans le stockage du navigateur, qui se vide pour un
+  /// rien sur ordinateur. Le code est delivre par le serveur, note par le
+  /// joueur, et le presenter ailleurs y rattache le meme compte.
+  RECOVERY
   APPLE
   GOOGLE
 }

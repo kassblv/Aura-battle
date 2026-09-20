@@ -571,10 +571,33 @@ body {
   gap: 11px;
 }
 
+/*
+  L'en-tete reste, le contenu defile dessous.
+
+  Le panneau n'a AUCUN fond : il flotte au-dessus de l'arene, ce qui est joli
+  tant qu'il tient dans la hauteur. Des qu'il defile — et les reglages, avec
+  leur section Compte, defilent — le titre et le bouton Fermer partaient vers
+  le haut, et le contenu passait derriere sans rien pour l'en separer. La
+  surface du HUD lui donne ce fond, uniquement la ou il en faut un.
+
+  Marges negatives : elles annulent le rembourrage du panneau pour que la bande
+  aille d'un bord a l'autre, sinon on voit l'arene defiler dans deux rubans de
+  quinze pixels.
+*/
 .sheet__head {
+  position: sticky;
+  top: -13px;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin: -13px -15px 0;
+  padding: 13px 15px 9px;
+  background: var(--hud);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  border-bottom: 1px solid var(--hud-line);
+  border-radius: 18px 18px 0 0;
 }
 .sheet h2,
 .sheet h3 {
@@ -663,6 +686,79 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/*
+  Le panneau large : toute la largeur, deux colonnes.
+
+  En paysage, la hauteur est la ressource rare et la largeur ne manque pas.
+  Un panneau de droite qui empile ses sections deborde de la hauteur pendant
+  que la moitie gauche de l'ecran ne sert a rien — et ce qui deborde, il faut
+  le faire defiler d'un pouce, au milieu d'un ecran de jeu.
+*/
+.sheet--wide {
+  left: var(--safe-left);
+  width: auto;
+  /*
+    Un voile, uniquement ici.
+
+    Les panneaux etroits laissent voir l'arene derriere eux sans gener : le
+    personnage est a cote. Sur toute la largeur il passe DERRIERE le texte, et
+    un titre pose sur une silhouette claire ne se lit plus.
+  */
+  background: linear-gradient(180deg, rgba(21, 12, 46, 0.82), rgba(21, 12, 46, 0.92));
+  backdrop-filter: blur(11px);
+  -webkit-backdrop-filter: blur(11px);
+  border: 1px solid var(--hud-line);
+}
+
+/*
+  Trois colonnes : la qualite, puis les deux gestes du compte.
+
+  Ce sont trois sujets sans rapport, et un ecran de 844x390 a largement la
+  place de les montrer cote a cote. En deux colonnes, celle du compte faisait
+  326 pixels contre 206 a l'autre et debordait de la hauteur pendant que la
+  premiere gardait cent pixels de vide. La qualite est un peu plus large parce
+  que ses quatre choix se lisent en deux colonnes.
+*/
+.sheet__cols {
+  display: grid;
+  grid-template-columns: 1.25fr 1fr 1fr;
+  gap: 8px 20px;
+  align-items: start;
+}
+
+.sheet__col {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  min-width: 0;
+}
+
+/*
+  Sous 720 px de large, les deux colonnes se serrent au point que les libelles
+  se coupent : on repasse a une seule, et c'est la que le panneau defile —
+  rarement, et sur un ecran ou il n'y a de toute facon pas la place.
+*/
+/*
+  Moins large : on retire une colonne, puis deux.
+
+  Le seuil est a 700 px et non a 860 : le format vise est 844x390, et une
+  bascule posee AU-DESSUS de cette largeur renvoyait le paysage a deux
+  colonnes — la troisieme passait a la ligne et le panneau debordait de
+  118 pixels. Un point de bascule qui tombe du mauvais cote de l'appareil cible
+  est pire que pas de bascule du tout.
+*/
+@media (max-width: 700px) {
+  .sheet__cols {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+@media (max-width: 560px) {
+  .sheet__cols {
+    grid-template-columns: 1fr;
+  }
+}
+
 /* --- reglages : un choix parmi plusieurs --- */
 
 /*
@@ -738,6 +834,80 @@ body {
   annoncait « point Fluide » alors que `aria-checked` le disait deja. Un
   contenu vide ne se lit pas, et la forme vient du fond.
 */
+/* Une seule colonne quand le choix n'est pas un choix mais une action. */
+.choices--one {
+  grid-template-columns: 1fr;
+}
+
+/*
+  Le code de recuperation, en gros et en groupes.
+
+  On le recopie d'un ecran vers un autre appareil, parfois depuis une photo :
+  c'est la lisibilite qui decide si le joueur y arrive du premier coup. Chiffres
+  a chasse fixe pour que les groupes s'alignent, et selection facile pour qui
+  prefere copier a la main.
+*/
+.code {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  justify-content: center;
+  user-select: all;
+  -webkit-user-select: all;
+}
+
+.code__group {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 15px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 5px 8px;
+  border-radius: 9px;
+  background: var(--chip-deep);
+  border: 1px solid var(--line);
+}
+
+/*
+  `account__field`, et surtout pas `field`.
+
+  `.field` existe deja : c'est l'aire de jeu des orbes du match, une couche en
+  absolu qui couvre tout l'ecran. Reutiliser le nom mettait le champ de saisie
+  des reglages en absolu par-dessus ses propres titres — et rien ne le
+  signalait, ni au compilateur, ni aux tests. La cascade CSS n'a pas de
+  compilateur : c'est aux noms de porter la portee.
+*/
+.account__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.account__field input {
+  font: inherit;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 14px;
+  letter-spacing: 0.06em;
+  color: var(--ink);
+  /* Cible tactile : 46 px, ADR 0008. */
+  min-height: 46px;
+  padding: 8px 11px;
+  border-radius: 13px;
+  border: 1px solid var(--line);
+  background: var(--chip-deep);
+}
+
+/* Un avertissement se lit a sa couleur avant de se lire a ses mots. */
+.sheet__note--warn {
+  color: var(--gold-ink);
+}
+
+.sheet__note--bad {
+  color: var(--bad-ink);
+}
+
 .choice--on > b::before {
   content: '';
   display: inline-block;

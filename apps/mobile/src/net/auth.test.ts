@@ -1,5 +1,12 @@
 import { describe, expect, it, vi } from 'vitest';
-import { AuthError, authenticateDevice, renameProfile, type Fetcher } from './auth.js';
+import {
+  AuthError,
+  authenticateDevice,
+  claimRecoveryCode,
+  issueRecoveryCode,
+  renameProfile,
+  type Fetcher,
+} from './auth.js';
 
 const session = {
   accessToken: 'acc',
@@ -97,5 +104,63 @@ describe('renameProfile', () => {
     await expect(
       renameProfile('http://srv', 'acc', 'Kassim', { fetcher: fails(401) }),
     ).rejects.toMatchObject({ reason: 'UNAUTHORIZED' });
+  });
+});
+
+describe('code de recuperation', () => {
+  it('demande un code avec le jeton de session', async () => {
+    const calls: { url: string; init: RequestInit | undefined }[] = [];
+    const fetcher: Fetcher = (url, init) => {
+      calls.push({ url, init });
+      return Promise.resolve(new Response(JSON.stringify({ code: 'AURA-7K2M-94PX-QTJD-3HVN' }), { status: 200 }));
+    };
+
+    await expect(issueRecoveryCode('http://srv', 'jeton-abc', { fetcher })).resolves.toBe(
+      'AURA-7K2M-94PX-QTJD-3HVN',
+    );
+    expect(calls[0]?.url).toBe('http://srv/auth/recovery');
+    expect(calls[0]?.init?.method).toBe('POST');
+    expect((calls[0]?.init?.headers as Record<string, string>).authorization).toBe(
+      'Bearer jeton-abc',
+    );
+  });
+
+  it('refuse une reponse qui ne porte pas de code', async () => {
+    const fetcher: Fetcher = () => Promise.resolve(new Response(JSON.stringify({ autre: 'chose' }), { status: 200 }));
+    await expect(issueRecoveryCode('http://srv', 'jeton', { fetcher })).rejects.toMatchObject({
+      reason: 'MALFORMED',
+    });
+  });
+
+  /*
+    Le code part dans le CORPS, jamais dans l URL. Une URL est journalisee par
+    tous les mandataires de la chaine, et ce code vaut mot de passe : il ouvre
+    le compte a qui le lit.
+  */
+  it('envoie le code dans le corps, pas dans l URL', async () => {
+    const calls: { url: string; init: RequestInit | undefined }[] = [];
+    const fetcher: Fetcher = (url, init) => {
+      calls.push({ url, init });
+      return Promise.resolve(new Response(JSON.stringify(session), { status: 200 }));
+    };
+
+    await claimRecoveryCode('http://srv', 'AURA-7K2M-94PX-QTJD-3HVN', { fetcher });
+    expect(calls[0]?.url).toBe('http://srv/auth/recovery/claim');
+    expect(calls[0]?.url).not.toContain('7K2M');
+    expect(calls[0]?.init?.body).toContain('7K2M');
+  });
+
+  it('rend la session du compte retrouve', async () => {
+    const fetcher: Fetcher = () => Promise.resolve(new Response(JSON.stringify(session), { status: 200 }));
+    await expect(
+      claimRecoveryCode('http://srv', 'AURA-7K2M-94PX-QTJD-3HVN', { fetcher }),
+    ).resolves.toEqual(session);
+  });
+
+  it('traduit un code refuse en UNAUTHORIZED', async () => {
+    const fetcher: Fetcher = () => Promise.resolve(new Response('', { status: 401 }));
+    await expect(claimRecoveryCode('http://srv', 'AURA-0000', { fetcher })).rejects.toMatchObject({
+      reason: 'UNAUTHORIZED',
+    });
   });
 });

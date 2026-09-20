@@ -14,6 +14,11 @@ function repository(players: PlayerRecord[] = []): PlayerRepository & { readonly
     createWithDeviceIdentity: () => {
       throw new Error('inattendu');
     },
+    // Ce cas d usage ne rattache aucun appareil : le double le dit plutot que
+    // de faire semblant d en etre capable.
+    linkDeviceIdentity: () => {
+      throw new Error('inattendu');
+    },
     touchLastSeen: () => Promise.resolve(),
     rename: (id, displayName) => {
       renames += 1;

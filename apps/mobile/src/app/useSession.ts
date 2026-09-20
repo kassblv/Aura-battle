@@ -1,6 +1,13 @@
 import { useCallback, useEffect, useState } from 'react';
-import { AuthError, authenticateDevice, renameProfile } from '../net/auth.js';
-import { deviceSecret } from '../net/identity.js';
+import {
+  AuthError,
+  authenticateDevice,
+  claimRecoveryCode,
+  issueRecoveryCode,
+  linkDevice,
+  renameProfile,
+} from '../net/auth.js';
+import { deviceSecret, rotateDeviceSecret } from '../net/identity.js';
 import { loadIdentity, saveIdentity, type StoredIdentity } from '../net/session.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 
@@ -23,11 +30,23 @@ export interface SessionState {
   readonly error: string | null;
   readonly busy: boolean;
   rename(displayName: string): Promise<boolean>;
+  /** Delivre un code de recuperation pour ce compte. */
+  issueRecovery(): Promise<string | null>;
+  /**
+   * Presente un code et rejoint le compte qu il designe.
+   *
+   * **Abandonne le compte invite de ce navigateur** : l appareil est rattache
+   * au compte retrouve, avec un secret neuf. Sans ce rattachement, le
+   * rechargement suivant rouvrirait le compte local et la recuperation serait
+   * perdue.
+   */
+  claimRecovery(code: string): Promise<boolean>;
 }
 
 const MESSAGES: Readonly<Record<string, string>> = {
   UNREACHABLE: 'Pas de réseau. Réessaie dans un instant.',
   UNAUTHORIZED: 'Ta session a expiré. Relance le jeu.',
+  INVALID_CODE: 'Ce code ne correspond à aucun compte.',
   INVALID_NAME: 'Ce nom ne passe pas.',
   REJECTED: 'Le serveur a refusé ce nom.',
   MALFORMED: 'Réponse inattendue du serveur.',
@@ -100,5 +119,71 @@ export function useSession(): SessionState {
     [accessToken],
   );
 
-  return { phase, identity, accessToken, error, busy, rename };
+  const issueRecovery = useCallback(async (): Promise<string | null> => {
+    if (accessToken === null) {
+      setError(MESSAGES.UNREACHABLE ?? null);
+      return null;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const baseUrl = resolveServerUrl(
+        import.meta.env.VITE_SERVER_URL,
+        window.location.hostname,
+        currentPageLocation(),
+      );
+      return await issueRecoveryCode(baseUrl, accessToken);
+    } catch (cause) {
+      setError(
+        (cause instanceof AuthError ? MESSAGES[cause.reason] : undefined) ??
+          'Impossible d’obtenir un code pour le moment.',
+      );
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  }, [accessToken]);
+
+  const claimRecovery = useCallback(async (code: string): Promise<boolean> => {
+    setBusy(true);
+    setError(null);
+    try {
+      const baseUrl = resolveServerUrl(
+        import.meta.env.VITE_SERVER_URL,
+        window.location.hostname,
+        currentPageLocation(),
+      );
+      const session = await claimRecoveryCode(baseUrl, code);
+
+      /*
+        Rattacher l appareil, et dans cet ordre.
+
+        Le navigateur garde son propre secret, qui appartient encore au compte
+        invite qu on vient d abandonner. On en tire un NEUF — reutiliser
+        l ancien se heurterait a la contrainte d unicite du serveur — puis on
+        le rattache au compte retrouve. Sans cette etape, le rechargement
+        suivant rouvrirait le compte local : le joueur verrait son compte
+        revenir, puis disparaitre.
+      */
+      await linkDevice(baseUrl, session.accessToken, rotateDeviceSecret());
+
+      const next = { playerId: session.player.id, displayName: session.player.displayName };
+      saveIdentity(next);
+      setIdentity(next);
+      setAccessToken(session.accessToken);
+      setPhase('ready');
+      return true;
+    } catch (cause) {
+      const reason = cause instanceof AuthError ? cause.reason : undefined;
+      setError(
+        (reason === 'UNAUTHORIZED' ? MESSAGES.INVALID_CODE : MESSAGES[reason ?? '']) ??
+          'Impossible de retrouver ce compte pour le moment.',
+      );
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  }, []);
+
+  return { phase, identity, accessToken, error, busy, rename, issueRecovery, claimRecovery };
 }

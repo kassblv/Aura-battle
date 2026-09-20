@@ -86,6 +86,15 @@ export function App(): JSX.Element {
   const [qualitySetting, setQualitySetting] = useState<QualitySetting>(quality.current.setting);
   const [qualityTier, setQualityTier] = useState<QualityTier>(quality.current.tier);
 
+  /**
+   * Le code de recuperation fraichement delivre.
+   *
+   * Vit en memoire, le temps que l'ecran reste ouvert. Le ranger serait le
+   * ranger en clair, a l'endroit meme dont le code existe pour compenser la
+   * fragilite.
+   */
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+
   const arena = useArena(
     canvasRef,
     useCallback(
@@ -473,6 +482,24 @@ export function App(): JSX.Element {
             }}
             onClose={() => {
               go('home');
+            }}
+            account={{
+              online: session.phase === 'ready',
+              busy: session.busy,
+              error: session.error,
+              code: recoveryCode,
+              issue: () => {
+                void session.issueRecovery().then(setRecoveryCode);
+              },
+              claim: (code) => {
+                void session.claimRecovery(code).then((ok) => {
+                  // Le compte retrouve remplace celui de ce navigateur : la
+                  // progression locale n'est plus la sienne. On repart de
+                  // l'accueil plutot que de laisser a l'ecran des chiffres qui
+                  // appartiennent a quelqu'un d'autre.
+                  if (ok) go('home');
+                });
+              },
             }}
           />
         )}

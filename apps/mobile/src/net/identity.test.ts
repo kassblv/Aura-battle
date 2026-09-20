@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DEVICE_SECRET_KEY, deviceSecret, type SecretStore } from './identity.js';
+import {
+  DEVICE_SECRET_KEY,
+  deviceSecret,
+  rotateDeviceSecret,
+  type SecretStore,
+} from './identity.js';
 
 /** Trousseau en memoire : le vrai est le stockage de l appareil. */
 function store(
@@ -84,5 +89,28 @@ describe('deviceSecret', () => {
 
   it('tire des secrets differents pour des appareils differents', () => {
     expect(deviceSecret(store(), bytes(0x01))).not.toBe(deviceSecret(store(), bytes(0x02)));
+  });
+});
+
+describe('rotateDeviceSecret', () => {
+  /*
+    Presenter un code de recuperation abandonne le compte invite de CE
+    navigateur. Son secret appartient encore a l ancien compte : le reutiliser
+    pour rattacher le compte retrouve se heurterait a la contrainte d unicite
+    du serveur. On en tire donc un neuf, qu on rattache ensuite.
+  */
+  it('remplace le secret range par un neuf', () => {
+    const keychain = store();
+    const first = deviceSecret(keychain);
+    const rotated = rotateDeviceSecret(keychain);
+
+    expect(rotated).not.toBe(first);
+    expect(rotated).toMatch(/^[0-9a-f]{64}$/);
+    // Et c est bien le neuf qui est relu au prochain lancement.
+    expect(deviceSecret(keychain)).toBe(rotated);
+  });
+
+  it('en tire un meme quand rien n etait range', () => {
+    expect(rotateDeviceSecret(store())).toMatch(/^[0-9a-f]{64}$/);
   });
 });

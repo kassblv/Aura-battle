@@ -93,3 +93,26 @@ export function deviceSecret(
   }
   return secret;
 }
+
+/**
+ * Tire un secret d appareil neuf et remplace celui qui etait range.
+ *
+ * Presenter un code de recuperation **abandonne** le compte invite de ce
+ * navigateur. Son ancien secret appartient encore a ce compte-la : le
+ * reutiliser pour rattacher le compte retrouve se heurterait a la contrainte
+ * d unicite du serveur, qui refuserait — et le joueur perdrait au rechargement
+ * le compte qu il vient de retrouver.
+ */
+export function rotateDeviceSecret(
+  store: SecretStore = browserStore(),
+  randomBytes: RandomBytes = cryptoBytes,
+): string {
+  const secret = toHex(randomBytes(32));
+  try {
+    store.write(DEVICE_SECRET_KEY, secret);
+  } catch {
+    // Meme absorption qu ailleurs : sans stockage, le secret ne vit que le
+    // temps de la session, ce qui reste jouable.
+  }
+  return secret;
+}

@@ -29,6 +29,7 @@ export interface Session {
 }
 
 export type SessionFailure =
+  | 'DEVICE_ALREADY_LINKED'
   | 'INVALID_DEVICE_SECRET'
   | 'INVALID_REFRESH_TOKEN'
   | 'REFRESH_TOKEN_EXPIRED'
@@ -143,6 +144,50 @@ export class SessionService {
     const session = await this.issue(player);
     await this.deps.refreshTokens.markRotated(stored.id, hashSecret(session.refreshToken), now);
     return session;
+  }
+
+  /**
+   * Rattache l'appareil courant a un joueur deja identifie.
+   *
+   * Appele juste apres qu'un code de recuperation a ete presente. Sans lui, le
+   * navigateur garderait son propre secret d'appareil et rouvrirait le compte
+   * invite local au rechargement suivant : le joueur verrait son compte
+   * revenir, puis disparaitre.
+   */
+  async linkDevice(playerId: string, deviceSecret: string): Promise<void> {
+    if (!DEVICE_SECRET_PATTERN.test(deviceSecret)) {
+      throw new SessionError('INVALID_DEVICE_SECRET');
+    }
+    const player = await this.deps.players.findById(playerId);
+    if (player === null) throw new SessionError('INVALID_DEVICE_SECRET');
+
+    try {
+      await this.deps.players.linkDeviceIdentity(player.id, hashSecret(deviceSecret));
+    } catch (cause) {
+      if (cause instanceof DeviceIdentityConflictError) {
+        // Ce secret appartient deja a quelqu'un — au compte invite que ce
+        // navigateur vient d'abandonner, le plus souvent. Le client en tire un
+        // neuf avant d'appeler ; si la collision arrive quand meme, on refuse
+        // plutot que de rattacher l'appareil d'un autre joueur.
+        throw new SessionError('DEVICE_ALREADY_LINKED');
+      }
+      throw cause;
+    }
+  }
+
+  /**
+   * Ouvre une session pour un joueur deja identifie autrement.
+   *
+   * Sert au code de recuperation : la preuve a ete faite ailleurs, il ne reste
+   * qu'a emettre. Le couple de jetons passe par `issue`, comme toutes les
+   * sessions — un second point d'emission serait un second endroit ou la
+   * rotation, l'expiration et la revocation pourraient diverger.
+   */
+  async openForPlayer(playerId: string): Promise<Session> {
+    const player = await this.deps.players.findById(playerId);
+    if (player === null) throw new SessionError('INVALID_DEVICE_SECRET');
+    await this.deps.players.touchLastSeen(player.id);
+    return this.issue(player);
   }
 
   private async issue(player: {

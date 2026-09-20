@@ -47,9 +47,41 @@ export interface PlayerRepository {
     readonly deviceHash: string;
     readonly displayName: string;
   }): Promise<PlayerRecord>;
+  /**
+   * Rattache une identite d'appareil a un joueur qui existe deja.
+   *
+   * Sert a la recuperation de compte : le navigateur qui vient de presenter un
+   * code y rattache son appareil, sinon le rechargement suivant rouvrirait le
+   * compte invite local et la recuperation serait perdue. On **ajoute** une
+   * ligne, on n'en deplace aucune (docs/04).
+   *
+   * Leve `DeviceIdentityConflictError` si cette identite appartient deja a
+   * quelqu'un.
+   */
+  linkDeviceIdentity(playerId: string, deviceHash: string): Promise<void>;
   /** Change le nom affiche. Rend `null` si le joueur n existe plus. */
   rename(playerId: string, displayName: string): Promise<PlayerRecord | null>;
   touchLastSeen(playerId: string): Promise<void>;
+}
+
+/**
+ * Le versant « code de recuperation » du depot de joueurs.
+ *
+ * Port a part plutot qu'ajout a `PlayerRepository` : le service de
+ * recuperation n'a besoin de rien d'autre, et un port qui ne promet que ce
+ * qu'on lui demande se simule en trois lignes dans un test.
+ */
+export interface RecoveryIdentityRepository {
+  findById(playerId: string): Promise<PlayerRecord | null>;
+  /** Trouve le joueur portant ce code de recuperation, ou `null`. */
+  findByRecoveryHash(codeHash: string): Promise<PlayerRecord | null>;
+  /**
+   * Pose le code de recuperation de ce joueur, en **remplacant** le precedent.
+   *
+   * Le remplacement est ce qui rend un code revocable : en redemander un
+   * annule l'ancien.
+   */
+  setRecoveryIdentity(playerId: string, codeHash: string): Promise<void>;
 }
 
 export interface RefreshTokenRepository {

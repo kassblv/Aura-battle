@@ -214,3 +214,58 @@ describe.skipIf(reachable)('base indisponible', () => {
     expect(reachable).toBe(false);
   });
 });
+
+describe.skipIf(!reachable)('code de recuperation, contre une vraie base', () => {
+  /*
+    C'est Postgres qui doit remplacer l'ancien code, pas un double qui le
+    recite. `setRecoveryIdentity` fait une suppression PUIS une creation dans
+    une transaction, parce que la contrainte d'unicite porte sur
+    `(provider, subject)` et non sur `(provider, playerId)` : il n'existe
+    aucune cle sur laquelle poser un `upsert`. Si cette transaction ne tenait
+    pas, un joueur se retrouverait avec deux codes vivants — ou aucun.
+  */
+  it('retrouve le joueur par son code', async () => {
+    const repository = buildRepository();
+    const player = await repository.createWithDeviceIdentity({
+      deviceHash: newDeviceHash(),
+      displayName: 'Testeuse',
+    });
+
+    await repository.setRecoveryIdentity(player.id, 'hash_recovery_un');
+    await expect(repository.findByRecoveryHash('hash_recovery_un')).resolves.toEqual(player);
+  });
+
+  it('remplace le code precedent plutot que de l ajouter', async () => {
+    const repository = buildRepository();
+    const player = await repository.createWithDeviceIdentity({
+      deviceHash: newDeviceHash(),
+      displayName: 'Testeur',
+    });
+
+    await repository.setRecoveryIdentity(player.id, 'hash_recovery_ancien');
+    await repository.setRecoveryIdentity(player.id, 'hash_recovery_nouveau');
+
+    await expect(repository.findByRecoveryHash('hash_recovery_nouveau')).resolves.toEqual(player);
+    // L'ancien n'ouvre plus rien : c'est ce qui rend un code revocable.
+    await expect(repository.findByRecoveryHash('hash_recovery_ancien')).resolves.toBeNull();
+
+    const identities = await (prisma!).authIdentity.count({
+      where: { playerId: player.id, provider: 'RECOVERY' },
+    });
+    expect(identities).toBe(1);
+  });
+
+  it('ne touche pas a l identite d appareil', async () => {
+    const repository = buildRepository();
+    const deviceHash = newDeviceHash();
+    const player = await repository.createWithDeviceIdentity({
+      deviceHash,
+      displayName: 'Intacte',
+    });
+
+    await repository.setRecoveryIdentity(player.id, 'hash_recovery_autre');
+    // Le compte invite continue de s'ouvrir depuis le navigateur d'origine :
+    // lier un compte AJOUTE une ligne, sans rien deplacer (docs/04).
+    await expect(repository.findByDeviceHash(deviceHash)).resolves.toEqual(player);
+  });
+});

@@ -74,7 +74,48 @@ export const sessionResponseSchema = z.strictObject({
   }),
 });
 
+/**
+ * Saisie d'un code de recuperation.
+ *
+ * Le schema borne la **saisie**, pas le code. Un joueur recopie le sien avec
+ * des tirets, des espaces, parfois le prefixe, parfois rien de tout ca : c'est
+ * le serveur qui normalise ensuite. Une borne serree ici refuserait des codes
+ * valables avant que quiconque les regarde.
+ *
+ * Bornee quand meme : sans plafond, un client envoie un megaoctet par
+ * tentative. Le protocole borne un message, et celui-ci n'y echappe pas.
+ */
+export const recoveryCodeInputSchema = z.string().trim().min(1).max(64);
+
+export const authRecoveryClaimRequestSchema = z.strictObject({
+  code: recoveryCodeInputSchema,
+});
+
+/**
+ * Rattachement de l'appareil courant au compte que l'on vient de retrouver.
+ *
+ * Meme schema que l'ouverture de session : c'est le meme genre de secret, avec
+ * les memes exigences. Une seule definition, donc aucune chance que les deux
+ * divergent.
+ */
+export const authDeviceLinkRequestSchema = z.strictObject({
+  deviceSecret: deviceSecretSchema,
+});
+
+/**
+ * Le code delivre, sous sa forme affichable.
+ *
+ * `strictObject` : le hache n'a aucune raison de sortir du serveur, et un
+ * schema ferme est ce qui empeche qu'il sorte un jour par distraction.
+ */
+export const recoveryCodeResponseSchema = z.strictObject({
+  code: z.string().min(1).max(64),
+});
+
 export type AuthDeviceRequest = z.infer<typeof authDeviceRequestSchema>;
+export type AuthRecoveryClaimRequest = z.infer<typeof authRecoveryClaimRequestSchema>;
+export type AuthDeviceLinkRequest = z.infer<typeof authDeviceLinkRequestSchema>;
+export type RecoveryCodeResponse = z.infer<typeof recoveryCodeResponseSchema>;
 export type AuthRefreshRequest = z.infer<typeof authRefreshRequestSchema>;
 export type AuthRenameRequest = z.infer<typeof authRenameRequestSchema>;
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
@@ -91,5 +132,17 @@ export function parseAuthRefreshRequest(payload: unknown): ParseResult<AuthRefre
 
 export function parseAuthRenameRequest(payload: unknown): ParseResult<AuthRenameRequest> {
   const parsed = authRenameRequestSchema.safeParse(payload);
+  return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
+}
+
+export function parseAuthRecoveryClaimRequest(
+  payload: unknown,
+): ParseResult<AuthRecoveryClaimRequest> {
+  const parsed = authRecoveryClaimRequestSchema.safeParse(payload);
+  return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
+}
+
+export function parseAuthDeviceLinkRequest(payload: unknown): ParseResult<AuthDeviceLinkRequest> {
+  const parsed = authDeviceLinkRequestSchema.safeParse(payload);
   return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
 }
