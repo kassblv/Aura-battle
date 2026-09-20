@@ -25,6 +25,14 @@ const REDACTED_PATHS = [
   '*.accessToken',
   'deviceId',
   '*.deviceId',
+  // L'empreinte d'appareil, sous ses deux noms : `deviceHash` dans le domaine,
+  // `subject` dans la table des identites. Aucun site d'appel ne les journalise
+  // aujourd'hui — c'est precisement pour que ca reste vrai apres le prochain
+  // debogage qu'elles sont ici.
+  'deviceHash',
+  '*.deviceHash',
+  'subject',
+  '*.subject',
   'jwtSecret',
   '*.jwtSecret',
   'req.headers.authorization',

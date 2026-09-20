@@ -41,6 +41,23 @@ describe('createLogger — les secrets ne partent jamais dans les journaux', () 
     expect(sortie).not.toContain('device-abcdef');
   });
 
+  /**
+   * Defense en profondeur : aucun site d'appel ne journalise ces valeurs
+   * aujourd'hui, et rien ne garantit qu'aucun ne le fera. Le `deviceHash` est
+   * ce qui distingue le telephone d'un joueur de tous les autres ; le `subject`
+   * est ce meme hash, vu depuis la table des identites.
+   */
+  it('masque l empreinte d un appareil, sous ses deux noms', () => {
+    const { lines, stream } = capture();
+    createLogger(config, stream).info(
+      { deviceHash: 'hash-abcdef', identity: { subject: 'sujet-123456' } },
+      'ouverture de session',
+    );
+    const sortie = lines.join('');
+    expect(sortie).not.toContain('hash-abcdef');
+    expect(sortie).not.toContain('sujet-123456');
+  });
+
   it('masque un en-tete Authorization', () => {
     const { lines, stream } = capture();
     createLogger(config, stream).info(
