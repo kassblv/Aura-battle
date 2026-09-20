@@ -213,6 +213,22 @@ export const SERVER_MESSAGES = {
     ult: z.number().min(0),
     opponentLocked: z.boolean(),
     /**
+     * Rappel du fait que l'adversaire est un rejeu (docs/05 § « Fantomes »).
+     *
+     * Il n'etait annonce que dans `match:found`. Une application mobile tuee en
+     * arriere-plan — le cas le plus frequent — revenait par `match:rejoin` et
+     * finissait la partie **en croyant affronter quelqu'un**. Le drapeau doit
+     * survivre a la reprise, sinon la promesse d'honnetete ne tient que tant
+     * que le client ne redemarre pas.
+     *
+     * **Defaut a `false`, et pas optionnel** : le serveur le renseigne
+     * toujours — le type de sortie l'exige — mais un instantane venu d'un
+     * serveur anterieur aux fantomes n'en portait pas, et cette absence-la ne
+     * veut dire qu'une chose : il n'y avait pas de fantome a annoncer. Le
+     * client lit donc toujours un booleen, jamais `undefined`.
+     */
+    ghost: z.boolean().default(false),
+    /**
      * Rappel du nom de l'adversaire.
      *
      * Il n'etait annonce que dans `match:found`, donc une application tuee en

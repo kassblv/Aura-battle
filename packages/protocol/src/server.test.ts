@@ -136,6 +136,7 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
       energy: 11,
       ult: 57.5,
       opponentLocked: true,
+      ghost: false,
       history: [],
     };
     expect(parseServerMessage('match:state', base).success).toBe(true);
@@ -165,6 +166,7 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
       energy: 11,
       ult: 57.5,
       opponentLocked: true,
+      ghost: false,
       history: [],
     };
     expect(parseServerMessage('match:state', valide).success).toBe(true);
