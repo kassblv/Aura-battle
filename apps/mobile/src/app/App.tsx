@@ -24,6 +24,7 @@ import { InviteScreen } from './InviteScreen.jsx';
 import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
 import { memeGallery, stepMeme } from './memes.js';
+import { browserStore, loadProgress, saveProgress } from './persist.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
 /**
@@ -70,9 +71,19 @@ export function App(): JSX.Element {
 
   const session = useSession();
 
+  /**
+   * Ce que le joueur a deja fait, relu une seule fois au demarrage.
+   *
+   * Sans ce rangement, equiper un meme ou acheter une danse s'oubliait au
+   * rechargement — et le joueur n'en conclut pas que c'est provisoire, il en
+   * conclut que le jeu ne l'a pas ecoute.
+   */
+  const store = useMemo(() => browserStore(), []);
+  const saved = useMemo(() => loadProgress(store), [store]);
+
   const [wardrobe, setWardrobe] = useState<Wardrobe>(() => ({
-    look: defaultLook(),
-    owned: new Set<string>(),
+    look: saved?.look ?? defaultLook(),
+    owned: new Set(saved?.owned ?? []),
   }));
 
   const looks = useMemo(
@@ -125,8 +136,8 @@ export function App(): JSX.Element {
   const [memeId, setMemeId] = useState(() => gallery[0]?.animationId ?? '');
   const meme = gallery.find((card) => card.animationId === memeId) ?? gallery[0]!;
   const [emotes, setEmotes] = useState<EmoteLoadout>(() => ({
-    slots: defaultEmotes(),
-    owned: new Set<string>(),
+    slots: saved?.emotes ?? defaultEmotes(),
+    owned: new Set(saved?.owned ?? []),
   }));
   /**
    * La bourse et les possessions vivent ici en attendant le jalon M5.
@@ -135,9 +146,24 @@ export function App(): JSX.Element {
    * inventaire qu'on s'offre soi-meme.
    */
   const [shop, setShop] = useState<ShopState>(() => ({
-    wallet: { soft: 0, hard: 0 },
-    owned: new Set<string>(),
+    wallet: saved?.wallet ?? { soft: 0, hard: 0 },
+    owned: new Set(saved?.owned ?? []),
   }));
+
+  /**
+   * On range apres coup, jamais pendant le rendu.
+   *
+   * Ecrire dans `localStorage` pendant un rendu le rendrait impur, et React
+   * rejoue les rendus. L'effet, lui, ne s'execute qu'une fois l'etat arrete.
+   */
+  useEffect(() => {
+    saveProgress(store, {
+      look: wardrobe.look,
+      emotes: emotes.slots,
+      owned: [...shop.owned],
+      wallet: shop.wallet,
+    });
+  }, [store, wardrobe.look, emotes.slots, shop.owned, shop.wallet]);
 
   /**
    * Le profil.
