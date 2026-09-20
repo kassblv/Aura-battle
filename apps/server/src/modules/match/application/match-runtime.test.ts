@@ -1,8 +1,20 @@
 import { BALANCE, type Choice, type Seat } from '@aura/rules';
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
-import type { MatchClock, MatchNotifier, MatchRecord, TimerScheduler } from '../domain/ports.js';
+import type {
+  MatchClock,
+  MatchNotifier,
+  MatchRatingSettlement,
+  MatchRecord,
+  SeatRatingOutcome,
+  TimerScheduler,
+} from '../domain/ports.js';
 import { MatchRuntime } from './match-runtime.js';
+
+/** Attend que les micro-taches en attente (les `await` de `settleAndAnnounce`) se resolvent. */
+const flush = async (): Promise<void> => {
+  for (let i = 0; i < 5; i += 1) await Promise.resolve();
+};
 
 /** Note tout ce qui est envoye, pour pouvoir l'inspecter. */
 class RecordingNotifier implements MatchNotifier {
@@ -874,5 +886,122 @@ describe('journal — le squelette du rejeu survit a la troncature', () => {
     const seatEntries = record.events.length - phases;
     // Tout ce qui manque est impute a un siege : rien ne disparait en silence.
     expect(seatEntries + record.droppedEvents.a + record.droppedEvents.b).toBeGreaterThan(900);
+  });
+});
+
+describe('classement de fin de match (docs/05, jalon M5)', () => {
+  const OUTCOME: Readonly<Record<Seat, SeatRatingOutcome>> = {
+    a: {
+      before: { leaguePoints: 100, league: 'naissante' },
+      after: { leaguePoints: 122, league: 'naissante' },
+      rewards: { softCurrency: 20, xp: 30 },
+    },
+    b: {
+      before: { leaguePoints: 100, league: 'naissante' },
+      after: { leaguePoints: 82, league: 'naissante' },
+      rewards: { softCurrency: 8, xp: 12 },
+    },
+  };
+
+  class FakeSettlement implements MatchRatingSettlement {
+    calls: {
+      mode: string;
+      seats: Record<Seat, string>;
+      result: { winner: Seat | null; reason: string };
+    }[] = [];
+    failure: Error | null = null;
+
+    settle(input: {
+      mode: 'RANKED' | 'CASUAL' | 'INVITE' | 'SOLO';
+      seats: Readonly<Record<Seat, string>>;
+      result: { winner: Seat | null; reason: string };
+      atMs: number;
+    }): Promise<Readonly<Record<Seat, SeatRatingOutcome>>> {
+      this.calls.push({ mode: input.mode, seats: { ...input.seats }, result: input.result });
+      if (this.failure !== null) return Promise.reject(this.failure);
+      return Promise.resolve(OUTCOME);
+    }
+  }
+
+  let settlement: FakeSettlement;
+
+  beforeEach(() => {
+    settlement = new FakeSettlement();
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, null, settlement);
+    runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS, mode: 'RANKED' });
+  });
+
+  it('sans classement cable, match:end part neutre et sur-le-champ (retrocompatibilite)', () => {
+    const bare = new MatchRuntime(notifier, scheduler, clock);
+    bare.createMatch({ matchId: 'm_bare', seed: 'g', seats: SEATS });
+
+    bare.forfeit('m_bare', 'a');
+
+    const [end] = notifier.to(SEATS.b, 'match:end') as [ServerMessage<'match:end'>];
+    expect(end.rating).toEqual({
+      before: 0,
+      after: 0,
+      leagueBefore: 'sans_aura',
+      leagueAfter: 'sans_aura',
+    });
+    expect(end.rewards).toEqual({ softCurrency: 0, xp: 0 });
+  });
+
+  it('libere les sieges sur-le-champ, avant meme que le classement ne reponde', () => {
+    runtime.forfeit(MATCH_ID, 'a');
+    // Le classement n'a pas encore ete attendu : aucune micro-tache n'a tourne.
+    expect(runtime.isBusy(SEATS.a)).toBe(false);
+    expect(runtime.isBusy(SEATS.b)).toBe(false);
+  });
+
+  it('envoie le vrai classement une fois le calcul revenu', async () => {
+    runtime.forfeit(MATCH_ID, 'a');
+    await flush();
+
+    const [endA] = notifier.to(SEATS.a, 'match:end') as [ServerMessage<'match:end'>];
+    const [endB] = notifier.to(SEATS.b, 'match:end') as [ServerMessage<'match:end'>];
+    expect(endA.rating).toEqual({
+      before: 100,
+      after: 122,
+      leagueBefore: 'naissante',
+      leagueAfter: 'naissante',
+    });
+    expect(endA.rewards).toEqual({ softCurrency: 20, xp: 30 });
+    expect(endB.rating.after).toBe(82);
+  });
+
+  it('transmet le mode, les sieges et le resultat au service de classement', async () => {
+    runtime.forfeit(MATCH_ID, 'a');
+    await flush();
+
+    expect(settlement.calls).toHaveLength(1);
+    expect(settlement.calls[0]?.mode).toBe('RANKED');
+    expect(settlement.calls[0]?.seats).toEqual(SEATS);
+    expect(settlement.calls[0]?.result).toMatchObject({ winner: 'b', reason: 'forfeit' });
+  });
+
+  it('retombe sur un classement neutre si le calcul echoue, sans faire tomber le match', async () => {
+    settlement.failure = new Error('base de classement indisponible');
+
+    expect(() => {
+      runtime.forfeit(MATCH_ID, 'a');
+    }).not.toThrow();
+    await flush();
+
+    const [end] = notifier.to(SEATS.b, 'match:end') as [ServerMessage<'match:end'>];
+    expect(end.rating).toEqual({
+      before: 0,
+      after: 0,
+      leagueBefore: 'sans_aura',
+      leagueAfter: 'sans_aura',
+    });
+  });
+
+  it('n envoie match:end qu une seule fois par siege', async () => {
+    runtime.forfeit(MATCH_ID, 'a');
+    await flush();
+
+    expect(notifier.to(SEATS.a, 'match:end')).toHaveLength(1);
+    expect(notifier.to(SEATS.b, 'match:end')).toHaveLength(1);
   });
 });

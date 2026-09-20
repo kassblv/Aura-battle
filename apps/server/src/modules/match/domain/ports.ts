@@ -84,3 +84,36 @@ export interface MatchRecord {
 export interface MatchRepository {
   save(record: MatchRecord): Promise<void>;
 }
+
+/** Classement d'un siege avant et apres le match, et ce qu'il rapporte (docs/05, jalon M5). */
+export interface SeatRatingOutcome {
+  readonly before: { readonly leaguePoints: number; readonly league: string };
+  readonly after: { readonly leaguePoints: number; readonly league: string };
+  readonly rewards: { readonly softCurrency: number; readonly xp: number };
+}
+
+/**
+ * Classement et recompenses d'un match acheve (docs/05, ADR 0010).
+ *
+ * Realise par `rating/application/rating-settlement.service.ts` — le module
+ * match ne calcule rien, il decrit seulement ce dont il a besoin en retour.
+ * Meme montage que `MatchOpening` (defini par `matchmaking`, realise par
+ * `match/application/match-opener.ts`) : une interface definie a cote de son
+ * seul appelant, implementee par une classe qui vit ailleurs.
+ *
+ * **Asynchrone, a la difference de tout le reste de ce fichier.** Le runtime
+ * reste synchrone du premier tap au dernier ; seule la toute derniere etape —
+ * apres que le match a deja son vainqueur — attend une lecture puis une
+ * ecriture en base, pour que `match:end` porte un classement reel plutot
+ * qu'un decor. `MatchRuntime.announceEnd` libere les sieges et le minuteur
+ * **avant** cet appel, jamais apres : rien de ce qui suit ne doit retarder la
+ * disponibilite des deux joueurs pour leur prochain match.
+ */
+export interface MatchRatingSettlement {
+  settle(input: {
+    readonly mode: MatchRecord['mode'];
+    readonly seats: Readonly<Record<'a' | 'b', string>>;
+    readonly result: { readonly winner: 'a' | 'b' | null; readonly reason: string };
+    readonly atMs: number;
+  }): Promise<Readonly<Record<'a' | 'b', SeatRatingOutcome>>>;
+}

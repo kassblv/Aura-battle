@@ -26,10 +26,11 @@ import {
   type PlayerDirectory,
 } from '../domain/directory.js';
 import { MatchmakingQueue } from '../../matchmaking/application/queue.service.js';
+import { RATING_DIRECTORY, type RatingDirectory } from '../../rating/domain/ports.js';
 import { InviteService } from '../application/invites.js';
 import { MatchOpener } from '../application/match-opener.js';
 import { MatchRuntime } from '../application/match-runtime.js';
-import { SocketNotifier } from './socket-notifier.js';
+import { DEFAULT_LEAGUE, SocketNotifier } from './socket-notifier.js';
 
 /**
  * Passerelle temps reel (docs/03-pvp-protocol.md).
@@ -91,6 +92,7 @@ export class MatchGateway implements OnGatewayConnection {
     @Inject(MatchOpener) private readonly opener: MatchOpener,
     @Inject(MatchmakingQueue) private readonly queue: MatchmakingQueue,
     @Inject(PLAYER_DIRECTORY) private readonly directory: PlayerDirectory,
+    @Inject(RATING_DIRECTORY) private readonly ratings: RatingDirectory,
   ) {}
 
   /** Identifiant du joueur derriere une socket authentifiee. */
@@ -154,6 +156,27 @@ export class MatchGateway implements OnGatewayConnection {
         'MatchGateway',
       );
       return UNKNOWN_PLAYER_NAME;
+    }
+  }
+
+  /**
+   * Ligue du joueur, ou la ligue de depart.
+   *
+   * Meme raison que `displayNameOf` : lue une fois a la connexion pour que
+   * `MatchOpener` puisse l'annoncer a l'adversaire sans jamais attendre
+   * (`PlayerPresence.leagueOf`). Rafraichie ensuite par chaque match classe
+   * (`SocketNotifier.setLeague`, port `PresenceLeagueCache`) — cette lecture
+   * ne sert donc qu'une fois par session, au pire.
+   */
+  private async leagueOf(playerId: string): Promise<string> {
+    try {
+      return (await this.ratings.leaguesOf([playerId], Date.now())).get(playerId) ?? DEFAULT_LEAGUE;
+    } catch (cause) {
+      this.logger.warn(
+        `classement indisponible a la connexion de ${playerId} : ${describeCause(cause)}`,
+        'MatchGateway',
+      );
+      return DEFAULT_LEAGUE;
     }
   }
 
@@ -264,19 +287,23 @@ export class MatchGateway implements OnGatewayConnection {
     });
 
     /**
-     * Le nom est lu **apres** avoir pose le filtre entrant.
+     * Le nom et la ligue sont lus **apres** avoir pose le filtre entrant, en
+     * parallele — deux lectures independantes, aucune raison de les serialiser.
      *
      * C'est la seule attente de cette methode, et rien ne doit pouvoir en
      * profiter : tant que `socket.use` n'est pas installe, un client presse
      * enverrait ses messages sans limite de debit ni validation de schema.
      */
-    const displayName = await this.displayNameOf(state.playerId);
+    const [displayName, league] = await Promise.all([
+      this.displayNameOf(state.playerId),
+      this.leagueOf(state.playerId),
+    ]);
 
     // Parti pendant la lecture : l'enregistrer maintenant laisserait une
     // session fantome que `isConnected` declarerait vivante pour toujours.
     if (!socket.connected) return;
 
-    this.notifier.register(state.playerId, socket, displayName);
+    this.notifier.register(state.playerId, socket, displayName, league);
 
     // Revenu a temps : le compte a rebours d'abandon est desarme.
     this.runtime.notePlayerReconnected(state.playerId);

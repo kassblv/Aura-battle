@@ -1,0 +1,72 @@
+import type { RatingSnapshot } from './rating.js';
+
+/**
+ * Ports du module rating (architecture hexagonale, docs/02 ; jalon M5).
+ *
+ * Le calcul (`rating.ts`) ne sait ni lire ni ecrire Postgres. Ces contrats
+ * disent ce dont l'application a besoin de la base, rien de plus — la meme
+ * discipline que `matchmaking/domain/ports.ts` pour `RatingReader`, dont ce
+ * module prend le relais pour tout ce qui touche a l'ECRITURE du classement
+ * (ADR 0010) : la lecture seule utilisee par l'appariement reste ou elle est,
+ * elle n'a pas besoin d'en savoir plus qu'un MMR.
+ */
+
+/** Classement lu pour une saison, a un instant donne. */
+export interface SeasonRatings {
+  readonly seasonId: string;
+  /** Un joueur absent n'a pas encore de ligne : `STARTING_RATING` s'applique. */
+  readonly ratings: ReadonlyMap<string, RatingSnapshot>;
+}
+
+/**
+ * Lecture du classement complet (pas seulement le MMR) de plusieurs joueurs.
+ *
+ * `null` hors saison : aucune saison n'encadre l'instant recu, et aucune
+ * ecriture n'a de sens dans ce cas — un match peut tout de meme se jouer, il
+ * ne changera simplement le classement de personne.
+ */
+export interface RatingLookup {
+  loadForMatch(playerIds: readonly string[], nowMs: number): Promise<SeasonRatings | null>;
+}
+
+export const RATING_LOOKUP = 'RATING_LOOKUP';
+
+/** Ecriture du classement d'une saison, pour un ou plusieurs joueurs a la fois. */
+export interface RatingWriter {
+  saveMany(
+    seasonId: string,
+    entries: readonly { readonly playerId: string; readonly rating: RatingSnapshot }[],
+  ): Promise<void>;
+}
+
+export const RATING_WRITER = 'RATING_WRITER';
+
+/**
+ * Ligue affichee d'un joueur, pour l'annoncer a son adversaire.
+ *
+ * Sert exactement ce que `PlayerDirectory` sert pour le nom : une donnee
+ * lue a la connexion, pour que l'ouverture d'un match reste synchrone
+ * (`match/adapters/socket-notifier.ts`). `PlayerDirectory` refuse
+ * volontairement de connaitre le classement (docs/02) ; ce port existe donc a
+ * part, cote du module qui possede la donnee.
+ */
+export interface RatingDirectory {
+  leaguesOf(playerIds: readonly string[], nowMs: number): Promise<ReadonlyMap<string, string>>;
+}
+
+export const RATING_DIRECTORY = 'RATING_DIRECTORY';
+
+/**
+ * Rafraichit la ligue mise en cache pour un joueur connecte.
+ *
+ * Realise par `SocketNotifier` (docs/03) : la ligue lue a la connexion se
+ * perimerait autrement a chaque match classe joue dans la meme session, et
+ * `match:found` finirait par annoncer une ligue vieille de vingt manches.
+ * Synchrone, comme tout ce que `PlayerPresence` expose : l'ouverture d'un
+ * match ne doit jamais attendre.
+ */
+export interface PresenceLeagueCache {
+  setLeague(playerId: string, league: string): void;
+}
+
+export const PRESENCE_LEAGUE_CACHE = 'PRESENCE_LEAGUE_CACHE';

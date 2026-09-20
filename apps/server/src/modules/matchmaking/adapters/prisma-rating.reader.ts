@@ -1,4 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { currentSeasonId } from '../../../shared/current-season.js';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import type { RatingReader } from '../domain/ports.js';
 
@@ -19,23 +20,11 @@ export class PrismaRatingReader implements RatingReader {
   async mmrOf(playerIds: readonly string[], nowMs: number): Promise<ReadonlyMap<string, number>> {
     if (playerIds.length === 0) return new Map();
 
-    /**
-     * La saison est determinee par l'instant recu, jamais par `new Date()`.
-     *
-     * Une saison future peut etre creee a l'avance : prendre « la derniere
-     * saison » sans regarder ses dates ferait basculer tout le monde sur un
-     * classement vide avant l'heure.
-     */
-    const at = new Date(nowMs);
-    const season = await this.prisma.season.findFirst({
-      where: { startsAt: { lte: at }, endsAt: { gt: at } },
-      orderBy: { number: 'desc' },
-      select: { id: true },
-    });
-    if (season === null) return new Map();
+    const seasonId = await currentSeasonId(this.prisma, nowMs);
+    if (seasonId === null) return new Map();
 
     const ratings = await this.prisma.rating.findMany({
-      where: { seasonId: season.id, playerId: { in: [...playerIds] } },
+      where: { seasonId, playerId: { in: [...playerIds] } },
       select: { playerId: true, mmr: true },
     });
 

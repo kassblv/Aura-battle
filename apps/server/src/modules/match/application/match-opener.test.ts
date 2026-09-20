@@ -76,12 +76,13 @@ class FakeRuntime implements MatchStarter {
 /**
  * Presence : tout le monde est connecte sous son nom, sauf ce qu'on retire.
  *
- * Les deux reponses sont **synchrones**, comme le registre de sessions reel :
+ * Les trois reponses sont **synchrones**, comme le registre de sessions reel :
  * c'est ce qui permet a l'ouverture de n'avoir aucun point de suspension.
  */
 class FakePresence implements PlayerPresence {
   readonly absent = new Set<string>();
   readonly anonymous = new Set<string>();
+  readonly leagues = new Map<string, string>();
 
   isConnected(playerId: string): boolean {
     return !this.absent.has(playerId);
@@ -89,6 +90,10 @@ class FakePresence implements PlayerPresence {
 
   displayNameOf(playerId: string): string {
     return this.anonymous.has(playerId) ? UNKNOWN_PLAYER_NAME : `Nom de ${playerId}`;
+  }
+
+  leagueOf(playerId: string): string {
+    return this.leagues.get(playerId) ?? 'sans_aura';
   }
 }
 
@@ -135,6 +140,20 @@ describe('MatchOpener', () => {
 
     expect(notifier.foundBy('p1')?.opponent.displayName).toBe('Nom de p2');
     expect(notifier.foundBy('p2')?.opponent.displayName).toBe('Nom de p1');
+  });
+
+  /**
+   * La ligue etait ecrite en dur (« bronze », qui n'est meme pas une ligue du
+   * jeu). docs/05 : seule la ligue est publique, jamais le MMR.
+   */
+  it('annonce a chaque joueur la ligue de son ADVERSAIRE, jamais la sienne', () => {
+    presence.leagues.set('p1', 'stable');
+    presence.leagues.set('p2', 'legendaire');
+
+    open();
+
+    expect(notifier.foundBy('p1')?.opponent.league).toBe('legendaire');
+    expect(notifier.foundBy('p2')?.opponent.league).toBe('stable');
   });
 
   /** Un nom manquant ne vaut pas un duel annule. */

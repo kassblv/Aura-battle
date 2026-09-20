@@ -78,7 +78,14 @@ Référence : prototype, `docs/02-architecture.md`.
 Référence : `docs/05-matchmaking-ranking.md`.
 
 - [x] File Redis, worker d'appariement (500 ms), fenêtre MMR qui s'élargit (±50 → ±400), `queue:status` — ADR 0009. L'appariement est pur et testé ; Redis est un adaptateur derrière un port ; `queue:leave`, la déconnexion et l'ouverture d'un match retirent le ticket. **Un seul chemin d'ouverture** avec l'invitation. Le MMR est *lu* (`Rating.mmr`, 1000 par défaut), jamais calculé — c'est la ligne suivante. Une seule région (`global`) : ni le modèle de données ni le protocole n'en portent encore.
-- [ ] MMR (décision Glicko-2 ou Elo consignée en ADR), LP, ligues, placements, saison — **rien d'écrit en base ; `match:found.league` vaut encore `bronze` en dur**
+- [x] MMR (décision Elo à K variable consignée en ADR 0010), LP, ligues, placements — le
+  calcul est pur et testé par propriété (`apps/server/src/modules/rating/domain/rating.ts`),
+  orchestré par `RatingSettlementService` (module `rating`, sans module Nest propre — câblé
+  dans `match.module.ts`, ADR 0010), et écrit en base pour chaque match `RANKED` à la fin du
+  match (`MatchRuntime.announceEnd`, qui libère les sièges avant d'attendre ce calcul).
+  `match:found.league` lit la vraie ligue, mise en cache à la connexion et rafraîchie à chaque
+  match classé. **Non fait : la réinitialisation douce de fin de saison, et le MMR caché
+  séparé de la partie rapide** (`docs/05` les documente déjà, hors périmètre de ce jalon).
 - [ ] Enregistrement des fantômes et rejeu serveur ; LP réduits ; drapeau `ghost` — **non fait ; le drapeau est toujours `false`, et la bascule vers un fantôme après 25 s / 12 s n'existe pas**
 - [ ] Écrans : partie classée, partie rapide, profil (ligue, historique), classement — **non fait : le client n'émet pas encore `queue:join`**
 - [ ] Tests : appariement par MMR ✅, élargissement ✅, entrée/sortie de file et tickets fantômes ✅ (e2e à deux clients) — **bascule vers fantôme et calcul des LP : non faits**

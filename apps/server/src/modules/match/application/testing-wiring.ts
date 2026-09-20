@@ -10,6 +10,7 @@ import {
   type RatingReader,
   type RecentOpponentStore,
 } from '../../matchmaking/domain/ports.js';
+import { RATING_DIRECTORY, type RatingDirectory } from '../../rating/domain/ports.js';
 import { SocketNotifier } from '../adapters/socket-notifier.js';
 import { MatchOpener } from './match-opener.js';
 import { MatchRuntime } from './match-runtime.js';
@@ -31,6 +32,11 @@ const NO_RATINGS: RatingReader = {
   mmrOf: () => Promise.resolve(new Map<string, number>()),
 };
 
+/** Personne n'a de ligue connue : `match.gateway.ts` retombe sur sa valeur par defaut. */
+const NO_LEAGUES: RatingDirectory = {
+  leaguesOf: () => Promise.resolve(new Map<string, string>()),
+};
+
 export function matchmakingTestProviders(options: { withWorker?: boolean } = {}): Provider[] {
   const providers: Provider[] = [
     { provide: MemoryQueueStore, useFactory: () => new MemoryQueueStore() },
@@ -45,6 +51,7 @@ export function matchmakingTestProviders(options: { withWorker?: boolean } = {})
       useFactory: (store: MemoryQueueStore) => store,
     },
     { provide: RATING_READER, useValue: NO_RATINGS },
+    { provide: RATING_DIRECTORY, useValue: NO_LEAGUES },
     {
       provide: MatchmakingQueue,
       inject: [QUEUE_TICKET_STORE, RECENT_OPPONENT_STORE, RATING_READER, SocketNotifier],

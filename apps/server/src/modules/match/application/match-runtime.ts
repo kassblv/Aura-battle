@@ -17,14 +17,40 @@ import {
   type Seat,
 } from '@aura/rules';
 import { CONTENT_VERSION } from '@aura/content';
+import { describeCause } from '../../../shared/describe-cause.js';
+import type { AppLog } from '../../../shared/log-port.js';
 import type {
   MatchClock,
   MatchNotifier,
+  MatchRatingSettlement,
   MatchRecord,
   MatchRepository,
+  SeatRatingOutcome,
   TimerScheduler,
 } from '../domain/ports.js';
 import { choiceStartFor, matchStateFor, rechargeStartFor, roundIntroFor } from './views.js';
+
+/**
+ * Classement neutre, quand il n'y en a pas de reel a montrer (docs/05).
+ *
+ * Trois cas s'y ramenent : aucun `MatchRatingSettlement` cable (tests d'avant
+ * M5), le calcul a echoue, ou — a l'interieur meme du service — aucune saison
+ * ne court. Dans les trois, `match:end` doit tout de meme partir : un
+ * classement neutre vaut mieux qu'un ecran de fin de match qui ne vient
+ * jamais.
+ */
+const NEUTRAL_RATING: Readonly<Record<Seat, SeatRatingOutcome>> = {
+  a: {
+    before: { leaguePoints: 0, league: 'sans_aura' },
+    after: { leaguePoints: 0, league: 'sans_aura' },
+    rewards: { softCurrency: 0, xp: 0 },
+  },
+  b: {
+    before: { leaguePoints: 0, league: 'sans_aura' },
+    after: { leaguePoints: 0, league: 'sans_aura' },
+    rewards: { softCurrency: 0, xp: 0 },
+  },
+};
 
 /**
  * Deroulement des matchs en cours (docs/02, docs/03 ; jalon M3).
@@ -205,6 +231,9 @@ export class MatchRuntime {
     private readonly config: BalanceConfig = BALANCE,
     /** Ecriture du match acheve. Absente, les matchs ne sont pas conserves. */
     private readonly repository: MatchRepository | null = null,
+    /** Classement et recompenses de fin de match. Absent, `match:end` reste neutre (jalon M5). */
+    private readonly ratingSettlement: MatchRatingSettlement | null = null,
+    private readonly log: AppLog | null = null,
   ) {}
 
   /**
@@ -633,22 +662,17 @@ export class MatchRuntime {
     match.cosmetics = { a: null, b: null };
   }
 
+  /**
+   * Fin de match : libere les sieges sur-le-champ, puis annonce un
+   * classement reel (docs/05, jalon M5).
+   *
+   * **La liberation des sieges et du minuteur passe avant tout le reste, et
+   * ne depend d'aucune attente.** Le classement, lui, a besoin d'une lecture
+   * puis d'une ecriture en base (`MatchRatingSettlement.settle`) : le
+   * decoupage garantit qu'une base lente retarde au pire l'ecran de fin de
+   * match, jamais la disponibilite des deux joueurs pour le suivant.
+   */
   private announceEnd(match: LiveMatch, result: { winner: Seat | null; reason: string }): void {
-    const payload: ServerMessage<'match:end'> = {
-      matchId: match.matchId,
-      winner: result.winner,
-      reason: result.reason as ServerMessage<'match:end'>['reason'],
-      // Classement et recompenses arrivent au jalon M5.
-      rating: { before: 1_000, after: 1_000, leagueBefore: 'bronze', leagueAfter: 'bronze' },
-      rewards: { softCurrency: 0, xp: 0 },
-    };
-
-    for (const seat of SEATS) {
-      this.notifier.send(match.seats[seat], 'match:end', payload);
-    }
-
-    this.persist(match, result);
-
     // Un match termine ne doit plus rien retenir : ni minuteur, ni memoire.
     this.scheduler.cancel(match.matchId);
     for (const seat of SEATS) {
@@ -661,6 +685,70 @@ export class MatchRuntime {
       if (this.seatedIn.get(match.seats[seat]) === match.matchId) {
         this.seatedIn.delete(match.seats[seat]);
       }
+    }
+
+    this.persist(match, result);
+
+    if (this.ratingSettlement === null) {
+      // Pas de classement cable (tests, ou jalon anterieur a M5) : le match
+      // se termine sur un classement neutre, envoye sans la moindre attente.
+      this.sendMatchEnd(match, result, NEUTRAL_RATING);
+      return;
+    }
+
+    void this.settleAndAnnounce(match, result);
+  }
+
+  /**
+   * Calcule le classement de fin de match, puis l'annonce.
+   *
+   * Seule methode asynchrone du runtime : tout le reste, du premier tap au
+   * dernier, reste synchrone (regle d'or n°1 : le serveur decide, sans
+   * attendre, ce qui est jouable). Celle-ci n'intervient qu'apres que le match
+   * a deja son vainqueur — rien qu'elle fasse ne peut plus changer une seule
+   * regle de jeu, seulement le classement affiche.
+   */
+  private async settleAndAnnounce(
+    match: LiveMatch,
+    result: { winner: Seat | null; reason: string },
+  ): Promise<void> {
+    let outcome: Readonly<Record<Seat, SeatRatingOutcome>>;
+    try {
+      outcome = await this.ratingSettlement!.settle({
+        mode: match.mode,
+        seats: match.seats,
+        result,
+        atMs: this.clock.now(),
+      });
+    } catch (cause) {
+      this.log?.warn(
+        `classement de fin de match indisponible pour ${match.matchId} : ${describeCause(cause)}`,
+      );
+      outcome = NEUTRAL_RATING;
+    }
+
+    this.sendMatchEnd(match, result, outcome);
+  }
+
+  private sendMatchEnd(
+    match: LiveMatch,
+    result: { winner: Seat | null; reason: string },
+    outcome: Readonly<Record<Seat, SeatRatingOutcome>>,
+  ): void {
+    for (const seat of SEATS) {
+      const seatOutcome = outcome[seat];
+      this.notifier.send(match.seats[seat], 'match:end', {
+        matchId: match.matchId,
+        winner: result.winner,
+        reason: result.reason as ServerMessage<'match:end'>['reason'],
+        rating: {
+          before: seatOutcome.before.leaguePoints,
+          after: seatOutcome.after.leaguePoints,
+          leagueBefore: seatOutcome.before.league,
+          leagueAfter: seatOutcome.after.league,
+        },
+        rewards: seatOutcome.rewards,
+      });
     }
   }
 

@@ -41,15 +41,19 @@ export interface MatchStarter {
 }
 
 /**
- * Qui est connecte, et sous quel nom.
+ * Qui est connecte, sous quel nom, et dans quelle ligue.
  *
- * Les deux reponses sont synchrones : elles viennent du registre des sessions,
- * rempli a la connexion. Un port plutot que le notifier lui-meme, parce que
- * « a qui j'envoie » et « qui est la » sont deux questions distinctes.
+ * Les trois reponses sont synchrones : elles viennent du registre des
+ * sessions, rempli a la connexion et rafraichi a chaque match classe pour la
+ * ligue (`PresenceLeagueCache`, module `rating`). Un port plutot que le
+ * notifier lui-meme, parce que « a qui j'envoie » et « qui est la » sont deux
+ * questions distinctes.
  */
 export interface PlayerPresence {
   isConnected(playerId: string): boolean;
   displayNameOf(playerId: string): string;
+  /** Ligue publique du joueur (docs/05 « MMR et ligues » : la ligue, pas le MMR, est publique). */
+  leagueOf(playerId: string): string;
 }
 
 /**
@@ -145,11 +149,11 @@ export class MatchOpener {
       this.notifier.send(playerId, 'match:found', {
         matchId,
         seat,
-        // Le nom de l'ADVERSAIRE, pas le sien. Il a ete code en dur : les deux
-        // joueurs voyaient « Adversaire », et le bandeau ne designait personne.
+        // Le nom ET la ligue de l'ADVERSAIRE, jamais les siens (docs/05 :
+        // seule la ligue est publique, le MMR ne l'est pas).
         opponent: {
           displayName: this.presence.displayNameOf(opponentId),
-          league: 'bronze',
+          league: this.presence.leagueOf(opponentId),
           cosmetics: {},
         },
         protocolVersion: PROTOCOL_VERSION,

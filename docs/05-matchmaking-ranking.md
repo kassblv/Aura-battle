@@ -67,7 +67,9 @@ Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste l
 
 ## MMR et ligues
 
-- MMR caché : **Glicko-2** (ou Elo à K variable si plus simple au départ ; décision à consigner en ADR).
+- MMR caché : **Elo à K variable** (décision consignée dans l'ADR 0010 : Glicko-2 suppose des
+  périodes de classement groupant plusieurs matchs, incompatible avec un règlement immédiat, un
+  match à la fois).
 - Ligues visibles avec points de ligue (LP), reprenant les rangs du prototype :
 
 | Ligue | LP |
@@ -82,6 +84,47 @@ Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste l
 - LP gagnés/perdus : base ±20, corrigée par l'écart entre MMR et LP pour converger (gain plus fort si le MMR est au-dessus des LP).
 - 5 matchs de placement par saison.
 - Saison de 8 semaines ; réinitialisation douce en fin de saison (LP ramenés vers la médiane, MMR compressé de 20 % vers 1 000).
+
+### Précisions d'implémentation (jalon M5, ADR 0010)
+
+Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste laissait ouvert.
+
+- **K vaut 60 durant les cinq matchs de placement de la saison**, puis 24 ensuite — le rôle
+  qu'une déviation élevée jouerait sous Glicko-2, sans en modéliser une explicitement.
+- **La correction MMR/LP se lit sur le MMR d'avant le match**, jamais celui d'après : sinon le
+  résultat du match amplifierait sa propre correction. Elle est plafonnée à ±10 — strictement
+  sous la base ±20 — pour qu'un vainqueur ne reparte **jamais** avec un delta nul ou négatif, ni
+  un perdant avec un delta nul ou positif.
+- **Un forfait compte comme une défaite** pour le MMR et les LP : sans cela, abandonner ne
+  coûterait rien de plus qu'un écran fermé plus tôt. **Un double abandon** (les deux sièges
+  inactifs deux manches de suite) **ne change le classement de personne** : ni l'un ni l'autre
+  n'a joué la manche qui termine le match.
+- **Récompenses de fin de match** (`softCurrency`, `xp` — cosmétique uniquement, ADR 0003 ; le
+  MMR/LP ne s'achète jamais) :
+
+  | Issue | Monnaie douce | XP |
+  |---|---|---|
+  | Victoire | 20 | 30 |
+  | Nul (départage complet) | 12 | 18 |
+  | Défaite jouée jusqu'au bout | 8 | 12 |
+  | Abandon (forfait) | **0** | **0** |
+
+  L'abandon rapporte strictement moins qu'une défaite jouée, et rien du tout : sans ce plancher
+  à zéro, la boucle « rejoindre la file, abandonner, recommencer » serait plus rentable que
+  jouer, sans jamais risquer une défaite prolongée.
+- **Seuls les matchs classés (`RANKED`) écrivent un classement.** Une partie rapide ou une
+  invitation affiche le classement classé existant du joueur (avant = après, rien ne change) ;
+  aucune des deux ne le modifie. Les récompenses, elles, s'appliquent à tout match joué entre
+  deux humains — seul l'abandon les annule, quel que soit le mode.
+- **Les six ligues sont transmises comme des identifiants stables** (`sans_aura`, `naissante`,
+  `stable`, `rayonnante`, `legendaire`, `infinie`), pas comme des libellés français : le client
+  les traduit par ses propres clés i18n (CLAUDE.md, règle des langues). `match:end.rating`
+  porte les **LP**, jamais le MMR — qui reste caché même du joueur concerné.
+- **`match:found.league` lit une ligue mise en cache à la connexion**, comme le nom affiché
+  (docs/03), et rafraîchie à chaque match classé — sans quoi elle resterait figée à sa valeur
+  d'entrée en session pendant vingt manches classées.
+- **Hors périmètre de ce jalon** : la réinitialisation douce de fin de saison (dernière ligne
+  ci-dessus) et le MMR caché séparé de la partie rapide ne sont pas encore codés.
 
 ## Fantômes
 

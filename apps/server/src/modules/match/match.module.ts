@@ -15,6 +15,15 @@ import {
   type QueueTicketStore,
   type RecentOpponentStore,
 } from '../matchmaking/domain/ports.js';
+import { PrismaRatingRepository } from '../rating/adapters/prisma-rating.repository.js';
+import { RatingSettlementService } from '../rating/application/rating-settlement.service.js';
+import {
+  RATING_DIRECTORY,
+  RATING_LOOKUP,
+  RATING_WRITER,
+  type RatingLookup,
+  type RatingWriter,
+} from '../rating/domain/ports.js';
 import { MatchGateway } from './adapters/match.gateway.js';
 import { PrismaPlayerDirectory } from './adapters/prisma-directory.js';
 import { PLAYER_DIRECTORY } from './domain/directory.js';
@@ -50,15 +59,64 @@ import { MatchRuntime } from './application/match-runtime.js';
     SystemMatchClock,
     InviteService,
     PrismaMatchRepository,
+
+    /**
+     * Classement : un seul adaptateur Prisma realise les trois ports — meme
+     * raison que `RedisQueueStore` pour la file (ADR 0009).
+     */
+    {
+      provide: PrismaRatingRepository,
+      inject: [PrismaService, PinoLoggerService],
+      useFactory: (prisma: PrismaService, logger: PinoLoggerService) =>
+        new PrismaRatingRepository(prisma, logger),
+    },
+    {
+      provide: RATING_LOOKUP,
+      inject: [PrismaRatingRepository],
+      useFactory: (repository: PrismaRatingRepository) => repository,
+    },
+    {
+      provide: RATING_WRITER,
+      inject: [PrismaRatingRepository],
+      useFactory: (repository: PrismaRatingRepository) => repository,
+    },
+    {
+      provide: RATING_DIRECTORY,
+      inject: [PrismaRatingRepository],
+      useFactory: (repository: PrismaRatingRepository) => repository,
+    },
+    {
+      provide: RatingSettlementService,
+      inject: [RATING_LOOKUP, RATING_WRITER, SocketNotifier, PinoLoggerService],
+      useFactory: (
+        lookup: RatingLookup,
+        writer: RatingWriter,
+        // `SocketNotifier` realise aussi `PresenceLeagueCache` : la ligue mise
+        // en cache a la connexion doit etre la meme qu'on rafraichit ici.
+        presenceCache: SocketNotifier,
+        logger: PinoLoggerService,
+      ) => new RatingSettlementService(lookup, writer, presenceCache, logger),
+    },
+
     {
       provide: MatchRuntime,
-      inject: [SocketNotifier, TimeoutScheduler, SystemMatchClock, PrismaMatchRepository],
+      inject: [
+        SocketNotifier,
+        TimeoutScheduler,
+        SystemMatchClock,
+        PrismaMatchRepository,
+        RatingSettlementService,
+        PinoLoggerService,
+      ],
       useFactory: (
         notifier: SocketNotifier,
         scheduler: TimeoutScheduler,
         clock: SystemMatchClock,
         repository: PrismaMatchRepository,
-      ) => new MatchRuntime(notifier, scheduler, clock, BALANCE, repository),
+        ratingSettlement: RatingSettlementService,
+        logger: PinoLoggerService,
+      ) =>
+        new MatchRuntime(notifier, scheduler, clock, BALANCE, repository, ratingSettlement, logger),
     },
     PrismaPlayerDirectory,
     // Jeton nomme : la passerelle depend du **port**, pas de Prisma. Le nom

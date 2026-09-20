@@ -1,0 +1,152 @@
+import { randomUUID } from 'node:crypto';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { PrismaClient } from '@prisma/client';
+import { afterAll, describe, expect, it } from 'vitest';
+import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { loadConfig } from '../../../shared/config.js';
+import { STARTING_RATING } from '../domain/rating.js';
+import { PrismaRatingRepository } from './prisma-rating.repository.js';
+
+/**
+ * Test d'integration : ce que Postgres **accepte**, pas seulement ce qu'on lui
+ * demande (voir `prisma-match.integration.test.ts` pour la meme distinction).
+ *
+ * Deux points n'importent que Postgres puisse les trancher : la cle composite
+ * `playerId_seasonId` telle qu'ecrite dans `schema.prisma`, et l'`upsert` en
+ * transaction sur deux joueurs a la fois. Un double de test ne peut demontrer
+ * ni l'un ni l'autre.
+ *
+ * Se saute proprement si la base n'est pas joignable (voir la meme garde dans
+ * `prisma-match.integration.test.ts`).
+ */
+
+try {
+  process.loadEnvFile(new URL('../../../../../../.env', import.meta.url));
+} catch {
+  // En CI les variables viennent de l'environnement.
+}
+
+const databaseUrl = process.env.DATABASE_URL ?? '';
+
+/** Meme garde que `prisma-match.integration.test.ts` : jamais une base distante. */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+
+function isLocalDatabase(url: string): boolean {
+  try {
+    return LOCAL_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+async function connect(): Promise<PrismaClient | null> {
+  if (databaseUrl === '') return null;
+  if (!isLocalDatabase(databaseUrl)) {
+    console.warn('[integration] DATABASE_URL ne designe pas un hote local : test ignore.');
+    return null;
+  }
+  try {
+    const client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    await client.$queryRaw`select 1`;
+    return client;
+  } catch {
+    return null;
+  }
+}
+
+const prisma = await connect();
+const reachable = prisma !== null;
+
+afterAll(async () => {
+  await prisma?.$disconnect();
+});
+
+async function createPlayer(): Promise<string> {
+  const player = await prisma!.player.create({
+    data: { displayName: `Test ${randomUUID().slice(0, 8)}` },
+    select: { id: true },
+  });
+  return player.id;
+}
+
+function buildRepository(): PrismaRatingRepository {
+  const config = loadConfig({
+    DATABASE_URL: databaseUrl,
+    REDIS_URL: 'redis://localhost:6379',
+    JWT_SECRET: 'un-secret-assez-long',
+    NODE_ENV: 'test',
+  });
+  return new PrismaRatingRepository(prisma as never, new PinoLoggerService(createLogger(config)));
+}
+
+describe.skipIf(!reachable)('ecriture et lecture reelles du classement', () => {
+  it('ne trouve aucun classement pour des joueurs qui n en ont jamais eu', async () => {
+    const [playerA, playerB] = [await createPlayer(), await createPlayer()];
+    const repository = buildRepository();
+
+    try {
+      const found = await repository.loadForMatch([playerA, playerB], Date.now());
+      expect(found?.ratings.size).toBe(0);
+    } finally {
+      await prisma!.player.deleteMany({ where: { id: { in: [playerA, playerB] } } });
+    }
+  });
+
+  it('ecrit deux joueurs en une transaction, et les relit exactement', async () => {
+    const [playerA, playerB] = [await createPlayer(), await createPlayer()];
+    const repository = buildRepository();
+
+    try {
+      const before = await repository.loadForMatch([playerA, playerB], Date.now());
+      expect(before).not.toBeNull();
+      const seasonId = before!.seasonId;
+
+      const ratingA = {
+        ...STARTING_RATING,
+        mmr: 1_024,
+        leaguePoints: 120,
+        league: 'naissante' as const,
+      };
+      const ratingB = { ...STARTING_RATING, mmr: 976, wins: 3, losses: 1 };
+      await repository.saveMany(seasonId, [
+        { playerId: playerA, rating: ratingA },
+        { playerId: playerB, rating: ratingB },
+      ]);
+
+      const after = await repository.loadForMatch([playerA, playerB], Date.now());
+      expect(after?.ratings.get(playerA)).toEqual(ratingA);
+      expect(after?.ratings.get(playerB)).toEqual(ratingB);
+
+      // La deuxieme ecriture doit REMPLACER, pas s'additionner : c'est un
+      // upsert, jamais un create qui echouerait sur la cle composite.
+      const updatedA = { ...ratingA, mmr: 1_050 };
+      await repository.saveMany(seasonId, [{ playerId: playerA, rating: updatedA }]);
+      const reread = await repository.loadForMatch([playerA], Date.now());
+      expect(reread?.ratings.get(playerA)?.mmr).toBe(1_050);
+    } finally {
+      await prisma!.rating.deleteMany({ where: { playerId: { in: [playerA, playerB] } } });
+      await prisma!.player.deleteMany({ where: { id: { in: [playerA, playerB] } } });
+    }
+  });
+
+  it('rend la ligue ecrite via leaguesOf', async () => {
+    const playerA = await createPlayer();
+    const repository = buildRepository();
+
+    try {
+      const before = await repository.loadForMatch([playerA], Date.now());
+      await repository.saveMany(before!.seasonId, [
+        {
+          playerId: playerA,
+          rating: { ...STARTING_RATING, leaguePoints: 2_600, league: 'legendaire' },
+        },
+      ]);
+
+      const leagues = await repository.leaguesOf([playerA], Date.now());
+      expect(leagues.get(playerA)).toBe('legendaire');
+    } finally {
+      await prisma!.rating.deleteMany({ where: { playerId: playerA } });
+      await prisma!.player.delete({ where: { id: playerA } });
+    }
+  });
+});
