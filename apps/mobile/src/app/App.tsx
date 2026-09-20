@@ -353,7 +353,6 @@ export function App(): JSX.Element {
         {!showOnboarding && nav.screen === 'home' && (
           <HomeScreen
             profile={profile}
-            seasonLabel="Saison 1 · démonstration"
             mode={mode}
             onToggleMode={() => {
               setMode((current) => (current === 'ranked' ? 'casual' : 'ranked'));
