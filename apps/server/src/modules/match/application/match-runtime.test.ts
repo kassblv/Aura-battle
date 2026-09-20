@@ -143,6 +143,28 @@ describe('un joueur ne tient qu un siege', () => {
     );
   });
 
+  /**
+   * Un joueur ne peut pas s'asseoir en face de lui-meme.
+   *
+   * `isBusy` ne suffit pas : au moment du controle le match n'existe pas
+   * encore, donc les deux appels rendent `false` pour le meme joueur libre.
+   * L'index `seatedIn` ecrivait alors deux fois la meme cle, et la partie
+   * s'ouvrait avec le meme joueur des deux cotes.
+   *
+   * Ce n'etait pas exploitable tant que l'invitation etait le seul chemin :
+   * `invites.ts` refuse de rejoindre sa propre invitation. Mais c'etait une
+   * garde du CHEMIN, pas de l'ouverture — et la file d'attente est un second
+   * chemin. Un joueur assis contre lui-meme controle les deux choix, gagne a
+   * coup sur, et la partie part en base en `RANKED`.
+   */
+  it('refuse d asseoir un joueur en face de lui-meme', () => {
+    expect(
+      runtime.createMatch({ matchId: 'm_02', seed: 'g', seats: { a: 'seul', b: 'seul' } }),
+    ).toBe(false);
+    expect(runtime.phaseOf('m_02')).toBeNull();
+    expect(runtime.isBusy('seul')).toBe(false);
+  });
+
   it('dit qui est occupe', () => {
     expect(runtime.isBusy('player-a')).toBe(true);
     expect(runtime.isBusy('inconnu')).toBe(false);

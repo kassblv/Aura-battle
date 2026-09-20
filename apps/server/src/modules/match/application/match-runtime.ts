@@ -314,6 +314,20 @@ export class MatchRuntime {
     mode?: MatchRecord['mode'];
   }): boolean {
     if (this.matches.has(input.matchId)) return false;
+    /**
+     * « Libre » inclut « pas deja l'autre siege de ce match ».
+     *
+     * `isBusy` ne peut pas l'attraper : au moment du controle le match n'existe
+     * pas encore, donc les deux appels rendent `false` pour le meme joueur
+     * libre, et l'index `seatedIn` ecrivait deux fois la meme cle. Un joueur
+     * assis contre lui-meme controle les deux choix et gagne a coup sur.
+     *
+     * Seule `invites.ts` l'empechait, en refusant de rejoindre sa propre
+     * invitation — une garde du CHEMIN, pas de l'ouverture. La file d'attente
+     * est un second chemin, et l'invariant n'a pas a dependre de celui qu'on
+     * emprunte.
+     */
+    if (input.seats.a === input.seats.b) return false;
     if (SEATS.some((seat) => this.isBusy(input.seats[seat]))) return false;
 
     const step = createMatch(input.seed, {
