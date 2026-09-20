@@ -5,8 +5,7 @@ import { createArenaScene } from './scene.js';
 
 function makeScene() {
   const grid = new Texture();
-  const glow = new Texture();
-  return { arena: createArenaScene({ textures: { grid, glow }, rng: () => 0.5 }), grid, glow };
+  return { arena: createArenaScene({ textures: { grid }, rng: () => 0.5 }), grid };
 }
 
 describe('createArenaScene', () => {
@@ -27,9 +26,6 @@ describe('createArenaScene', () => {
       'crowd',
       'fighter',
       'fighter',
-      'aura-glow',
-      'aura-glow',
-      'particles',
     ]);
   });
 
@@ -92,16 +88,14 @@ describe('createArenaScene', () => {
   });
 
   it('libere tout ce qu elle detient, textures comprises', () => {
-    const { arena, grid, glow } = makeScene();
+    const { arena, grid } = makeScene();
     const gridSpy = vi.spyOn(grid, 'dispose');
-    const glowSpy = vi.spyOn(glow, 'dispose');
     const stageSpy = vi.spyOn(arena.stage, 'dispose');
 
     arena.dispose();
 
     expect(stageSpy).toHaveBeenCalledOnce();
     expect(gridSpy).toHaveBeenCalledOnce();
-    expect(glowSpy).toHaveBeenCalledOnce();
     expect(arena.scene.children).toHaveLength(0);
   });
 
@@ -109,84 +103,6 @@ describe('createArenaScene', () => {
     const { arena } = makeScene();
     arena.dispose();
     expect(() => arena.dispose()).not.toThrow();
-  });
-});
-
-describe('auras', () => {
-  const frame = (elapsed: number) => ({
-    elapsed,
-    delta: 1 / 60,
-    framing: wideFraming(),
-    hype: 0.5,
-    shake: 0,
-    reducedMotion: false,
-  });
-
-  function burn(arena: ReturnType<typeof createArenaScene>, seconds: number): void {
-    for (let i = 0; i < seconds * 60; i++) arena.update(frame(i / 60));
-  }
-
-  it('joue l effet demande et retombe sur la Lueur si on l ignore', () => {
-    const { arena } = makeScene();
-    arena.setAura('a', { effectId: 'fx.galaxy', color: '#b36bff', intensity: 1 });
-    arena.setAura('b', { effectId: 'fx.inexistant', color: '#4fe3ff', intensity: 1 });
-    expect(arena.auras.a.style.id).toBe('fx.galaxy');
-    expect(arena.auras.b.style.id).toBe('fx.glow');
-    arena.dispose();
-  });
-
-  it('remplit le puits a particules pendant que l arene tourne', () => {
-    const { arena } = makeScene();
-    arena.setAura('a', { effectId: 'fx.flames', color: '#ff3b3b', intensity: 1 });
-    arena.setAura('b', { effectId: 'fx.vortex', color: '#4fe3ff', intensity: 1 });
-    burn(arena, 2);
-    expect(arena.particles.counts.additive).toBeGreaterThan(50);
-    expect(arena.particles.counts.additive).toBeLessThanOrEqual(2400);
-    arena.dispose();
-  });
-
-  /**
-   * Hors match, le siege de droite est cache.
-   *
-   * Sans cette coupure, l accueil montre l aura d un adversaire absent,
-   * flottant a un metre cinquante du joueur.
-   */
-  it('n emet rien pour un combattant cache', () => {
-    const { arena } = makeScene();
-    arena.fighters.b.root.visible = false;
-    arena.setAura('a', { effectId: 'fx.sparks', color: '#ffcf3f', intensity: 1 });
-    arena.setAura('b', { effectId: 'fx.flames', color: '#ff3b3b', intensity: 1 });
-    burn(arena, 2);
-    expect(arena.auras.b.particleCount).toBe(0);
-    expect(arena.auras.a.particleCount).toBeGreaterThan(0);
-    arena.dispose();
-  });
-
-  it('accroche l aura au combattant, pas au centre de l arene', () => {
-    const { arena } = makeScene();
-    arena.setAura('a', { effectId: 'fx.vortex', color: '#ffcf3f', intensity: 1 });
-    burn(arena, 2);
-    const glow = arena.scene.children.filter((c) => c.name === 'aura-glow');
-    expect(glow[0]?.getObjectByName('aura-halo')?.position.x).toBeCloseTo(
-      arena.fighters.a.root.position.x,
-      6,
-    );
-    arena.dispose();
-  });
-
-  it('adapte la taille des points au format de la fenetre', () => {
-    const { arena } = makeScene();
-    const scaleOf = (): number => {
-      const points = arena.particles.group.children[0] as unknown as {
-        material: { uniforms: Record<string, { value: number }> };
-      };
-      return points.material.uniforms.uScale!.value;
-    };
-    arena.setSize(844, 390, 2);
-    const small = scaleOf();
-    arena.setSize(844, 780, 2);
-    expect(scaleOf()).toBeCloseTo(small * 2, 6);
-    arena.dispose();
   });
 });
 

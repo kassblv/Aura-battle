@@ -9,6 +9,9 @@
     "tier": 2
   },
   "rarity": "default",
+  "framing": {
+    "shot": "bust"
+  },
   "loop": {
     "duration": 1.8,
     "weights": null,

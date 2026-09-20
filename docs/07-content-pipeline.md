@@ -15,6 +15,7 @@ Schéma : `docs/content/animation.schema.json` (à copier dans `packages/content
   "name": { "fr": "Six Seven" },
   "move": { "style": "hype", "tier": 1 },
   "rarity": "common",
+  "framing": { "shot": "body" },
   "loop": { "duration": 0.72, "weights": null, "ease": false },
   "flags": { "armsFront": false, "armsBack": false, "noFace": false, "float": 0, "expression": "neutral" },
   "emit": ["6", "7"],
@@ -38,6 +39,19 @@ Schéma : `docs/content/animation.schema.json` (à copier dans `packages/content
 - Interpolation Catmull-Rom en boucle, `ease: true` pour marquer des arrêts nets. `weights` = durée relative de chaque segment.
 - Mains : `[[forme, paume], [forme, paume]]` pour [arrière, avant]. Formes : `relax, fist, open, point, L, peace`. Paumes : `in, up, down, fwd, back`.
 - Expressions : `neutral, smug, sad, angry, hurt`.
+
+### Cadrage de prévisualisation (`framing`)
+
+Optionnel, `{ "shot": "body" }` par défaut.
+
+| Valeur | Ce que la caméra montre | Pour quoi |
+|---|---|---|
+| `body` | Toute la silhouette, distance ajustée à l'encombrement réel de l'animation | Défaut. Le salto arrière, la lévitation et la T-pose sont cadrés plus large sans rien déclarer. |
+| `bust` | Du bassin à la tête | Les mèmes qui se jouent au visage et aux mains : « Mewing », « Chut », « L sur le front », « Regard au loin ». |
+
+Le champ ne sert **que** la vitrine de l'accueil, où le joueur inspecte un mème : la caméra du match est une mise en scène, elle appartient au jeu et ignore ce cadrage.
+
+`body` n'est pas une distance fixe. Le client échantillonne la boucle entière, mesure l'encombrement du squelette (élévation, lévitation et salto compris) et en déduit la distance. Une nouvelle danse qui saute plus haut est donc cadrée correctement sans qu'on touche à une ligne de code — c'est le sens de la règle d'or n°5.
 
 ## Autres cosmétiques
 

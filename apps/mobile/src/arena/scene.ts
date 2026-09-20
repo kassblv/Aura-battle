@@ -1,12 +1,10 @@
 import { Color, Fog, type PerspectiveCamera, Scene } from 'three';
-import { type AuraEmitter, type AuraGlow, type AuraLook, createAuraEmitter, createAuraGlow } from './aura.js';
-import { ArenaCameraRig, CAMERA_FOV, createArenaCamera, type CameraFraming } from './camera.js';
+import { ArenaCameraRig, createArenaCamera, type CameraFraming } from './camera.js';
 import { measureViewport, type Viewport } from './coords.js';
 import { createLighting } from './lighting.js';
 import { ARENA_COLORS } from './palette.js';
 import { createStage, type Stage } from './stage.js';
 import { createCrowd, type Crowd } from './crowd.js';
-import { createParticleFields, type ParticleFields, projectionScale } from './particles.js';
 import { createFighterRig, type FighterRig, type RigPlacement } from './rig.js';
 import { createToonGradientMap } from './toonGradient.js';
 import type { ArenaTextures } from './textures.js';
@@ -56,19 +54,9 @@ export interface ArenaScene {
   readonly stage: Stage;
   readonly crowd: Crowd;
   readonly fighters: Fighters;
-  /** Les deux auras, par siege. Exposees pour la vitrine et les tests. */
-  readonly auras: Readonly<Record<'a' | 'b', AuraEmitter>>;
-  readonly particles: ParticleFields;
   /** Metriques du calque 2D, mises a jour par `setSize`. */
   readonly viewport: Viewport;
-  /**
-   * Change l aura d un siege.
-   *
-   * Un effet inconnu retombe sur la Lueur sans lever : un cosmetique absent du
-   * client ne doit jamais couter sa manche au joueur.
-   */
-  setAura(seat: 'a' | 'b', look: AuraLook): void;
-  setSize(width: number, height: number, pixelRatio?: number): void;
+  setSize(width: number, height: number): void;
   update(frame: ArenaFrame): void;
   dispose(): void;
 }
@@ -106,32 +94,7 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
   fighters.a.root.position.x = -1.45;
   fighters.b.root.position.x = 1.45;
 
-  /**
-   * Les auras, et le puits ou elles se dessinent.
-   *
-   * Un seul puits pour toute l arene : les particules des deux combattants
-   * partent au GPU en deux appels de dessin, pas en plusieurs centaines.
-   */
-  const particles = createParticleFields();
-  const auras: Record<'a' | 'b', AuraEmitter> = {
-    a: createAuraEmitter(),
-    b: createAuraEmitter(),
-  };
-  const glows: Record<'a' | 'b', AuraGlow> = {
-    a: createAuraGlow({ texture: options.textures.glow }),
-    b: createAuraGlow({ texture: options.textures.glow }),
-  };
-
-  scene.add(
-    lighting.group,
-    stage.group,
-    crowd.group,
-    fighters.a.root,
-    fighters.b.root,
-    glows.a.group,
-    glows.b.group,
-    particles.group,
-  );
+  scene.add(lighting.group, stage.group, crowd.group, fighters.a.root, fighters.b.root);
 
   const camera = createArenaCamera(1);
   const rig = new ArenaCameraRig(camera);
@@ -145,51 +108,21 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
     stage,
     crowd,
     fighters,
-    auras,
-    particles,
 
     get viewport(): Viewport {
       return viewport;
     },
 
-    setAura(seat, look): void {
-      auras[seat].set(look);
-    },
-
-    setSize(width: number, height: number, pixelRatio = 1): void {
+    setSize(width: number, height: number): void {
       viewport = measureViewport(width, height);
       // Une fenetre repliee (rotation, clavier) donnerait un rapport NaN.
       camera.aspect = height > 0 ? width / height : 1;
       camera.updateProjectionMatrix();
-      // Une particule est un point : sa taille se compte en pixels, et depend
-      // donc de la hauteur rendue autant que du champ de vision.
-      particles.setProjectionScale(projectionScale(height, pixelRatio, CAMERA_FOV));
     },
 
     update(frame: ArenaFrame): void {
       stage.update(frame.elapsed, frame.hype);
       crowd.update(frame.elapsed, frame.hype);
-
-      particles.begin();
-      for (const seat of ['a', 'b'] as const) {
-        const emitter = auras[seat];
-        const glow = glows[seat];
-        emitter.setReducedMotion(frame.reducedMotion);
-        // Un combattant cache ne doit rien emettre : sinon l accueil affiche
-        // l aura d un adversaire absent, flottant dans le vide.
-        if (!fighters[seat].root.visible) {
-          emitter.clear();
-          glow.update(emitter, { x: 0, y: 0, z: 0 });
-          continue;
-        }
-        emitter.update(frame.delta);
-        // `root.position` est aux pieds du combattant : x pose par l appelant,
-        // y leve par le rig quand la pose decolle.
-        const origin = fighters[seat].root.position;
-        emitter.draw(particles, origin, frame.elapsed);
-        glow.update(emitter, origin);
-      }
-      particles.commit();
 
       rig.update({
         framing: frame.framing,
@@ -209,13 +142,9 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
       crowd.dispose();
       fighters.a.dispose();
       fighters.b.dispose();
-      glows.a.dispose();
-      glows.b.dispose();
-      particles.dispose();
       lighting.dispose();
       gradientMap.dispose();
       options.textures.grid.dispose();
-      options.textures.glow.dispose();
       scene.clear();
     },
   };

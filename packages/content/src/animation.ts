@@ -55,6 +55,24 @@ export interface AnimationFrame {
   readonly pitch?: number;
 }
 
+/**
+ * Cadrage de la previsualisation.
+ *
+ * Un meme ne se lit pas toujours a la meme echelle. « Mewing » ou « Chut » se
+ * jouent dans le visage et les mains : cadres en pied, le geste fait quelques
+ * pixels sur un telephone. Le salto arriere, lui, a besoin de toute la
+ * hauteur. Le defaut (`body`) ajuste la distance a l'encombrement reel de
+ * l'animation ; `bust` demande explicitement un plan rapproche.
+ *
+ * C'est de la donnee, pas du code : ajouter une danse qui se joue au visage ne
+ * demande que cette ligne dans son fichier (regle d'or n°5).
+ */
+export type AnimationShot = 'body' | 'bust';
+
+export interface AnimationFraming {
+  readonly shot: AnimationShot;
+}
+
 export interface AnimationLoop {
   /** Duree d'un cycle, en secondes. */
   readonly duration: number;
@@ -81,6 +99,8 @@ export interface Animation {
   readonly move: { readonly style: Style | 'system'; readonly tier: Tier | null };
   readonly rarity?: string;
   readonly loop: AnimationLoop;
+  /** Cadrage de previsualisation. Absent vaut `{ shot: 'body' }`. */
+  readonly framing?: AnimationFraming;
   readonly flags?: {
     readonly armsFront?: boolean;
     readonly armsBack?: boolean;
@@ -148,6 +168,13 @@ export function loadAnimation(document: unknown): Animation {
       if (!isJoint2D(joints[name])) {
         fail(`image ${String(index)} : articulation ${name} manquante ou mal formee`);
       }
+    }
+  }
+
+  const framing = document.framing;
+  if (framing !== undefined) {
+    if (!isRecord(framing) || (framing.shot !== 'body' && framing.shot !== 'bust')) {
+      fail("cadrage inconnu : 'body' ou 'bust' attendu");
     }
   }
 

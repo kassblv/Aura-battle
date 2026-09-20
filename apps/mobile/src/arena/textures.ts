@@ -12,8 +12,6 @@ import { withAlpha } from './palette.js';
 export interface ArenaTextures {
   /** Grille lumineuse du dessus de la plateforme. */
   readonly grid: Texture;
-  /** Degrade radial blanc : voile d aura et tache de lumiere au sol. */
-  readonly glow: Texture;
 }
 
 function paintTexture(
@@ -62,8 +60,9 @@ export function createGridTexture(): CanvasTexture {
 /**
  * Degrade radial blanc, du centre opaque au bord transparent.
  *
- * Teinte au moment de l affichage par la couleur d aura du joueur : une seule
- * texture sert les deux combattants, quelles que soient leurs couleurs.
+ * Pas encore accroche a l arene : il sert les effets d amplificateur
+ * (`aura.ts`), en attente. Teinte a l affichage, une seule texture suffit aux
+ * deux combattants quelles que soient leurs couleurs.
  */
 export function createGlowTexture(): CanvasTexture {
   return paintTexture(128, 128, (ctx, w, h) => {
@@ -77,5 +76,5 @@ export function createGlowTexture(): CanvasTexture {
 }
 
 export function createArenaTextures(): ArenaTextures {
-  return { grid: createGridTexture(), glow: createGlowTexture() };
+  return { grid: createGridTexture() };
 }

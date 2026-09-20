@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
-import type { Seat } from '@aura/rules';
+import type { Animation } from '@aura/content';
+import { animationBounds, type AnimationBounds } from '../animation/bounds.js';
 import { createPoseSmoother, breatheInto } from '../animation/smooth.js';
 import { samplePose } from '../animation/sample.js';
 import { ANIMATIONS } from '../content/animations.js';
 import type { Presentation } from '../match/presentation.js';
 import { watchReducedMotion } from '../platform/reducedMotion.js';
-import { soloFraming, wideFraming } from './camera.js';
+import { previewFraming, wideFraming } from './camera.js';
+import { createOrbitControl } from './orbit.js';
 import { createArenaRenderer } from './renderer.js';
 import { createArenaScene } from './scene.js';
 import { createArenaTextures } from './textures.js';
@@ -24,43 +26,48 @@ import { createArenaTextures } from './textures.js';
  */
 
 /**
- * Aura demandee pour un siege.
+ * Encombrement des animations, mesure une fois par identifiant.
  *
- * `color` vaut `null` tant que l appelant ne l impose pas : l arene reprend
- * alors la couleur d aura de la tenue affichee, pour que la vitrine suive le
- * vestiaire sans que personne ait a les recopier l une dans l autre.
+ * Trente-deux echantillons de pose par animation : le refaire a chaque image
+ * pour choisir une distance de camera serait payer soixante fois par seconde
+ * une mesure qui ne change jamais.
  */
-export interface AuraRequest {
-  readonly effectId: string;
-  readonly color: string | null;
-  readonly intensity: number;
-}
+const boundsCache = new Map<string, AnimationBounds>();
 
-/** Au repos : l effet offert, discret, a la couleur de la tenue. */
-export const RESTING_AURA: AuraRequest = Object.freeze({
-  effectId: 'fx.glow',
-  color: null,
-  intensity: 0.35,
-});
+function boundsOf(animation: Animation): AnimationBounds {
+  let bounds = boundsCache.get(animation.id);
+  if (bounds === undefined) {
+    bounds = animationBounds(animation);
+    boundsCache.set(animation.id, bounds);
+  }
+  return bounds;
+}
 
 export interface ArenaControls {
   /** Ce que l arene doit montrer, relu a chaque image. */
   readonly presentation: RefObject<Presentation | null>;
-  /** Vrai hors match : un seul personnage, camera rapprochee. */
+  /**
+   * Vrai hors match : un seul personnage, cadrage de vitrine, orbite au doigt.
+   *
+   * Pendant un match la camera est une mise en scene, elle appartient au jeu :
+   * le glissement n y fait rien.
+   */
   readonly showcase: RefObject<boolean>;
   /**
-   * Change l aura d un siege. Seuls les champs fournis sont remplaces.
+   * Ramene le personnage de face dans la vitrine.
    *
-   * Prise en compte a l image suivante, et sans effet de bord : un effet
-   * inconnu retombe sur la Lueur au lieu de lever.
+   * Appele tout seul quand un duel commence ; expose pour qu un bouton
+   * « recentrer » puisse le faire aussi.
    */
-  setAura(seat: Seat, request: Partial<AuraRequest>): void;
+  resetOrbit(): void;
 }
 
 export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaControls {
   const presentation = useRef<Presentation | null>(null);
   const showcase = useRef(true);
-  const auras = useRef<Record<Seat, AuraRequest>>({ a: RESTING_AURA, b: RESTING_AURA });
+  // Cree une seule fois : l angle doit survivre aux rendus de React, pas
+  // repartir de zero a chaque fois que l accueil se redessine.
+  const orbit = useRef(createOrbitControl());
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -75,20 +82,68 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
     const smoothers = { a: createPoseSmoother(), b: createPoseSmoother() };
 
     const motion = watchReducedMotion();
+    const control = orbit.current;
 
     const resize = (): void => {
       const { clientWidth, clientHeight } = canvas;
+      arena.setSize(clientWidth, clientHeight);
       renderer.setSize(clientWidth, clientHeight, window.devicePixelRatio);
-      // La taille d un point depend du rapport de pixels reellement retenu par
-      // le rendu, pas de celui que l appareil annonce.
-      arena.setSize(clientWidth, clientHeight, renderer.renderer.getPixelRatio());
+      control.setViewport(clientWidth, clientHeight);
     };
     const observer = new ResizeObserver(resize);
     observer.observe(canvas);
     resize();
 
+    /**
+     * Glissement sur l arene : le joueur retourne son personnage.
+     *
+     * L ecoute est posee sur le **canvas**, pas sur la fenetre : les boutons de
+     * l accueil sont au-dessus dans le document, un appui sur l un d eux ne
+     * descend donc jamais jusqu ici. La capture de pointeur fait le reste — un
+     * glissement qui sort du canvas continue d etre livre au canvas.
+     *
+     * `touch-action` est pose en JavaScript plutot qu en CSS : la feuille de
+     * style appartient a l interface, et cette regle n existe que parce que
+     * cette ecoute existe. Sans elle, le navigateur fait defiler la page au
+     * lieu de laisser tourner le personnage.
+     */
+    const previousTouchAction = canvas.style.touchAction;
+    canvas.style.touchAction = 'none';
+
+    const onPointerDown = (event: PointerEvent): void => {
+      if (!showcase.current) return;
+      control.start({ id: event.pointerId, x: event.clientX, y: event.clientY });
+      canvas.setPointerCapture(event.pointerId);
+    };
+    const onPointerMove = (event: PointerEvent): void => {
+      control.move({ id: event.pointerId, x: event.clientX, y: event.clientY });
+    };
+    const onPointerUp = (event: PointerEvent): void => {
+      control.end(event.pointerId);
+    };
+    /**
+     * Le glissement s interrompt sans `pointerup` : appel entrant, geste
+     * systeme, application mise en arriere-plan. Sans cette annulation, le
+     * personnage tournerait pour toujours.
+     *
+     * Le garde n est pas une precaution : `lostpointercapture` suit **chaque**
+     * `pointerup`, capture relachee implicitement par le navigateur. Annuler
+     * sans condition tuerait donc l inertie de tous les lachers, et le geste
+     * s arreterait net a chaque fois.
+     */
+    const onPointerLost = (): void => {
+      if (control.dragging) control.cancel();
+    };
+
+    canvas.addEventListener('pointerdown', onPointerDown);
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerup', onPointerUp);
+    canvas.addEventListener('pointercancel', onPointerLost);
+    canvas.addEventListener('lostpointercapture', onPointerLost);
+
     let frame = 0;
     let previous = performance.now();
+    let wasShowcase = showcase.current;
 
     const tick = (now: number): void => {
       frame = requestAnimationFrame(tick);
@@ -101,6 +156,19 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
       const scene = presentation.current;
       const solo = showcase.current;
 
+      /**
+       * Un duel qui commence remet le personnage de face.
+       *
+       * Garder l angle **pendant** l inspection est le contrat (celui qui a
+       * tourne pour voir le dos veut rester la) ; le garder d un duel a l autre
+       * ne l est pas — on revient a l accueil et le personnage est de dos, sans
+       * que personne l ait demande.
+       */
+      if (!solo && wasShowcase) control.reset();
+      wasShowcase = solo;
+
+      let showcaseAnimation: Animation | undefined;
+
       for (const seat of ['a', 'b'] as const) {
         const fighter = arena.fighters[seat];
         const shown = scene?.fighters[seat];
@@ -108,20 +176,15 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
         fighter.dress(shown.look);
         const animation = ANIMATIONS.get(shown.animationId);
         if (animation === undefined) continue;
+        if (seat === 'a') showcaseAnimation = animation;
         // Le decalage de phase evite que les deux respirent a l unisson.
         const offset = seat === 'a' ? 0 : 1.7;
         const target = breatheInto(samplePose(animation, elapsed, offset), elapsed, offset);
         fighter.pose(smoothers[seat].step(target, delta), animation, elapsed, delta);
-
-        const request = auras.current[seat];
-        arena.setAura(seat, {
-          effectId: request.effectId,
-          color: request.color ?? shown.look.aura,
-          intensity: request.intensity,
-        });
       }
 
       arena.fighters.b.root.visible = !solo;
+      control.update(solo ? delta : 0);
 
       /**
        * Hors match, le joueur revient au centre.
@@ -135,10 +198,28 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
       const fighter = arena.fighters.a.root;
       fighter.position.x += (restX - fighter.position.x) * Math.min(1, delta * 4);
 
+      /**
+       * Le cadrage de la vitrine suit le meme joue.
+       *
+       * Rien de plus a appeler depuis l accueil : `presentation` porte deja
+       * l identifiant de l animation, et sa mesure dit quelle distance il
+       * faut. Une danse qui saute plus haut se cadre toute seule.
+       */
+      const framing =
+        solo && showcaseAnimation !== undefined
+          ? previewFraming({
+              worldX: fighter.position.x,
+              bounds: boundsOf(showcaseAnimation),
+              shot: showcaseAnimation.framing?.shot,
+              orbit: control.yaw,
+              tilt: control.tilt,
+            })
+          : wideFraming();
+
       arena.update({
         elapsed,
         delta,
-        framing: solo ? soloFraming(fighter.position.x) : wideFraming(),
+        framing,
         hype: scene?.hype ?? 0.2,
         shake: 0,
         reducedMotion: motion.reduced,
@@ -151,6 +232,12 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
     return () => {
       cancelAnimationFrame(frame);
       observer.disconnect();
+      canvas.removeEventListener('pointerdown', onPointerDown);
+      canvas.removeEventListener('pointermove', onPointerMove);
+      canvas.removeEventListener('pointerup', onPointerUp);
+      canvas.removeEventListener('pointercancel', onPointerLost);
+      canvas.removeEventListener('lostpointercapture', onPointerLost);
+      canvas.style.touchAction = previousTouchAction;
       motion.dispose();
       arena.dispose();
       renderer.dispose();
@@ -169,8 +256,8 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
     () => ({
       presentation,
       showcase,
-      setAura(seat: Seat, request: Partial<AuraRequest>): void {
-        auras.current = { ...auras.current, [seat]: { ...auras.current[seat], ...request } };
+      resetOrbit(): void {
+        orbit.current.reset();
       },
     }),
     [],

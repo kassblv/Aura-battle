@@ -50,6 +50,10 @@
       }
     },
     "rarity": { "enum": ["default", "common", "rare", "epic", "legendary"] },
+    "framing": {
+      "type": "object", "required": ["shot"], "additionalProperties": false,
+      "properties": { "shot": { "enum": ["body", "bust"] } }
+    },
     "loop": {
       "type": "object", "required": ["duration"], "additionalProperties": false,
       "properties": {
