@@ -1041,7 +1041,7 @@ describe('fantomes — enregistrement et siege', () => {
     seat: 'b' as Seat,
     mmr: 1_000,
     sourcePlayerId: 'p_source',
-    displayName: 'Aura en differe',
+    displayName: 'Aura anonyme',
     league: 'sans_aura',
   };
 

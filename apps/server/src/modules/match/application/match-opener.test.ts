@@ -321,7 +321,7 @@ describe('MatchOpener — face a un fantome', () => {
     sourcePlayerId: 'p_source',
     mmr: 1_400,
     recordingId: 'rec_1',
-    displayName: 'Aura en differe',
+    displayName: 'Aura anonyme',
     league: 'stable',
   };
 
@@ -340,7 +340,7 @@ describe('MatchOpener — face a un fantome', () => {
 
   it('montre le nom et la ligue fournis, pas ceux d une session inexistante', () => {
     openGhost();
-    expect(notifier.foundBy('p1')?.opponent.displayName).toBe('Aura en differe');
+    expect(notifier.foundBy('p1')?.opponent.displayName).toBe('Aura anonyme');
     expect(notifier.foundBy('p1')?.opponent.league).toBe('stable');
   });
 
@@ -371,7 +371,7 @@ describe('MatchOpener — face a un fantome', () => {
       seat: 'b',
       mmr: 1_400,
       sourcePlayerId: 'p_source',
-      displayName: 'Aura en differe',
+      displayName: 'Aura anonyme',
       league: 'stable',
     });
   });

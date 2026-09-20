@@ -354,6 +354,17 @@ export class MatchRuntime {
     return this.locate(playerId) !== null;
   }
 
+  /**
+   * Nombre de matchs vivants sur ce noeud.
+   *
+   * Publie pour la sonde de charge (jalon M7) : un banc qui annonce 500 matchs
+   * simultanes doit pouvoir le **verifier** cote serveur, sinon il mesure ce
+   * qu'il croit avoir ouvert plutot que ce qui tourne vraiment.
+   */
+  get liveMatches(): number {
+    return this.matches.size;
+  }
+
   /** Phase d'un match en cours, ou `null` s'il n'existe pas (ou plus). */
   phaseOf(matchId: string): MatchState['phase'] | null {
     return this.matches.get(matchId)?.state.phase ?? null;
@@ -469,7 +480,7 @@ export class MatchRuntime {
    *
    * `null` des que l'adversaire est une personne : la passerelle retombe alors
    * sur le registre des sessions, comme avant. C'est ce qui permet a une
-   * reprise apres reconnexion de reafficher « Aura en differe » plutot que le
+   * reprise apres reconnexion de reafficher « Aura anonyme » plutot que le
    * nom de repli d'un joueur qu'on ne trouve pas — un fantome n'a pas de
    * session, donc l'annuaire n'a jamais rien a en dire.
    */

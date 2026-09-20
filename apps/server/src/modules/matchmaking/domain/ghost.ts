@@ -46,14 +46,20 @@ export const GHOST_SEAT_PREFIX = 'ghost:';
 /**
  * Nom montre a la place de celui du joueur enregistre.
  *
- * **On ne donne pas le nom de quelqu'un qui n'est pas la.** Le drapeau `ghost`
- * dit deja la verite et le client affichera « Adversaire en differe » (docs/05),
- * mais un nom reel en face de ce badge laisserait croire que cette personne-la
- * vient de se connecter — et un badge discret se rate. Un nom neutre ne peut
- * pas etre confondu, et il ne revele pas non plus a un joueur qui l'a affronte
- * en differe.
+ * **On ne donne pas le nom de quelqu'un qui n'est pas la.** Un nom reel en face
+ * du badge laisserait croire que cette personne vient de se connecter, et
+ * revelerait a un joueur qui l'a affronte en differe.
+ *
+ * Mais ce nom ne doit pas non plus **repeter** le badge : « Aura anonyme »
+ * suivi de « EN DIFFERE » se lit comme un defaut d'affichage, et un
+ * emplacement de nom qui contient une phrase a l'air casse. C'est le drapeau
+ * `ghost` qui dit la nature de l'adversaire ; ce champ ne dit qu'une chose,
+ * qu'on ne sait pas qui c'est.
+ *
+ * Distinct de `UNKNOWN_PLAYER_NAME` a dessein : celui-la signale un annuaire
+ * qui n'a pas repondu, ce qui est une panne, pas un fantome.
  */
-export const GHOST_DISPLAY_NAME = 'Aura en differe';
+export const GHOST_DISPLAY_NAME = 'Aura anonyme';
 
 /**
  * Prefixe des enregistrements **amorces** — produits hors ligne a partir des
