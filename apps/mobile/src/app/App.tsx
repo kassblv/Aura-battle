@@ -1,6 +1,7 @@
-import { useCallback, useMemo, useRef, useState, type JSX } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useArena, type ArenaControls } from '../arena/useArena.js';
 import { useAudio, type AudioControls } from './useAudio.js';
+import { lockLandscape } from '../platform/orientation.js';
 import { defaultLook, equip, type Look, type LookSlot, type Wardrobe } from './wardrobe.js';
 import { MatchScreen } from './MatchScreen.jsx';
 import { useSoloMatch } from './useMatch.js';
@@ -37,6 +38,28 @@ export function App(): JSX.Element {
    * le premier duel.
    */
   const audio = useAudio();
+
+  /**
+   * Le paysage, impose quand la plateforme le permet (ADR 0008).
+   *
+   * Deux tentatives, parce qu aucune ne suffit seule : au montage, ce qui
+   * marche dans une WebView ou une application installee ; puis au premier
+   * geste, parce que les navigateurs mobiles exigent generalement le plein
+   * ecran, qu un geste seul peut avoir accorde. Un refus est le cas normal et
+   * ne mene nulle part — l avertissement « tourne ton telephone » reste la
+   * pour ca.
+   */
+  useEffect(() => {
+    void lockLandscape();
+    const onGesture = (): void => {
+      void lockLandscape();
+    };
+    window.addEventListener('pointerdown', onGesture, { once: true, passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', onGesture);
+    };
+  }, []);
+
   const session = useSession();
 
   const [wardrobe, setWardrobe] = useState<Wardrobe>(() => ({

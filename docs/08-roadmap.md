@@ -62,16 +62,16 @@ Référence : `docs/02-architecture.md`, `docs/03-pvp-protocol.md`, `docs/04-dat
 
 Référence : prototype, `docs/02-architecture.md`.
 
-- [ ] Vite + React + Three.js récent ; structure `app/ net/ match/ arena/ animation/ audio/ platform/`
-- [ ] **Paysage exclusif** (ADR 0008) : verrouillage d'orientation Capacitor, écran « tourne ton téléphone » en portrait, commandes dans les arcs de pouce, rien d'interactif au centre haut, cibles tactiles ≥ 46 px
-- [ ] Port du rendu 3D du prototype en modules : scène, foule instanciée, rig avec mains, particules, choc, caméra, calque 2D
-- [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains), page `/dev/animation-viewer`
-- [ ] Client réseau : synchronisation d'horloge, reconnexion automatique, reprise de `match:state`
-- [ ] Écrans : accueil, créer/rejoindre une invitation, attente, match (intro, recharge, choix + timing, révélation), résultat, revanche
-- [ ] Recharge et timing mesurés avec `performance.now()` et envoyés selon le protocole
-- [ ] Moteur audio du prototype porté ; musique et effets activables
-- [ ] Solo contre IA fonctionnel hors ligne (même `@aura/rules`)
-- [ ] Test manuel documenté : deux navigateurs jouent un match complet par code d'invitation
+- [x] Vite + React + Three.js récent ; structure `app/ net/ match/ arena/ animation/ audio/ platform/`
+- [ ] **Paysage exclusif** (ADR 0008) : écran « tourne ton téléphone » ✅, commandes dans les arcs de pouce ✅, rien d'interactif au centre haut ✅, cibles tactiles ≥ 46 px ✅, verrouillage par l'API `screen.orientation` ✅ — **verrouillage Capacitor : non fait, Capacitor n'est pas encore installé** (ni `capacitor.config.ts`, ni projets iOS/Android, ni haptique, ni liens profonds)
+- [ ] Port du rendu 3D du prototype en modules : scène ✅, foule instanciée ✅, rig avec mains ✅, caméra ✅, calque 2D ✅ — **particules et choc : en cours**
+- [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains) ✅ — **page `/dev/animation-viewer` : non faite** (la galerie de mèmes de l'accueil la remplace pour l'usage courant, pas pour le débogage image par image)
+- [x] Client réseau : synchronisation d'horloge, reconnexion automatique, reprise de `match:state`
+- [ ] Écrans : accueil ✅ (avec galerie de mèmes jouée par le personnage), créer/rejoindre une invitation ✅, attente ✅, match ✅, résultat ✅ — **revanche : non faite**
+- [x] Recharge et timing mesurés avec `performance.now()` et envoyés selon le protocole
+- [x] Moteur audio du prototype porté ; musique et effets activables — 23 sons synthétisés, aucun fichier embarqué ; déverrouillé au premier geste (sans quoi iOS reste muet en silence)
+- [x] Solo contre IA fonctionnel hors ligne (même `@aura/rules`)
+- [ ] Test manuel documenté : le scénario a été joué plusieurs fois (deux origines, `localhost:5173` et `192.168.64.1:5174` — même origine = même identité en localStorage, on ne peut pas rejoindre sa propre invitation) mais **il n'est pas encore écrit dans `docs/09-testing.md`**
 
 ## M5 — Classé, matchmaking et fantômes
 
