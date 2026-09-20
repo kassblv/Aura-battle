@@ -50,6 +50,20 @@ describe('loadAnimation', () => {
     expect(() => loadAnimation(null)).toThrow(/animation/i);
   });
 
+  /**
+   * Le nom francais est ce que le joueur lit dans la galerie de memes.
+   *
+   * Sans cette verification, une danse peut arriver anonyme : elle se charge,
+   * se joue, se vend — et s'affiche sans nom, sans que rien n'ait proteste.
+   * Regle d'or n°5 : ajouter une danse doit etre sur, donc le fichier doit
+   * porter tout ce dont l'ecran a besoin.
+   */
+  it('refuse une animation sans nom francais', () => {
+    expect(() => loadAnimation({ ...griddy, name: {} })).toThrow(/nom/i);
+    expect(() => loadAnimation({ ...griddy, name: { en: 'Griddy' } })).toThrow(/nom/i);
+    expect(() => loadAnimation({ ...griddy, name: { fr: '   ' } })).toThrow(/nom/i);
+  });
+
   it('refuse une image a laquelle il manque une articulation', () => {
     const joints = Object.fromEntries(JOINT_NAMES.slice(1).map((j) => [j, [0, 0]]));
     expect(() => loadAnimation({ ...griddy, frames: [{ joints }] })).toThrow(/head/);

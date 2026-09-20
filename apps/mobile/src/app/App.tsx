@@ -14,6 +14,7 @@ import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
 import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
+import { memeGallery, stepMeme } from './memes.js';
 import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
 /**
@@ -74,6 +75,18 @@ export function App(): JSX.Element {
   const showOnboarding = !greeted && session.phase === 'ready' && needsOnboarding(session.identity);
 
   const [nav, setNav] = useState<Navigation>(openingScreen);
+
+  /**
+   * Le meme montre sur l accueil.
+   *
+   * Une aura battle est un clash ou deux personnes rejouent des memes : ce que
+   * le joueur vient voir, c est SON mouvement joue par son propre personnage.
+   * La galerie pilote donc l arene, et non une grille de vignettes — un mème
+   * est un mouvement, une vignette ne le montre pas.
+   */
+  const gallery = useMemo(() => memeGallery(), []);
+  const [memeId, setMemeId] = useState(() => gallery[0]?.animationId ?? '');
+  const meme = gallery.find((card) => card.animationId === memeId) ?? gallery[0]!;
   const [emotes, setEmotes] = useState<EmoteLoadout>(() => ({
     slots: defaultEmotes(),
     owned: new Set<string>(),
@@ -115,7 +128,7 @@ export function App(): JSX.Element {
   if (nav.screen !== 'match' && !inDuel) {
     arena.presentation.current = {
       fighters: {
-        a: { animationId: 'anim.system.none.victory', look: looks.a },
+        a: { animationId: meme.animationId, look: looks.a },
         b: { animationId: 'anim.system.none.charge', look: looks.b },
       },
       hype: 0.35,
@@ -181,7 +194,10 @@ export function App(): JSX.Element {
             onOnline={() => {
               go('invite');
             }}
-            emotes={emotes.slots}
+            meme={meme}
+            onStepMeme={(delta) => {
+              setMemeId((current) => stepMeme(gallery, current, delta));
+            }}
           />
         )}
 

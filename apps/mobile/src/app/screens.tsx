@@ -1,5 +1,6 @@
-import { EMOTES } from '@aura/content';
+import { tierName } from '@aura/content';
 import type { JSX } from 'react';
+import type { MemeCard } from './memes.js';
 import { leagueProgress, styleShares, summarize, type PlayerProfile } from './profile.js';
 import { isOwned, wardrobeSections, type LookSlot, type Wardrobe } from './wardrobe.js';
 
@@ -14,7 +15,6 @@ import { isOwned, wardrobeSections, type LookSlot, type Wardrobe } from './wardr
 
 const STYLE_ICONS = { calme: '🧊', hype: '🔥', provoc: '😏' } as const;
 
-const glyphOfEmote = (id: string): string => EMOTES.find((emote) => emote.id === id)?.glyph ?? '·';
 const STYLE_COLORS = { calme: '#4fc3f7', hype: '#ff8a3d', provoc: '#c97bff' } as const;
 
 const percent = (value: number): string => `${(value * 100).toFixed(1).replace('.', ',')} %`;
@@ -22,8 +22,10 @@ const percent = (value: number): string => `${(value * 100).toFixed(1).replace('
 export interface HomeProps {
   readonly profile: PlayerProfile;
   readonly seasonLabel: string;
-  /** Roue d emotes equipee, montree a l accueil comme un rappel. */
-  readonly emotes: readonly string[];
+  /** Le meme actuellement joue par le personnage au centre. */
+  readonly meme: MemeCard;
+  /** Parcourt la galerie : -1 precedent, +1 suivant. */
+  readonly onStepMeme: (delta: number) => void;
   readonly onPlay: () => void;
   readonly onProfile: () => void;
   readonly onWardrobe: () => void;
@@ -47,7 +49,8 @@ export interface HomeProps {
 export function HomeScreen({
   profile,
   seasonLabel,
-  emotes,
+  meme,
+  onStepMeme,
   onPlay,
   onProfile,
   onWardrobe,
@@ -96,13 +99,45 @@ export function HomeScreen({
         </button>
       </nav>
 
-      {/* La roue equipee, visible sans ouvrir un menu : on doit savoir ce
-          qu'on a sous le pouce avant d'entrer en match. */}
-      <ul className="home__emotes" aria-label="Émotes équipées">
-        {emotes.map((id) => (
-          <li key={id}>{glyphOfEmote(id)}</li>
-        ))}
-      </ul>
+      {/*
+        La galerie de memes.
+
+        Une aura battle est un clash ou deux personnes rejouent des memes : ce
+        qu'on vient voir sur l'accueil, c'est SON mème, joue par son propre
+        personnage. D'ou une galerie qui pilote le personnage au centre plutot
+        qu'une grille de vignettes — un mème est un mouvement, une vignette ne
+        le montre pas.
+      */}
+      <div className="memes" aria-label="Galerie de mèmes">
+        <button
+          type="button"
+          className="memes__arrow"
+          onClick={() => {
+            onStepMeme(-1);
+          }}
+          aria-label="Mème précédent"
+        >
+          ‹
+        </button>
+        <p className="memes__card">
+          <span className="memes__name">{meme.name}</span>
+          <span className="memes__meta">
+            <span aria-hidden="true">{STYLE_ICONS[meme.style]}</span>
+            {tierName(meme.tier).fr}
+            {!meme.free && <span className="memes__locked">cosmétique</span>}
+          </span>
+        </p>
+        <button
+          type="button"
+          className="memes__arrow"
+          onClick={() => {
+            onStepMeme(1);
+          }}
+          aria-label="Mème suivant"
+        >
+          ›
+        </button>
+      </div>
 
       <div className="launch">
         <p className="launch__mode">

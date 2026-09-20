@@ -72,7 +72,12 @@ export interface AnimationLoop {
 export interface Animation {
   readonly id: string;
   readonly version: number;
-  readonly name: Readonly<Record<string, string>>;
+  /**
+   * Noms localises. Le francais est garanti par `loadAnimation` : c'est la
+   * seule langue que l'interface affiche aujourd'hui, et un nom manquant se
+   * verrait a l'ecran plutot qu'au chargement.
+   */
+  readonly name: Readonly<Record<string, string>> & { readonly fr: string };
   readonly move: { readonly style: Style | 'system'; readonly tier: Tier | null };
   readonly rarity?: string;
   readonly loop: AnimationLoop;
@@ -111,6 +116,19 @@ export function loadAnimation(document: unknown): Animation {
   const fail = (why: string): never => {
     throw new TypeError(`animation ${id} : ${why}`);
   };
+
+  /**
+   * Le nom francais est ce que le joueur lit dans la galerie de memes. Sans
+   * cette verification, une danse arrive anonyme : elle se charge, se joue et
+   * s'affiche sans nom, sans que rien n'ait proteste.
+   */
+  if (
+    !isRecord(document.name) ||
+    typeof document.name.fr !== 'string' ||
+    document.name.fr.trim() === ''
+  ) {
+    fail('nom francais manquant');
+  }
 
   if (!isRecord(document.loop) || typeof document.loop.duration !== 'number') {
     fail('duree de boucle manquante');

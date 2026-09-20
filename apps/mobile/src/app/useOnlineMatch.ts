@@ -141,9 +141,19 @@ export function useOnlineMatch(
       }
       soundedRef.current = seen;
 
-      const live = state.phase !== 'idle';
-      arena.showcase.current = !live;
-      if (live) {
+      /**
+       * On ne pilote l arene que pendant un duel, et on n ecrit rien sinon.
+       *
+       * Ce hook vit aussi longtemps que l application : sa boucle tourne donc
+       * AUSSI pendant un match solo. Y poser `showcase = !live` sans condition
+       * remettait la vitrine soixante fois par seconde par-dessus le solo, qui
+       * se retrouvait avec un seul combattant au centre — exactement le defaut
+       * qu on venait de corriger en ligne, dans l autre sens.
+       *
+       * Regle : l arene appartient a qui joue. Au repos, on se tait.
+       */
+      if (state.phase !== 'idle') {
+        arena.showcase.current = false;
         const intoPhase = nowRef.current - phaseStartedAt.current;
         arena.presentation.current = presentOnline(state, looksRef.current, {
           showOutcome:
@@ -157,7 +167,6 @@ export function useOnlineMatch(
 
     return () => {
       cancelAnimationFrame(frame);
-      arena.showcase.current = true;
       clearInterval(ping);
       offInvite();
       offError();
