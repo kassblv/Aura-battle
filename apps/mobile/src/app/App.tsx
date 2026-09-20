@@ -41,7 +41,6 @@ import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
 
 export function App(): JSX.Element {
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  const arena = useArena(canvasRef);
   /**
    * Le son vit aussi longtemps que l application, comme l arene.
    *
@@ -50,6 +49,15 @@ export function App(): JSX.Element {
    * le premier duel.
    */
   const audio = useAudio();
+  const arena = useArena(
+    canvasRef,
+    useCallback(
+      (cue) => {
+        audio.engine.cue(cue);
+      },
+      [audio],
+    ),
+  );
 
   /**
    * Le paysage, impose quand la plateforme le permet (ADR 0008).

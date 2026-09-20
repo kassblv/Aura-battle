@@ -4,6 +4,8 @@ import { animationBounds, type AnimationBounds } from '../animation/bounds.js';
 import { createPoseSmoother, breatheInto } from '../animation/smooth.js';
 import { samplePose } from '../animation/sample.js';
 import { ANIMATIONS } from '../content/animations.js';
+import { gestureCues } from '../audio/gestures.js';
+import type { AudioCue } from '../audio/cues.js';
 import type { Presentation } from '../match/presentation.js';
 import { watchReducedMotion } from '../platform/reducedMotion.js';
 import { previewFraming, wideFraming } from './camera.js';
@@ -62,7 +64,28 @@ export interface ArenaControls {
   resetOrbit(): void;
 }
 
-export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaControls {
+export function useArena(
+  canvasRef: RefObject<HTMLCanvasElement | null>,
+  /**
+   * Ou partent les accents des gestes.
+   *
+   * Les animations declarent leurs temps forts en donnee (`sound` dans le
+   * fichier) ; c est cette boucle qui sait ou en est chaque combattant, donc
+   * c est elle qui les fait sonner. Facultatif pour que l arene reste
+   * constructible sans audio — un test, un rendu hors navigateur.
+   */
+  onCue?: (cue: AudioCue) => void,
+): ArenaControls {
+  /**
+   * Le puits d accents traverse par une reference, pas par la dependance de
+   * l effet.
+   *
+   * L effet de l arene ne depend que du canvas — reconstruire la scene parce
+   * qu une fonction a change d identite couterait une seconde de chargement.
+   * La reference donne toujours la derniere sans rien reconstruire.
+   */
+  const cueRef = useRef(onCue);
+  cueRef.current = onCue;
   const presentation = useRef<Presentation | null>(null);
   const showcase = useRef(true);
   // Cree une seule fois : l angle doit survivre aux rendus de React, pas
@@ -181,6 +204,20 @@ export function useArena(canvasRef: RefObject<HTMLCanvasElement | null>): ArenaC
         const offset = seat === 'a' ? 0 : 1.7;
         const target = breatheInto(samplePose(animation, elapsed, offset), elapsed, offset);
         fighter.pose(smoothers[seat].step(target, delta), animation, elapsed, delta);
+
+        /**
+         * Les temps forts du geste, sonnes au passage.
+         *
+         * Rien ne fuit : avant la revelation les deux combattants jouent la
+         * garde, qui ne declare aucun accent. Un accent ne peut donc accompagner
+         * qu un mouvement deja visible a l ecran.
+         */
+        const cue = cueRef.current;
+        if (cue !== undefined) {
+          for (const accent of gestureCues(animation, elapsed - delta + offset, elapsed + offset)) {
+            cue(accent);
+          }
+        }
       }
 
       arena.fighters.b.root.visible = !solo;

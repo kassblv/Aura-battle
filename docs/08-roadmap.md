@@ -64,7 +64,7 @@ Référence : prototype, `docs/02-architecture.md`.
 
 - [x] Vite + React + Three.js récent ; structure `app/ net/ match/ arena/ animation/ audio/ platform/`
 - [ ] **Paysage exclusif** (ADR 0008) : écran « tourne ton téléphone » ✅, commandes dans les arcs de pouce ✅, rien d'interactif au centre haut ✅, cibles tactiles ≥ 46 px ✅, verrouillage par l'API `screen.orientation` ✅ — **verrouillage Capacitor : non fait, Capacitor n'est pas encore installé** (ni `capacitor.config.ts`, ni projets iOS/Android, ni haptique, ni liens profonds)
-- [ ] Port du rendu 3D du prototype en modules : scène ✅, foule instanciée ✅, rig avec mains ✅, caméra ✅, calque 2D ✅ — **particules et choc : en cours**
+- [ ] Port du rendu 3D du prototype en modules : scène ✅, foule instanciée ✅ (avec les téléphones braqués), rig avec mains ✅, caméra ✅, calque 2D ✅ — **particules : écrites et testées mais parquées, branchées à rien** (les effets d'amplificateur reviendront) ; **choc : non fait**
 - [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains) ✅ — **page `/dev/animation-viewer` : non faite** (la galerie de mèmes de l'accueil la remplace pour l'usage courant, pas pour le débogage image par image)
 - [x] Client réseau : synchronisation d'horloge, reconnexion automatique, reprise de `match:state`
 - [x] Écrans : accueil ✅ (avec galerie de mèmes jouée par le personnage), créer/rejoindre une invitation ✅, attente ✅, match ✅, résultat ✅, revanche ✅ — en solo elle relance une partie sur une nouvelle graine, en ligne elle remet en file (l'adversaire précédent n'a aucune raison d'être encore là)
