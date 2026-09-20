@@ -332,6 +332,7 @@ function MatchScreenBody({
         <span className="hud__side">
           <b>Toi</b> <Pips won={view.me.roundsWon} />
           {view.me.energy !== null && <Energy left={view.me.energy} />}
+          {view.me.ultimate !== null && <UltimeGauge filled={view.me.ultimate} />}
         </span>
         <span className="hud__round">Manche {view.round}</span>
         <span className="hud__side hud__side--right">
@@ -751,6 +752,29 @@ function Energy({ left }: { readonly left: number }): JSX.Element {
       {Array.from({ length: BALANCE.match.startingEnergy }, (_, i) => (
         <i key={i} className={i >= left ? 'spent' : ''} />
       ))}
+    </span>
+  );
+}
+
+/**
+ * La jauge d Ultime.
+ *
+ * Le bouton disait « jauge a remplir » sans jamais dire ou l on en etait : un
+ * joueur a 95 voyait la meme chose qu un joueur a 10, et ne pouvait donc pas
+ * decider s il valait la peine d attendre une manche de plus. Une decision qui
+ * se prend sans information n en est pas une.
+ */
+function UltimeGauge({ filled }: { readonly filled: number }): JSX.Element {
+  const ratio = Math.max(0, Math.min(1, filled / BALANCE.ultimate.gaugeMax));
+  const ready = ratio >= 1;
+  return (
+    <span
+      className="ultgauge"
+      data-ready={ready}
+      role="img"
+      aria-label={ready ? 'Ultime prêt' : `Ultime à ${String(Math.round(ratio * 100))} %`}
+    >
+      <i style={{ transform: `scaleX(${String(ratio)})` }} />
     </span>
   );
 }

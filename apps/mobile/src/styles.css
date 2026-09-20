@@ -1273,6 +1273,38 @@ body {
   color: var(--muted);
 }
 
+/*
+  La jauge d'Ultime, a cote de l'energie.
+
+  Fine et doree : elle ne doit pas se confondre avec l'energie, qui se depense
+  a chaque manche, alors que celle-ci s'accumule et se lache une fois.
+*/
+.ultgauge {
+  display: inline-block;
+  width: 46px;
+  height: 4px;
+  margin-left: 5px;
+  border-radius: 999px;
+  background: var(--chip-deep);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+.ultgauge i {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transform-origin: left center;
+  transition: transform var(--d-tap) var(--e-out);
+}
+
+/* Pleine : elle passe a l'or, la couleur de ce qui se depense. */
+.ultgauge[data-ready='true'] i {
+  background: var(--gold-ink);
+}
+
 .hud__round {
   font-family: var(--display);
   font-weight: 400;
