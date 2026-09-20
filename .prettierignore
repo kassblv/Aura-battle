@@ -8,3 +8,6 @@ prototype
 # La doc et le prototype gardent leur mise en forme d origine.
 *.md
 docs
+
+# Releves du banc de charge : des donnees, pas du code.
+apps/server/bench/results

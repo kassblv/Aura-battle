@@ -13,3 +13,6 @@ apps/mobile/android/.gradle/
 *.log
 *.zip
 .DS_Store
+
+# artefacts de capture des outils de navigation
+.playwright-mcp/

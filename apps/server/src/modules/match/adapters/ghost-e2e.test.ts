@@ -227,8 +227,8 @@ beforeAll(async () => {
       },
       {
         provide: SocketNotifier,
-        inject: [PinoLoggerService],
-        useFactory: (logger: PinoLoggerService) => new SocketNotifier(logger),
+        inject: [PinoLoggerService, MessageMetrics],
+        useFactory: (logger: PinoLoggerService, m: MessageMetrics) => new SocketNotifier(logger, m),
       },
       {
         provide: MatchRuntime,

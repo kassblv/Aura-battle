@@ -4,6 +4,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { MatchModule } from './modules/match/match.module.js';
 import { ConfigModule } from './shared/config.module.js';
 import { LoggerModule } from './shared/logger.module.js';
+import { MetricsModule } from './shared/metrics.module.js';
 
 /**
  * Racine de l'application (docs/02-architecture.md).
@@ -14,6 +15,6 @@ import { LoggerModule } from './shared/logger.module.js';
  * configure qui tombera en pleine partie.
  */
 @Module({
-  imports: [ConfigModule, LoggerModule, HealthModule, AuthModule, MatchModule],
+  imports: [ConfigModule, LoggerModule, MetricsModule, HealthModule, AuthModule, MatchModule],
 })
 export class AppModule {}

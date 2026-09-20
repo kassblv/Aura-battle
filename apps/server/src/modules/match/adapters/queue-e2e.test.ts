@@ -7,6 +7,7 @@ import { io, type Socket as ClientSocket } from 'socket.io-client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { MessageMetrics } from '../../../shared/metrics.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { QUEUE_TICK_MS } from '../../matchmaking/application/queue.service.js';
 import { InviteService } from '../application/invites.js';
@@ -139,6 +140,9 @@ beforeAll(async () => {
       InviteService,
       TimeoutScheduler,
       SystemMatchClock,
+      // Mesure de charge eteinte : la passerelle en depend, aucun scenario
+      // d'ici ne la lit. `metrics-e2e.test.ts` est celui qui l'allume.
+      { provide: MessageMetrics, useFactory: () => new MessageMetrics(false) },
       {
         provide: PinoLoggerService,
         useValue: new PinoLoggerService(createLogger(serverConfig)),
@@ -163,8 +167,8 @@ beforeAll(async () => {
       },
       {
         provide: SocketNotifier,
-        inject: [PinoLoggerService],
-        useFactory: (logger: PinoLoggerService) => new SocketNotifier(logger),
+        inject: [PinoLoggerService, MessageMetrics],
+        useFactory: (logger: PinoLoggerService, m: MessageMetrics) => new SocketNotifier(logger, m),
       },
       {
         provide: MatchRuntime,

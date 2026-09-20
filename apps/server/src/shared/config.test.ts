@@ -42,7 +42,7 @@ describe('corsOrigins', () => {
 
   it('n autorise aucune origine etrangere par defaut', () => {
     // Le bon reglage quand le client est servi par le meme hote que l'API.
-    expect(loadConfig({ ...base }).corsOrigins).toEqual([]);
+    expect(loadConfig({ ...validEnv }).corsOrigins).toEqual([]);
   });
 
   it('lit une liste separee par des virgules', () => {
@@ -57,5 +57,24 @@ describe('corsOrigins', () => {
     expect(
       loadConfig({ ...base, CORS_ORIGINS: ' https://a.app , , https://b.app ,' }).corsOrigins,
     ).toEqual(['https://a.app', 'https://b.app']);
+  });
+});
+
+describe('databasePoolMax', () => {
+  /**
+   * Le defaut du pilote `pg` est dix, et dix n'est la mesure de rien. Un
+   * serveur qui l'herite en silence decouvre la decision le jour ou des
+   * matchs n'arrivent plus a s'ecrire, sans que la moindre latence ne bouge.
+   */
+  it('vaut vingt par defaut, pas le defaut du pilote', () => {
+    expect(loadConfig({ ...validEnv }).databasePoolMax).toBe(20);
+  });
+
+  it('se regle par l environnement', () => {
+    expect(loadConfig({ ...validEnv, DATABASE_POOL_MAX: '40' }).databasePoolMax).toBe(40);
+  });
+
+  it('refuse un bassin vide', () => {
+    expect(() => loadConfig({ ...validEnv, DATABASE_POOL_MAX: '0' })).toThrow(ConfigError);
   });
 });

@@ -2,6 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { serializeServerMessage, type ServerMessage, type ServerMessageName } from '@aura/protocol';
 import type { Socket } from 'socket.io';
 import { PinoLoggerService } from '../../../shared/logger.js';
+import { MessageMetrics } from '../../../shared/metrics.js';
 import type { PresenceLeagueCache } from '../../rating/domain/ports.js';
 import { UNKNOWN_PLAYER_NAME } from '../domain/directory.js';
 import type { MatchNotifier } from '../domain/ports.js';
@@ -48,7 +49,19 @@ interface Session {
 export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
   private readonly sessions = new Map<string, Session>();
 
-  constructor(@Inject(PinoLoggerService) private readonly logger: PinoLoggerService) {}
+  constructor(
+    @Inject(PinoLoggerService) private readonly logger: PinoLoggerService,
+    /**
+     * Chronometre du sortant (jalon M7).
+     *
+     * Le serveur envoie plus de messages qu'il n'en recoit — un `round:result`
+     * par siege, une annonce par phase et par siege — et chacun repasse par son
+     * schema avant de partir. Ce travail n'appartient a la fenetre d'aucun
+     * message entrant : sans compteur propre, il est invisible dans un relevé
+     * de charge alors qu'il occupe la meme boucle.
+     */
+    @Inject(MessageMetrics) private readonly metrics: MessageMetrics,
+  ) {}
 
   /**
    * Enregistre la socket d'un joueur et **ferme la precedente**.
@@ -88,6 +101,11 @@ export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
     if (this.sessions.get(playerId)?.socket !== socket) return false;
     this.sessions.delete(playerId);
     return true;
+  }
+
+  /** Nombre de sessions connectees, pour la sonde de charge (jalon M7). */
+  get liveSessions(): number {
+    return this.sessions.size;
   }
 
   isConnected(playerId: string): boolean {
@@ -134,7 +152,9 @@ export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
   }
 
   send<N extends ServerMessageName>(playerId: string, name: N, payload: ServerMessage<N>): void {
-    const checked = serializeServerMessage(name, payload);
+    const checked = this.metrics.observeSync('outbound:validate', () =>
+      serializeServerMessage(name, payload),
+    );
     if (!checked.success) {
       this.logger.error(
         new Error(`message sortant « ${name} » invalide : ${checked.error}`),
@@ -146,6 +166,8 @@ export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
 
     // Un joueur deconnecte n'est pas une erreur : le match continue sans lui,
     // les actions par defaut s'appliquent, et il reprendra sur `match:rejoin`.
-    this.sessions.get(playerId)?.socket.emit(name, checked.data);
+    const socket = this.sessions.get(playerId)?.socket;
+    if (socket === undefined) return;
+    this.metrics.observeSync('outbound:emit', () => socket.emit(name, checked.data));
   }
 }

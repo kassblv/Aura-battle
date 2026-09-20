@@ -183,17 +183,16 @@ describe('selectGhost — lequel opposer', () => {
       recording({ id: 'trois', mmr: 1000 }),
     ];
     const vus = new Set(
-      [0, 1, 2, 3, 4, 5].map((pas) => selectGhost(candidats, waiting, now + pas, RULES_VERSION)?.id),
+      [0, 1, 2, 3, 4, 5].map(
+        (pas) => selectGhost(candidats, waiting, now + pas, RULES_VERSION)?.id,
+      ),
     );
     expect(vus.size).toBeGreaterThan(1);
   });
 
   /** Deux appels au meme instant rendent la meme chose : la fonction reste pure. */
   it('rend la meme chose deux fois au meme instant', () => {
-    const candidats = [
-      recording({ id: 'un', mmr: 1000 }),
-      recording({ id: 'deux', mmr: 1000 }),
-    ];
+    const candidats = [recording({ id: 'un', mmr: 1000 }), recording({ id: 'deux', mmr: 1000 })];
     expect(selectGhost(candidats, waiting, now, RULES_VERSION)?.id).toBe(
       selectGhost(candidats, waiting, now, RULES_VERSION)?.id,
     );
@@ -201,7 +200,10 @@ describe('selectGhost — lequel opposer', () => {
 
   /** Un ecart plus court l'emporte toujours sur la rotation. */
   it('ne fait pas tourner entre des candidats d ecarts differents', () => {
-    const candidats = [recording({ id: 'proche', mmr: 1010 }), recording({ id: 'loin', mmr: 1200 })];
+    const candidats = [
+      recording({ id: 'proche', mmr: 1010 }),
+      recording({ id: 'loin', mmr: 1200 }),
+    ];
     for (const pas of [0, 1, 2, 3, 500, 1_337]) {
       expect(selectGhost(candidats, waiting, now + pas, RULES_VERSION)?.id).toBe('proche');
     }

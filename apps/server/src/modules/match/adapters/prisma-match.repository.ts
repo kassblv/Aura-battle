@@ -3,6 +3,7 @@ import { Prisma, type Seat as SeatColumn } from '@prisma/client';
 import { z } from 'zod';
 import { describeCause } from '../../../shared/describe-cause.js';
 import { PinoLoggerService } from '../../../shared/logger.js';
+import { MessageMetrics } from '../../../shared/metrics.js';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import type { MatchRecord, MatchRepository, PersistedEvent } from '../domain/ports.js';
 
@@ -165,6 +166,18 @@ export class PrismaMatchRepository implements MatchRepository {
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
     @Inject(PinoLoggerService) private readonly logger: PinoLoggerService,
+    /**
+     * Chronometre de l'ecriture (jalon M7).
+     *
+     * Cette ecriture ne retarde aucun joueur — le resultat du match est deja
+     * parti — donc elle n'apparait dans le temps de traitement d'aucun
+     * message. Elle est pourtant la premiere chose qui cede en montant en
+     * charge : a mille matchs simultanes, elle expire faute de connexion libre
+     * et des matchs disparaissent sans que la latence ne bouge d'un dixieme de
+     * milliseconde. Sans ce chronometre, la panne ne se lit que dans le
+     * journal, un match a la fois.
+     */
+    @Inject(MessageMetrics) private readonly metrics: MessageMetrics,
   ) {}
 
   /**
@@ -178,63 +191,65 @@ export class PrismaMatchRepository implements MatchRepository {
   async save(record: MatchRecord): Promise<void> {
     const events = this.eventsColumn(record);
     try {
-      await this.prisma.$transaction(async (tx) => {
-        await tx.match.create({
-          data: {
-            id: record.matchId,
-            mode: record.mode,
-            rulesVersion: record.rulesVersion,
-            contentVersion: record.contentVersion,
-            seed: record.seed,
-            status: 'ENDED',
-            endReason: record.reason,
-            winnerSeat: record.winner === null ? null : SEAT_COLUMN[record.winner],
-            // Un match dont un siege etait un rejeu se lit comme tel en base,
-            // sans qu'il faille deduire quoi que ce soit d'un `playerId` nul.
-            isGhost: record.ghost !== null,
-            startedAt: new Date(record.startedAtMs),
-            endedAt: new Date(record.endedAtMs),
-            events,
-          },
-        });
-
-        const seats = await this.attributableSeats(tx, record);
-        /**
-         * `ghostOfId` n'est **pas** une cle etrangere (docs/04) : le joueur
-         * d'origine peut disparaitre sans emporter la trace du rejeu, et la
-         * colonne ne porte que la provenance du jeu, pas une participation.
-         */
-        const ghostOf = (seat: 'a' | 'b'): string | null =>
-          record.ghost?.seat === seat ? record.ghost.sourcePlayerId : null;
-        await tx.matchSeat.createMany({
-          data: [
-            {
-              matchId: record.matchId,
-              seat: SEAT_COLUMN.a,
-              playerId: seats.a,
-              ghostOfId: ghostOf('a'),
+      await this.metrics.observeTask('match:save', () =>
+        this.prisma.$transaction(async (tx) => {
+          await tx.match.create({
+            data: {
+              id: record.matchId,
+              mode: record.mode,
+              rulesVersion: record.rulesVersion,
+              contentVersion: record.contentVersion,
+              seed: record.seed,
+              status: 'ENDED',
+              endReason: record.reason,
+              winnerSeat: record.winner === null ? null : SEAT_COLUMN[record.winner],
+              // Un match dont un siege etait un rejeu se lit comme tel en base,
+              // sans qu'il faille deduire quoi que ce soit d'un `playerId` nul.
+              isGhost: record.ghost !== null,
+              startedAt: new Date(record.startedAtMs),
+              endedAt: new Date(record.endedAtMs),
+              events,
             },
-            {
-              matchId: record.matchId,
-              seat: SEAT_COLUMN.b,
-              playerId: seats.b,
-              ghostOfId: ghostOf('b'),
-            },
-          ],
-        });
-
-        // Un forfait avant la premiere manche laisse un match sans manche.
-        // On n'envoie alors aucune requete : rien a ecrire.
-        if (record.rounds.length > 0) {
-          await tx.matchRound.createMany({
-            data: record.rounds.map((round) => ({
-              matchId: record.matchId,
-              round: round.round,
-              result: toJson(round.result),
-            })),
           });
-        }
-      }, TRANSACTION_OPTIONS);
+
+          const seats = await this.attributableSeats(tx, record);
+          /**
+           * `ghostOfId` n'est **pas** une cle etrangere (docs/04) : le joueur
+           * d'origine peut disparaitre sans emporter la trace du rejeu, et la
+           * colonne ne porte que la provenance du jeu, pas une participation.
+           */
+          const ghostOf = (seat: 'a' | 'b'): string | null =>
+            record.ghost?.seat === seat ? record.ghost.sourcePlayerId : null;
+          await tx.matchSeat.createMany({
+            data: [
+              {
+                matchId: record.matchId,
+                seat: SEAT_COLUMN.a,
+                playerId: seats.a,
+                ghostOfId: ghostOf('a'),
+              },
+              {
+                matchId: record.matchId,
+                seat: SEAT_COLUMN.b,
+                playerId: seats.b,
+                ghostOfId: ghostOf('b'),
+              },
+            ],
+          });
+
+          // Un forfait avant la premiere manche laisse un match sans manche.
+          // On n'envoie alors aucune requete : rien a ecrire.
+          if (record.rounds.length > 0) {
+            await tx.matchRound.createMany({
+              data: record.rounds.map((round) => ({
+                matchId: record.matchId,
+                round: round.round,
+                result: toJson(round.result),
+              })),
+            });
+          }
+        }, TRANSACTION_OPTIONS),
+      );
     } catch (error) {
       /**
        * On journalise l'identifiant et la cause, jamais le contenu du match :

@@ -4,6 +4,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { MessageMetrics } from '../../../shared/metrics.js';
 import { loadConfig } from '../../../shared/config.js';
 import type { MatchClock, MatchNotifier, TimerScheduler } from '../domain/ports.js';
 import { MatchRuntime } from '../application/match-runtime.js';
@@ -132,7 +133,11 @@ function buildRepository(): PrismaMatchRepository {
     JWT_SECRET: 'un-secret-assez-long',
     NODE_ENV: 'test',
   });
-  return new PrismaMatchRepository(prisma as never, new PinoLoggerService(createLogger(config)));
+  return new PrismaMatchRepository(
+    prisma as never,
+    new PinoLoggerService(createLogger(config)),
+    new MessageMetrics(false),
+  );
 }
 
 /** Monte un runtime branche sur le vrai depot. */

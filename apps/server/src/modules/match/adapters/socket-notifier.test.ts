@@ -2,6 +2,7 @@ import type { Socket } from 'socket.io';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { MessageMetrics } from '../../../shared/metrics.js';
 import { UNKNOWN_PLAYER_NAME } from '../domain/directory.js';
 import { SocketNotifier } from './socket-notifier.js';
 
@@ -44,7 +45,10 @@ class FakeSocket {
 let notifier: SocketNotifier;
 
 beforeEach(() => {
-  notifier = new SocketNotifier(new PinoLoggerService(createLogger(config)));
+  notifier = new SocketNotifier(
+    new PinoLoggerService(createLogger(config)),
+    new MessageMetrics(false),
+  );
 });
 
 describe('register', () => {

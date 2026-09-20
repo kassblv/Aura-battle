@@ -18,6 +18,7 @@ import type { Seat } from '@aura/rules';
 import type { Socket } from 'socket.io';
 import { describeCause } from '../../../shared/describe-cause.js';
 import { PinoLoggerService } from '../../../shared/logger.js';
+import { MessageMetrics } from '../../../shared/metrics.js';
 import { TokenBucket } from '../../../shared/rate-limit.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import {
@@ -93,6 +94,11 @@ export class MatchGateway implements OnGatewayConnection {
     @Inject(MatchmakingQueue) private readonly queue: MatchmakingQueue,
     @Inject(PLAYER_DIRECTORY) private readonly directory: PlayerDirectory,
     @Inject(RATING_DIRECTORY) private readonly ratings: RatingDirectory,
+    /**
+     * Mesure du temps de traitement (jalon M7). Eteinte, chacun de ses appels
+     * se reduit a un test de booleen.
+     */
+    @Inject(MessageMetrics) private readonly metrics: MessageMetrics,
   ) {}
 
   /** Identifiant du joueur derriere une socket authentifiee. */
@@ -199,7 +205,22 @@ export class MatchGateway implements OnGatewayConnection {
     };
     socket.data = state;
 
+    /**
+     * Debut de la mesure : **avant** tout filtre (jalon M7).
+     *
+     * `onAny` se declenche au decodage du paquet, avant les intergiciels de
+     * Socket.IO. C'est le bon instant : la limite de debit et la validation de
+     * schema font partie du traitement d'un message, et une mesure qui
+     * commencerait au gestionnaire ne verrait pas le cout d'un refus.
+     */
+    socket.onAny((event: string) => {
+      this.metrics.received(socket, event);
+    });
+
     socket.on('disconnect', () => {
+      // Rien ne doit survivre a la socket, pas meme une mesure en attente.
+      this.metrics.forget(socket);
+
       /**
        * Une fermeture ne vaut deconnexion que si c'etait la socket **courante**.
        *
@@ -257,6 +278,7 @@ export class MatchGateway implements OnGatewayConnection {
             retryable: true,
           });
         }
+        this.metrics.settleRejected(socket, event);
         return;
       }
       state.rateLimitReplies = 0;
@@ -267,6 +289,7 @@ export class MatchGateway implements OnGatewayConnection {
           message: 'evenement inconnu',
           retryable: false,
         });
+        this.metrics.settleRejected(socket, event);
         return;
       }
 
@@ -280,9 +303,15 @@ export class MatchGateway implements OnGatewayConnection {
           message: 'charge utile invalide',
           retryable: false,
         });
+        this.metrics.settleRejected(socket, event);
         return;
       }
 
+      // Le message part au gestionnaire : l'intercepteur global fermera la
+      // mesure a la fin de son traitement. Ce qu'on releve ici est le cout du
+      // filtre seul — c'est lui qui dira, le jour ou la p95 decroche, si la
+      // validation de schema y est pour quelque chose.
+      this.metrics.recordInboundFilter(socket);
       next();
     });
 

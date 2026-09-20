@@ -226,7 +226,7 @@ describe.skipIf(!reachable)('vivier d amorcage en base', () => {
   it('contient des enregistrements pour la version des regles en cours', async () => {
     const count = await seededCount();
     if (count === 0) {
-      console.warn("[integration] seed non joue : `pnpm --filter server seed` pour ce scenario");
+      console.warn('[integration] seed non joue : `pnpm --filter server seed` pour ce scenario');
       return;
     }
     expect(count).toBeGreaterThan(0);

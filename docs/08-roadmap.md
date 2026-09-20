@@ -123,7 +123,7 @@ Référence : `docs/05-matchmaking-ranking.md`.
 ### M7 — Anti-triche et robustesse
 - [ ] Contrôles de cohérence temporelle et plafonds (voir `06-anti-cheat.md`)
 - [ ] Job de détection statistique + `SuspicionFlag` + sanctions progressives
-- [ ] Test de charge : 500 matchs simultanés sur un nœud, p95 de traitement d'un message < 20 ms
+- [x] Test de charge : 500 matchs simultanés sur un nœud, p95 de traitement d'un message < 20 ms — **0,50 ms** mesurée (`apps/server/bench`, relevés dans `docs/09-testing.md`, ADR 0011)
 - [ ] Multi-nœuds : adaptateur Redis, sessions collantes, reprise d'un match après redémarrage d'un nœud (instantané de fin de manche)
 
 ### M8 — Méta et monétisation cosmétique

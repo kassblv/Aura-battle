@@ -26,6 +26,16 @@ export class TimeoutScheduler implements TimerScheduler, OnModuleDestroy {
     );
   }
 
+  /**
+   * Nombre d'echeances armees.
+   *
+   * Publie pour la sonde de charge : un minuteur orphelin ne se voit pas dans
+   * une latence, il se voit dans ce compteur qui ne redescend jamais.
+   */
+  get armed(): number {
+    return this.timers.size;
+  }
+
   cancel(key: string): void {
     const timer = this.timers.get(key);
     if (timer !== undefined) {

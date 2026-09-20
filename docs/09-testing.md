@@ -10,7 +10,7 @@
 | Intégration | Testcontainers | Repositories Prisma, file Redis |
 | E2E temps réel | Serveur réel + 2 clients Socket.IO | Scénarios de match complets |
 | Rendu | Vitest + snapshot numérique | `AnimationPlayer` : positions d'articulations à des instants donnés |
-| Charge | k6 (WebSocket) ou Artillery | Matchs simultanés, latence de traitement |
+| Charge | Banc maison (`apps/server/bench`) | Matchs simultanés, temps de traitement d'un message |
 | Manuel | Checklist | Ressenti, lisibilité, sons, haptique |
 
 ## Invariants à tester en propriétés
@@ -122,6 +122,189 @@ images lentes selon le moment, avec des images isolées à 200 ms qui ne
 viennent pas de la page. Le signe qui ne trompe pas est le **nombre d'images
 capturées** : 22 secondes de fenêtre doivent en rendre environ 1 320. Nettement
 moins, et c'est la machine qu'on mesure, pas le client.
+
+## Banc de charge : 500 matchs sur un nœud
+
+Le critère M7 est chiffré : **500 matchs simultanés, p95 de traitement d'un message entrant
+sous 20 ms**. Il se rejoue à volonté, hors de la suite de tests — personne ne veut mille
+connexions à chaque `pnpm test`.
+
+```bash
+docker compose up -d                                   # Postgres 5433, Redis 6379
+pnpm --filter server bench                             # 500 matchs, 60 s de mesure
+pnpm --filter server bench -- --matches 1000 --workers 8 --out 1000.json
+```
+
+Le banc lance **son propre serveur** (port 3999, base Redis 9, `NODE_ENV=production`,
+`AURA_METRICS=1`) et répartit ses joueurs dans des processus séparés. Options utiles :
+`--matches`, `--workers`, `--port`, `--redis-db`, `--db-pool`, `--ramp-ms`, `--settle-ms`,
+`--measure-ms`, `--pairing invite|queue`, `--out fichier.json`, `--attach` (mesurer un
+serveur déjà lancé).
+
+### Ce qu'on mesure, et où la fenêtre commence
+
+La fenêtre va du **décodage du paquet** à la **fin du gestionnaire** : la limite de débit et
+la validation de schéma en font partie, parce qu'un message refusé coûte lui aussi du temps
+serveur. Elle est ouverte par `socket.onAny` et fermée par un intercepteur NestJS
+(ADR 0011) ; `metrics-e2e.test.ts` le vérifie sur la vraie pile avec un gestionnaire
+volontairement lent, plutôt que de le supposer.
+
+Ce que la fenêtre ne contient **pas** est tout aussi important : l'écriture du match achevé
+et le classement partent après que les deux joueurs ont reçu leur résultat. Ils n'apparaissent
+dans aucun percentile de message — et ce sont eux qui cèdent en premier. Ils ont donc leur
+propre chronomètre (`match:save`, `outbound:validate`, `outbound:emit`).
+
+### Comment on sait qu'on mesure le serveur
+
+Cinq témoins accompagnent chaque relevé, et aucun n'est décoratif.
+
+| Témoin | Ce qu'il dit quand il dérape |
+|---|---|
+| Matchs vivants / demandés | Le serveur est à moitié vide : on mesure autre chose |
+| Retard de la boucle d'événements | Le nœud cale ; les percentiles de message ne le montrent pas |
+| Pauses du ramasse-miettes | Un retard de boucle expliqué par le GC ne se soigne pas comme un retard de travail synchrone |
+| Messages envoyés par les clients / reçus par le serveur | Un écart dit que la charge offerte n'est pas celle qu'on croit |
+| Aller-retour du **témoin** (un client seul dans un processus inoccupé) | La latence relevée par les processus clients parle du banc, pas du serveur |
+
+Le dernier a changé la lecture du premier relevé. À 500 matchs, les processus clients du
+banc mesuraient **100 ms d'aller-retour médian** ; le témoin, seul, répondait en **1 ms**.
+Les 99 autres étaient dans les processus clients, qui tiennent 250 sockets chacun. Une
+mesure prise depuis un client de charge aurait déclaré le critère manqué alors qu'il est
+tenu avec un facteur 40 de marge.
+
+### Relevés du 20 septembre 2026
+
+MacBook 12 cœurs, 16 Gio, Postgres et Redis en conteneur, **machine partagée avec d'autres
+travaux** (`load average` 14 à 18 pendant les mesures). Fenêtre de 60 s en régime établi,
+après une montée en charge étalée et 10 s de stabilisation. Les clients tapent 6 fois par
+seconde par lots de 500 ms et verrouillent à mi-phase de choix.
+
+Temps de traitement d'un message entrant, côté serveur :
+
+| Matchs | Messages/s | Médiane | p95 | p99 | p999 | Max | Charge machine | Verdict M7 |
+|---|---|---|---|---|---|---|---|---|
+| 100 | 162 | 0,160 ms | 0,470 ms | 0,870 ms | 2,50 ms | 10,5 ms | 34 | tenu |
+| 250 | 398 | 0,130 ms | 0,440 ms | 0,855 ms | 4,45 ms | 26,1 ms | 34 | tenu |
+| 500 | 810 | 0,130 ms | 0,435 ms | 0,980 ms | 5,35 ms | 83,9 ms | 14 | tenu |
+| 1000 | 1616 | 0,125 ms | 0,435 ms | 1,10 ms | 6,95 ms | 78,4 ms | 16 | tenu |
+| **500, configuration livrée** | **809** | **0,135 ms** | **0,500 ms** | **1,30 ms** | **12,9 ms** | **114 ms** | **19 → 33** | **tenu** |
+
+La dernière ligne est la **référence du jalon** : bassin de connexions à 20, c'est-à-dire ce
+qui tourne. Sa queue est plus épaisse que celle des autres parce que la charge de la machine
+a doublé **pendant** la fenêtre — le témoin le dit (maximum d'aller-retour à 1398 ms, retard
+de boucle à 1089 ms), et c'est précisément à cela qu'il sert.
+
+**La p95 ne bouge pas entre 100 et 1000 matchs.** Ce n'est pas le message qui coûte : c'est
+leur nombre. Par type, à 500 matchs, `recharge:taps` tient en 0,115 ms de médiane,
+`choice:lock` — qui résout la manche, sérialise deux `round:result` et parfois termine le
+match — en 0,37 ms. Le filtre d'entrée seul (débit + schéma) coûte 0,015 ms de médiane :
+la validation zod n'est pas un problème.
+
+### Ce qui casse en premier, et pourquoi
+
+Pas le critère. À 500 matchs le nœud consomme **37 % d'un cœur** ; à 1000, **68 %**. Ce qui
+se dégrade entre les deux est tout ce qui **n'appartient à la fenêtre d'aucun message** :
+
+| | 500 matchs | 1000 matchs |
+|---|---|---|
+| p95 de traitement d'un message | 0,435 ms | 0,435 ms |
+| Retard de boucle, p99 | 11,5 ms | 40,7 ms |
+| Retard de boucle, max | 426 ms | 822 ms |
+| Aller-retour du témoin, médiane | 1 ms | 2 ms |
+| **Aller-retour du témoin, p95** | **55 ms** | **317 ms** |
+| Écriture d'un match, médiane | — | 54,5 ms |
+| **Écriture d'un match, p99** | — | **975 ms** |
+| Mémoire résidente | 704 Mio | 945 Mio |
+
+Et lors du premier passage à 1000 matchs, des écritures ont **échoué** — `P2028:
+Unable to start a transaction in the given time`. Des matchs disparaissent, sans qu'aucune
+latence ne bouge d'un dixième de milliseconde. C'est exactement le genre de panne qu'un
+relevé de messages ne voit pas, et la raison pour laquelle les tâches de fond ont leur
+propre compteur.
+
+**Pourquoi.** Le budget de la boucle, à 1000 matchs sur une fenêtre de 60 s (40,8 s de
+processeur consommées) :
+
+| Poste | Temps | Part du processeur |
+|---|---|---|
+| Traitement des messages entrants (96 939 × 0,191 ms) | 18,5 s | 45 % |
+| Ramasse-miettes (573 pauses, 3 majeures) | 3,3 s | 8 % |
+| Validation des messages sortants (33 325 × 0,1 ms) | 3,3 s | 8 % |
+| Émission des messages sortants (33 325 × 0,1 ms) | 3,3 s | 8 % |
+| **Non attribué** : décodage et encodage Socket.IO, protocole pg, entrées-sorties | **12,4 s** | **31 %** |
+
+Deux enseignements. Le premier : **notre code n'est pas le principal consommateur** — près
+d'un tiers du processeur part dans le cadrage Socket.IO et la (dé)sérialisation JSON, en
+dehors de tout ce que nous avons écrit. Le second : à 68 % d'occupation d'un fil d'exécution
+unique, avec des arrivées **en rafales** — les transitions de phase touchent des centaines de
+matchs à la même milliseconde —, la file d'attente de la boucle explose par intermittence.
+C'est ce qui produit une médiane parfaitement saine sous une queue épaisse, et c'est la
+signature d'une pile qui cale, pas d'une lenteur de fond.
+
+L'écriture d'un match en est la victime, pas la cause : quatre allers-retours Postgres dans
+une transaction interactive, dont chaque reprise attend la boucle. 55 ms de médiane pour
+quatre requêtes locales qui devraient en coûter quatre.
+
+### Ce que la mesure a corrigé
+
+**Bassin de connexions Postgres.** Le pilote `pg` en ouvre dix par défaut — un défaut de
+bibliothèque, pas une décision, et le même pour un script d'administration que pour un nœud
+qui tient mille duels. Il est désormais explicite : `DATABASE_POOL_MAX`, 20 par défaut.
+
+Mesure avant/après, 1000 matchs, deux passages chacun, **dans cet ordre** — les passages
+à 20 ont donc tourné avec une base plus grosse, c'est-à-dire dans des conditions moins
+favorables :
+
+| | Bassin 10 | Bassin 10 | **Bassin 20** | **Bassin 20** |
+|---|---|---|---|---|
+| Écriture d'un match, médiane | 160 ms | 192 ms | **44 ms** | **81 ms** |
+| Écriture d'un match, moyenne | 295 ms | 287 ms | **156 ms** | **230 ms** |
+| Écriture d'un match, p95 | 875 ms | 925 ms | **600 ms** | **850 ms** |
+| p999 de traitement d'un message | 25,0 ms | 8,95 ms | **6,0 ms** | **7,5 ms** |
+| Retard de boucle, p99 | 110 ms | 87 ms | **55 ms** | **74 ms** |
+| Retard de boucle, max | 3784 ms | 1235 ms | **759 ms** | **1106 ms** |
+| **Aller-retour du témoin, médiane** | **14 ms** | **11 ms** | **3 ms** | **4 ms** |
+| Aller-retour du témoin, p95 | 739 ms | 462 ms | **276 ms** | **410 ms** |
+| Processeur | 65 % | 70 % | 68 % | 69 % |
+
+Toutes les grandeurs s'améliorent, à consommation de processeur identique : le nœud
+n'attendait pas moins, il attendait **moins souvent une connexion libre**. Ce que le joueur
+ressent — la médiane du témoin — passe de 11-14 ms à 3-4 ms.
+
+**Ce n'est pas une optimisation du chemin critique**, et la p95 de traitement d'un message
+ne bouge pas (elle n'avait pas de raison de bouger). C'est la disparition d'une panne
+silencieuse : à mille matchs, avec dix connexions, des écritures expirent et des matchs
+disparaissent sans qu'aucune latence ne le signale.
+
+**Un avertissement sur la méthode.** Deux passages du banc ne sont pas indépendants : ils
+écrivent dans la même base, qui grossit de mille matchs à chaque fois. Les premiers relevés
+de la journée voyaient une écriture à 39 ms de médiane là où les derniers en voient 160 avec
+le même code. Pour comparer deux versions du serveur, il faut donc **alterner** les passages
+ou repartir d'une base vide (`--database-url` vers une base dédiée reste à faire).
+
+### Ce que le banc a appris sur lui-même
+
+Un banc de charge est un programme comme un autre, et le sien s'est bloqué à 940 connexions
+sur 1000, serveur à 3 % de processeur, sans le moindre message d'erreur. La cause : les
+sockets se connectaient **dès leur construction**, donc leur `connect_error` était émis bien
+avant que quiconque n'écoute — mille sockets créées d'un coup, puis attendues seize par
+seize. Le banc attendait indéfiniment un événement déjà passé. `autoConnect: false` rend du
+même coup `--connect-concurrency` effectif : la cadence d'ouverture est commandée au lieu
+d'être subie.
+
+À retenir pour toute mesure temps réel de ce dépôt : **on écoute d'abord, on compose
+ensuite** — c'est le même piège que l'`onAny` posé trop tard dans les tests e2e.
+
+### Ce qu'il reste à mesurer
+
+- **Sur une machine au repos.** Tous les relevés ci-dessus ont été pris à `load average` 14
+  à 18. Les médianes y sont peu sensibles, les maxima beaucoup.
+- **Le chemin `--pairing queue`.** Les relevés portent sur des matchs d'invitation.
+  L'appariement est en O(n²) par tour (`pairTickets`) et n'a pas encore été mesuré à mille
+  tickets en file.
+- **La reprise après redémarrage d'un nœud** et **le multi-nœuds**, deuxième moitié de M7 :
+  c'est la réponse à la saturation d'une boucle unique, et la mesure ci-dessus dit à partir
+  d'où elle devient nécessaire.
 
 ## Équilibrage par simulation
 

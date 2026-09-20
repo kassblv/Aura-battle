@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { MessageMetrics } from '../../../shared/metrics.js';
 import type { PrismaService } from '../../../shared/prisma.service.js';
 import type { MatchRecord } from '../domain/ports.js';
 import { matchEventsColumnSchema, PrismaMatchRepository } from './prisma-match.repository.js';
@@ -190,12 +191,14 @@ describe('PrismaMatchRepository', () => {
   let prisma: FakePrisma;
   let lines: string[];
   let repository: PrismaMatchRepository;
+  let metrics: MessageMetrics;
 
   beforeEach(() => {
     prisma = new FakePrisma();
     const captured = capture();
     lines = captured.lines;
-    repository = new PrismaMatchRepository(prisma.asService(), captured.logger);
+    metrics = new MessageMetrics(true);
+    repository = new PrismaMatchRepository(prisma.asService(), captured.logger, metrics);
   });
 
   it('ecrit le match, ses sieges et ses manches dans une seule transaction', async () => {
@@ -639,6 +642,23 @@ describe('PrismaMatchRepository', () => {
     const sortie = lines.join('');
     expect(sortie).toContain('m_1');
     expect(sortie).toContain('base indisponible');
+  });
+
+  /**
+   * L'ecriture d'un match ne retarde aucun joueur : elle n'apparait donc dans
+   * le temps de traitement d'aucun message. C'est precisement pourquoi elle a
+   * son propre chronometre — a mille matchs simultanes, elle cesse d'aboutir
+   * sans que la moindre latence ne bouge, et le seul signe est ce compteur.
+   */
+  it('chronometre chaque ecriture, reussie ou non', async () => {
+    await repository.save(aRecord({ matchId: 'm_ok' }));
+    prisma.failOn = 'matchRound.createMany';
+    await expect(repository.save(aRecord({ matchId: 'm_ko' }))).rejects.toThrow();
+
+    const snapshot = metrics.snapshot();
+    if (!snapshot.enabled) throw new Error('mesure eteinte');
+    expect(snapshot.tasks['match:save']?.count).toBe(2);
+    expect(snapshot.tasks['match:save']?.failures).toBe(1);
   });
 
   it('ne recopie pas l etat du match dans le journal d erreur', async () => {

@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { BALANCE } from '@aura/rules';
 import { PinoLoggerService } from '../../shared/logger.js';
+import { MessageMetrics } from '../../shared/metrics.js';
 import { RedisModule } from '../../shared/redis.module.js';
 import { RedisService } from '../../shared/redis.js';
 import { PrismaService } from '../../shared/prisma.service.js';
@@ -58,10 +59,18 @@ import { MatchRuntime } from './application/match-runtime.js';
  * il ne voit que les ports `MatchOpening` et `QueueTicketStore`. Le jour ou la
  * passerelle se detachera, le decoupage sera mecanique (ADR 0009).
  */
+/** Jeton du provider qui declare les compteurs vivants du module. */
+const MATCH_GAUGES = Symbol('MATCH_GAUGES');
+
 @Module({
   imports: [AuthModule, RedisModule],
   providers: [
-    SocketNotifier,
+    {
+      provide: SocketNotifier,
+      inject: [PinoLoggerService, MessageMetrics],
+      useFactory: (logger: PinoLoggerService, metrics: MessageMetrics) =>
+        new SocketNotifier(logger, metrics),
+    },
     TimeoutScheduler,
     SystemMatchClock,
     InviteService,
@@ -317,6 +326,33 @@ import { MatchRuntime } from './application/match-runtime.js';
     },
 
     MatchGateway,
+
+    /**
+     * Compteurs vivants publies a la sonde de charge (jalon M7).
+     *
+     * Un provider muet, construit pour son effet de bord : il branche trois
+     * lectures — matchs, minuteurs, sessions — sur `MessageMetrics`. Les avoir
+     * dit deux choses qu'aucune latence ne dit. D'abord que le banc a bien
+     * ouvert les 500 matchs qu'il annonce, au lieu de mesurer un serveur a
+     * moitie vide. Ensuite qu'un minuteur ou une session qui ne redescend
+     * jamais est une fuite, pas une lenteur — deux defauts qui se soignent a
+     * des endroits differents.
+     */
+    {
+      provide: MATCH_GAUGES,
+      inject: [MessageMetrics, MatchRuntime, TimeoutScheduler, SocketNotifier],
+      useFactory: (
+        metrics: MessageMetrics,
+        runtime: MatchRuntime,
+        scheduler: TimeoutScheduler,
+        notifier: SocketNotifier,
+      ) => {
+        metrics.registerGauge('liveMatches', () => runtime.liveMatches);
+        metrics.registerGauge('armedTimers', () => scheduler.armed);
+        metrics.registerGauge('liveSessions', () => notifier.liveSessions);
+        return true;
+      },
+    },
   ],
   exports: [MatchGateway, MatchRuntime, MatchmakingQueue],
 })
