@@ -87,19 +87,41 @@ C'est cet écart moyenne/médiane qui a désigné le coupable : une médiane à 
 avec une moyenne à 42 ne décrit pas un moteur lent, elle décrit une pile qui
 cale régulièrement.
 
+**La fenêtre de mesure doit contenir le pire moment de l'écran**, sinon elle
+mesure autre chose. Pour le match, ce moment est la phase de choix **jauge
+armée** : aiguille en mouvement, trente boutons, deux grappes et la jauge à
+l'écran en même temps. Une fenêtre qui s'arrête à la recharge donne 55 i/s et
+zéro image lente — et ne voit rien. Les relevés ci-dessous couvrent une manche
+entière : recharge, choix jauge armée, verrouillage, révélation.
+
 Relevés au 20 septembre 2026, ralenti ×4 :
 
-| Écran | Moyenne | Images > 33 ms |
-|---|---|---|
-| Accueil, avant | 42,1 i/s | 28 sur 209 (13 %) |
-| Accueil, après | **60,0 i/s** | **0** |
-| Match | 40,6 i/s | 69 sur 243 (28 %) |
+| Écran | Moyenne | Médiane | Images > 33 ms |
+|---|---|---|---|
+| Accueil, avant | 42,1 i/s | — | 28 sur 209 (13 %) |
+| Accueil, après | **60,0 i/s** | — | **0** |
+| Match, avant | 36,8 i/s | 42,4 i/s | 252 sur 515 (49 %) |
+| — dont phase de choix, jauge armée | 27,6 i/s | 28,2 i/s | 252 sur 254 (99 %) |
+| Match, après | **59,9 i/s** | 59,9 i/s | **0 sur 1 318** |
 
 L'accueil rendait tout l'arbre React soixante fois par seconde alors que rien
 de ce qu'il affiche ne dépend du temps ; l'arène, elle, lit ses références dans
-sa propre boucle et n'a jamais eu besoin de React. En match, le rendu par image
-reste nécessaire — mais redessiner trente boutons pour déplacer une aiguille
-reste à traiter.
+sa propre boucle et n'a jamais eu besoin de React. L'écran de match faisait
+pire : il redessinait trente boutons pour déplacer une aiguille. Il sépare
+désormais les deux rythmes — `ui/renderKey.ts` dit ce que React doit redessiner,
+`ui/frame.ts` calcule ce que la boucle d'animation écrit directement sur des
+références. Pendant trois secondes de jauge en mouvement, les deux grappes de
+boutons n'enregistrent **aucune** mutation du DOM.
+
+Le « après » du match est reproductible : cinq mesures consécutives, zéro image
+au-dessus de 33 ms à chaque fois.
+
+**Une machine chargée invalide la mesure, et ça ne se voit pas dans la
+moyenne.** Sur ce poste à `load average` 12, le même code a donné entre 0 et 55
+images lentes selon le moment, avec des images isolées à 200 ms qui ne
+viennent pas de la page. Le signe qui ne trompe pas est le **nombre d'images
+capturées** : 22 secondes de fenêtre doivent en rendre environ 1 320. Nettement
+moins, et c'est la machine qu'on mesure, pas le client.
 
 ## Équilibrage par simulation
 

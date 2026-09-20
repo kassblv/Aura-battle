@@ -7,7 +7,6 @@ import { createOnlineMatch, type OnlineMatch, type OnlinePhase } from '../match/
 import { presentOnline } from '../match/onlinePresentation.js';
 import { cuesForTransition } from '../audio/matchCues.js';
 import { viewOfOnline, type MatchView } from '../match/view.js';
-import { renderKey } from '../ui/renderKey.js';
 import { resolveServerUrl } from '../net/serverUrl.js';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { ArenaControls } from '../arena/useArena.js';
@@ -44,12 +43,11 @@ export interface OnlineSession {
   readonly actions: MatchActions;
   readonly nowMs: number;
   /**
-   * Horloge vive du duel.
+   * L horloge vive, dans le meme repere que `nowMs`.
    *
-   * `view.ts` date tout en heure locale — `online.ts` traduit les echeances
-   * serveur avec l offset mesure par `ping`/`pong` — donc l horloge du duel
-   * est simplement celle du navigateur. L ecran la lit a chaque image et a
-   * chaque geste.
+   * Les echeances sont deja traduites en heure locale par `online.ts` ; ce qui
+   * manquait etait un instant NON fige, pour dater les gestes que le serveur
+   * confronte a leur instant d arrivee (docs/06).
    */
   readonly clock: () => number;
   readonly opponentName: string;
@@ -112,8 +110,6 @@ export function useOnlineMatch(
   const clientRef = useRef<GameClient | null>(null);
   const matchRef = useRef<OnlineMatch | null>(null);
   const [, force] = useState(0);
-  /** Dernier etat deja dessine par React : voir `ui/renderKey.ts`. */
-  const drawn = useRef('');
   const [inviteCode, setInviteCode] = useState<string | null>(null);
   const [queue, setQueue] = useState<OnlineSession['queue']>(null);
   const [settled, setSettled] = useState<ServerMessage<'match:end'> | null>(null);
@@ -238,23 +234,10 @@ export function useOnlineMatch(
        * du temps. L arene, elle, n a pas besoin de React : elle lit ses
        * references dans sa propre boucle.
        *
-       * Pendant le duel non plus : le compte a rebours, les orbes et la
-       * jauge suivent l horloge, mais `MatchScreen` les peint dans sa propre
-       * boucle. Ne reste que ce qui change de contenu, resume par `renderKey`.
-       *
-       * L etat de connexion et le nom de l adversaire entrent dans la cle :
-       * ils sont lus au rendu et non tenus en etat, donc rien d autre ne les
-       * ferait apparaitre a l ecran.
+       * Pendant le duel le rendu par image reste necessaire — le compte a
+       * rebours, les orbes et la jauge sont du DOM, et ils suivent l horloge.
        */
-      const key = [
-        client.connection.status,
-        state.opponentName ?? '',
-        state.phase === 'idle' ? 'idle' : renderKey(seen),
-      ].join('|');
-      if (key !== drawn.current) {
-        drawn.current = key;
-        force((n) => n + 1);
-      }
+      if (state.phase !== 'idle') force((n) => n + 1);
     };
     frame = requestAnimationFrame(tick);
 
@@ -271,9 +254,6 @@ export function useOnlineMatch(
       matchRef.current = null;
     };
   }, [accessToken, displayName, arena, audio]);
-
-  /** Voir `OnlineSession.clock` : le duel se date en heure locale. */
-  const clock = useCallback((): number => performance.now(), []);
 
   const actions: MatchActions = {
     tap: useCallback((taps: readonly RechargeTap[]) => {
@@ -304,6 +284,8 @@ export function useOnlineMatch(
     setQueue(null);
     clientRef.current?.send('queue:leave', {});
   }, []);
+
+  const clock = useCallback(() => performance.now(), []);
 
   const clearSettled = useCallback(() => {
     setSettled(null);

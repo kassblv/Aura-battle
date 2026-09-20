@@ -579,7 +579,7 @@ const ControlBand = memo(function ControlBand({
                 <span className="pick__icon">{STYLE_ICONS[id] ?? FALLBACK_ICON}</span>
                 <span className={pickNameClass(styleName(id).fr)}>{styleName(id).fr}</span>
                 {/* Le contre en pictogramme : « bat Provoc » double la largeur du
-                          bouton pour une information que l icone donne d un coup d oeil. */}
+                    bouton pour une information que l icone donne d un coup d oeil. */}
                 <small>bat {STYLE_ICONS[BALANCE.styleBeats[id]] ?? FALLBACK_ICON}</small>
               </button>
             ))}
@@ -588,11 +588,11 @@ const ControlBand = memo(function ControlBand({
       </div>
 
       {/*
-              La fente garde sa place vide.
-              Faire apparaitre la jauge en poussant les deux grappes ferait
-              bouger dix boutons sous le pouce du joueur, a l instant precis ou
-              il vient d en toucher un.
-            */}
+        La fente garde sa place vide.
+        Faire apparaitre la jauge en poussant les deux grappes ferait bouger
+        dix boutons sous le pouce du joueur, a l instant precis ou il vient
+        d en toucher un.
+      */}
       <div className={armed ? 'gauge-slot' : 'gauge-slot gauge-slot--empty'}>
         {armed && (
           <Gauge

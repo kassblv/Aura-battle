@@ -1,0 +1,124 @@
+import { describe, expect, it } from 'vitest';
+import type { MatchView } from '../match/view.js';
+import { renderKey, type KeyedView } from './renderKey.js';
+
+const base: MatchView = {
+  phase: 'choice',
+  round: 1,
+  phaseEndsAtMs: 15_000,
+  phaseDurationMs: 15_000,
+  me: { energy: 8, roundsWon: 0 },
+  opponent: { energy: null, roundsWon: 0 },
+  orbs: [],
+  taps: [],
+  meterPeriodMs: 1_700,
+  opponentLocked: false,
+  lastRound: null,
+  ended: null,
+};
+
+const key = (patch: Partial<KeyedView> = {}): string => renderKey({ ...base, ...patch });
+
+describe('renderKey', () => {
+  /**
+   * Le coeur de la separation des rythmes : l heure avance sans que l arbre
+   * change. Si cette assertion tombe, l ecran de match redessine trente
+   * boutons pour deplacer une aiguille — c est exactement le defaut corrige.
+   */
+  it('ne change pas quand seule l heure avance', () => {
+    expect(key()).toBe(key());
+  });
+
+  it('change a chaque phase, chaque manche et chaque fin de phase', () => {
+    expect(key({ phase: 'recharge' })).not.toBe(key());
+    expect(key({ round: 2 })).not.toBe(key());
+    expect(key({ phaseEndsAtMs: 15_400 })).not.toBe(key());
+    expect(key({ phaseDurationMs: 6_000 })).not.toBe(key());
+  });
+
+  it('change quand l ecran a quelque chose de neuf a afficher', () => {
+    expect(key({ me: { energy: 7, roundsWon: 0 } })).not.toBe(key());
+    expect(key({ me: { energy: 8, roundsWon: 1 } })).not.toBe(key());
+    expect(key({ opponent: { energy: null, roundsWon: 1 } })).not.toBe(key());
+    expect(key({ opponentLocked: true })).not.toBe(key());
+    expect(key({ meterPeriodMs: 1_500 })).not.toBe(key());
+  });
+
+  /**
+   * L energie de l adversaire est `null` par construction (`view.ts`), celle
+   * du joueur peut valoir zero. Les deux doivent se distinguer : une cle qui
+   * les confondrait laisserait un joueur a court d energie devant des paliers
+   * encore affiches comme payables.
+   */
+  it('distingue une energie nulle d une energie absente', () => {
+    expect(key({ me: { energy: 0, roundsWon: 0 } })).not.toBe(
+      key({ me: { energy: null, roundsWon: 0 } }),
+    );
+  });
+
+  /**
+   * Sans rendu, la boucle continuerait de peindre l orbe deja touchee : elle
+   * lit la vue par une reference que seul un rendu rafraichit.
+   */
+  it('change quand un tap part', () => {
+    expect(key({ taps: [{ atMs: 200, orbIndex: 0 }] })).not.toBe(key());
+  });
+
+  it('change quand la sequence d orbes arrive', () => {
+    const orbs = [
+      { index: 0, x: 0.2, y: 0.4, kind: 'normal' as const, points: 1, lifetimeMs: 1600 },
+    ];
+    expect(key({ orbs })).not.toBe(key());
+  });
+
+  it('change a chaque verdict de manche, y compris a score identique', () => {
+    const won = {
+      round: 1,
+      winner: 'moi' as const,
+      myScore: 12,
+      opponentScore: 9,
+      myQuality: 'perfect' as const,
+      myUltimate: false,
+      countered: false,
+    };
+    expect(key({ lastRound: won })).not.toBe(key());
+    expect(key({ lastRound: { ...won, round: 2 } })).not.toBe(key({ lastRound: won }));
+    expect(key({ lastRound: { ...won, winner: null } })).not.toBe(key({ lastRound: won }));
+  });
+
+  /**
+   * Ces trois champs ne sont lus que par l arene, qui a sa propre boucle et ne
+   * passe pas par React. Les mettre dans la cle ferait redessiner l ecran pour
+   * une information qu il n affiche pas.
+   */
+  it('ignore ce que seule l arene consomme', () => {
+    const one = {
+      round: 1,
+      winner: 'moi' as const,
+      myScore: 12,
+      opponentScore: 9,
+      myQuality: 'perfect' as const,
+      myUltimate: false,
+      countered: false,
+    };
+    expect(
+      key({ lastRound: { ...one, myQuality: 'miss', myUltimate: true, countered: true } }),
+    ).toBe(key({ lastRound: one }));
+  });
+
+  it('change quand le match se termine, et selon son vainqueur', () => {
+    expect(key({ ended: { winner: 'moi' } })).not.toBe(key());
+    expect(key({ ended: { winner: null } })).not.toBe(key({ ended: { winner: 'moi' } }));
+  });
+
+  /**
+   * La geometrie de la jauge arrive avec `choice:start`. Tant qu elle manque,
+   * la jauge se rabat sur une zone centree ; son arrivee doit donc repeindre
+   * les bandes, sans quoi le joueur viserait la zone du repli.
+   */
+  it('change quand la geometrie de la jauge arrive', () => {
+    expect(key({ meterCenter: 0.42 })).not.toBe(key());
+    expect(key({ meterZoneWidth: 0.22 })).not.toBe(key());
+    expect(key({ meterPerfectWidth: 0.08 })).not.toBe(key());
+  });
+});

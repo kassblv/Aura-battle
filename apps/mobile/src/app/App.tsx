@@ -388,6 +388,7 @@ export function App(): JSX.Element {
             view={online.view}
             actions={online.actions}
             nowMs={online.nowMs}
+            clock={online.clock}
             opponentName={online.opponentName}
             onLeave={leaveMatch}
             onRematch={() => {
@@ -417,6 +418,7 @@ export function App(): JSX.Element {
             view={online.view}
             actions={online.actions}
             nowMs={online.nowMs}
+            clock={online.clock}
             opponentName={online.opponentName}
             onLeave={() => {
               go('home');
@@ -475,6 +477,7 @@ function SoloMatchScreen({
       view={session.view}
       actions={session.actions}
       nowMs={session.nowMs}
+      clock={session.clock}
       opponentName="Nova"
       onLeave={onLeave}
       onRematch={session.restart}
