@@ -26,6 +26,15 @@ export default defineConfig({
     url: env('DATABASE_URL'),
   },
   migrations: {
-    seed: 'tsx prisma/seed.ts',
+    /**
+     * Chemin explicite vers `tsx`, et non `tsx` tout court.
+     *
+     * Prisma lance cette commande telle quelle, sans ajouter `node_modules/.bin`
+     * au PATH comme le ferait un script npm. Le nom nu marche sur une machine de
+     * developpement parce qu'un shell interactif l'y trouve deja ; dans un
+     * conteneur il donne `ENOENT`, et l'amorcage echoue apres un deploiement
+     * annonce reussi.
+     */
+    seed: 'node_modules/.bin/tsx prisma/seed.ts',
   },
 });

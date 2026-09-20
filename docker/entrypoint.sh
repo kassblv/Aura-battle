@@ -15,6 +15,18 @@ cd /repo/apps/server
 # perte de tout.
 node_modules/.bin/prisma migrate deploy
 
+# Le seed tourne a CHAQUE demarrage, et c'est voulu.
+#
+# Il est idempotent : upserts pour la saison et le catalogue, suppression
+# ciblee des seuls fantomes d'amorcage avant de les reecrire. Le jouer une
+# seule fois, a la main, laisserait tout nouvel environnement demarrer sans
+# saison, sans catalogue et surtout sans vivier de fantomes — et les premiers
+# joueurs attendraient un adversaire qui ne vient jamais, parce que la file est
+# vide le jour du lancement. C'est precisement le cas que le vivier existe pour
+# couvrir (docs/05, jalon M5).
+echo "aura: amorcage des donnees"
+node_modules/.bin/prisma db seed
+
 cd /repo
 echo "aura: demarrage du serveur"
 exec "$@"

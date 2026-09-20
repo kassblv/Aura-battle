@@ -140,6 +140,15 @@ COPY --from=prod-deps /repo/packages ./packages
 COPY package.json pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/prisma.config.ts apps/server/
 COPY apps/server/prisma apps/server/prisma
+# Les sources du serveur, pour le SEUL amorcage.
+#
+# `prisma/seed.ts` importe la politique de fantomes depuis `src/` et tourne
+# sous `tsx`, donc sur les sources. Compiler le seed a part demanderait une
+# seconde configuration TypeScript dont le seul role serait de diverger de la
+# premiere ; sept cents kilo-octets de sources a cote de six cents megaoctets
+# d'image est le meilleur des deux echanges, et ca garantit que l'amorcage se
+# comporte en production exactement comme en developpement.
+COPY apps/server/src apps/server/src
 
 COPY --from=build /repo/apps/server/dist apps/server/dist
 COPY --from=build /repo/packages/rules/dist packages/rules/dist
