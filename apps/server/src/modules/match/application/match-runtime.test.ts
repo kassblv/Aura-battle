@@ -100,6 +100,67 @@ beforeEach(() => {
   runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS });
 });
 
+describe('un joueur ne tient qu un siege', () => {
+  /**
+   * Deux `invite:join` envoyes dans la meme salve suffisaient.
+   *
+   * Socket.IO delivre chaque paquet dans son propre tour de boucle ; la
+   * passerelle suspendait sur une lecture en base entre ses controles et la
+   * creation du match, et les deux handlers ouvraient chacun le leur. Le
+   * joueur se retrouvait assis dans DEUX parties.
+   *
+   * Le degat n'etait pas le double siege lui-meme : `locate` ne rend que le
+   * PREMIER match trouve, donc la deconnexion n'armait le compte a rebours que
+   * sur celui-la. L'adversaire du second jouait une partie entiere contre un
+   * absent, sans que les 45 s d'abandon ne s'appliquent jamais.
+   *
+   * Le refus vit donc ici, et pas seulement dans la passerelle : c'est le seul
+   * endroit qu'aucun chemin d'ouverture — invitation, file d'attente, revanche
+   * — ne peut contourner.
+   */
+  it('refuse d asseoir un joueur deja en match', () => {
+    const accepted = runtime.createMatch({
+      matchId: 'm_02',
+      seed: 'g',
+      seats: { a: 'player-a', b: 'autre' },
+    });
+    expect(accepted).toBe(false);
+    expect(runtime.phaseOf('m_02')).toBeNull();
+  });
+
+  it('refuse aussi quand c est le second siege qui est pris', () => {
+    const accepted = runtime.createMatch({
+      matchId: 'm_02',
+      seed: 'g',
+      seats: { a: 'autre', b: 'player-b' },
+    });
+    expect(accepted).toBe(false);
+  });
+
+  it('accepte deux joueurs libres', () => {
+    expect(runtime.createMatch({ matchId: 'm_02', seed: 'g', seats: { a: 'x', b: 'y' } })).toBe(
+      true,
+    );
+  });
+
+  it('dit qui est occupe', () => {
+    expect(runtime.isBusy('player-a')).toBe(true);
+    expect(runtime.isBusy('inconnu')).toBe(false);
+  });
+
+  /**
+   * Le defaut symetrique, et il serait silencieux : un joueur qui reste
+   * marque « occupe » apres la fin de sa partie ne peut plus jamais en
+   * rejoindre une.
+   */
+  it('libere les deux joueurs a la fin du match', () => {
+    runtime.forfeit(MATCH_ID, 'a');
+    expect(runtime.isBusy('player-a')).toBe(false);
+    expect(runtime.isBusy('player-b')).toBe(false);
+    expect(runtime.createMatch({ matchId: 'm_03', seed: 'g', seats: SEATS })).toBe(true);
+  });
+});
+
 describe('createMatch', () => {
   it('ouvre sur l intro et previent les deux joueurs', () => {
     expect(runtime.phaseOf(MATCH_ID)).toBe('intro');

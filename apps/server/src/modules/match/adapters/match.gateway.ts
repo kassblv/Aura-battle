@@ -260,7 +260,30 @@ export class MatchGateway implements OnGatewayConnection {
     const seed = randomUUID();
 
     /**
-     * Le nom de l'adversaire est lu **avant** d'ouvrir le match.
+     * Le match est ouvert **avant** toute attente, et c'est l'ordre qui compte.
+     *
+     * L'inverse — lire les noms puis ouvrir — laissait un aller-retour Postgres
+     * entre les controles et la reservation des sieges. Socket.IO delivrant
+     * chaque paquet dans son propre tour de boucle, deux `invite:join` envoyes
+     * dans la meme salve s'entrelacaient : les deux handlers passaient les
+     * controles, puis ouvraient chacun leur match. Le joueur tenait deux
+     * sieges, et la deconnexion n'armait l'abandon que sur l'un des deux.
+     *
+     * Ouvrir d'abord referme la fenetre au lieu de la surveiller : il n'y a
+     * plus rien a intercaler. Le refus, lui, est verifie par le moteur
+     * lui-meme, qui est le seul point de passage commun a tous les modes.
+     */
+    if (!this.runtime.createMatch({ matchId, seed, seats })) {
+      this.emit(socket, 'error', {
+        code: 'ALREADY_IN_MATCH',
+        message: 'un des deux joueurs est deja en match',
+        retryable: false,
+      });
+      return;
+    }
+
+    /**
+     * Le nom de l'adversaire, lu une fois le match ouvert.
      *
      * Il etait code en dur : les deux joueurs voyaient « Adversaire », et le
      * bandeau de match ne designait donc personne. Une lecture ratee retombe
@@ -286,7 +309,22 @@ export class MatchGateway implements OnGatewayConnection {
       });
     }
 
-    this.runtime.createMatch({ matchId, seed, seats });
+    /**
+     * Un siege deja vide a l'arrivee.
+     *
+     * La presence de l'hote est verifiee avant l'ouverture, mais il peut avoir
+     * ferme sa socket pendant la lecture des noms. Son evenement `disconnect`
+     * trouve alors le match — il existe depuis le debut de cette methode — et
+     * arme l'abandon tout seul. Ce controle couvre le cas inverse, ou la
+     * fermeture a precede l'evenement : sans lui, le match vivrait avec un
+     * siege absent et aucun compte a rebours, et l'autre joueur subirait trois
+     * manches d'actions par defaut au lieu d'un forfait en 45 s.
+     */
+    for (const playerId of Object.values(seats)) {
+      if (!this.notifier.isConnected(playerId)) {
+        this.runtime.notePlayerDisconnected(playerId);
+      }
+    }
   }
 
   /** Les noms, ou une carte vide si l'annuaire ne repond pas. */

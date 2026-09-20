@@ -16,6 +16,8 @@ export const ERROR_CODES = [
   'INVITE_NOT_FOUND',
   'INVITE_EXPIRED',
   'ALREADY_IN_QUEUE',
+  /** Un des deux joueurs occupe deja un siege : aucun ne peut en tenir deux. */
+  'ALREADY_IN_MATCH',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

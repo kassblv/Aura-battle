@@ -52,6 +52,8 @@ interface LiveMatch {
   readonly matchId: string;
   readonly seed: string;
   readonly seats: MatchSeats;
+  /** Par quel chemin ce match a ete ouvert. Conserve tel quel a l'ecriture. */
+  readonly mode: MatchRecord['mode'];
   readonly startedAtMs: number;
   state: MatchState;
   /** Cosmetiques de la manche en cours, par siege. */
@@ -180,6 +182,17 @@ const REJECTION_CODES: Readonly<Record<ChoiceRejection, ErrorCode>> = {
 export class MatchRuntime {
   private readonly matches = new Map<string, LiveMatch>();
 
+  /**
+   * Ou est assis chaque joueur.
+   *
+   * Un index plutot qu'un balayage : `locate` parcourait toutes les parties
+   * vivantes a chaque connexion et chaque deconnexion, ce qu'une file
+   * d'attente rendrait couteux. Mais surtout, il ne rendait que la PREMIERE
+   * trouvee — ce qui rendait un double siege invisible au lieu de le rendre
+   * impossible.
+   */
+  private readonly seatedIn = new Map<string, string>();
+
   constructor(
     private readonly notifier: MatchNotifier,
     private readonly scheduler: TimerScheduler,
@@ -254,11 +267,17 @@ export class MatchRuntime {
 
   /** Retrouve le match et le siege d'un joueur, s'il en a un. */
   private locate(playerId: string): { match: LiveMatch; seat: Seat } | null {
-    for (const match of this.matches.values()) {
-      const seat = SEATS.find((candidate) => match.seats[candidate] === playerId);
-      if (seat !== undefined) return { match, seat };
-    }
-    return null;
+    const matchId = this.seatedIn.get(playerId);
+    if (matchId === undefined) return null;
+    const match = this.matches.get(matchId);
+    if (match === undefined) return null;
+    const seat = SEATS.find((candidate) => match.seats[candidate] === playerId);
+    return seat === undefined ? null : { match, seat };
+  }
+
+  /** Ce joueur occupe-t-il deja un siege ? */
+  isBusy(playerId: string): boolean {
+    return this.locate(playerId) !== null;
   }
 
   /** Phase d'un match en cours, ou `null` s'il n'existe pas (ou plus). */
@@ -273,7 +292,30 @@ export class MatchRuntime {
     return SEATS.find((seat) => match.seats[seat] === playerId) ?? null;
   }
 
-  createMatch(input: { matchId: string; seed: string; seats: MatchSeats }): void {
+  /**
+   * Ouvre un match, ou refuse.
+   *
+   * Le refus vit ICI et pas seulement dans la passerelle : c'est le seul
+   * endroit qu'aucun chemin d'ouverture — invitation, file d'attente, revanche
+   * — ne peut contourner, et il est synchrone, donc aucune attente ne peut
+   * s'intercaler entre le controle et la reservation des sieges.
+   */
+  createMatch(input: {
+    matchId: string;
+    seed: string;
+    seats: MatchSeats;
+    /**
+     * Chemin d'ouverture, enregistre avec le match.
+     *
+     * Absent, c'est une invitation : le seul chemin qui existait avant la file
+     * d'attente. Un match classe ecrit `RANKED` en base, faute de quoi le
+     * classement compterait plus tard des parties d'invitation.
+     */
+    mode?: MatchRecord['mode'];
+  }): boolean {
+    if (this.matches.has(input.matchId)) return false;
+    if (SEATS.some((seat) => this.isBusy(input.seats[seat]))) return false;
+
     const step = createMatch(input.seed, {
       startedAtMs: this.clock.now(),
       config: this.config,
@@ -282,6 +324,7 @@ export class MatchRuntime {
       matchId: input.matchId,
       seed: input.seed,
       seats: input.seats,
+      mode: input.mode ?? 'INVITE',
       startedAtMs: this.clock.now(),
       state: step.state,
       cosmetics: { a: null, b: null },
@@ -293,7 +336,11 @@ export class MatchRuntime {
       phaseEntries: 0,
     };
     this.matches.set(input.matchId, match);
+    for (const seat of SEATS) {
+      this.seatedIn.set(input.seats[seat], input.matchId);
+    }
     this.runEffects(match, step.effects);
+    return true;
   }
 
   /** Instantane de reprise pour un siege, sans information cachee. */
@@ -588,6 +635,13 @@ export class MatchRuntime {
       this.scheduler.cancel(disconnectKey(match.matchId, seat));
     }
     this.matches.delete(match.matchId);
+    // Sans cette liberation, un joueur reste « occupe » pour toujours et ne
+    // peut plus jamais rejoindre de partie — un defaut silencieux.
+    for (const seat of SEATS) {
+      if (this.seatedIn.get(match.seats[seat]) === match.matchId) {
+        this.seatedIn.delete(match.seats[seat]);
+      }
+    }
   }
 
   /**
@@ -604,7 +658,7 @@ export class MatchRuntime {
     const record: MatchRecord = {
       matchId: match.matchId,
       seed: match.seed,
-      mode: 'INVITE',
+      mode: match.mode,
       rulesVersion: RULES_VERSION,
       contentVersion: CONTENT_VERSION,
       seats: { a: match.seats.a, b: match.seats.b },
