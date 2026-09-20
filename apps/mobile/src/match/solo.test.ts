@@ -1,4 +1,4 @@
-import { BALANCE, type Choice } from '@aura/rules';
+import { BALANCE, type Choice, type TimingQuality } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import { createSoloMatch, type SoloMatch } from './solo.js';
 
@@ -163,5 +163,42 @@ describe('deroulement complet', () => {
     // Chaque avancee rend ses propres effets : sinon le client rejoue des
     // transitions deja consommees a chaque image.
     expect(match.effects.length).toBeLessThanOrEqual(before + 8);
+  });
+});
+
+describe('instant de timing', () => {
+  /**
+   * `lock` veut l ECART entre l armement de la jauge et l appui, pas l instant
+   * de l appui dans la phase. Le serveur calcule cet ecart lui-meme
+   * (`match.gateway.ts` : `tapAt - chargeAt`) ; le solo doit le calculer aussi,
+   * sinon le meme geste ne vaut pas la meme chose selon le mode.
+   *
+   * Et le defaut ne se voit pas a l oeil : `evaluateTiming` traite tout ecart
+   * superieur a `maxChargeMs` (6 s) comme un rate. La phase de choix durant
+   * 15 s, passer l instant de phase rendait **tout verrouillage au-dela de six
+   * secondes de reflexion automatiquement rate**, quelle que soit la visee.
+   */
+  function lockAt(timingTapAtMs: number, atMs: number): TimingQuality {
+    const match = solo('timing');
+    runTo(match, 'choice');
+    match.lock(
+      { move: { style: 'calme', tier: 0 }, amplifier: 0, useUltimate: false },
+      timingTapAtMs,
+      atMs,
+    );
+    match.advanceTo(match.state.phaseEndsAtMs);
+    const last = match.state.history.at(-1);
+    expect(last).toBeDefined();
+    return last!.seats.a.timing.quality;
+  }
+
+  it('rate tout ce qui depasse la duree maximale de charge', () => {
+    expect(lockAt(BALANCE.timing.maxChargeMs + 1, 9_000)).toBe('miss');
+  });
+
+  it('juge normalement un ecart plausible, meme apres une longue reflexion', () => {
+    // Neuf secondes de reflexion, mais un demi-seconde entre l armement et
+    // l appui : c est un geste, et il doit etre juge comme tel.
+    expect(lockAt(500, 9_000)).not.toBe('miss');
   });
 });

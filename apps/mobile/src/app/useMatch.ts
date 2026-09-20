@@ -90,10 +90,22 @@ export function useSoloMatch(
     tap: useCallback((taps: readonly RechargeTap[], inPhaseMs: number) => {
       matchRef.current?.tap(taps, inPhaseMs);
     }, []),
-    lock: useCallback((choice: Choice, _chargeAtMs: number, tapAtMs: number) => {
-      // Le moteur local n a que faire de l instant d armement : il ne sert
-      // qu au serveur, pour juger de la plausibilite du geste.
-      return matchRef.current?.lock(choice, tapAtMs, tapAtMs) ?? false;
+    lock: useCallback((choice: Choice, chargeAtMs: number, tapAtMs: number) => {
+      /**
+       * Le moteur veut l ECART entre l armement et l appui, pas l instant de
+       * l appui dans la phase — exactement ce que `match.gateway.ts` calcule
+       * avant d appeler `lockChoice`. Le commentaire precedent pretendait le
+       * contraire et coutait deux defauts :
+       *
+       * 1. Le solo notait `cursorPosition(tapAt)` la ou le serveur note
+       *    `cursorPosition(tapAt - chargeAt)` : le meme geste ne valait pas la
+       *    meme chose selon le mode.
+       * 2. `evaluateTiming` rate tout ecart superieur a `maxChargeMs` (6 s), et
+       *    la phase de choix dure 15 s. Tout verrouillage au-dela de six
+       *    secondes de reflexion etait donc un rate automatique, quelle que
+       *    soit la visee.
+       */
+      return matchRef.current?.lock(choice, tapAtMs - chargeAtMs, tapAtMs) ?? false;
     }, []),
   };
 
