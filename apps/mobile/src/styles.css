@@ -356,6 +356,22 @@ body {
   gap: 8px;
 }
 
+/*
+  La colonne gauche : la galerie, puis le rail dessous.
+
+  Empiler plutot qu'aligner, parce qu'en paysage la largeur du bas est la
+  ressource disputee et la hauteur au-dessus ne sert a personne. Ce qui
+  surmonte le rail lui emprunte sa largeur au lieu de la lui prendre.
+*/
+.home__left {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
 .rail {
   flex: none;
   display: flex;
@@ -415,11 +431,12 @@ body {
 /*
   Sous 780 px, le rail se reduit a ses pictogrammes.
 
-  Le seuil n'est pas choisi a l'oeil : en dessous, la galerie de memes ne garde
-  plus assez de largeur pour montrer un nom entre ses deux fleches, et c'est
-  elle qui doit rester lisible — un menu se reconnait a son icone, un nom de
-  meme ne se devine pas. Le nom accessible du bouton reste porte par son
-  `aria-label`, donc rien ne se perd pour qui ne voit pas l'ecran.
+  Le seuil se calcule, il ne se choisit pas a l'oeil : le rail complet fait
+  451 px, le bloc de lancement 266, les marges et l'ecart 32. En dessous de
+  749 px de large, le rail deborderait de sa colonne. 780 garde une marge.
+
+  Le nom accessible du bouton reste porte par son `aria-label`, donc rien ne
+  se perd pour qui ne voit pas l'ecran.
 
   Place APRES `.rail__btn` : meme specificite, donc c'est l'ordre qui tranche.
   Ecrit au-dessus, le media query perdait contre le `min-width: 82px` qu'il
@@ -1195,15 +1212,26 @@ body {
   plus : c'est elle qui absorbe l'etroitesse, parce qu'un nom de meme se
   tronque proprement alors qu'un bouton rate ne se touche pas.
 */
+/*
+  La galerie prend la largeur de la colonne, plafonnee.
+
+  Avant, elle etait `flex: 1` entre deux blocs `flex: none` : elle recevait ce
+  qui restait, soit 87 px a 844, alors que ses deux fleches en font 92 a elles
+  seules. La carte tombait a 26 px et son nom passait par-dessus le bouton de
+  duel — un debordement qu'aucune regle de texte ne pouvait rattraper, parce
+  que la boite etait plus petite que son contenu minimal.
+
+  Le plafond evite qu'une tablette l'etire sur toute la colonne : au-dela, on
+  n'ajoute que du vide entre le nom et ses fleches.
+*/
 .memes {
-  flex: 1 1 auto;
+  width: 100%;
   min-width: 0;
   display: flex;
   align-items: center;
-  justify-content: center;
   gap: 6px;
-  max-width: 320px;
-  margin: 0 auto;
+  max-width: 420px;
+  margin: 0;
 }
 
 .memes__arrow {

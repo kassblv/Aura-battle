@@ -106,75 +106,22 @@ export function HomeScreen({
       </div>
 
       {/*
-        Les trois grappes du bas vivent dans UNE rangee.
+        Le bas de l'ecran : deux colonnes, une par pouce.
 
-        Positionnees en absolu, elles se recouvraient des que l'ecran
-        retrecissait : a 667 px le bouton de duel passait par-dessus la galerie
-        et la boutique disparaissait derriere. Une rangee ne peut pas se
-        chevaucher — c'est la mise en page qui l'interdit, pas un reglage a
-        retoucher a chaque format.
+        A gauche la galerie et le rail, a droite le lancement. Les trois
+        grappes ont d'abord vecu dans UNE rangee, parce qu'en absolu elles se
+        recouvraient des que l'ecran retrecissait. Une rangee ne peut pas se
+        chevaucher — mais elle peut ECRASER : a 844 px le rail prenait 451 px
+        et le lancement 266, il restait 87 px a une galerie dont les deux
+        seules fleches en font deja 92. La carte tombait a 26 px de large et
+        son nom courait cent pixels sous le bouton de duel.
+
+        Deux colonnes reglent ca a la racine : la galerie ne dispute plus sa
+        largeur a personne, elle prend celle du rail qu'elle surmonte.
       */}
       <div className="home__bottom">
-        <nav className="rail" aria-label="Menus">
-          <button type="button" className="rail__btn" onClick={onWardrobe} aria-label="Vestiaire">
-            <span className="rail__icon" aria-hidden="true">
-              👕
-            </span>
-            <span className="rail__label" aria-hidden="true">
-              Vestiaire
-            </span>
-          </button>
+        <div className="home__left">
           {/*
-            Le classement juste apres le profil : les deux repondent a la meme
-            question — ou j'en suis — l'un pour soi, l'autre par rapport aux
-            autres.
-          */}
-          <button
-            type="button"
-            className="rail__btn"
-            onClick={onLeaderboard}
-            aria-label="Classement"
-          >
-            <span className="rail__icon" aria-hidden="true">
-              🏆
-            </span>
-            <span className="rail__label" aria-hidden="true">
-              Classement
-            </span>
-          </button>
-          <button type="button" className="rail__btn" onClick={onProfile} aria-label="Profil">
-            <span className="rail__icon" aria-hidden="true">
-              📊
-            </span>
-            <span className="rail__label" aria-hidden="true">
-              Profil
-            </span>
-          </button>
-          <button type="button" className="rail__btn" onClick={onShop} aria-label="Boutique">
-            <span className="rail__icon" aria-hidden="true">
-              🛒
-            </span>
-            <span className="rail__label" aria-hidden="true">
-              Boutique
-            </span>
-          </button>
-          {/*
-            Dernier du rail, et c'est voulu : on vient ici quand quelque chose
-            ne va pas, pas a chaque partie. Sous 780 px le libelle disparait
-            comme celui des autres et il ne reste que l'icone — la rangee du
-            bas ne gagne alors que 54 px.
-          */}
-          <button type="button" className="rail__btn" onClick={onSettings} aria-label="Réglages">
-            <span className="rail__icon" aria-hidden="true">
-              ⚙️
-            </span>
-            <span className="rail__label" aria-hidden="true">
-              Réglages
-            </span>
-          </button>
-        </nav>
-
-        {/*
         La galerie de memes.
 
         Une aura battle est un clash ou deux personnes rejouent des memes : ce
@@ -183,55 +130,115 @@ export function HomeScreen({
         qu'une grille de vignettes — un mème est un mouvement, une vignette ne
         le montre pas.
       */}
-        <div className="memes" aria-label="Galerie de mèmes">
-          <button
-            type="button"
-            className="memes__arrow"
-            onClick={() => {
-              onStepMeme(-1);
-            }}
-            aria-label="Mème précédent"
-          >
-            ‹
-          </button>
-          {/*
+          <div className="memes" aria-label="Galerie de mèmes">
+            <button
+              type="button"
+              className="memes__arrow"
+              onClick={() => {
+                onStepMeme(-1);
+              }}
+              aria-label="Mème précédent"
+            >
+              ‹
+            </button>
+            {/*
           Une seule commande, dont le libelle dit l'etat.
 
           Trois boutons — equiper, acheter, « deja equipe » — demanderaient au
           joueur de lire avant d'agir. Ici le meme montre est soit le sien,
           soit a prendre, et le bouton le dit.
         */}
-          <button
-            type="button"
-            className="memes__card"
-            onClick={onEquipMeme}
-            disabled={!memeOwned || memeEquipped}
-            data-owned={memeOwned}
-          >
-            <span className="memes__name">{meme.name}</span>
-            <span className="memes__meta">
-              <span aria-hidden="true">{STYLE_ICONS[meme.style]}</span>
-              {tierName(meme.tier).fr}
-              {memeEquipped && <span className="memes__state">équipé</span>}
-              {!memeEquipped && memeOwned && <span className="memes__state">équiper</span>}
-              {!memeOwned && (
-                <span className="memes__price">
-                  <span aria-hidden="true">◈</span>
-                  {meme.price}
-                </span>
-              )}
-            </span>
-          </button>
-          <button
-            type="button"
-            className="memes__arrow"
-            onClick={() => {
-              onStepMeme(1);
-            }}
-            aria-label="Mème suivant"
-          >
-            ›
-          </button>
+            <button
+              type="button"
+              className="memes__card"
+              onClick={onEquipMeme}
+              disabled={!memeOwned || memeEquipped}
+              data-owned={memeOwned}
+            >
+              <span className="memes__name">{meme.name}</span>
+              <span className="memes__meta">
+                <span aria-hidden="true">{STYLE_ICONS[meme.style]}</span>
+                {tierName(meme.tier).fr}
+                {memeEquipped && <span className="memes__state">équipé</span>}
+                {!memeEquipped && memeOwned && <span className="memes__state">équiper</span>}
+                {!memeOwned && (
+                  <span className="memes__price">
+                    <span aria-hidden="true">◈</span>
+                    {meme.price}
+                  </span>
+                )}
+              </span>
+            </button>
+            <button
+              type="button"
+              className="memes__arrow"
+              onClick={() => {
+                onStepMeme(1);
+              }}
+              aria-label="Mème suivant"
+            >
+              ›
+            </button>
+          </div>
+
+          <nav className="rail" aria-label="Menus">
+            <button type="button" className="rail__btn" onClick={onWardrobe} aria-label="Vestiaire">
+              <span className="rail__icon" aria-hidden="true">
+                👕
+              </span>
+              <span className="rail__label" aria-hidden="true">
+                Vestiaire
+              </span>
+            </button>
+            {/*
+            Le classement juste apres le profil : les deux repondent a la meme
+            question — ou j'en suis — l'un pour soi, l'autre par rapport aux
+            autres.
+          */}
+            <button
+              type="button"
+              className="rail__btn"
+              onClick={onLeaderboard}
+              aria-label="Classement"
+            >
+              <span className="rail__icon" aria-hidden="true">
+                🏆
+              </span>
+              <span className="rail__label" aria-hidden="true">
+                Classement
+              </span>
+            </button>
+            <button type="button" className="rail__btn" onClick={onProfile} aria-label="Profil">
+              <span className="rail__icon" aria-hidden="true">
+                📊
+              </span>
+              <span className="rail__label" aria-hidden="true">
+                Profil
+              </span>
+            </button>
+            <button type="button" className="rail__btn" onClick={onShop} aria-label="Boutique">
+              <span className="rail__icon" aria-hidden="true">
+                🛒
+              </span>
+              <span className="rail__label" aria-hidden="true">
+                Boutique
+              </span>
+            </button>
+            {/*
+            Dernier du rail, et c'est voulu : on vient ici quand quelque chose
+            ne va pas, pas a chaque partie. Sous 780 px le libelle disparait
+            comme celui des autres et il ne reste que l'icone — la rangee du
+            bas ne gagne alors que 54 px.
+          */}
+            <button type="button" className="rail__btn" onClick={onSettings} aria-label="Réglages">
+              <span className="rail__icon" aria-hidden="true">
+                ⚙️
+              </span>
+              <span className="rail__label" aria-hidden="true">
+                Réglages
+              </span>
+            </button>
+          </nav>
         </div>
 
         <div className="launch">
