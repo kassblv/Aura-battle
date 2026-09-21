@@ -14,6 +14,11 @@ export default tseslint.config(
       // Fichiers de travail des greffons, hors du depot (voir .gitignore) :
       // ils ne sont dans aucun tsconfig, et ESLint refuse alors de les lire.
       '.remember/**',
+      // Projets natifs Capacitor : `cap sync` y recopie le build du client,
+      // qui n'appartient a aucun tsconfig. Les sources natives, elles, sont
+      // du Java, du Kotlin et du Swift — rien qu'ESLint ait a lire.
+      'apps/mobile/android/**',
+      'apps/mobile/ios/**',
     ],
   },
 

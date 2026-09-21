@@ -1,0 +1,85 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <application
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/AppTheme">
+
+        <!--
+            Paysage impose (ADR 0008).
+
+            `sensorLandscape` et non `landscape` : le jeu se tient dans les
+            deux sens, et forcer un seul sens oblige la moitie des joueurs a
+            retourner leur telephone pour rien. Le portrait, lui, reste ferme —
+            les commandes vivent dans les arcs de pouce d'un ecran couche.
+
+            `screenOrientation` complete le verrou logiciel du client : celui-ci
+            sert au navigateur, celui-ci sert des le premier instant, avant que
+            le moindre JavaScript ne tourne.
+        -->
+        <activity
+            android:screenOrientation="sensorLandscape"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|locale|smallestScreenSize|screenLayout|uiMode|navigation|density"
+            android:name=".MainActivity"
+            android:label="@string/title_activity_main"
+            android:theme="@style/AppTheme.NoActionBarLaunch"
+            android:launchMode="singleTask"
+            android:exported="true">
+
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+
+            <!--
+                Les liens d'invitation.
+
+                Deux portes, et les deux sont necessaires. Le schema
+                `aurabattle://` marche toujours mais ne s'ouvre que si l'app est
+                installee ; le lien https s'ouvre dans un navigateur sinon, ce
+                qui est exactement ce qu'on veut de quelqu'un qui recoit une
+                invitation sans avoir le jeu.
+
+                `autoVerify` demande a Android de verifier
+                `/.well-known/assetlinks.json` sur le domaine : sans ce fichier,
+                le lien ouvre un selecteur d'application au lieu du jeu. Le
+                domaine est celui du deploiement (ADR 0012) et changera avec lui.
+            -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="aurabattle" />
+            </intent-filter>
+
+            <intent-filter android:autoVerify="true">
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data
+                    android:scheme="https"
+                    android:host="aura-crrszaajyehq0tqnzv1ccpnf.46.202.154.17.sslip.io"
+                    android:pathPrefix="/duel/" />
+            </intent-filter>
+
+        </activity>
+
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths"></meta-data>
+        </provider>
+    </application>
+
+    <!-- Permissions -->
+
+    <uses-permission android:name="android.permission.INTERNET" />
+</manifest>

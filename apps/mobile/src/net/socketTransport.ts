@@ -57,6 +57,21 @@ export function createSocketTransport(options: SocketOptions): Transport {
       socket.on('disconnect', handler);
     },
 
+    /**
+     * Au retour au premier plan : on ne CROIT pas l etat, on le verifie.
+     *
+     * iOS suspend la WebView, les battements de coeur cessent, le serveur
+     * ferme de son cote — et `socket.connected` reste vrai jusqu au prochain
+     * paquet perdu. Une deconnexion explicite suivie d une reconnexion remet
+     * tout le monde d accord, et `connection.ts` redemande `match:rejoin`
+     * comme apres n importe quelle coupure.
+     */
+    wake() {
+      if (!socket.connected) return;
+      socket.disconnect();
+      socket.connect();
+    },
+
     close() {
       socket.removeAllListeners();
       socket.disconnect();

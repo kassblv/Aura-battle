@@ -1,6 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
 import { useArena, type ArenaControls } from '../arena/useArena.js';
 import { useAudio, type AudioControls } from './useAudio.js';
+import {
+  appStateWatcher,
+  deepLinkWatcher,
+  loadCapacitorApp,
+  loadHapticDriver,
+  hideSplash,
+  lockLandscapeNative,
+  SPLASH_MAX_MS,
+  type Unwatch,
+} from '../platform/capacitor.js';
+import { createHaptics } from '../platform/haptics.js';
 import { lockLandscape } from '../platform/orientation.js';
 import {
   danceFor,
@@ -100,6 +111,9 @@ export function App(): JSX.Element {
     useCallback(
       (cue) => {
         audio.engine.cue(cue);
+        // Le toucher double le son : meme fait, deux sens. `hapticFor` decide
+        // lesquels meritent le moteur — voir `platform/haptics.ts`.
+        haptics.current.cue(cue);
       },
       [audio],
     ),
@@ -120,13 +134,45 @@ export function App(): JSX.Element {
    * pour ca.
    */
   useEffect(() => {
-    void lockLandscape();
+    /*
+      Le greffon natif d'abord, l'API web en repli.
+
+      En natif le verrou est fiable ; dans un navigateur il exige generalement
+      le plein ecran et n'existe pas partout. Tenter le natif en premier evite
+      de demander un plein ecran dont on n'a pas besoin — et hors application,
+      `lockLandscapeNative` rend `false` sans rien faire.
+    */
+    const lock = async (): Promise<void> => {
+      if (await lockLandscapeNative()) return;
+      await lockLandscape();
+    };
+
+    void lock();
     const onGesture = (): void => {
-      void lockLandscape();
+      void lock();
     };
     window.addEventListener('pointerdown', onGesture, { once: true, passive: true });
     return () => {
       window.removeEventListener('pointerdown', onGesture);
+    };
+  }, []);
+
+  /**
+   * Le retour haptique.
+   *
+   * Cree une fois, comme le son : le pilote natif arrive de facon asynchrone
+   * et se pose dedans quand il est la. Hors application, il n'arrive jamais et
+   * le jeu ne vibre pas — ce qui est le comportement attendu sur un ordinateur.
+   */
+  const haptics = useRef(createHaptics(null));
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadHapticDriver().then((driver) => {
+      if (!cancelled && driver !== null) haptics.current = createHaptics(driver);
+    });
+    return () => {
+      cancelled = true;
     };
   }, []);
 
@@ -170,6 +216,75 @@ export function App(): JSX.Element {
    * pas encore etablie le perdrait en silence, et le joueur resterait devant un
    * ecran d'attente sans savoir pourquoi.
    */
+  /**
+   * L'ecran de demarrage s'efface quand le JEU est pret.
+   *
+   * `launchAutoHide` est a `false` : entre le moment ou la WebView est prete
+   * et celui ou l'arene rend sa premiere image, il y a Three.js, les
+   * animations et la scene — sans cette attente, le joueur voit un ecran noir
+   * a la place du splash.
+   *
+   * Et un delai maximal, parce qu'un splash qu'on efface a la main est un
+   * splash qui peut ne jamais s'effacer. C'est la pire panne possible, et elle
+   * est muette : le jeu tourne derriere, personne ne le voit.
+   */
+  useEffect(() => {
+    if (session.phase === 'opening') {
+      const safety = window.setTimeout(() => {
+        void hideSplash();
+      }, SPLASH_MAX_MS);
+      return () => {
+        window.clearTimeout(safety);
+      };
+    }
+    void hideSplash();
+    return undefined;
+  }, [session.phase]);
+
+  /**
+   * Le cycle de vie de l'application native, et les liens ouverts en cours de route.
+   *
+   * Deux apports que le web n'a pas. Au retour au premier plan, la socket
+   * laissee derriere se croit ouverte alors que le serveur a ferme : on la
+   * verifie. Et un lien d'invitation touche dans une conversation alors que le
+   * jeu tourne deja n'arrive PAS par l'adresse de la page — la WebView ne
+   * navigue pas, le systeme livre l'adresse par un evenement. Sans cet
+   * ecouteur, le joueur voit son jeu passer au premier plan sans rien de plus.
+   *
+   * Hors application, `loadCapacitorApp` rend `null` et rien de tout cela ne
+   * s'arme : c'est le cas normal, pas une panne.
+   */
+  useEffect(() => {
+    let stopState: Unwatch | null = null;
+    let stopLinks: Unwatch | null = null;
+    let cancelled = false;
+
+    void loadCapacitorApp().then((app) => {
+      if (cancelled || app === null) return;
+      stopState = appStateWatcher(app, {
+        onResume: () => {
+          online.wake();
+        },
+        onPause: () => {
+          // Rien a couper : le serveur tient la manche pendant 45 s, et
+          // raccrocher nous-memes transformerait une notification lue en
+          // forfait.
+        },
+      });
+      stopLinks = deepLinkWatcher(app, (code) => {
+        invited.current = code;
+        setNav((current) => navigate(current, 'invite'));
+        online.joinInvite(code);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      void stopState?.();
+      void stopLinks?.();
+    };
+  }, [online]);
+
   useEffect(() => {
     const code = invited.current;
     if (code === null || online.status !== 'online') return;

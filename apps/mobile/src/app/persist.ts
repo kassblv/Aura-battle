@@ -1,8 +1,4 @@
-import {
-  QUALITY_TIERS,
-  type QualitySetting,
-  type QualityTier,
-} from '../platform/quality.js';
+import { QUALITY_TIERS, type QualitySetting, type QualityTier } from '../platform/quality.js';
 import { memeGallery } from './memes.js';
 import { priceOf } from './wardrobe.js';
 import type { Wallet } from './profile.js';

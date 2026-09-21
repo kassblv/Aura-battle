@@ -83,6 +83,15 @@ export interface OnlineSession {
   readonly joinInvite: (code: string) => void;
   /** Annonce qu on est pret : le serveur n ouvre la manche que quand les deux le sont. */
   readonly ready: () => void;
+  /**
+   * Le retour au premier plan.
+   *
+   * L application a pu etre suspendue en plein match. La socket qu elle
+   * retrouve se croit ouverte alors que le serveur a ferme depuis longtemps :
+   * on verifie plutot que de croire, et la reprise passe par le chemin
+   * habituel (`match:rejoin` puis `match:state`).
+   */
+  readonly wake: () => void;
 }
 
 export function useOnlineMatch(
@@ -314,6 +323,10 @@ export function useOnlineMatch(
     }
   }, []);
 
+  const wake = useCallback(() => {
+    clientRef.current?.wake();
+  }, []);
+
   const match = matchRef.current;
   return {
     status: clientRef.current?.connection.status ?? 'offline',
@@ -333,6 +346,7 @@ export function useOnlineMatch(
     createInvite,
     joinInvite,
     ready,
+    wake,
   };
 }
 

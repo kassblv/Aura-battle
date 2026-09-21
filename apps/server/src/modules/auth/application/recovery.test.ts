@@ -19,7 +19,8 @@ function repository(players: PlayerRecord[] = []) {
       findById: (id: string) => Promise.resolve(players.find((p) => p.id === id) ?? null),
       findByRecoveryHash: (hash: string) => {
         for (const [playerId, stored] of recoveryByPlayer) {
-          if (stored === hash) return Promise.resolve(players.find((p) => p.id === playerId) ?? null);
+          if (stored === hash)
+            return Promise.resolve(players.find((p) => p.id === playerId) ?? null);
         }
         return Promise.resolve(null);
       },

@@ -50,86 +50,85 @@ export function AccountSection({
       */}
       <div className="sheet__col">
         <h3>Garder mon compte</h3>
-      {code === null ? (
-        <>
-          <p className="sheet__note">{accountNotice('idle')}</p>
-          <button type="button" className="choice" onClick={issue} disabled={busy}>
-            <b>Garder mon compte</b>
-            <small>Obtiens un code à noter, qui le rouvre sur n’importe quel appareil.</small>
-          </button>
-        </>
-      ) : (
-        <>
-          {/*
+        {code === null ? (
+          <>
+            <p className="sheet__note">{accountNotice('idle')}</p>
+            <button type="button" className="choice" onClick={issue} disabled={busy}>
+              <b>Garder mon compte</b>
+              <small>Obtiens un code à noter, qui le rouvre sur n’importe quel appareil.</small>
+            </button>
+          </>
+        ) : (
+          <>
+            {/*
             Le code en gros, en groupes, et lisible sans zoom.
 
             On le recopie souvent d un ecran vers un autre appareil, parfois
             depuis une photo : c est la lisibilite qui decide si le joueur y
             arrive du premier coup.
           */}
-          <p className="code" aria-label="Ton code de récupération">
-            {groupsOf(code).map((group) => (
-              <span key={group} className="code__group">
-                {group}
-              </span>
-            ))}
-          </p>
-          <div className="choices">
-            <button
-              type="button"
-              className="choice"
-              onClick={() => {
-                void navigator.clipboard?.writeText(code).then(
-                  () => {
-                    setCopied(true);
-                  },
-                  () => {
-                    // Presse-papiers refuse : le code reste lisible a l ecran,
-                    // ce qui est le seul chemin qui marche partout.
-                    setCopied(false);
-                  },
-                );
-              }}
-            >
-              <b>{copied ? 'Copié' : 'Copier'}</b>
-              <small>Colle-le dans tes notes.</small>
-            </button>
-          </div>
-          <p className="sheet__note sheet__note--warn">{accountNotice('issued')}</p>
-        </>
-      )}
-
+            <p className="code" aria-label="Ton code de récupération">
+              {groupsOf(code).map((group) => (
+                <span key={group} className="code__group">
+                  {group}
+                </span>
+              ))}
+            </p>
+            <div className="choices">
+              <button
+                type="button"
+                className="choice"
+                onClick={() => {
+                  void navigator.clipboard?.writeText(code).then(
+                    () => {
+                      setCopied(true);
+                    },
+                    () => {
+                      // Presse-papiers refuse : le code reste lisible a l ecran,
+                      // ce qui est le seul chemin qui marche partout.
+                      setCopied(false);
+                    },
+                  );
+                }}
+              >
+                <b>{copied ? 'Copié' : 'Copier'}</b>
+                <small>Colle-le dans tes notes.</small>
+              </button>
+            </div>
+            <p className="sheet__note sheet__note--warn">{accountNotice('issued')}</p>
+          </>
+        )}
       </div>
 
       <div className="sheet__col">
         <h3>J’ai déjà un compte</h3>
         <p className="sheet__note sheet__note--warn">{accountNotice('claim')}</p>
-      <div className="choices choices--one">
-        <label className="account__field">
-          <span>Ton code</span>
-          <input
-            value={entry}
-            onChange={(event) => {
-              setEntry(event.target.value);
+        <div className="choices choices--one">
+          <label className="account__field">
+            <span>Ton code</span>
+            <input
+              value={entry}
+              onChange={(event) => {
+                setEntry(event.target.value);
+              }}
+              placeholder="AURA-…"
+              autoComplete="off"
+              spellCheck={false}
+              inputMode="text"
+            />
+          </label>
+          <button
+            type="button"
+            className="choice"
+            disabled={busy || entry.trim().length === 0}
+            onClick={() => {
+              claim(entry);
             }}
-            placeholder="AURA-…"
-            autoComplete="off"
-            spellCheck={false}
-            inputMode="text"
-          />
-        </label>
-        <button
-          type="button"
-          className="choice"
-          disabled={busy || entry.trim().length === 0}
-          onClick={() => {
-            claim(entry);
-          }}
-        >
-          <b>Retrouver mon compte</b>
-          <small>Ce navigateur rejoindra ce compte.</small>
-        </button>
-      </div>
+          >
+            <b>Retrouver mon compte</b>
+            <small>Ce navigateur rejoindra ce compte.</small>
+          </button>
+        </div>
 
         {error !== null && (
           <p className="sheet__note sheet__note--bad" role="alert">

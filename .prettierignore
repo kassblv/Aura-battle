@@ -11,3 +11,7 @@ docs
 
 # Releves du banc de charge : des donnees, pas du code.
 apps/server/bench/results
+
+# Projets natifs Capacitor : Gradle, Xcode et le build recopie par cap sync.
+apps/mobile/android/
+apps/mobile/ios/

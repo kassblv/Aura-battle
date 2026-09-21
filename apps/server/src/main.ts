@@ -1,11 +1,6 @@
 import 'reflect-metadata';
 import { fileURLToPath } from 'node:url';
-import {
-  Catch,
-  NotFoundException,
-  type ArgumentsHost,
-  type ExceptionFilter,
-} from '@nestjs/common';
+import { Catch, NotFoundException, type ArgumentsHost, type ExceptionFilter } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 // L import de type seul suffit : il charge l augmentation de module de

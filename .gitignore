@@ -16,3 +16,20 @@ apps/mobile/android/.gradle/
 
 # artefacts de capture des outils de navigation
 .playwright-mcp/
+
+# Projets natifs Capacitor : les sources sont versionnees, les artefacts de
+# construction non. `npx cap sync` regenere tout ce qui suit.
+apps/mobile/android/app/build/
+apps/mobile/android/build/
+apps/mobile/android/local.properties
+apps/mobile/android/.idea/
+apps/mobile/android/app/src/main/assets/public/
+apps/mobile/android/app/src/main/assets/capacitor.config.json
+apps/mobile/android/app/src/main/assets/capacitor.plugins.json
+apps/mobile/ios/App/App/public/
+apps/mobile/ios/App/App/capacitor.config.json
+apps/mobile/ios/App/App/config.xml
+apps/mobile/ios/App/Podfile.lock
+apps/mobile/ios/App/build/
+apps/mobile/ios/DerivedData/
+apps/mobile/ios/App/Pods/

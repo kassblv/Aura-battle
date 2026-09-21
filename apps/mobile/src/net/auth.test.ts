@@ -112,7 +112,9 @@ describe('code de recuperation', () => {
     const calls: { url: string; init: RequestInit | undefined }[] = [];
     const fetcher: Fetcher = (url, init) => {
       calls.push({ url, init });
-      return Promise.resolve(new Response(JSON.stringify({ code: 'AURA-7K2M-94PX-QTJD-3HVN' }), { status: 200 }));
+      return Promise.resolve(
+        new Response(JSON.stringify({ code: 'AURA-7K2M-94PX-QTJD-3HVN' }), { status: 200 }),
+      );
     };
 
     await expect(issueRecoveryCode('http://srv', 'jeton-abc', { fetcher })).resolves.toBe(
@@ -126,7 +128,8 @@ describe('code de recuperation', () => {
   });
 
   it('refuse une reponse qui ne porte pas de code', async () => {
-    const fetcher: Fetcher = () => Promise.resolve(new Response(JSON.stringify({ autre: 'chose' }), { status: 200 }));
+    const fetcher: Fetcher = () =>
+      Promise.resolve(new Response(JSON.stringify({ autre: 'chose' }), { status: 200 }));
     await expect(issueRecoveryCode('http://srv', 'jeton', { fetcher })).rejects.toMatchObject({
       reason: 'MALFORMED',
     });
@@ -151,7 +154,8 @@ describe('code de recuperation', () => {
   });
 
   it('rend la session du compte retrouve', async () => {
-    const fetcher: Fetcher = () => Promise.resolve(new Response(JSON.stringify(session), { status: 200 }));
+    const fetcher: Fetcher = () =>
+      Promise.resolve(new Response(JSON.stringify(session), { status: 200 }));
     await expect(
       claimRecoveryCode('http://srv', 'AURA-7K2M-94PX-QTJD-3HVN', { fetcher }),
     ).resolves.toEqual(session);

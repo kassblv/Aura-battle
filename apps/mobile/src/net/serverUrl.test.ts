@@ -18,7 +18,9 @@ describe('resolveServerUrl', () => {
   });
 
   it('laisse localhost tranquille quand on developpe sur le Mac', () => {
-    expect(resolveServerUrl('http://localhost:3000', 'localhost', DEV)).toBe('http://localhost:3000');
+    expect(resolveServerUrl('http://localhost:3000', 'localhost', DEV)).toBe(
+      'http://localhost:3000',
+    );
   });
 
   it('retombe sur l hote de la page quand rien n est configure', () => {

@@ -342,8 +342,8 @@ describe('linkDevice', () => {
   });
 
   it('refuse de rattacher a un joueur qui n existe pas', async () => {
-    await expect(
-      service.linkDevice('p_inconnu', generateDeviceSecret()),
-    ).rejects.toBeInstanceOf(SessionError);
+    await expect(service.linkDevice('p_inconnu', generateDeviceSecret())).rejects.toBeInstanceOf(
+      SessionError,
+    );
   });
 });

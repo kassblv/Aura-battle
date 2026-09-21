@@ -7,14 +7,7 @@
  */
 
 export type Screen =
-  | 'home'
-  | 'profile'
-  | 'settings'
-  | 'wardrobe'
-  | 'shop'
-  | 'queue'
-  | 'invite'
-  | 'match';
+  'home' | 'profile' | 'settings' | 'wardrobe' | 'shop' | 'queue' | 'invite' | 'match';
 
 export interface Navigation {
   readonly screen: Screen;

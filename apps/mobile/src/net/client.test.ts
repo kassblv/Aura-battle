@@ -8,14 +8,17 @@ function transport(): Transport & {
   readonly sent: { name: string; payload: unknown }[];
   connect(): void;
   drop(): void;
+  readonly woken: () => number;
 } {
   const handlers = new Map<string, (payload: unknown) => void>();
   let onConnect: (() => void) | null = null;
   let onDisconnect: (() => void) | null = null;
   const sent: { name: string; payload: unknown }[] = [];
+  let wokenCount = 0;
 
   return {
     sent,
+    woken: () => wokenCount,
     send: (name, payload) => {
       sent.push({ name, payload });
     },
@@ -29,6 +32,9 @@ function transport(): Transport & {
       onDisconnect = handler;
     },
     close: () => undefined,
+    wake: () => {
+      wokenCount++;
+    },
     emit: (name, payload) => {
       handlers.get('*')?.(name === undefined ? payload : { name, payload });
     },
@@ -194,5 +200,40 @@ describe('cycle de vie', () => {
     link.drop();
     link.connect();
     expect(link.sent.some((message) => message.name === 'match:rejoin')).toBe(false);
+  });
+});
+
+describe('wake — le retour au premier plan', () => {
+  /*
+    Une socket qui se croit vivante apres une mise en veille.
+
+    iOS suspend la WebView : les battements de coeur ne partent plus, le
+    serveur finit par fermer de son cote, mais le client ne l'apprend qu'au
+    prochain paquet — qui part dans le vide. Le joueur voit « en ligne » et
+    rien ne bouge. Au retour, on force donc la verification plutot que de
+    croire un etat qui date d'avant la veille.
+  */
+  it('reconnecte une socket qui se croit encore ouverte', () => {
+    const link = transport();
+    const client = createGameClient(link);
+    link.connect();
+    expect(client.connection.status).not.toBe('offline');
+
+    client.wake();
+    expect(link.woken()).toBe(1);
+  });
+
+  /*
+    Deja hors ligne, il n'y a rien a verifier : la reconnexion de Socket.IO
+    tourne deja, et la brusquer relancerait son compte a rebours depuis zero.
+  */
+  it('ne brusque pas une reconnexion deja en cours', () => {
+    const link = transport();
+    const client = createGameClient(link);
+    link.connect();
+    link.drop();
+
+    client.wake();
+    expect(link.woken()).toBe(0);
   });
 });

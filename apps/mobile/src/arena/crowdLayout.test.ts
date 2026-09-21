@@ -274,8 +274,7 @@ describe('ordre de dessin des places', () => {
     graine, meme tribune — seulement lues dans un autre ordre.
   */
   it('garde exactement les memes places', () => {
-    const key = (s: CrowdSeat): string =>
-      `${s.x.toFixed(6)}|${s.z.toFixed(6)}|${String(s.ring)}`;
+    const key = (s: CrowdSeat): string => `${s.x.toFixed(6)}|${s.z.toFixed(6)}|${String(s.ring)}`;
     expect([...seats].map(key).sort()).toEqual([...buildSeats(seeded(7))].map(key).sort());
   });
 });

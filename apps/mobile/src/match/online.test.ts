@@ -19,6 +19,9 @@ function harness() {
     },
     onConnect: () => undefined,
     onDisconnect: () => undefined,
+    // Ce test ne met jamais l application en veille : le double le dit plutot
+    // que de faire semblant de savoir se reveiller.
+    wake: () => undefined,
     close: () => undefined,
   };
 

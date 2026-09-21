@@ -4,12 +4,7 @@ import { qualityNote, qualityOptions } from './settings.js';
 
 describe('qualityOptions', () => {
   it('propose l automatique et les trois paliers, dans cet ordre', () => {
-    expect(qualityOptions('auto').map((o) => o.id)).toEqual([
-      'auto',
-      'rich',
-      'balanced',
-      'smooth',
-    ]);
+    expect(qualityOptions('auto').map((o) => o.id)).toEqual(['auto', 'rich', 'balanced', 'smooth']);
   });
 
   it('marque le reglage choisi, et lui seul', () => {

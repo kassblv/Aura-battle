@@ -24,6 +24,15 @@ export interface Transport {
   onMessage(handler: (message: unknown) => void): void;
   onConnect(handler: () => void): void;
   onDisconnect(handler: () => void): void;
+  /**
+   * Force une verification de la connexion.
+   *
+   * Appele au retour au premier plan : une WebView suspendue laisse derriere
+   * elle une socket qui se croit ouverte, et le client ne l apprend qu au
+   * prochain paquet — qui part dans le vide pendant que l ecran affiche
+   * « en ligne ».
+   */
+  wake(): void;
   close(): void;
 }
 
@@ -42,6 +51,14 @@ export interface GameClient {
   on<N extends ServerMessageName>(name: N, listener: Listener<N>): () => void;
   send<N extends ClientMessageName>(name: N, payload: ClientMessage<N>): boolean;
   ping(): void;
+  /**
+   * Le retour au premier plan.
+   *
+   * Ne fait rien si la connexion se sait deja perdue : la reconnexion de
+   * Socket.IO tourne alors, et la brusquer relancerait son compte a rebours
+   * depuis zero.
+   */
+  wake(): void;
   close(): void;
 }
 
@@ -168,6 +185,11 @@ export function createGameClient(
       const t = now();
       pending.add(t);
       send('ping', { t });
+    },
+
+    wake() {
+      if (connection.status === 'offline') return;
+      transport.wake();
     },
 
     close() {

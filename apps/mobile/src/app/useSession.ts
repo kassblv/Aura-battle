@@ -62,7 +62,11 @@ export function useSession(): SessionState {
 
   useEffect(() => {
     let cancelled = false;
-    const baseUrl = resolveServerUrl(import.meta.env.VITE_SERVER_URL, window.location.hostname, currentPageLocation());
+    const baseUrl = resolveServerUrl(
+      import.meta.env.VITE_SERVER_URL,
+      window.location.hostname,
+      currentPageLocation(),
+    );
 
     void (async () => {
       try {
@@ -100,7 +104,11 @@ export function useSession(): SessionState {
       setBusy(true);
       setError(null);
       try {
-        const baseUrl = resolveServerUrl(import.meta.env.VITE_SERVER_URL, window.location.hostname, currentPageLocation());
+        const baseUrl = resolveServerUrl(
+          import.meta.env.VITE_SERVER_URL,
+          window.location.hostname,
+          currentPageLocation(),
+        );
         const renamed = await renameProfile(baseUrl, accessToken, displayName);
         const next = { playerId: renamed.id, displayName: renamed.displayName };
         saveIdentity(next);

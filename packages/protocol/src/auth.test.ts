@@ -140,7 +140,11 @@ describe('code de recuperation', () => {
   });
 
   it('accepte les variantes qu un humain produit', () => {
-    for (const code of ['7K2M94PXQTJD3HVN', 'aura 7k2m 94px qtjd 3hvn', ' AURA-7K2M94PXQTJD3HVN ']) {
+    for (const code of [
+      '7K2M94PXQTJD3HVN',
+      'aura 7k2m 94px qtjd 3hvn',
+      ' AURA-7K2M94PXQTJD3HVN ',
+    ]) {
       expect(parseAuthRecoveryClaimRequest({ code }).success).toBe(true);
     }
   });
@@ -169,8 +173,8 @@ describe('code de recuperation', () => {
     const ok = recoveryCodeResponseSchema.safeParse({ code: 'AURA-7K2M-94PX-QTJD-3HVN' });
     expect(ok.success).toBe(true);
     // Surtout pas le hache : il n'a aucune raison de sortir du serveur.
-    expect(
-      recoveryCodeResponseSchema.safeParse({ code: 'AURA-7K2M', hash: 'abc' }).success,
-    ).toBe(false);
+    expect(recoveryCodeResponseSchema.safeParse({ code: 'AURA-7K2M', hash: 'abc' }).success).toBe(
+      false,
+    );
   });
 });

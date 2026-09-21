@@ -249,7 +249,7 @@ describe.skipIf(!reachable)('code de recuperation, contre une vraie base', () =>
     // L'ancien n'ouvre plus rien : c'est ce qui rend un code revocable.
     await expect(repository.findByRecoveryHash('hash_recovery_ancien')).resolves.toBeNull();
 
-    const identities = await (prisma!).authIdentity.count({
+    const identities = await prisma!.authIdentity.count({
       where: { playerId: player.id, provider: 'RECOVERY' },
     });
     expect(identities).toBe(1);
