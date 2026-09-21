@@ -83,10 +83,20 @@ export class PrismaInventoryRepository implements InventoryRepository {
   }
 
   async setLoadout(playerId: string, data: LoadoutData): Promise<void> {
+    /*
+      Recopie dans un objet nu, et non une assertion de type.
+
+      `LoadoutData` n'a pas de signature d'index, donc Prisma le refuse la ou
+      il attend du JSON. Une assertion ferait taire le compilateur — et ESLint
+      la retire aussitot, la jugeant inutile : les deux outils se
+      contredisaient a chaque `lint:fix`. La recopie est ce que Prisma veut
+      vraiment, et elle n'a besoin d'etre expliquee qu'une fois.
+    */
+    const payload = { ...data };
     await this.prisma.loadout.upsert({
       where: { playerId },
-      create: { playerId, data: data },
-      update: { data: data },
+      create: { playerId, data: payload },
+      update: { data: payload },
     });
   }
 }
