@@ -128,6 +128,12 @@ RUN apt-get update \
   && rm -rf /var/lib/apt/lists/*
 RUN corepack enable
 
+# Le commit construit, pour que le panneau d'administration puisse dire
+# QUELLE version tourne. Coolify le passe ; en local il reste vide, et la
+# configuration affiche alors « inconnu » plutot que d'inventer.
+ARG SOURCE_COMMIT=""
+ENV SOURCE_COMMIT=$SOURCE_COMMIT
+
 ENV NODE_ENV=production
 ENV PORT=3000
 # Le client vit a cote du serveur dans l'image : `main.ts` le sert depuis la.

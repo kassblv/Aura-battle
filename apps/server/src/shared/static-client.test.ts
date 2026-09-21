@@ -33,8 +33,9 @@ describe('servesIndex', () => {
     }
   });
 
-  it('couvre les cinq chemins que le serveur expose', () => {
+  it('couvre les six chemins que le serveur expose', () => {
     expect([...API_PREFIXES].sort()).toEqual([
+      '/admin',
       '/auth',
       '/health',
       '/inventory',

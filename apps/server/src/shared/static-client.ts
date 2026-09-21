@@ -15,6 +15,7 @@
  * du HTML la ou un client attend du JSON.
  */
 export const API_PREFIXES = [
+  '/admin',
   '/auth',
   '/health',
   '/inventory',

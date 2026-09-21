@@ -1,9 +1,9 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
 import { Controller, Get, Headers, Inject, Post, UnauthorizedException } from '@nestjs/common';
 import { CONTENT_VERSION } from '@aura/content';
 import { PROTOCOL_VERSION } from '@aura/protocol';
 import { RULES_VERSION } from '@aura/rules';
 import { CONFIG, type ServerConfig } from '../../shared/config.js';
+import { constantTimeEquals } from '../../shared/constant-time.js';
 import {
   MessageMetrics,
   type MetricsDisabled,
@@ -94,18 +94,4 @@ export class HealthController {
     this.metrics.reset();
     return { reset: this.metrics.enabled };
   }
-}
-
-/**
- * Egalite de chaines qui ne s'arrete pas au premier octet different.
- *
- * `timingSafeEqual` exige deux tampons de meme longueur et leve sinon — ce qui
- * rendrait la longueur du secret devinable par l'erreur elle-meme. On hache
- * donc les deux cotes avant de comparer : meme taille par construction, quelle
- * que soit celle des entrees.
- */
-function constantTimeEquals(a: string, b: string): boolean {
-  const left = createHash('sha256').update(a).digest();
-  const right = createHash('sha256').update(b).digest();
-  return timingSafeEqual(left, right);
 }

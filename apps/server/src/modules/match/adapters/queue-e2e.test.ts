@@ -84,7 +84,18 @@ class Recorder {
     return this.received.filter((m) => m.name === name).map((m) => m.payload as T);
   }
 
-  async first<T>(name: string, timeoutMs = 4_000): Promise<T> {
+  /**
+   * Attend un message, avec un delai genereux.
+   *
+   * Douze secondes pour un appariement qui en demande normalement moins d'une :
+   * l'ouvrier tourne toutes les 500 ms et parle a Redis, donc tout ce qui
+   * ralentit la machine ralentit l'attente. Un delai serre transforme alors
+   * une machine chargee en « invariant casse » — et c'est exactement ce qui
+   * s'est produit ici, deux fois, sur un poste occupe a construire des images
+   * Docker. Le message d'erreur reste precis (il liste ce qui EST arrive), ce
+   * qui distingue « rien n'est venu » de « autre chose est venu ».
+   */
+  async first<T>(name: string, timeoutMs = 12_000): Promise<T> {
     const deadline = Date.now() + timeoutMs;
     for (;;) {
       const found = this.all<T>(name);

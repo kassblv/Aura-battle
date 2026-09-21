@@ -28,6 +28,18 @@ services:
       # Le client est servi par cette meme origine : aucune origine etrangere
       # n'a besoin d'etre autorisee, et la liste vide veut dire « aucune ».
       - CORS_ORIGINS=
+      # Panneau d'administration (docs/10). Vide, il n'existe pas — pas meme
+      # sa porte : la page rend 404 plutot que « interdit », parce qu'annoncer
+      # un refus dit a qui cherche qu'il y a quelque chose a chercher.
+      - ADMIN_TOKEN=${SERVICE_PASSWORD_ADMIN}
+      # Le commit deploye, pour que le panneau puisse dire QUELLE version
+      # tourne — la premiere question devant un comportement inattendu.
+      - SOURCE_COMMIT=${SOURCE_COMMIT}
+    volumes:
+      # Le marqueur de sauvegarde vit sur l'HOTE, ecrit par le cron
+      # (`docker/backup.sh`). Monte en LECTURE SEULE : le panneau doit pouvoir
+      # dire quand la derniere sauvegarde a reussi, jamais le reecrire.
+      - /var/backups/aura:/var/backups/aura:ro
     depends_on:
       postgres:
         condition: service_healthy

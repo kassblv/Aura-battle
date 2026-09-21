@@ -95,6 +95,41 @@ const configSchema = z.object({
    */
   metricsToken: z.string().default(''),
   /**
+   * Secret du panneau d'administration.
+   *
+   * **Vide par defaut, et le panneau reste alors ferme.** Un tableau de bord
+   * ouvert a qui sait former une requete dirait combien de joueurs existent,
+   * quand la sauvegarde a echoue et depuis quand le serveur tourne — tout ce
+   * qu'il faut pour choisir son moment.
+   *
+   * Il ne vit PAS dans la table des joueurs. Y mettre un drapeau
+   * d'administrateur placerait le privilege le plus eleve du systeme dans la
+   * meme ligne qu'un compte invite que n'importe quel navigateur peut creer ;
+   * un secret hors base ne peut pas etre accorde par une faille applicative.
+   *
+   * Trente-deux caracteres minimum quand il est pose : un secret court est
+   * pire qu'aucun, parce qu'il donne le sentiment d'une porte fermee.
+   */
+  /**
+   * Le commit deploye, tel que l'image le porte.
+   *
+   * Pose a la construction (`SOURCE_COMMIT`, que Coolify fournit). Sans lui,
+   * le panneau dit « inconnu » plutot que d'inventer : savoir QUELLE version
+   * tourne est la premiere question qu'on se pose devant un comportement
+   * inattendu, et une reponse fausse y repond mal.
+   */
+  commit: z
+    .string()
+    .default('inconnu')
+    .transform((raw) => (raw.trim() === '' ? 'inconnu' : raw.trim().slice(0, 40))),
+  adminToken: z
+    .string()
+    .default('')
+    .refine(
+      (value) => value.length === 0 || value.length >= 32,
+      'ADMIN_TOKEN doit faire au moins 32 caracteres, ou rester vide',
+    ),
+  /**
    * Dossier du build du client, servi par ce serveur.
    *
    * Vide par defaut, et c est le bon defaut en developpement : Vite sert le
@@ -154,6 +189,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     databasePoolMax: env.DATABASE_POOL_MAX,
     metricsEnabled: env.AURA_METRICS,
     metricsToken: env.AURA_METRICS_TOKEN,
+    adminToken: env.ADMIN_TOKEN,
+    commit: env.SOURCE_COMMIT,
     clientDir: env.CLIENT_DIR,
   });
 

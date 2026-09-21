@@ -65,7 +65,16 @@ class ClientFallbackFilter implements ExceptionFilter {
       void reply.header('cache-control', 'no-cache').sendFile('index.html');
       return;
     }
-    void reply.code(404).send({ code: 'NOT_FOUND' });
+    /*
+      On repose le type de contenu avant d'envoyer.
+
+      Une route qui declare `text/html` — la page d'administration, par
+      exemple — et qui rend ensuite une 404 laisse cet en-tete en place :
+      Fastify refuse alors l'objet avec « Attempted to send payload of invalid
+      type 'object' », et une 404 propre devient une 500. Le filtre decide du
+      corps, donc il decide du type.
+    */
+    void reply.code(404).type('application/json').send({ code: 'NOT_FOUND' });
   }
 }
 

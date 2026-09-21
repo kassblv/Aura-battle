@@ -132,3 +132,28 @@ describe('client statique', () => {
     expect(loadConfig({ ...validEnv, CLIENT_DIR: '   ' }).clientDir).toBe('');
   });
 });
+
+describe('administration', () => {
+  /*
+    Vide par defaut, et le panneau reste alors FERME. Un tableau de bord
+    ouvert a qui sait former une requete dirait combien de joueurs existent,
+    quand la sauvegarde a echoue et depuis quand le serveur tourne — tout ce
+    qu'il faut pour choisir son moment.
+  */
+  it('ferme le panneau quand aucun secret n est pose', () => {
+    expect(loadConfig(validEnv).adminToken).toBe('');
+  });
+
+  it('retient le secret', () => {
+    expect(loadConfig({ ...validEnv, ADMIN_TOKEN: 'x'.repeat(40) }).adminToken).toHaveLength(40);
+  });
+
+  /*
+    Un secret court est pire qu'aucun : il donne le sentiment d'une porte
+    fermee. Le refus est bruyant au demarrage, comme pour tout le reste de
+    cette configuration.
+  */
+  it('refuse un secret trop court plutot que de faire semblant', () => {
+    expect(() => loadConfig({ ...validEnv, ADMIN_TOKEN: 'court' })).toThrow(ConfigError);
+  });
+});
