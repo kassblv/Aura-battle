@@ -134,6 +134,16 @@ RUN corepack enable
 ARG SOURCE_COMMIT=""
 ENV SOURCE_COMMIT=$SOURCE_COMMIT
 
+# L'instant de construction, grave dans l'image.
+#
+# Le commit serait plus precis, mais Coolify ne le fournit PAS pour un
+# deploiement par compose : `SOURCE_COMMIT` y reste une variable a nous, que
+# rien ne remplit (verifie sur le serveur). Cette date-ci ne depend d'aucune
+# variable exterieure — elle est ecrite par la construction elle-meme, donc
+# elle est toujours vraie. « Image construite il y a deux heures » repond a
+# l'essentiel de « quelle version tourne ».
+RUN date -u +%Y-%m-%dT%H:%M:%SZ > /repo/.build-time
+
 ENV NODE_ENV=production
 ENV PORT=3000
 # Le client vit a cote du serveur dans l'image : `main.ts` le sert depuis la.

@@ -19,6 +19,8 @@ export interface AdminStatus {
   readonly uptimeSeconds: number;
   /** Le commit deploye, ou `inconnu` si l'image ne le porte pas. */
   readonly commit: string;
+  /** Quand l'image a ete construite, ou `null` si elle ne le dit pas. */
+  readonly builtAt: string | null;
   readonly errors: ErrorWindow;
 }
 
@@ -28,6 +30,7 @@ export interface AdminStatusDependencies {
   readonly now: () => number;
   readonly uptimeSeconds: () => number;
   readonly commit: string;
+  readonly builtAt: () => string | null;
 }
 
 /** Interroge une sonde sans jamais laisser son echec emporter le tableau. */
@@ -93,6 +96,7 @@ export class AdminStatusService {
       database,
       uptimeSeconds: this.deps.uptimeSeconds(),
       commit: this.deps.commit,
+      builtAt: this.deps.builtAt(),
       /*
         Le compteur se lit A COTE de la duree de fonctionnement : remis a zero
         au redemarrage, il ne trompe personne tant que les deux sont affiches

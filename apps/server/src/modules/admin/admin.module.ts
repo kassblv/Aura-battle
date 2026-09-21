@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { Module } from '@nestjs/common';
 import { CONFIG, type ServerConfig } from '../../shared/config.js';
 import { RedisModule } from '../../shared/redis.module.js';
@@ -16,6 +17,23 @@ import { createErrorLog } from './domain/error-log.js';
  * privilege le plus eleve du systeme dans la meme ligne qu'un compte invite
  * que n'importe quel navigateur peut creer.
  */
+/**
+ * L'instant de construction de l'image, lu une fois.
+ *
+ * Le fichier est grave par le Dockerfile et ne change jamais : le relire a
+ * chaque appel du panneau serait une lecture disque par rafraichissement, pour
+ * une valeur constante. Absent en developpement — on rend `null`, et le
+ * panneau dit « inconnue » plutot que d'inventer.
+ */
+const BUILT_AT: string | null = (() => {
+  try {
+    const raw = readFileSync('/repo/.build-time', 'utf8').trim();
+    return raw === '' ? null : raw;
+  } catch {
+    return null;
+  }
+})();
+
 @Module({
   imports: [AuthModule, RedisModule],
   controllers: [AdminController],
@@ -31,6 +49,7 @@ import { createErrorLog } from './domain/error-log.js';
           now: () => Date.now(),
           uptimeSeconds: () => Math.round(process.uptime()),
           commit: config.commit,
+          builtAt: () => BUILT_AT,
         }),
     },
   ],

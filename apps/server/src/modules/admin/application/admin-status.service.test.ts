@@ -26,6 +26,7 @@ const service = (over: Partial<AdminProbes> = {}) =>
     now: () => NOW,
     uptimeSeconds: () => 3_600,
     commit: 'd9d7e4b',
+    builtAt: () => '2026-09-21T20:00:00Z',
   });
 
 describe('AdminStatusService', () => {
@@ -81,6 +82,29 @@ describe('AdminStatusService', () => {
   });
 
   /*
+    Coolify ne fournit PAS le commit pour un deploiement par compose : la
+    variable reste vide (verifie sur le serveur). L'instant de construction,
+    lui, est grave par la construction elle-meme et ne depend de personne —
+    « image construite il y a deux heures » repond a l'essentiel de « quelle
+    version tourne ».
+  */
+  it('rend l instant de construction de l image', async () => {
+    expect((await service().read()).builtAt).toBe('2026-09-21T20:00:00Z');
+  });
+
+  it('avoue ne pas savoir quand l image ne le dit pas', async () => {
+    const sans = new AdminStatusService({
+      probes: probes(),
+      errors: createErrorLog(() => NOW),
+      now: () => NOW,
+      uptimeSeconds: () => 60,
+      commit: 'abc',
+      builtAt: () => null,
+    });
+    expect((await sans.read()).builtAt).toBeNull();
+  });
+
+  /*
     Le compteur d'erreurs se lit A COTE de la duree de fonctionnement : remis
     a zero au redemarrage, il ne trompe personne tant que les deux sont
     affiches ensemble.
@@ -94,6 +118,7 @@ describe('AdminStatusService', () => {
       now: () => NOW,
       uptimeSeconds: () => 60,
       commit: 'abc',
+      builtAt: () => null,
     }).read();
 
     expect(status.errors.total).toBe(1);

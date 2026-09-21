@@ -93,6 +93,11 @@ export const ADMIN_PAGE = `<!doctype html>
     return Math.round(s / 86400) + ' j';
   }
 
+  function depuis(iso) {
+    const s = Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
+    return 'il y a ' + duree(s);
+  }
+
   function ligne(c) {
     const d = document.createElement('div');
     d.className = 'line';
@@ -140,6 +145,7 @@ export const ADMIN_PAGE = `<!doctype html>
     $('serveur').replaceChildren(
       stat('Debout depuis', duree(s.uptimeSeconds)),
       stat('Commit', s.commit),
+      stat('Image construite', s.builtAt ? depuis(s.builtAt) : 'inconnue'),
       stat('Erreurs (24 h)', s.errors.total),
     );
 
