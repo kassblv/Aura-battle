@@ -30,6 +30,14 @@ export interface Look {
    * choix, jamais les defauts.
    */
   readonly dances: Readonly<Record<string, string>>;
+  /**
+   * L effet d aura equipe, ou absent pour la Lueur offerte.
+   *
+   * `AURA_STYLES` existait depuis le portage des particules et n avait aucun
+   * porteur : tout le monde jouait `fx.glow` code en dur. C est le loadout qui
+   * le transporte maintenant.
+   */
+  readonly auraEffect?: string;
 }
 
 /** La cle d un mouvement dans `Look.dances`. */

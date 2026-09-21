@@ -47,11 +47,11 @@ import { createArenaTextures } from './textures.js';
 const boundsCache = new Map<string, AnimationBounds>();
 
 /**
- * L effet d aura que tout le monde porte, en attendant le loadout.
+ * L effet d aura quand le joueur n en a equipe aucun.
  *
- * Equiper un effet est le jalon M8 (« effet par amplificateur ») : `Look` ne
- * transporte aujourd hui qu une COULEUR. La Lueur est le style offert, et la
- * couleur suffit deja a rendre chaque aura personnelle.
+ * La Lueur est le style offert. Chaque combattant porte desormais le sien,
+ * lu dans son loadout — `AURA_STYLES` attendait un porteur depuis le portage
+ * des particules, et tout le monde jouait ce repli code en dur.
  */
 const DEFAULT_AURA_EFFECT = 'fx.glow';
 
@@ -440,9 +440,9 @@ export function useArena(
       const auraHype = Math.max(scene?.hype ?? 0.2, director.hype);
       for (const seat of ['a', 'b'] as const) {
         arena.auras[seat].set({
-          // L effet equipe viendra du loadout (M8) : d ici la, tout le monde
-          // porte la Lueur, teintee par la couleur achetee en boutique.
-          effectId: DEFAULT_AURA_EFFECT,
+          // L effet equipe, tenu par le serveur. Le repli n est plus une
+          // regle, c est ce que porte quelqu un qui n a rien choisi.
+          effectId: scene?.fighters[seat].look.auraEffect ?? DEFAULT_AURA_EFFECT,
           color: scene?.fighters[seat].look.aura ?? '#ffcf3f',
           intensity: auraIntensity({
             showcase: solo,

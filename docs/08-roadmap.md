@@ -141,7 +141,7 @@ joignable depuis un téléphone rend tout le reste vérifiable.
 - [ ] Multi-nœuds : adaptateur Redis, sessions collantes, reprise d'un match après redémarrage d'un nœud (instantané de fin de manche)
 
 ### M8 — Méta et monétisation cosmétique
-- [ ] Inventaire, loadout (animation par mouvement, effet par amplificateur), boutique à rotation
+- [x] **Inventaire et loadout côté serveur.** La boutique et le portefeuille vivaient dans `localStorage` — un inventaire qu'on s'offrait soi-même, perdu en changeant d'appareil ; avec le code de récupération, garder son compte sans garder ses achats n'avait plus de sens. Trois routes HTTP (`GET /inventory`, `POST /inventory/buy`, `PUT /inventory/loadout`), la règle d'achat pure avec `PURCHASABLE_KINDS` comme **garde** de la règle d'or n°3, et **deux gardes de concurrence** : la clé primaire `(playerId, itemId)` pour deux achats du même objet, le débit conditionnel pour deux objets différents payables séparément mais pas ensemble. Le serveur **crédite** enfin la récompense qu'il annonçait depuis M5. L'**effet d'aura est équipable** : `AURA_STYLES` attendait un porteur depuis le portage des particules. **Migration : la bourse repart de zéro** (elle se créditait elle-même, elle n'a jamais rien valu), tout ce qui est gratuit est accordé à tous, et l'apparence est conservée pour ce que le joueur possède. La teinte de peau reste locale — ce n'est pas un cosmétique. **Reste : la boutique à rotation**, et la monnaie dure, qui n'a aucun moyen d'être obtenue.
 - [ ] Défis quotidiens côté serveur
 - [ ] Passe de saison (gratuit + premium)
 - [ ] Achats intégrés via RevenueCat, reçus validés côté serveur

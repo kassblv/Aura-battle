@@ -28,7 +28,8 @@ import { canLeave, navigate, openingScreen, type Navigation } from './navigation
 import { needsOnboarding } from './onboarding.js';
 import { OnboardingScreen } from './OnboardingScreen.jsx';
 import { newProfile, type PlayerProfile } from './profile.js';
-import { buy, type ShopState } from './shop.js';
+import type { ShopState } from './shop.js';
+import { useInventory } from './useInventory.js';
 import { SettingsScreen } from './SettingsScreen.jsx';
 import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
@@ -178,10 +179,30 @@ export function App(): JSX.Element {
 
   const session = useSession();
 
-  const [wardrobe, setWardrobe] = useState<Wardrobe>(() => ({
-    look: saved?.look ?? defaultLook(),
-    owned: new Set(saved?.owned ?? []),
-  }));
+  /**
+   * La teinte de peau, seule preference d'apparence restee locale.
+   *
+   * Ce n'est pas un cosmetique : ni identifiant, ni prix, ni ligne au
+   * catalogue. Rien a verifier cote serveur, donc rien a lui demander.
+   */
+  const [skin, setSkin] = useState<string>(saved?.look.skin ?? defaultLook().skin);
+
+  /**
+   * L'inventaire vient du SERVEUR.
+   *
+   * Il a longtemps vecu dans `localStorage` — un inventaire qu'on s'offrait
+   * soi-meme, perdu en changeant d'appareil. Avec le code de recuperation,
+   * garder son compte sans garder ses achats n'avait plus de sens.
+   *
+   * La progression locale n'est pas reprise : la bourse se creditait
+   * elle-meme, elle n'a jamais rien valu. Ce qui a une valeur pour le joueur,
+   * c'est son apparence — et le serveur la lui rend, pour ce qu'il possede.
+   */
+  const inventory = useInventory(session.accessToken, skin);
+  const wardrobe: Wardrobe = useMemo(
+    () => ({ look: inventory.look, owned: inventory.owned }),
+    [inventory.look, inventory.owned],
+  );
 
   const looks = useMemo(
     () => ({
@@ -307,10 +328,13 @@ export function App(): JSX.Element {
   useEffect(() => {
     const settled = online.settled;
     if (settled === null) return;
-    setShop((current) => ({
-      ...current,
-      wallet: { ...current.wallet, soft: current.wallet.soft + settled.rewards.softCurrency },
-    }));
+    /*
+      La recompense n'est PLUS creditee ici.
+
+      Le serveur l'ecrit maintenant dans la bourse qu'il tient (`WalletCredit`).
+      L'ajouter aussi de ce cote-ci la compterait deux fois a l'ecran, jusqu'a
+      la prochaine lecture qui la ferait mysterieusement diminuer.
+    */
     setLeague(settled.rating.leagueAfter);
     setRecord((current) =>
       recordMatch(current, {
@@ -399,10 +423,10 @@ export function App(): JSX.Element {
    * Elles partiront du serveur : un inventaire tenu par le client est un
    * inventaire qu'on s'offre soi-meme.
    */
-  const [shop, setShop] = useState<ShopState>(() => ({
-    wallet: saved?.wallet ?? { soft: 0, hard: 0 },
-    owned: new Set(saved?.owned ?? []),
-  }));
+  const shop: ShopState = useMemo(
+    () => ({ wallet: inventory.wallet, owned: inventory.owned }),
+    [inventory.wallet, inventory.owned],
+  );
 
   /**
    * On range apres coup, jamais pendant le rendu.
@@ -412,15 +436,17 @@ export function App(): JSX.Element {
    */
   useEffect(() => {
     saveProgress(store, {
-      look: wardrobe.look,
-      owned: [...shop.owned],
-      wallet: shop.wallet,
+      // L'apparence et la bourse vivent sur le serveur ; ce qui reste ici est
+      // ce qu'il ne connait pas — la teinte de peau, et des chiffres d'ecran.
+      look: { ...defaultLook(), skin },
+      owned: [],
+      wallet: { soft: 0, hard: 0 },
       ...(league === '' ? {} : { league }),
       ...(record.matches === 0 ? {} : { record }),
       quality: qualitySetting,
       qualityTier,
     });
-  }, [store, wardrobe.look, shop.owned, shop.wallet, league, record, qualitySetting, qualityTier]);
+  }, [store, skin, league, record, qualitySetting, qualityTier]);
 
   /**
    * Le profil.
@@ -471,9 +497,23 @@ export function App(): JSX.Element {
     setNav((current) => navigate(current, screen));
   }, []);
 
-  const onEquip = useCallback((slot: LookSlot, id: string) => {
-    setWardrobe((current) => equip(current, slot, id));
-  }, []);
+  /**
+   * Equiper passe par le serveur, sauf la teinte de peau.
+   *
+   * Le serveur refuse ce qu'on ne possede pas : sans cet aller-retour,
+   * l'ecran de vestiaire d'un client modifie serait la boutique entiere,
+   * gratuite.
+   */
+  const onEquip = useCallback(
+    (slot: LookSlot, id: string) => {
+      if (slot === 'skin') {
+        setSkin(id);
+        return;
+      }
+      void inventory.equip(equip({ look: inventory.look, owned: inventory.owned }, slot, id).look);
+    },
+    [inventory],
+  );
 
   const leaveMatch = useCallback(() => {
     setNav((current) => navigate({ ...current, matchRunning: false }, 'home'));
@@ -547,7 +587,9 @@ export function App(): JSX.Element {
                 danceFor(wardrobe.look, { style: meme.style, tier: meme.tier }) === undefined)
             }
             onEquipMeme={() => {
-              setWardrobe((current) => equipDance(current, meme.animationId));
+              void inventory.equip(
+                equipDance({ look: inventory.look, owned: inventory.owned }, meme.animationId).look,
+              );
             }}
           />
         )}
@@ -562,13 +604,16 @@ export function App(): JSX.Element {
               setTrying((current) => (current === id ? null : id));
             }}
             onBuy={(id) => {
-              setShop((current) => {
-                const next = buy(current, id);
-                // Ce qu'on vient d'acheter devient portable sur-le-champ : la
-                // boutique et le vestiaire partagent la meme liste.
-                if (next !== current) setWardrobe((w) => ({ ...w, owned: next.owned }));
-                return next;
-              });
+              /*
+                L'achat part au serveur et rend l'inventaire complet.
+
+                Rien n'est calcule de ce cote-ci : le prix, la bourse et la
+                liste des possessions viennent tous de la meme reponse, donc
+                aucun des trois ne peut diverger de ce que la base contient.
+                La boutique et le vestiaire lisent cette meme liste, donc ce
+                qu'on achete devient portable sur-le-champ.
+              */
+              void inventory.buy(id);
             }}
             onClose={() => {
               setTrying(null);
