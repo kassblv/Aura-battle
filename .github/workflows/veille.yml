@@ -1,0 +1,127 @@
+name: Veille
+
+# Surveiller depuis l'EXTERIEUR du serveur, et c'est tout l'interet.
+#
+# Une surveillance hebergee sur la machine qu'elle surveille meurt avec elle :
+# le jour ou le serveur tombe, c'est precisement le moment ou la sonde ne
+# repond plus. GitHub tourne ailleurs, et son compte existe deja — pas de
+# service tiers a ouvrir, pas de mot de passe de plus a garder.
+#
+# ATTENTION : GitHub ne declenche `schedule` que sur la BRANCHE PAR DEFAUT.
+# Ce fichier ne sert a rien tant qu'il n'est pas sur `main`.
+
+on:
+  schedule:
+    # Toutes les quinze minutes. Le cron de GitHub est « au mieux » : il peut
+    # etre retarde de plusieurs minutes quand la plateforme est chargee. On
+    # detecte donc une panne en general sous le quart d'heure, parfois plus —
+    # ce qui est honnete a savoir, et sans commune mesure avec « personne ne
+    # l'apprend avant d'ouvrir le jeu ».
+    - cron: '*/15 * * * *'
+  workflow_dispatch:
+
+# Une seule veille a la fois : deux executions qui se croisent pourraient
+# ouvrir deux fois le meme incident.
+concurrency:
+  group: veille
+  cancel-in-progress: false
+
+permissions:
+  issues: write
+
+env:
+  CIBLE: https://aura-crrszaajyehq0tqnzv1ccpnf.46.202.154.17.sslip.io/health
+  TITRE: 'Alerte : Aura Battle ne répond plus'
+
+jobs:
+  sonder:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Interroger la sonde de sante
+        id: sonde
+        run: |
+          # Trois tentatives espacees.
+          #
+          # Un seul appel rate est un hoquet reseau du coureur GitHub, pas une
+          # panne. Alerter dessus apprendrait a ignorer l'alerte — apres quoi
+          # elle ne sert plus a rien le jour ou elle a raison.
+          for essai in 1 2 3; do
+            corps=$(curl -fsS --max-time 20 "$CIBLE" 2>/dev/null || true)
+            case "$corps" in
+              *'"status":"ok"'*)
+                echo "vivant=true" >> "$GITHUB_OUTPUT"
+                echo "Réponse saine à l'essai $essai."
+                exit 0
+                ;;
+            esac
+            echo "Essai $essai sans réponse saine."
+            [ "$essai" -lt 3 ] && sleep 20
+          done
+          echo "vivant=false" >> "$GITHUB_OUTPUT"
+
+      # `/health` ne dit que « le processus repond ».
+      #
+      # Il rend 200 meme si Postgres est mort : la veille annoncerait « tout va
+      # bien » pendant que le jeu est injouable. Le panneau d'administration,
+      # lui, sonde vraiment la base, Redis et la sauvegarde — et il rend un
+      # verdict d'un mot.
+      #
+      # Facultatif a dessein : sans le secret, on garde la veille superficielle
+      # plutot que de la casser. L'etape le DIT, au lieu de se taire et de
+      # laisser croire a un controle qui n'a pas lieu.
+      - name: Interroger le panneau d'administration
+        id: profond
+        if: steps.sonde.outputs.vivant == 'true'
+        env:
+          SECRET: ${{ secrets.ADMIN_TOKEN }}
+        run: |
+          if [ -z "$SECRET" ]; then
+            echo "::notice::Secret ADMIN_TOKEN absent : contrôle limité à /health."
+            echo "verdict=inconnu" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          reponse=$(curl -fsS --max-time 20 -H "authorization: Bearer $SECRET" \
+            "${CIBLE%/health}/admin/status" 2>/dev/null || true)
+          verdict=$(printf '%s' "$reponse" | sed -n 's/.*"overall":"\([a-z]*\)".*/\1/p')
+          echo "verdict=${verdict:-illisible}" >> "$GITHUB_OUTPUT"
+
+          if [ "$verdict" = 'down' ]; then
+            detail=$(printf '%s' "$reponse" | tr ',' '\n' | grep -A0 'down' | head -4 | tr '\n' ' ')
+            echo "composants=$detail" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Ouvrir ou relancer l'incident
+        if: steps.sonde.outputs.vivant != 'true' || steps.profond.outputs.verdict == 'down'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          # UN seul incident, commente — jamais un nouveau a chaque passage.
+          # Sinon une panne d'une nuit produit quarante tickets, et le
+          # quarantieme ne dit rien de plus que le premier.
+          numero=$(gh issue list --state open --search "$TITRE in:title" --json number --jq '.[0].number // empty')
+          if [ "${{ steps.sonde.outputs.vivant }}" != 'true' ]; then
+            message="Sonde en échec à $(date -u +'%Y-%m-%d %H:%M UTC') — trois essais sans réponse saine sur \`/health\`."
+          else
+            message="Le serveur répond, mais un composant est tombé à $(date -u +'%Y-%m-%d %H:%M UTC') : \`${{ steps.profond.outputs.composants }}\`"
+          fi
+
+          if [ -n "$numero" ]; then
+            gh issue comment "$numero" --body "$message"
+          else
+            gh issue create --title "$TITRE" \
+              --body "$message
+
+Le panneau d'administration (\`/admin\`) dira ce qui ne va pas, s'il répond.
+Cet incident se refermera tout seul quand la sonde redeviendra saine."
+          fi
+
+      - name: Refermer l'incident si tout va bien
+        if: steps.sonde.outputs.vivant == 'true' && steps.profond.outputs.verdict != 'down'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          numero=$(gh issue list --state open --search "$TITRE in:title" --json number --jq '.[0].number // empty')
+          if [ -n "$numero" ]; then
+            gh issue close "$numero" --comment "Sonde saine à $(date -u +'%Y-%m-%d %H:%M UTC'). Le service répond de nouveau."
+          fi
