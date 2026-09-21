@@ -117,7 +117,7 @@ joignable depuis un téléphone rend tout le reste vérifiable.
 - [x] Déployé et vérifié de bout en bout : HTTPS valide, WebSocket à travers Traefik, un duel complet contre un fantôme.
 - [x] **Code de récupération** (`AuthProvider.RECOVERY`) : un compte invité vit dans le stockage du navigateur, qui se vide pour un rien sur ordinateur. Seize symboles Crockford, quatre-vingts bits, haché côté serveur. Le présenter ne le consomme pas, en redemander un révoque l'ancien, et le rattachement d'appareil qui suit fait que la récupération survit au rechargement. Voir `docs/04-data-model.md`.
 - [ ] **Multi-nœuds** : une seule réplique pour l'instant, l'adaptateur Redis de Socket.IO n'est pas câblé (deuxième moitié de M7).
-- [ ] **Déploiement automatique au push** : chaque mise en ligne se déclenche à la main.
+- [x] **Déploiement automatique au push** : webhook GitHub → Coolify, signature HMAC, vérifié par un commit vide qui a bien déclenché une mise en ligne. L'API générale de Coolify reste **désactivée** — elle n'est plus nécessaire. Voir `docs/10-exploitation.md`.
 - [x] **Sauvegarde de la base** : `pg_dump` quotidien à 3 h 30 UTC, 14 jours de rétention, et une **restauration vérifiée** dans une base jetable — 12 joueurs et 1 identité de récupération identiques des deux côtés. Voir `docs/10-exploitation.md`. **Reste : une copie hors de la machine** — ceci protège d'une bêtise, pas de la perte du serveur.
 - [ ] **Supervision** : si le serveur tombe la nuit, personne ne l'apprend avant d'ouvrir le jeu.
 
