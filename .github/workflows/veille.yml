@@ -109,11 +109,15 @@ jobs:
           if [ -n "$numero" ]; then
             gh issue comment "$numero" --body "$message"
           else
-            gh issue create --title "$TITRE" \
-              --body "$message
-
-Le panneau d'administration (\`/admin\`) dira ce qui ne va pas, s'il répond.
-Cet incident se refermera tout seul quand la sonde redeviendra saine."
+            # Le corps est assemble par `printf`, et non ecrit sur plusieurs
+            # lignes : dans un bloc `run: |`, une ligne a la colonne zero sort
+            # du bloc et casse le YAML. GitHub le signale alors par une
+            # execution en echec dont le nom retombe sur le chemin du fichier.
+            corps=$(printf '%s\n\n%s\n%s' \
+              "$message" \
+              "Le panneau d'administration (/admin) dira ce qui ne va pas, s'il répond." \
+              "Cet incident se refermera tout seul quand la sonde redeviendra saine.")
+            gh issue create --title "$TITRE" --body "$corps"
           fi
 
       - name: Refermer l'incident si tout va bien
