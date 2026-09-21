@@ -6,7 +6,12 @@ import type {
   MatchRatingSettlement,
   SeatRatingOutcome,
 } from '../../match/domain/ports.js';
-import type { PresenceLeagueCache, RatingLookup, RatingWriter } from '../domain/ports.js';
+import type {
+  PresenceLeagueCache,
+  RatingLookup,
+  RatingWriter,
+  WalletCredit,
+} from '../domain/ports.js';
 import {
   GHOST_LEAGUE_POINTS_MULTIPLIER,
   isMutualForfeit,
@@ -43,6 +48,8 @@ export class RatingSettlementService implements MatchRatingSettlement {
     /** Absent en test : le cache de ligue de la session n'est alors pas rafraichi. */
     private readonly presenceCache: PresenceLeagueCache | null = null,
     private readonly log: AppLog | null = null,
+    /** Absent en test : la bourse n'est alors pas creditee. */
+    private readonly wallets: WalletCredit | null = null,
   ) {}
 
   async settle(input: {
@@ -93,6 +100,7 @@ export class RatingSettlementService implements MatchRatingSettlement {
     if (season === null) {
       // Hors saison, ou lecture en echec : personne n'a de classement a
       // afficher, et il n'y a de toute facon rien a ecrire.
+      await this.creditWallets(seats, rewards, ghost);
       return this.neutralOutcome(rewards, ghost);
     }
 
@@ -154,11 +162,42 @@ export class RatingSettlementService implements MatchRatingSettlement {
         this.log?.warn(
           `ecriture du classement en echec, classement inchange affiche : ${describeCause(cause)}`,
         );
+        await this.creditWallets(seats, rewards, ghost);
         return this.buildOutcome(existing, existing, rewards);
       }
     }
 
+    await this.creditWallets(seats, rewards, ghost);
     return this.buildOutcome(existing, updated, rewards);
+  }
+
+  /**
+   * Credite ce qui vient d'etre annonce.
+   *
+   * Un credit rate **ne fait pas echouer le match** : il est fini, les joueurs
+   * l'ont vu. Lever ici transformerait une ecriture ratee en partie perdue
+   * pour les deux, alors que la seule chose qui manque est quelques pieces —
+   * reconstructibles depuis le journal des matchs.
+   *
+   * Le siege du fantome n'a pas de bourse : rien ne part a son nom.
+   */
+  private async creditWallets(
+    seats: Readonly<Record<Seat, string>>,
+    rewards: Record<Seat, { softCurrency: number; xp: number }>,
+    ghost: GhostSeatInfo | null,
+  ): Promise<void> {
+    if (this.wallets === null) return;
+
+    const entries = SEATS.filter((seat) => seat !== ghost?.seat)
+      .filter((seat) => rewards[seat].softCurrency > 0)
+      .map((seat) => ({ playerId: seats[seat], soft: rewards[seat].softCurrency }));
+    if (entries.length === 0) return;
+
+    try {
+      await this.wallets.credit(entries);
+    } catch (cause) {
+      this.log?.warn(`credit de la monnaie douce en echec : ${describeCause(cause)}`);
+    }
   }
 
   private buildOutcome(

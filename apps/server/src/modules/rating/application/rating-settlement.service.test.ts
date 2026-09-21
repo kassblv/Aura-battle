@@ -5,6 +5,7 @@ import type {
   RatingLookup,
   RatingWriter,
   SeasonRatings,
+  WalletCredit,
 } from '../domain/ports.js';
 import { STARTING_RATING, type RatingSnapshot } from '../domain/rating.js';
 import { RatingSettlementService } from './rating-settlement.service.js';
@@ -62,16 +63,30 @@ class FakePresenceCache implements PresenceLeagueCache {
   }
 }
 
+/** Le portefeuille : on note qui est credite de combien. */
+class FakeWallets implements WalletCredit {
+  readonly credits: { playerId: string; soft: number }[] = [];
+  failure: Error | null = null;
+
+  credit(entries: readonly { playerId: string; soft: number }[]): Promise<void> {
+    if (this.failure !== null) return Promise.reject(this.failure);
+    this.credits.push(...entries);
+    return Promise.resolve();
+  }
+}
+
 let lookup: FakeLookup;
 let writer: FakeWriter;
 let presence: FakePresenceCache;
+let wallets: FakeWallets;
 let service: RatingSettlementService;
 
 beforeEach(() => {
   lookup = new FakeLookup();
   writer = new FakeWriter();
   presence = new FakePresenceCache();
-  service = new RatingSettlementService(lookup, writer, presence);
+  wallets = new FakeWallets();
+  service = new RatingSettlementService(lookup, writer, presence, null, wallets);
 });
 
 const settle = (
@@ -299,5 +314,87 @@ describe('RatingSettlementService — contre un fantome', () => {
 
     const haut = await settle({ ghost: { ...GHOST, mmr: 2_500 } });
     expect(haut.b.before.league).toBe('rayonnante');
+  });
+});
+
+describe('credit de la monnaie douce', () => {
+  /*
+    Le serveur ANNONCE une recompense depuis M5 ; il ne l'a jamais ECRITE.
+
+    C'est le client qui s'ajoutait l'argent dans son propre stockage — donc une
+    monnaie qu'on s'offrait soi-meme, et qui disparaissait en changeant
+    d'appareil. Avec un inventaire cote serveur, la bourse doit vivre au meme
+    endroit que ce qu'elle achete.
+  */
+  it('credite ce qu il annonce', async () => {
+    const outcome = await settle({ mode: 'RANKED', result: { winner: 'a', reason: 'rounds' } });
+
+    expect(wallets.credits).toEqual([
+      { playerId: 'p1', soft: outcome.a.rewards.softCurrency },
+      { playerId: 'p2', soft: outcome.b.rewards.softCurrency },
+    ]);
+  });
+
+  it('credite aussi hors classe', async () => {
+    await settle({ mode: 'CASUAL', result: { winner: 'a', reason: 'rounds' } });
+    expect(wallets.credits.length).toBeGreaterThan(0);
+  });
+
+  /* Un fantome n'a pas de bourse : rien ne doit partir a son nom. */
+  it('ne credite jamais le siege du fantome', async () => {
+    await settle({
+      mode: 'RANKED',
+      result: { winner: 'a', reason: 'rounds' },
+      ghost: { seat: 'b', mmr: 1_000, sourcePlayerId: 'p_source' },
+    });
+
+    expect(wallets.credits.map((c) => c.playerId)).toEqual(['p1']);
+  });
+
+  /*
+    Un abandon ne rapporte rien — c'est la table de `rewardsFor` qui le dit, et
+    on ne credite pas zero : une ligne de credit a zero est une ecriture qui ne
+    change rien, et une ecriture qui ne change rien finit par etre lue comme
+    une ecriture qui a echoue.
+
+    Attention au raccourci : un double abandon ne vaut PAS zero pour tout le
+    monde. `outcomeFor` ne rend `forfeited` que pour `reason: 'forfeit'` ;
+    ailleurs, l'absence de vainqueur est une egalite, qui rapporte douze.
+  */
+  it('n envoie rien pour un abandon des deux cotes', async () => {
+    await settle({ mode: 'RANKED', result: { winner: null, reason: 'forfeit' } });
+    expect(wallets.credits).toEqual([]);
+  });
+
+  it('credite le vainqueur d un abandon, mais pas celui qui abandonne', async () => {
+    await settle({ mode: 'RANKED', result: { winner: 'a', reason: 'forfeit' } });
+    expect(wallets.credits.map((c) => c.playerId)).toEqual(['p1']);
+  });
+
+  /*
+    Un credit rate ne fait pas echouer le match.
+
+    Le match est fini, les joueurs l'ont vu. Lever ici transformerait une
+    ecriture ratee en partie perdue pour les deux — alors que la seule chose
+    qui manque est quelques pieces, reconstructibles depuis le journal.
+  */
+  it('laisse le match s achever meme si le credit echoue', async () => {
+    wallets.failure = new Error('base injoignable');
+    await expect(
+      settle({ mode: 'RANKED', result: { winner: 'a', reason: 'rounds' } }),
+    ).resolves.toBeDefined();
+  });
+
+  it('se passe de portefeuille', async () => {
+    const sansBourse = new RatingSettlementService(lookup, writer, presence);
+    await expect(
+      sansBourse.settle({
+        mode: 'RANKED',
+        seats: SEATS,
+        result: { winner: 'a', reason: 'rounds' },
+        atMs: NOW,
+        ghost: null,
+      }),
+    ).resolves.toBeDefined();
   });
 });

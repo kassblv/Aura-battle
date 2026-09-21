@@ -70,3 +70,16 @@ export interface PresenceLeagueCache {
 }
 
 export const PRESENCE_LEAGUE_CACHE = 'PRESENCE_LEAGUE_CACHE';
+
+/**
+ * Le credit de la monnaie douce a la fin d'un match.
+ *
+ * Le serveur ANNONCE une recompense depuis M5 ; il ne l'ecrivait nulle part.
+ * C'est le client qui s'ajoutait l'argent dans son propre stockage — donc une
+ * monnaie qu'on s'offrait soi-meme, perdue en changeant d'appareil. Avec un
+ * inventaire cote serveur, la bourse doit vivre au meme endroit que ce qu'elle
+ * achete.
+ */
+export interface WalletCredit {
+  credit(entries: readonly { readonly playerId: string; readonly soft: number }[]): Promise<void>;
+}

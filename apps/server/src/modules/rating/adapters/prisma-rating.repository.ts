@@ -9,6 +9,7 @@ import type {
   RatingLookup,
   RatingWriter,
   SeasonRatings,
+  WalletCredit,
 } from '../domain/ports.js';
 import type { League, RatingSnapshot } from '../domain/rating.js';
 
@@ -70,7 +71,9 @@ function toSnapshot(row: RatingRow): RatingSnapshot {
 }
 
 @Injectable()
-export class PrismaRatingRepository implements RatingLookup, RatingWriter, RatingDirectory {
+export class PrismaRatingRepository
+  implements RatingLookup, RatingWriter, RatingDirectory, WalletCredit
+{
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir CLAUDE.md).
   constructor(
     @Inject(PrismaService) private readonly prisma: PrismaService,
@@ -126,6 +129,28 @@ export class PrismaRatingRepository implements RatingLookup, RatingWriter, Ratin
    * faire du reste de la fin de match (rien, docs/05 : le resultat est deja
    * parti chez les joueurs).
    */
+  /**
+   * Credite la monnaie douce de plusieurs joueurs, en une transaction.
+   *
+   * `increment` et non une lecture suivie d'une ecriture : deux matchs qui
+   * s'achevent au meme instant pour le meme joueur — ca arrive, il suffit de
+   * deux onglets — perdraient l'un des deux credits. L'incrementation se fait
+   * dans la base, qui sait les empiler.
+   */
+  async credit(
+    entries: readonly { readonly playerId: string; readonly soft: number }[],
+  ): Promise<void> {
+    if (entries.length === 0) return;
+    await this.prisma.$transaction(
+      entries.map((entry) =>
+        this.prisma.player.update({
+          where: { id: entry.playerId },
+          data: { softCurrency: { increment: entry.soft } },
+        }),
+      ),
+    );
+  }
+
   async saveMany(
     seasonId: string,
     entries: readonly { readonly playerId: string; readonly rating: RatingSnapshot }[],

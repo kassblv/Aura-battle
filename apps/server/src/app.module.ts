@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { MatchModule } from './modules/match/match.module.js';
 import { ConfigModule } from './shared/config.module.js';
 import { LoggerModule } from './shared/logger.module.js';
@@ -15,6 +16,14 @@ import { MetricsModule } from './shared/metrics.module.js';
  * configure qui tombera en pleine partie.
  */
 @Module({
-  imports: [ConfigModule, LoggerModule, MetricsModule, HealthModule, AuthModule, MatchModule],
+  imports: [
+    ConfigModule,
+    LoggerModule,
+    MetricsModule,
+    HealthModule,
+    AuthModule,
+    MatchModule,
+    InventoryModule,
+  ],
 })
 export class AppModule {}

@@ -33,8 +33,8 @@ describe('servesIndex', () => {
     }
   });
 
-  it('couvre les trois chemins que le serveur expose', () => {
-    expect([...API_PREFIXES].sort()).toEqual(['/auth', '/health', '/socket.io']);
+  it('couvre les quatre chemins que le serveur expose', () => {
+    expect([...API_PREFIXES].sort()).toEqual(['/auth', '/health', '/inventory', '/socket.io']);
   });
 
   /*

@@ -103,7 +103,13 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
     },
     {
       provide: RatingSettlementService,
-      inject: [RATING_LOOKUP, RATING_WRITER, SocketNotifier, PinoLoggerService],
+      inject: [
+        RATING_LOOKUP,
+        RATING_WRITER,
+        SocketNotifier,
+        PinoLoggerService,
+        PrismaRatingRepository,
+      ],
       useFactory: (
         lookup: RatingLookup,
         writer: RatingWriter,
@@ -111,7 +117,10 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
         // en cache a la connexion doit etre la meme qu'on rafraichit ici.
         presenceCache: SocketNotifier,
         logger: PinoLoggerService,
-      ) => new RatingSettlementService(lookup, writer, presenceCache, logger),
+        // Le meme depot realise `WalletCredit` : la recompense annoncee a la
+        // fin du match est creditee la, au lieu d'etre laissee au client.
+        wallets: PrismaRatingRepository,
+      ) => new RatingSettlementService(lookup, writer, presenceCache, logger, wallets),
     },
 
     /**

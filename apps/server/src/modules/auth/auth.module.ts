@@ -97,6 +97,9 @@ import { SocketAuthenticator } from './application/socket-auth.js';
         }),
     },
   ],
-  exports: [SessionService, SocketAuthenticator, PrismaService],
+  // `ACCESS_TOKEN_VERIFIER` sort d'ici : l'inventaire authentifie ses routes
+  // avec le MEME verificateur. Deux verificateurs seraient deux endroits ou
+  // la validite d'un jeton pourrait diverger.
+  exports: [SessionService, SocketAuthenticator, PrismaService, 'ACCESS_TOKEN_VERIFIER'],
 })
 export class AuthModule {}
