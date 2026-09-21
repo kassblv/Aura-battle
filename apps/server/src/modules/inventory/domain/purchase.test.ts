@@ -1,0 +1,188 @@
+import { describe, expect, it } from 'vitest';
+import {
+  PURCHASABLE_KINDS,
+  purchaseOutcome,
+  type CatalogueEntry,
+  type Wallet,
+} from './purchase.js';
+
+const item = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
+  id: 'color.violet',
+  kind: 'AURA_COLOR',
+  priceSoft: 80,
+  priceHard: null,
+  availableFrom: null,
+  availableTo: null,
+  ...over,
+});
+
+const NOW = new Date('2026-09-21T10:00:00Z');
+const RICH: Wallet = { soft: 1_000, hard: 10 };
+
+describe('purchaseOutcome', () => {
+  it('accepte un achat payable et non possede', () => {
+    expect(purchaseOutcome({ item: item(), wallet: RICH, owned: false, now: NOW })).toEqual({
+      ok: true,
+      spend: { soft: 80, hard: 0 },
+    });
+  });
+
+  it('refuse ce qu on possede deja', () => {
+    expect(purchaseOutcome({ item: item(), wallet: RICH, owned: true, now: NOW })).toEqual({
+      ok: false,
+      reason: 'ALREADY_OWNED',
+    });
+  });
+
+  it('refuse faute d argent', () => {
+    expect(
+      purchaseOutcome({ item: item(), wallet: { soft: 79, hard: 0 }, owned: false, now: NOW }),
+    ).toEqual({ ok: false, reason: 'INSUFFICIENT_FUNDS' });
+  });
+
+  it('accepte au centime pres', () => {
+    expect(
+      purchaseOutcome({ item: item(), wallet: { soft: 80, hard: 0 }, owned: false, now: NOW }).ok,
+    ).toBe(true);
+  });
+
+  /*
+    REGLE D'OR N°3, et c'est ici qu'elle se tient.
+
+    Tout ce qui modifie un score est accessible a tous. La boutique ne vend que
+    de l'apparence. Cette liste est donc une GARDE, pas une intention : un
+    `CosmeticKind` ajoute demain n'est pas vendable tant que personne ne l'a
+    ecrit ici, et le test ci-dessous se casse si quelqu'un elargit la liste
+    sans y penser.
+  */
+  it('ne vend que de l apparence', () => {
+    expect([...PURCHASABLE_KINDS].sort()).toEqual([
+      'ANIMATION',
+      'AURA_COLOR',
+      'AURA_EFFECT',
+      'BANNER',
+      'HAIR',
+      'OUTFIT',
+    ]);
+  });
+
+  it('refuse un genre qui n est pas vendable', () => {
+    expect(
+      purchaseOutcome({
+        item: item({ kind: 'BOOST' as never }),
+        wallet: RICH,
+        owned: false,
+        now: NOW,
+      }),
+    ).toEqual({ ok: false, reason: 'NOT_PURCHASABLE' });
+  });
+
+  /*
+    Un objet sans prix n'est pas gratuit : il n'est pas a vendre. Un `null`
+    traite comme un zero offrirait le catalogue entier a qui trouve la ligne
+    ou le prix a ete oublie.
+  */
+  it('refuse un objet sans prix', () => {
+    expect(
+      purchaseOutcome({
+        item: item({ priceSoft: null, priceHard: null }),
+        wallet: RICH,
+        owned: false,
+        now: NOW,
+      }),
+    ).toEqual({ ok: false, reason: 'NOT_PURCHASABLE' });
+  });
+
+  it('accepte un objet a zero', () => {
+    expect(
+      purchaseOutcome({
+        item: item({ priceSoft: 0 }),
+        wallet: { soft: 0, hard: 0 },
+        owned: false,
+        now: NOW,
+      }),
+    ).toEqual({ ok: true, spend: { soft: 0, hard: 0 } });
+  });
+
+  /*
+    Deux monnaies, et la douce d'abord. Quelqu'un qui a gagne de quoi se payer
+    un objet en jouant ne doit pas se voir prelever la monnaie qu'il a achetee.
+  */
+  it('depense la monnaie douce avant la dure', () => {
+    expect(
+      purchaseOutcome({
+        item: item({ priceSoft: 80, priceHard: 2 }),
+        wallet: RICH,
+        owned: false,
+        now: NOW,
+      }),
+    ).toEqual({ ok: true, spend: { soft: 80, hard: 0 } });
+  });
+
+  it('se rabat sur la monnaie dure quand la douce ne suffit pas', () => {
+    expect(
+      purchaseOutcome({
+        item: item({ priceSoft: 80, priceHard: 2 }),
+        wallet: { soft: 10, hard: 5 },
+        owned: false,
+        now: NOW,
+      }),
+    ).toEqual({ ok: true, spend: { soft: 0, hard: 2 } });
+  });
+
+  describe('fenetre de disponibilite', () => {
+    it('refuse avant l ouverture', () => {
+      expect(
+        purchaseOutcome({
+          item: item({ availableFrom: new Date('2026-09-22T00:00:00Z') }),
+          wallet: RICH,
+          owned: false,
+          now: NOW,
+        }),
+      ).toEqual({ ok: false, reason: 'UNAVAILABLE' });
+    });
+
+    it('refuse apres la fermeture', () => {
+      expect(
+        purchaseOutcome({
+          item: item({ availableTo: new Date('2026-09-20T00:00:00Z') }),
+          wallet: RICH,
+          owned: false,
+          now: NOW,
+        }),
+      ).toEqual({ ok: false, reason: 'UNAVAILABLE' });
+    });
+
+    it('accepte pendant la fenetre', () => {
+      expect(
+        purchaseOutcome({
+          item: item({
+            availableFrom: new Date('2026-09-20T00:00:00Z'),
+            availableTo: new Date('2026-09-22T00:00:00Z'),
+          }),
+          wallet: RICH,
+          owned: false,
+          now: NOW,
+        }).ok,
+      ).toBe(true);
+    });
+  });
+
+  /*
+    L'ordre des refus compte.
+
+    « Tu possedes deja ca » avant « tu n'as pas assez » : quelqu'un qui possede
+    l'objet et n'a pas d'argent doit lire le premier, pas le second — sinon il
+    va gagner de l'argent pour racheter ce qu'il a.
+  */
+  it('dit d abord ce qui est le plus utile a savoir', () => {
+    expect(
+      purchaseOutcome({
+        item: item(),
+        wallet: { soft: 0, hard: 0 },
+        owned: true,
+        now: NOW,
+      }),
+    ).toEqual({ ok: false, reason: 'ALREADY_OWNED' });
+  });
+});

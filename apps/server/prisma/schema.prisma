@@ -222,7 +222,6 @@ enum CosmeticKind {
   AURA_COLOR
   OUTFIT
   HAIR
-  EMOTE
   BANNER
 }
 
