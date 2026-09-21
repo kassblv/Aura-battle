@@ -37,6 +37,7 @@ export interface HomeProps {
   readonly onPlay: () => void;
   readonly onProfile: () => void;
   readonly onSettings: () => void;
+  readonly onLeaderboard: () => void;
   readonly onWardrobe: () => void;
   readonly onShop: () => void;
   /** Cherche un adversaire : c est le chemin normal vers un duel. */
@@ -70,6 +71,7 @@ export function HomeScreen({
   onPlay,
   onProfile,
   onSettings,
+  onLeaderboard,
   onWardrobe,
   onShop,
   onOnline,
@@ -119,6 +121,24 @@ export function HomeScreen({
             </span>
             <span className="rail__label" aria-hidden="true">
               Vestiaire
+            </span>
+          </button>
+          {/*
+            Le classement juste apres le profil : les deux repondent a la meme
+            question — ou j'en suis — l'un pour soi, l'autre par rapport aux
+            autres.
+          */}
+          <button
+            type="button"
+            className="rail__btn"
+            onClick={onLeaderboard}
+            aria-label="Classement"
+          >
+            <span className="rail__icon" aria-hidden="true">
+              🏆
+            </span>
+            <span className="rail__label" aria-hidden="true">
+              Classement
             </span>
           </button>
           <button type="button" className="rail__btn" onClick={onProfile} aria-label="Profil">

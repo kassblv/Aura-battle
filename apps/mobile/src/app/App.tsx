@@ -30,6 +30,7 @@ import { OnboardingScreen } from './OnboardingScreen.jsx';
 import { newProfile, type PlayerProfile } from './profile.js';
 import type { ShopState } from './shop.js';
 import { useInventory } from './useInventory.js';
+import { LeaderboardScreen } from './LeaderboardScreen.jsx';
 import { SettingsScreen } from './SettingsScreen.jsx';
 import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
@@ -562,6 +563,9 @@ export function App(): JSX.Element {
             onSettings={() => {
               go('settings');
             }}
+            onLeaderboard={() => {
+              go('leaderboard');
+            }}
             onWardrobe={() => {
               go('wardrobe');
             }}
@@ -625,6 +629,15 @@ export function App(): JSX.Element {
         {!showOnboarding && nav.screen === 'profile' && (
           <ProfileScreen
             profile={profile}
+            onClose={() => {
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'leaderboard' && (
+          <LeaderboardScreen
+            accessToken={session.accessToken}
             onClose={() => {
               go('home');
             }}

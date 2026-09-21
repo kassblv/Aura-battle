@@ -14,7 +14,13 @@
  * `@Controller` et la passerelle Socket.IO : un prefixe oublie ici recevrait
  * du HTML la ou un client attend du JSON.
  */
-export const API_PREFIXES = ['/auth', '/health', '/inventory', '/socket.io'] as const;
+export const API_PREFIXES = [
+  '/auth',
+  '/health',
+  '/inventory',
+  '/leaderboard',
+  '/socket.io',
+] as const;
 
 /** Ce qu on reconnait a un fichier du build plutot qu a une navigation. */
 const FILE_EXTENSION = /\.[a-z0-9]+$/i;

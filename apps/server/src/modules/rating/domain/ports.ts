@@ -1,3 +1,4 @@
+import type { RankedRow } from './leaderboard.js';
 import type { RatingSnapshot } from './rating.js';
 
 /**
@@ -55,6 +56,35 @@ export interface RatingDirectory {
 }
 
 export const RATING_DIRECTORY = 'RATING_DIRECTORY';
+
+/**
+ * Lecture du classement general (docs/05).
+ *
+ * Le tri et le rang viennent de la base, jamais d'un calcul en memoire :
+ * `Rating` porte l'index `(seasonId, leaguePoints)` fait exactement pour ca,
+ * et charger tous les classements pour les trier ici cesserait de tenir au
+ * premier millier de joueurs.
+ */
+export interface LeaderboardReader {
+  /** Les `limit` premiers de la saison en cours. */
+  top(limit: number, nowMs: number): Promise<readonly RankedRow[]>;
+  /**
+   * Le joueur et ses voisins, ou `null` s'il n'a jamais fini de match classe.
+   *
+   * Un joueur sans ligne de classement n'est pas une anomalie : c'est le cas
+   * de tous ceux qui viennent d'arriver.
+   */
+  around(
+    playerId: string,
+    neighbours: number,
+    nowMs: number,
+  ): Promise<{
+    readonly me: RankedRow;
+    readonly rows: readonly RankedRow[];
+  } | null>;
+}
+
+export const LEADERBOARD_READER = 'LEADERBOARD_READER';
 
 /**
  * Rafraichit la ligue mise en cache pour un joueur connecte.

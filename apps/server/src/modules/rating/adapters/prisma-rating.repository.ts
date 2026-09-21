@@ -4,10 +4,12 @@ import { currentSeasonId } from '../../../shared/current-season.js';
 import { describeCause } from '../../../shared/describe-cause.js';
 import { PinoLoggerService } from '../../../shared/logger.js';
 import { PrismaService } from '../../../shared/prisma.service.js';
+import type { RankedRow } from '../domain/leaderboard.js';
 import type {
   RatingDirectory,
   RatingLookup,
   RatingWriter,
+  LeaderboardReader,
   SeasonRatings,
   WalletCredit,
 } from '../domain/ports.js';
@@ -47,6 +49,19 @@ const LEAGUE_FROM_COLUMN: Record<LeagueColumn, League> = {
   [LeagueColumn.INFINIE]: 'infinie',
 };
 
+/**
+ * Traduit la ligue de la COLONNE vers celle du domaine.
+ *
+ * Le reste du depot passe par `LEAGUE_FROM_COLUMN` ; une requete SQL brute
+ * rend `r.league::text`, c'est-a-dire le nom de la valeur d'enum Postgres —
+ * `INFINIE` la ou le client attend `infinie`. Sans cette traduction, l'ecran
+ * affiche « Non classe » pour tout le monde, et rien dans le code ne le
+ * signale : les deux cotes manipulent des chaines, et elles se ressemblent.
+ */
+function withDomainLeague(row: RankedRow): RankedRow {
+  return { ...row, league: LEAGUE_FROM_COLUMN[row.league as LeagueColumn] ?? row.league };
+}
+
 interface RatingRow {
   playerId: string;
   mmr: number;
@@ -72,7 +87,7 @@ function toSnapshot(row: RatingRow): RatingSnapshot {
 
 @Injectable()
 export class PrismaRatingRepository
-  implements RatingLookup, RatingWriter, RatingDirectory, WalletCredit
+  implements RatingLookup, RatingWriter, RatingDirectory, WalletCredit, LeaderboardReader
 {
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir CLAUDE.md).
   constructor(
@@ -100,6 +115,75 @@ export class PrismaRatingRepository
     });
 
     return { seasonId, ratings: new Map(rows.map((row) => [row.playerId, toSnapshot(row)])) };
+  }
+
+  /**
+   * Les meilleurs de la saison.
+   *
+   * Le rang vient de la base (`row_number`), pas d'un compteur en memoire :
+   * calculer un rang cote serveur obligerait a charger tout le classement
+   * pour n'en montrer que cinquante lignes.
+   *
+   * Le tri porte un **departage explicite** sur `playerId`. Sans lui, deux
+   * joueurs a egalite de points changeraient de place d'une requete a
+   * l'autre — et un classement ou l'on monte et descend sans rien faire ne
+   * se croit plus.
+   */
+  async top(limit: number, nowMs: number): Promise<readonly RankedRow[]> {
+    const seasonId = await currentSeasonId(this.prisma, nowMs);
+    if (seasonId === null) return [];
+
+    const rows = await this.prisma.$queryRaw<RankedRow[]>`
+      select
+        cast(row_number() over (order by r."leaguePoints" desc, r."playerId" asc) as int) as rank,
+        r."playerId", p."displayName", r."leaguePoints",
+        r.league::text as league, r.wins, r.losses
+      from "Rating" r
+      join "Player" p on p.id = r."playerId"
+      where r."seasonId" = ${seasonId}
+      order by r."leaguePoints" desc, r."playerId" asc
+      limit ${limit}
+    `;
+    return rows.map(withDomainLeague);
+  }
+
+  /**
+   * Le joueur et ses voisins immediats.
+   *
+   * Une seule requete, avec le classement complet numerote une fois : deux
+   * requetes — « quel est mon rang », puis « qui est autour » — pourraient
+   * tomber de part et d'autre d'un match qui s'acheve, et rendre un joueur
+   * absent de son propre voisinage.
+   */
+  async around(
+    playerId: string,
+    neighbours: number,
+    nowMs: number,
+  ): Promise<{ readonly me: RankedRow; readonly rows: readonly RankedRow[] } | null> {
+    const seasonId = await currentSeasonId(this.prisma, nowMs);
+    if (seasonId === null) return null;
+
+    const rows = await this.prisma.$queryRaw<RankedRow[]>`
+      with classement as (
+        select
+          cast(row_number() over (order by r."leaguePoints" desc, r."playerId" asc) as int) as rank,
+          r."playerId", p."displayName", r."leaguePoints",
+          r.league::text as league, r.wins, r.losses
+        from "Rating" r
+        join "Player" p on p.id = r."playerId"
+        where r."seasonId" = ${seasonId}
+      ),
+      moi as (select rank from classement where "playerId" = ${playerId})
+      select classement.* from classement, moi
+      where abs(classement.rank - moi.rank) <= ${neighbours}
+      order by classement.rank asc
+    `;
+
+    const traduites = rows.map(withDomainLeague);
+    const me = traduites.find((row) => row.playerId === playerId);
+    // Aucune ligne de classement : le joueur n'a jamais fini de match classe.
+    // Ce n'est pas une anomalie, c'est le cas de tous les nouveaux venus.
+    return me === undefined ? null : { me, rows: traduites };
   }
 
   async leaguesOf(

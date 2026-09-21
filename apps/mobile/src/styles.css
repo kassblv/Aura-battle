@@ -759,6 +759,80 @@ body {
   }
 }
 
+/* --- classement --- */
+
+/*
+  La tete est plus large que le voisinage : elle porte cinquante lignes, le
+  voisinage cinq. Leur donner la meme part laisserait la moitie droite de
+  l'ecran vide, ce qui est precisement le defaut qu'on corrige ici.
+*/
+.sheet__cols--rank {
+  grid-template-columns: 1.6fr 1fr;
+}
+
+.ranks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  /*
+    La liste defile, pas le panneau. L'en-tete et « ta place » restent visibles
+    pendant qu'on parcourt les cinquante premiers — sans quoi on perd de vue ce
+    qu'on etait venu chercher des la dixieme ligne.
+  */
+  overflow-y: auto;
+  max-height: 232px;
+}
+
+.rank {
+  display: grid;
+  grid-template-columns: 2.2rem 1fr auto 3.2rem;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 9px;
+  border-radius: 10px;
+  background: var(--chip-deep);
+  font-size: 12px;
+}
+
+.rank__pos {
+  font-weight: 700;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.rank__name {
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rank__league {
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.rank__lp {
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--gold-ink);
+  font-weight: 700;
+}
+
+/*
+  Sa propre ligne se retrouve d'un coup d'oeil, au milieu de cinquante autres.
+  Un lisere accentue et un fond plus clair : la couleur seule laisserait
+  dehors qui la distingue mal.
+*/
+.rank--me {
+  background: linear-gradient(180deg, rgba(179, 107, 255, 0.28), var(--chip));
+  border: 1px solid var(--accent);
+}
+
 /* --- reglages : un choix parmi plusieurs --- */
 
 /*

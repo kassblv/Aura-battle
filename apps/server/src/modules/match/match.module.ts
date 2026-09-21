@@ -24,6 +24,7 @@ import {
   type RecentOpponentStore,
 } from '../matchmaking/domain/ports.js';
 import { PrismaRatingRepository } from '../rating/adapters/prisma-rating.repository.js';
+import { LeaderboardController } from '../rating/adapters/leaderboard.controller.js';
 import { RatingSettlementService } from '../rating/application/rating-settlement.service.js';
 import {
   RATING_DIRECTORY,
@@ -64,6 +65,7 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
 
 @Module({
   imports: [AuthModule, RedisModule],
+  controllers: [LeaderboardController],
   providers: [
     {
       provide: SocketNotifier,
@@ -98,6 +100,13 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
     },
     {
       provide: RATING_DIRECTORY,
+      inject: [PrismaRatingRepository],
+      useFactory: (repository: PrismaRatingRepository) => repository,
+    },
+    // Le meme depot lit aussi le classement general : le tri et le rang
+    // viennent de la base, la ou vit l'index `(seasonId, leaguePoints)`.
+    {
+      provide: 'LEADERBOARD_READER',
       inject: [PrismaRatingRepository],
       useFactory: (repository: PrismaRatingRepository) => repository,
     },
