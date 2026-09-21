@@ -85,6 +85,13 @@ export interface ArenaControls {
    */
   readonly round: RefObject<RoundReport | null>;
   /**
+   * Largeur du panneau lateral ouvert, en pixels. Zero s il n y en a pas.
+   *
+   * Relue a chaque image, comme le reste : l arene ne doit pas etre
+   * reconstruite parce qu un ecran s est ouvert.
+   */
+  readonly sidePanel: RefObject<number>;
+  /**
    * Ramene le personnage de face dans la vitrine.
    *
    * Appele tout seul quand un duel commence ; expose pour qu un bouton
@@ -140,6 +147,7 @@ export function useArena(
   const presentation = useRef<Presentation | null>(null);
   const showcase = useRef(true);
   const round = useRef<RoundReport | null>(null);
+  const sidePanel = useRef(0);
   // Cree une seule fois : l angle doit survivre aux rendus de React, pas
   // repartir de zero a chaque fois que l accueil se redessine.
   const orbit = useRef(createOrbitControl());
@@ -452,6 +460,10 @@ export function useArena(
         });
       }
 
+      // Le panneau lateral : l arene recentre le sujet dans ce qui reste.
+      // `setSidePanel` ne fait rien quand la valeur n a pas change.
+      arena.setSidePanel(sidePanel.current);
+
       arena.update({
         elapsed,
         delta,
@@ -510,6 +522,7 @@ export function useArena(
       presentation,
       showcase,
       round,
+      sidePanel,
       resetOrbit(): void {
         orbit.current.reset();
       },

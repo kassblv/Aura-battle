@@ -60,7 +60,7 @@ export function LeaderboardScreen({ accessToken, onClose }: LeaderboardProps): J
   }, [accessToken]);
 
   return (
-    <section className="sheet sheet--wide" aria-label="Classement">
+    <section className="sheet sheet--wide sheet--veiled" aria-label="Classement">
       <header className="sheet__head">
         <h2>Classement</h2>
         <button type="button" className="mini" onClick={onClose}>

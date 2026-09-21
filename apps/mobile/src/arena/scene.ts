@@ -9,6 +9,7 @@ import { createFighterRig, type FighterRig, type RigPlacement } from './rig.js';
 import { createToonGradientMap } from './toonGradient.js';
 import { createFlash, type Flash } from './flash.js';
 import type { QualityProfile } from '../platform/quality.js';
+import { panelViewOffset } from './panelOffset.js';
 import { createAuraEmitter, createAuraGlow, type AuraEmitter, type AuraGlow } from './aura.js';
 import {
   createParticleFields,
@@ -96,6 +97,14 @@ export interface ArenaScene {
    */
   setSize(width: number, height: number, pixelRatio?: number): void;
   /**
+   * Recentre le sujet dans ce qu un panneau lateral laisse libre.
+   *
+   * Zero pour revenir au plein cadre. Voir `panelOffset.ts` : c est la
+   * PROJECTION qui se decale, pas la camera — le cadrage compose par le
+   * realisateur reste intact.
+   */
+  setSidePanel(widthPx: number): void;
+  /**
    * Applique un palier de qualite (`platform/quality.ts`).
    *
    * La scene ne choisit pas : elle pose. Rien n est alloue ni libere ici, ce
@@ -179,6 +188,32 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
     particles.group,
   );
 
+  /**
+   * Le panneau lateral ouvert, en pixels, et la derniere taille connue.
+   *
+   * Retenus parce que le decalage se recalcule des que l un des deux change :
+   * une rotation d ecran pendant que la boutique est ouverte doit recentrer le
+   * personnage sans qu on ait a redire au panneau ce qu il occupe.
+   */
+  let panelWidth = 0;
+  let lastSize = { width: 1, height: 1 };
+
+  const applyPanel = (): void => {
+    const offset = panelViewOffset(lastSize.width, lastSize.height, panelWidth);
+    if (offset === null) camera.clearViewOffset();
+    else {
+      camera.setViewOffset(
+        offset.fullWidth,
+        offset.fullHeight,
+        offset.x,
+        offset.y,
+        offset.width,
+        offset.height,
+      );
+    }
+    camera.updateProjectionMatrix();
+  };
+
   const camera = createArenaCamera(1);
   camera.name = 'camera';
   const rig = new ArenaCameraRig(camera);
@@ -220,11 +255,17 @@ export function createArenaScene(options: ArenaSceneOptions): ArenaScene {
 
     setSize(width: number, height: number, pixelRatio = 1): void {
       viewport = measureViewport(width, height);
+      lastSize = { width, height };
       // Une fenetre repliee (rotation, clavier) donnerait un rapport NaN.
       camera.aspect = height > 0 ? width / height : 1;
-      camera.updateProjectionMatrix();
+      applyPanel();
       flash.setAspect(camera.aspect);
       particles.setProjectionScale(projectionScale(height, pixelRatio, camera.fov));
+    },
+
+    setSidePanel(widthPx): void {
+      panelWidth = widthPx;
+      applyPanel();
     },
 
     auras,

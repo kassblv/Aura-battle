@@ -697,13 +697,18 @@ body {
 .sheet--wide {
   left: var(--safe-left);
   width: auto;
-  /*
-    Un voile, uniquement ici.
+}
 
-    Les panneaux etroits laissent voir l'arene derriere eux sans gener : le
-    personnage est a cote. Sur toute la largeur il passe DERRIERE le texte, et
-    un titre pose sur une silhouette claire ne se lit plus.
-  */
+/*
+  Un voile, pour les panneaux assez larges pour passer devant l'arene.
+
+  Un panneau etroit laisse voir l'arene derriere lui sans gener : le
+  personnage est a cote. Des qu'il s'elargit, la foule passe DERRIERE le
+  texte, et un libelle pose sur une silhouette claire ne se lit plus. Le
+  vestiaire l'a appris en passant de 430 a 520 pixels — le meme panneau,
+  lisible avant, sale apres, sans qu'une seule regle de texte ait bouge.
+*/
+.sheet--veiled {
   background: linear-gradient(180deg, rgba(21, 12, 46, 0.82), rgba(21, 12, 46, 0.92));
   backdrop-filter: blur(11px);
   -webkit-backdrop-filter: blur(11px);
@@ -1317,6 +1322,11 @@ body {
   Elle occupe la droite et laisse le personnage visible a sa gauche : c'est lui
   l'etalage. Un panneau qui le recouvrirait ramenerait la boutique a une grille
   de vignettes, et une vignette ne montre ni un mouvement, ni une silhouette.
+
+  La largeur n'est PAS ici : elle est posee en ligne par `app/panel.ts`, parce
+  que le meme nombre sert a recentrer le personnage dans ce qui reste
+  (`arena/panelOffset.ts`). Ecrit des deux cotes, il aurait derive. Ce qui
+  reste ci-dessous est un repli, pour le cas ou le style en ligne manquerait.
 */
 .shop {
   position: absolute;
@@ -1371,8 +1381,18 @@ body {
   color: var(--muted);
 }
 
+/*
+  Deux colonnes quand le panneau est large, une quand il ne l'est pas.
+
+  Le compte vient de `panelLayout`, pas d'un point de bascule en CSS : c'est la
+  largeur REELLE du panneau qui decide si deux noms tiennent cote a cote, et
+  une requete media ne connait que celle de l'ecran. `minmax(0, 1fr)` et non
+  `1fr` — sans le minimum a zero, un nom long refuserait de se couper et
+  pousserait sa colonne hors du panneau.
+*/
 .shop__items {
   display: grid;
+  grid-template-columns: repeat(var(--shop-cols, 1), minmax(0, 1fr));
   gap: 6px;
   list-style: none;
   margin: 0;
@@ -1385,8 +1405,13 @@ body {
   min-height: 48px;
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 0 11px;
+  /*
+    Plus serre qu'avant : en deux colonnes l'article a environ 240 px au lieu
+    de 310, et c'est le NOM qu'on prefere garder entier. La hauteur, elle, ne
+    bouge pas — un article reste une cible de 48 px.
+  */
+  gap: 7px;
+  padding: 0 9px;
   border-radius: 13px;
   border: 1px solid var(--line);
   background: var(--chip);

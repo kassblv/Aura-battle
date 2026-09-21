@@ -31,7 +31,7 @@ export function SettingsScreen({
   account,
 }: SettingsProps): JSX.Element {
   return (
-    <section className="sheet sheet--wide" aria-label="Réglages">
+    <section className="sheet sheet--wide sheet--veiled" aria-label="Réglages">
       <header className="sheet__head">
         <h2>Réglages</h2>
         <button type="button" className="mini" onClick={onClose}>

@@ -2,6 +2,7 @@ import { tierName } from '@aura/content';
 import type { JSX } from 'react';
 import type { MemeCard } from './memes.js';
 import { leagueProgress, styleShares, summarize, type PlayerProfile } from './profile.js';
+import type { PanelLayout } from './panel.js';
 import { isOwned, wardrobeSections, type LookSlot, type Wardrobe } from './wardrobe.js';
 
 /**
@@ -340,11 +341,21 @@ export interface WardrobeProps {
   readonly wardrobe: Wardrobe;
   readonly onEquip: (slot: LookSlot, id: string) => void;
   readonly onClose: () => void;
+  /**
+   * Meme largeur que la boutique, et pour la meme raison : ici aussi le
+   * personnage a gauche porte ce qu'on touche a droite. Les pastilles se
+   * rangent en ligne, donc la largeur suffit — pas besoin de colonnes.
+   */
+  readonly layout: PanelLayout;
 }
 
-export function WardrobeScreen({ wardrobe, onEquip, onClose }: WardrobeProps): JSX.Element {
+export function WardrobeScreen({ wardrobe, onEquip, onClose, layout }: WardrobeProps): JSX.Element {
   return (
-    <section className="sheet" aria-label="Vestiaire">
+    <section
+      className="sheet sheet--veiled"
+      aria-label="Vestiaire"
+      style={{ width: `${String(layout.width)}px` }}
+    >
       <header className="sheet__head">
         <h2>Vestiaire</h2>
         <button type="button" className="mini" onClick={onClose}>

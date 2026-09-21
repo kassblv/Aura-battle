@@ -1,4 +1,5 @@
-import type { JSX } from 'react';
+import type { CSSProperties, JSX } from 'react';
+import type { PanelLayout } from './panel.js';
 import type { Wallet } from './profile.js';
 import { shopSections, type ShopState } from './shop.js';
 
@@ -13,6 +14,10 @@ import { shopSections, type ShopState } from './shop.js';
  * D'ou une seule commande par article, dont le libelle dit l'etat : toucher
  * essaie, retoucher achete. Deux boutons par ligne obligeraient a lire avant
  * d'agir, et le geste qu'on veut rendre facile est le premier, pas le second.
+ *
+ * La largeur et le nombre de colonnes viennent de `panel.ts`, pas du CSS : le
+ * meme nombre sert a recentrer le personnage dans ce qui reste de l'ecran
+ * (`arena/panelOffset.ts`), et une valeur ecrite deux fois finit par differer.
  */
 
 export interface ShopProps {
@@ -22,11 +27,24 @@ export interface ShopProps {
   readonly onTry: (id: string) => void;
   readonly onBuy: (id: string) => void;
   readonly onClose: () => void;
+  /** Largeur du panneau et nombre de colonnes, decides par `panelLayout`. */
+  readonly layout: PanelLayout;
 }
 
-export function ShopScreen({ state, trying, onTry, onBuy, onClose }: ShopProps): JSX.Element {
+export function ShopScreen({
+  state,
+  trying,
+  onTry,
+  onBuy,
+  onClose,
+  layout,
+}: ShopProps): JSX.Element {
   return (
-    <section className="shop" aria-label="Boutique">
+    <section
+      className="shop"
+      aria-label="Boutique"
+      style={{ width: `${String(layout.width)}px`, '--shop-cols': layout.columns } as CSSProperties}
+    >
       <header className="shop__head">
         <h2>Boutique</h2>
         <Purse wallet={state.wallet} />

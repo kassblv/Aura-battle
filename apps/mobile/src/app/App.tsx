@@ -32,11 +32,13 @@ import type { ShopState } from './shop.js';
 import { useInventory } from './useInventory.js';
 import { LeaderboardScreen } from './LeaderboardScreen.jsx';
 import { SettingsScreen } from './SettingsScreen.jsx';
+import { panelLayout } from './panel.js';
 import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
 import { QueueScreen } from './QueueScreen.jsx';
 import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
+import { useViewportWidth } from './useViewport.js';
 import { memeGallery, stepMeme } from './memes.js';
 import { tryOn } from './tryOn.js';
 import { leagueLabel } from './leagues.js';
@@ -107,6 +109,9 @@ export function App(): JSX.Element {
    * fragilite.
    */
   const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+
+  /** Relue a chaque changement de taille : `panelLayout` en depend. */
+  const viewportWidth = useViewportWidth();
 
   const arena = useArena(
     canvasRef,
@@ -473,6 +478,23 @@ export function App(): JSX.Element {
     };
   }, [session.identity, shop.wallet, league, record]);
 
+  /*
+    La boutique et le vestiaire ouvrent un panneau LARGE, et l arene recule le
+    personnage dans ce qui reste.
+
+    Ailleurs, un panneau de droite laisse la moitie gauche inutilisee et peut
+    donc s elargir sans rien couter. Ici cette moitie porte le personnage
+    habille de ce qu on essaie : l elargir cacherait exactement ce qu on vient
+    voir. `setSidePanel` decale la projection — pas la camera — pour recentrer
+    le sujet dans la zone libre, ce qui rend la largeur gratuite.
+
+    Zero partout ailleurs, et notamment pendant un match : un cadrage decale
+    pendant un choc d auras deplacerait la scene sous les yeux du joueur.
+  */
+  const panel = useMemo(() => panelLayout(viewportWidth), [viewportWidth]);
+  const panelOpen = nav.screen === 'shop' || nav.screen === 'wardrobe';
+  arena.sidePanel.current = panelOpen && !inDuel ? panel.width : 0;
+
   /**
    * Hors match, l arene montre le personnage du joueur, habille en direct.
    *
@@ -623,6 +645,7 @@ export function App(): JSX.Element {
               setTrying(null);
               go('home');
             }}
+            layout={panel}
           />
         )}
 
@@ -684,6 +707,7 @@ export function App(): JSX.Element {
             onClose={() => {
               go('home');
             }}
+            layout={panel}
           />
         )}
 
