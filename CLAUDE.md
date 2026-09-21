@@ -79,6 +79,7 @@ Si une commande n'existe pas encore, c'est qu'elle fait partie d'un jalon à con
 | Format des animations et pipeline de contenu | `docs/07-content-pipeline.md` |
 | Jalons et critères d'acceptation | `docs/08-roadmap.md` |
 | Stratégie de test et d'équilibrage | `docs/09-testing.md` |
+| Exploitation : sauvegarde, restauration, ce qui n'est pas surveillé | `docs/10-exploitation.md` |
 | Décisions d'architecture | `docs/adr/` |
 
 ## Agents et skills du projet
