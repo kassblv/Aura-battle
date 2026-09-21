@@ -120,7 +120,7 @@ joignable depuis un téléphone rend tout le reste vérifiable.
 - [x] **Déploiement automatique au push** : webhook GitHub → Coolify, signature HMAC, vérifié par un commit vide qui a bien déclenché une mise en ligne. L'API générale de Coolify reste **désactivée** — elle n'est plus nécessaire. Voir `docs/10-exploitation.md`.
 - [x] **Sauvegarde de la base** : `pg_dump` quotidien à 3 h 30 UTC, 14 jours de rétention, et une **restauration vérifiée** dans une base jetable — 12 joueurs et 1 identité de récupération identiques des deux côtés. Voir `docs/10-exploitation.md`. **Reste : une copie hors de la machine** — ceci protège d'une bêtise, pas de la perte du serveur.
 - [x] **Panneau d'administration** (`/admin`) : état des composants, chiffres du jeu, commit déployé, erreurs des 24 h. **En lecture seule** — aucune route n'écrit. Secret dans l'environnement, hors de la table des joueurs ; sans lui le panneau rend 404 plutôt que « interdit ». Voir `docs/10-exploitation.md`.
-- [ ] **Alerte** : le panneau se regarde, il ne prévient pas. Si le serveur tombe la nuit, personne ne l'apprend avant d'ouvrir le jeu.
+- [ ] **Alerte** : le panneau se regarde, il ne prévient pas. Un workflow de veille est écrit (`.github/workflows/veille.yml`, sonde `/health` **et** `/admin/status`, un seul incident commenté puis refermé) mais **il ne tourne pas** : les cent dernières exécutions d'Actions ont échoué sur ce compte, sans une seule étape exécutée. Repli identifié : une sonde sur `devisia`, machine distincte et joignable. Reste à choisir par où l'alerte arrive.
 
 ## M6 — Application mobile
 
