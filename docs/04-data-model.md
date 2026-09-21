@@ -26,12 +26,51 @@ model AuthIdentity {
   id         String   @id @default(uuid())
   playerId   String
   provider   AuthProvider
-  subject    String            // identifiant d'appareil, Apple sub, Google sub
+  subject    String            // identifiant d'appareil, code de récupération, Apple sub, Google sub
   createdAt  DateTime @default(now())
   player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   @@unique([provider, subject])
 }
-enum AuthProvider { DEVICE APPLE GOOGLE }
+enum AuthProvider { DEVICE RECOVERY APPLE GOOGLE }
+
+### `RECOVERY` — garder son compte quand le navigateur oublie
+
+Un compte invité vit dans le stockage du navigateur. Sur ordinateur, ce
+stockage se vide pour un rien : un nettoyage, une fenêtre privée, un autre
+navigateur. Le joueur perd son classement sans avoir rien fait.
+
+Le code de récupération est une **deuxième façon de prouver qu'on est ce
+joueur** — une ligne de plus dans cette table, pas un compte à part. Le serveur
+n'en garde que l'empreinte SHA-256, dans `subject`, comme pour un appareil.
+
+**Seize symboles de l'alphabet de Crockford, soit quatre-vingts bits.** Le
+secret d'appareil en fait 256, et c'est pour cela qu'il est haché *sans sel* :
+aucun dictionnaire ne peut exister pour cet espace. Un code lisible par un
+humain ne peut pas faire 256 bits — mais recopier ce raisonnement sur un code
+de soixante bits mettrait la base à portée d'une attaque hors ligne réaliste le
+jour où elle fuiterait. `I`, `L`, `O` et `U` sont exclus : les trois premières
+se confondent avec `1` et `0`, la dernière fabrique des mots qu'on ne veut pas
+afficher.
+
+Trois règles, et chacune a une raison qui se perd si on ne l'écrit pas :
+
+- **Présenter un code ne le consomme pas.** On joue sur son téléphone et sur
+  son ordinateur ; un code à usage unique obligerait à en redemander un après
+  chaque appareil.
+- **En redemander un remplace l'ancien.** C'est la seule façon de révoquer un
+  code qui aurait traîné.
+- **Le serveur ne sait pas le réafficher.** Il n'a que l'empreinte, et c'est
+  voulu : une fonction « revoir mon code » serait une fonction « voler un compte
+  depuis une session ouverte ».
+
+**Le rattachement d'appareil qui suit.** Présenter un code ouvre une session,
+mais le navigateur garde *son* secret d'appareil : au rechargement suivant il
+rouvrirait le compte invité local et la récupération serait perdue — le joueur
+verrait son compte revenir, puis disparaître. Le client tire donc un secret
+**neuf** (l'ancien appartient encore au compte abandonné, et se heurterait à
+`@@unique([provider, subject])`) et le rattache au compte retrouvé par
+`POST /auth/device/link`. Là encore : on **ajoute** une ligne, on n'en déplace
+aucune.
 
 model Season {
   id        String   @id @default(uuid())

@@ -107,6 +107,19 @@ Référence : `docs/05-matchmaking-ranking.md`.
 - [ ] Écrans : partie classée ✅ et partie rapide ✅ (choix sur l'accueil, `queue:join` émis avec le mode), profil affichant la ligue, les LP, les matchs joués, les victoires et les séries ✅ — chaque chiffre est **compté** depuis un `match:end` confirmé, jamais estimé. **Classement général : non fait** (il demande une lecture serveur que le protocole ne porte pas encore)
 - [x] Tests : appariement par MMR ✅, élargissement ✅, entrée/sortie de file et tickets fantômes ✅ (e2e à deux clients), bascule vers fantôme ✅ (`ghost-e2e.test.ts` : un duel humain est enregistré puis rejoué contre un joueur seul), sélection de fantôme en propriétés `fast-check` ✅, LP réduits ✅, vivier d'amorçage ✅ (couverture de la plage de MMR vérifiée en propriété, et scénario « premier joueur du jeu » en e2e)
 
+## En ligne — version jouable déployée
+
+Hors jalon : demandé en cours de route, et livré avant M6 parce qu'une version
+joignable depuis un téléphone rend tout le reste vérifiable.
+
+- [x] Image de production : **un seul conteneur**, NestJS sert le client en plus de son API (ADR 0012). Aucune URL dans le build — le client parle à l'origine qui l'a servi, donc la même image tourne derrière n'importe quel domaine.
+- [x] Pile Coolify (`docker-compose.prod.yml`) : `app` + `postgres` + `redis`, seul `app` exposé par Traefik. Migrations **et amorçage** au démarrage du conteneur — sans le seed, un nouvel environnement démarre sans vivier de fantômes et les premiers joueurs attendent un adversaire qui ne vient jamais.
+- [x] Déployé et vérifié de bout en bout : HTTPS valide, WebSocket à travers Traefik, un duel complet contre un fantôme.
+- [x] **Code de récupération** (`AuthProvider.RECOVERY`) : un compte invité vit dans le stockage du navigateur, qui se vide pour un rien sur ordinateur. Seize symboles Crockford, quatre-vingts bits, haché côté serveur. Le présenter ne le consomme pas, en redemander un révoque l'ancien, et le rattachement d'appareil qui suit fait que la récupération survit au rechargement. Voir `docs/04-data-model.md`.
+- [ ] **Multi-nœuds** : une seule réplique pour l'instant, l'adaptateur Redis de Socket.IO n'est pas câblé (deuxième moitié de M7).
+- [ ] **Déploiement automatique au push** : chaque mise en ligne se déclenche à la main.
+- [ ] **Sauvegarde de la base** : le volume Postgres n'est sauvegardé nulle part.
+
 ## M6 — Application mobile
 
 - [ ] Capacitor iOS et Android, icônes, splash, **verrouillage en paysage** (ADR 0008 ; cette ligne disait « orientation portrait », écrite avant l'ADR)

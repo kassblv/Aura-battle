@@ -97,6 +97,33 @@ Si une commande n'existe pas encore, c'est qu'elle fait partie d'un jalon à con
 - **NestJS + tsx :** esbuild **n'émet pas `emitDecoratorMetadata`**. Sans `design:paramtypes`, Nest injecte `undefined` en silence, et la panne n'apparaît qu'au premier appel. Tout paramètre de constructeur injecté doit porter un `@Inject(Token)` explicite.
 - **`nestjs-pino` est incompatible** avec l'injecteur de Nest 12 : pino est câblé directement dans `shared/logger.ts`.
 
+### Conteneur et déploiement
+
+Le jeu tourne en ligne dans **un seul conteneur** — NestJS sert le client en
+plus de son API — déployé par Coolify sur `shipease` (ADR 0012). Six pièges
+qui ne se voient qu'en construisant l'image :
+
+- **`prisma generate` exige `DATABASE_URL`** alors qu'il ne touche aucune base :
+  `prisma.config.ts` évalue `env()` à l'import. On la donne pour cette seule
+  commande, jamais en `ENV` — une URL de construction restée dans l'image serait
+  une valeur par défaut crédible et fausse.
+- **Le client Prisma est généré au fond du magasin pnpm**, dans un chemin qui
+  contient le hachage des dépendances. On le régénère sur l'arbre de production
+  plutôt que de coder ce hachage en dur.
+- **`pnpm install --prod` par-dessus une installation complète ne réduit rien** :
+  pnpm défait les liens, les paquets restent dans `node_modules/.pnpm`, qui
+  appartient déjà à la couche précédente. Il faut repartir d'une base propre.
+- **pnpm 11 refuse de purger `node_modules` sans terminal** : `CI=true` dans
+  l'image, sinon l'étape s'arrête sur une question que personne ne peut lire.
+- **Nest pose son propre gestionnaire de 404** pendant `init()`. Un second
+  `setNotFoundHandler` fait échouer Fastify au démarrage, donc *après* un
+  déploiement annoncé réussi. Le repli de page unique passe par un filtre
+  d'exception.
+- **Le seed doit tourner à chaque démarrage**, pas une fois à la main : il est
+  idempotent, et sans lui un nouvel environnement démarre sans saison, sans
+  catalogue et sans vivier de fantômes — les premiers joueurs attendent alors un
+  adversaire qui ne vient jamais.
+
 ### Développement local
 
 - **Un PostgreSQL natif occupe déjà `127.0.0.1:5432`** sur la machine de développement. Notre conteneur publie donc sur **5433**. Piège : `docker compose ps` affiche fièrement `0.0.0.0:5432->5432/tcp` alors que `localhost` ne l'atteint jamais — macOS résout vers l'installation locale en premier.
@@ -117,6 +144,13 @@ Si une commande n'existe pas encore, c'est qu'elle fait partie d'un jalon à con
 - **Poser un écouteur au moment où l'on s'intéresse à un message arrive trop tard.** Une phase de match dure quelques dizaines de millisecondes en test : il faut enregistrer avec `onAny` dès la connexion et lire le journal ensuite.
 - **Un résultat de tâche mis en cache ment** quand des agents écrivent en parallèle : Turbo peut servir un typecheck calculé avant la dernière édition. `--force` avant de conclure qu'un agent s'est trompé.
 - **Chaque scénario doit utiliser des identifiants de joueur distincts.** Le notifier indexe les sockets par joueur et une nouvelle socket remplace l'ancienne — c'est le comportement voulu pour une reconnexion, mais deux tests qui partagent une identité se volent leurs messages.
+
+### Interface et cascade CSS
+
+- **La cascade CSS n'a pas de compilateur.** Un `@media` écrit avant la règle qu'il corrige perd silencieusement. Une classe `.field` ajoutée aux réglages a hérité de l'aire de jeu des orbes — une couche en absolu sur tout l'écran — et posé le champ de saisie par-dessus ses propres titres. **La portée vit dans les noms** : préfixer par le bloc (`account__field`), jamais par le rôle.
+- **Un point de bascule `@media` doit tomber du bon côté de l'appareil cible.** `max-width: 860px` renvoyait le format visé — 844×390 — à la mise en page de secours. Un seuil mal placé est pire que pas de seuil.
+- **En paysage, la hauteur est la ressource rare et la largeur ne manque pas.** Un panneau de droite qui empile ses sections déborde pendant que la moitié gauche de l'écran ne sert à rien. Les écrans à plusieurs sujets se posent en colonnes (`sheet--wide`, `sheet__cols`) — et rien ne doit défiler au doigt au milieu d'un jeu.
+- **Un panneau `.sheet` n'a aucun fond** : il flotte sur l'arène. Dès qu'il défile, son en-tête part et le contenu passe derrière sans rien pour l'en séparer — d'où l'en-tête collant sur la surface du HUD.
 
 ### Rendu 3D
 
