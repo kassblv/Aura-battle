@@ -371,7 +371,7 @@ export interface WardrobeProps {
 export function WardrobeScreen({ wardrobe, onEquip, onClose, layout }: WardrobeProps): JSX.Element {
   return (
     <section
-      className="sheet sheet--veiled"
+      className="sheet"
       aria-label="Vestiaire"
       style={{ width: `${String(layout.width)}px` }}
     >

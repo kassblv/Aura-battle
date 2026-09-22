@@ -24,7 +24,7 @@ import {
 } from './wardrobe.js';
 import { MatchScreen } from './MatchScreen.jsx';
 import { useSoloMatch } from './useMatch.js';
-import { canLeave, navigate, openingScreen, type Navigation } from './navigation.js';
+import { navigate, openingScreen, type Navigation } from './navigation.js';
 import { needsOnboarding } from './onboarding.js';
 import { OnboardingScreen } from './OnboardingScreen.jsx';
 import { newProfile, type PlayerProfile } from './profile.js';
@@ -789,18 +789,6 @@ export function App(): JSX.Element {
 
         {!showOnboarding && nav.screen === 'match' && (
           <SoloMatchScreen looks={looks} arena={arena} audio={audio} onLeave={leaveMatch} />
-        )}
-
-        {!showOnboarding && nav.screen !== 'home' && canLeave(nav) && nav.screen !== 'match' && (
-          <button
-            type="button"
-            className="mini mini--corner"
-            onClick={() => {
-              go('home');
-            }}
-          >
-            Accueil
-          </button>
         )}
       </div>
     </div>

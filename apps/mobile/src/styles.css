@@ -158,6 +158,20 @@ body {
 }
 
 /* --- scene --- */
+/*
+  La racine.
+
+  Elle n'avait aucune regle : `className="app"` ne correspondait a rien, et le
+  document tenait par `.stage` seule. Ca marchait, et c'est le probleme — une
+  classe posee dans le balisage annonce une intention, et une intention sans
+  regle est une piste fausse pour qui lira ensuite.
+*/
+.app {
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+}
+
 .stage {
   position: relative;
   width: 100%;
@@ -613,7 +627,60 @@ body {
     0 5px 12px -10px rgba(0, 0, 0, 0.55);
 }
 
-/* --- panneaux profil et vestiaire --- */
+/*
+  Le bouton discret des panneaux : fermer, rejoindre.
+
+  Il n'existait PAS. `className="mini"` ne correspondait a aucune regle, donc
+  sept boutons repartis sur six ecrans s'affichaient avec le style par defaut
+  du navigateur : gris, Arial 13 px, bordure `outset`, 59x21 — moins de la
+  moitie de la cible tactile que l'ADR 0008 impose partout ailleurs dans ce
+  depot. Personne ne l'avait vu parce qu'un bouton laid reste un bouton qui
+  marche : il faut regarder l'ecran, ou demander au navigateur quelles regles
+  s'appliquent vraiment. `app/styles.test.ts` le demande desormais a chaque
+  execution.
+*/
+.mini {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: var(--ink);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  /* Cible tactile : le minimum de l'ADR 0008, pas un pixel de moins. */
+  min-height: var(--touch);
+  padding: 0 15px;
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--chip-deep);
+  transition:
+    transform var(--d-tap) var(--e-out),
+    box-shadow var(--d-tap) var(--e-out);
+}
+
+.mini:active {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 var(--chip-deep);
+}
+
+.mini:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/*
+  --- panneaux : profil, vestiaire, classement, reglages, invitation ---
+
+  Le voile est le DEFAUT, et il ne l'etait pas.
+
+  Le panneau devait « flotter au-dessus de l'arene », joli tant qu'il tient
+  dans la hauteur. En pratique il passe devant le personnage et la foule : sur
+  le profil, « MATCHS 0 / VICTOIRES 0 » se lisait par-dessus une silhouette
+  claire, et l'ecran d'invitation ecrivait « Ton adversaire entre ton code »
+  sur une tete. Un fond qu'on oublie de poser ne se voit pas dans le code — il
+  se voit a l'ecran, et seulement quand quelqu'un regarde.
+*/
 .sheet {
   position: absolute;
   right: var(--safe-right);
@@ -626,6 +693,10 @@ body {
   display: flex;
   flex-direction: column;
   gap: 11px;
+  background: linear-gradient(180deg, rgba(21, 12, 46, 0.82), rgba(21, 12, 46, 0.92));
+  backdrop-filter: blur(11px);
+  -webkit-backdrop-filter: blur(11px);
+  border: 1px solid var(--hud-line);
 }
 
 /*
@@ -757,19 +828,16 @@ body {
 }
 
 /*
-  Un voile, pour les panneaux assez larges pour passer devant l'arene.
+  Un panneau a la hauteur de son contenu, pas a celle de l'ecran.
 
-  Un panneau etroit laisse voir l'arene derriere lui sans gener : le
-  personnage est a cote. Des qu'il s'elargit, la foule passe DERRIERE le
-  texte, et un libelle pose sur une silhouette claire ne se lit plus. Le
-  vestiaire l'a appris en passant de 430 a 520 pixels — le meme panneau,
-  lisible avant, sale apres, sans qu'une seule regle de texte ait bouge.
+  L'invitation ne porte que deux commandes : creer, ou entrer un code. Etiree
+  du haut au bas, elle murait l'arene derriere 180 px de vide — et c'est
+  justement l'ecran ou l'on ATTEND, donc celui ou avoir quelque chose a
+  regarder compte le plus.
 */
-.sheet--veiled {
-  background: linear-gradient(180deg, rgba(21, 12, 46, 0.82), rgba(21, 12, 46, 0.92));
-  backdrop-filter: blur(11px);
-  -webkit-backdrop-filter: blur(11px);
-  border: 1px solid var(--hud-line);
+.sheet--short {
+  bottom: auto;
+  max-height: calc(100% - 14px - var(--safe-bottom));
 }
 
 /*
@@ -830,6 +898,11 @@ body {
 */
 .sheet__cols--rank {
   grid-template-columns: 1.6fr 1fr;
+}
+
+/* L'invitation n'a que deux chemins : creer, ou rejoindre. */
+.invite__cols {
+  grid-template-columns: 1fr 1fr;
 }
 
 .ranks {
@@ -1055,6 +1128,13 @@ body {
   vertical-align: middle;
 }
 
+/* Un rayon du vestiaire : son titre colle a ses articles, pas au rayon voisin. */
+.ward {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
 .ward__items {
   display: flex;
   flex-wrap: wrap;
@@ -1069,7 +1149,12 @@ body {
   border: 1px solid var(--line);
   border-radius: 10px;
   padding: 6px 9px;
-  min-height: 40px;
+  /*
+    46 et non 40 : l'ADR 0008 pose ce seuil pour tout le jeu, et le vestiaire
+    n'avait aucune raison d'y echapper — c'est meme l'ecran ou l'on enchaine
+    le plus d'appuis, donc celui ou un appui rate coute le plus.
+  */
+  min-height: var(--touch);
   display: flex;
   align-items: center;
   gap: 6px;
