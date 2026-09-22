@@ -97,6 +97,68 @@ describe('present', () => {
   });
 });
 
+/**
+ * L effet d aura, hors ligne.
+ *
+ * En ligne c est le serveur qui le resout et l envoie avec le resultat. En
+ * solo il n y a personne : le client le calcule a partir du palier joue — que
+ * le moteur retient depuis peu — et de ce que le joueur possede.
+ *
+ * Meme garde que l animation, pour la meme raison : l amplificateur s affiche
+ * sous le nom de son effet, donc montrer l effet avant la revelation dirait le
+ * choix secret de l adversaire.
+ */
+describe('effet d aura hors ligne', () => {
+  it('ne montre rien avant la revelation', () => {
+    const match = solo('fuite');
+    runTo(match, 'choice');
+    const scene = present(match.state, looks);
+    expect(scene.fighters.a.auraEffectId).toBeUndefined();
+    expect(scene.fighters.b.auraEffectId).toBeUndefined();
+  });
+
+  it('montre l effet offert du palier joue', () => {
+    const match = solo('fuite');
+    runTo(match, 'choice');
+    match.lock({ move: { style: 'hype', tier: 4 }, amplifier: 2, useUltimate: false }, 400, 10);
+    expect(present(match.state, looks).fighters.a.auraEffectId).toBe('fx.lightning');
+  });
+
+  /*
+    Le skin achete habille UN palier. C est la meme regle qu en ligne, et elle
+    doit l etre : un joueur qui achete les Flammes en solo puis les retrouve
+    ailleurs ne doit pas avoir a reapprendre ce qu il a paye.
+  */
+  it('montre le skin possede, au palier qu il habille', () => {
+    const match = solo('fuite');
+    runTo(match, 'choice');
+    match.lock({ move: { style: 'hype', tier: 4 }, amplifier: 2, useUltimate: false }, 400, 10);
+    const scene = present(match.state, looks, { ownedEffects: { a: ['fx.shock'] } });
+    expect(scene.fighters.a.auraEffectId).toBe('fx.shock');
+  });
+
+  it('ne fait pas deborder le skin sur un autre palier', () => {
+    const match = solo('fuite');
+    runTo(match, 'choice');
+    match.lock({ move: { style: 'hype', tier: 4 }, amplifier: 4, useUltimate: false }, 400, 10);
+    const scene = present(match.state, looks, { ownedEffects: { a: ['fx.shock'] } });
+    expect(scene.fighters.a.auraEffectId).toBe('fx.galaxy');
+  });
+
+  /*
+    L IA ne possede rien : elle porte l effet offert de son palier. Lui preter
+    l inventaire du joueur donnerait au joueur l impression que son achat est
+    distribue a tout le monde.
+  */
+  it('ne prete pas l inventaire du joueur a l adversaire', () => {
+    const match = solo('fuite');
+    runTo(match, 'choice');
+    match.lock({ move: { style: 'hype', tier: 4 }, amplifier: 2, useUltimate: false }, 400, 10);
+    const scene = present(match.state, looks, { ownedEffects: { a: ['fx.shock'] } });
+    expect(scene.fighters.b.auraEffectId).not.toBe('fx.shock');
+  });
+});
+
 describe('ferveur du public', () => {
   it('reste calme avant le debut', () => {
     expect(present(solo().state, looks).hype).toBeLessThan(0.3);

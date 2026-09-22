@@ -181,8 +181,13 @@ export function effectsForLevel(level: AmplifierLevel): readonly AuraEffect[] {
  *
  * Un identifiant inconnu — vieux catalogue, message bricole — ne fait pas
  * disparaitre l'aura : on retombe sur l'effet offert.
+ *
+ * `Iterable` et non `readonly string[]` : l'inventaire du client est un `Set`,
+ * celui du serveur un tableau. Exiger un tableau obligerait l'un des deux a
+ * recopier sa collection a chaque image pour satisfaire une signature, alors
+ * que la fonction ne fait que la parcourir une fois.
  */
-export function effectForLevel(level: AmplifierLevel, ownedIds: readonly string[]): AuraEffect {
+export function effectForLevel(level: AmplifierLevel, ownedIds: Iterable<string>): AuraEffect {
   const owned = new Set(ownedIds);
   const skin = effectsForLevel(level).find(
     (candidate) => candidate.rarity !== 'default' && owned.has(candidate.id),

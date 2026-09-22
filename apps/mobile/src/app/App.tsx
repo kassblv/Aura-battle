@@ -788,7 +788,13 @@ export function App(): JSX.Element {
         )}
 
         {!showOnboarding && nav.screen === 'match' && (
-          <SoloMatchScreen looks={looks} arena={arena} audio={audio} onLeave={leaveMatch} />
+          <SoloMatchScreen
+            looks={looks}
+            arena={arena}
+            audio={audio}
+            onLeave={leaveMatch}
+            ownedEffects={inventory.owned}
+          />
         )}
       </div>
     </div>
@@ -806,13 +812,16 @@ function SoloMatchScreen({
   arena,
   audio,
   onLeave,
+  ownedEffects,
 }: {
   readonly looks: Readonly<Record<'a' | 'b', Look>>;
   readonly arena: ArenaControls;
   readonly audio: AudioControls;
   readonly onLeave: () => void;
+  /** Ce que le joueur possede : l effet d aura de son palier en depend. */
+  readonly ownedEffects: Iterable<string>;
 }): JSX.Element {
-  const session = useSoloMatch(looks, arena, audio);
+  const session = useSoloMatch(looks, arena, audio, ownedEffects);
   return (
     <MatchScreen
       view={session.view}

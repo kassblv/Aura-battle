@@ -45,6 +45,19 @@ export function useSoloMatch(
   looks: Readonly<Record<'a' | 'b', Look>>,
   arena: ArenaControls,
   audio: AudioControls,
+  /**
+   * Ce que le joueur possede, pour l effet d aura de son palier.
+   *
+   * En ligne, c est le serveur qui resout l apparence et l envoie avec le
+   * resultat. Hors ligne il n y a personne d autre : sans cette liste, un skin
+   * achete ne se verrait jamais en solo — c est-a-dire souvent la premiere
+   * partie que quelqu un joue apres l avoir paye.
+   *
+   * Seulement le siege A : l IA ne possede rien, et lui preter l inventaire du
+   * joueur donnerait a celui-ci l impression que son achat est distribue a
+   * tout le monde.
+   */
+  ownedEffects: Iterable<string> = [],
 ): MatchSession {
   const matchRef = useRef<SoloMatch | null>(null);
   matchRef.current ??= createSoloMatch({
@@ -54,6 +67,17 @@ export function useSoloMatch(
   });
 
   const startedAt = useRef(performance.now());
+
+  /*
+    Lue par une REF, pas par une dependance d effet.
+
+    La liste change d identite a chaque rendu : la mettre dans les dependances
+    relancerait la boucle d animation — `cancelAnimationFrame` puis un nouveau
+    `requestAnimationFrame` — a chaque fois que React repasse. Une ref donne la
+    valeur du moment sans toucher au cycle de vie de la boucle.
+  */
+  const ownedEffectsRef = useRef(ownedEffects);
+  ownedEffectsRef.current = ownedEffects;
   const [nowMs, setNow] = useState(0);
 
   /**
@@ -85,6 +109,7 @@ export function useSoloMatch(
       const skin = mine === undefined ? undefined : danceFor(looks.a, mine);
       arena.presentation.current = present(match.state, looks, {
         showOutcome: match.state.phase === 'reveal',
+        ownedEffects: { a: ownedEffectsRef.current },
         ...(skin === undefined ? {} : { skins: { a: skin } }),
       });
 

@@ -1,4 +1,5 @@
 import type { MatchState, Seat } from '@aura/rules';
+import { effectForLevel } from '@aura/content';
 import { animationFor, systemAnimation } from '../content/animations.js';
 import type { Look } from '../app/wardrobe.js';
 
@@ -46,6 +47,18 @@ export interface PresentOptions {
   readonly showOutcome?: boolean;
   /** Skins d animation equipes, par siege. */
   readonly skins?: Readonly<Partial<Record<Seat, string>>>;
+  /**
+   * Effets d aura POSSEDES, par siege — pas celui qui est equipe.
+   *
+   * Un skin paye habille UN palier d amplificateur (docs/01 §3), et le palier
+   * n est connu qu a la revelation : il n y a donc rien a equiper d avance.
+   * Absent, le siege porte l effet offert de son palier, comme tout le monde
+   * avant la boutique — et c est ce que porte l IA, qui ne possede rien.
+   *
+   * En ligne, cette resolution appartient au SERVEUR et arrive toute faite
+   * dans `round:result`. Ici il n y a personne d autre pour la faire.
+   */
+  readonly ownedEffects?: Readonly<Partial<Record<Seat, Iterable<string>>>>;
 }
 
 const CHARGE = 'charge';
@@ -82,11 +95,32 @@ export function present(
     return animationFor(move, options.skins?.[seat]).id;
   };
 
+  /*
+    L effet suit la meme garde que l animation, et pour la meme raison.
+
+    L amplificateur s affiche sous le nom de son effet : le montrer avant la
+    revelation reviendrait a annoncer le palier, donc une partie du choix
+    secret. `revealing` gouverne les deux, en un seul endroit — deux
+    conditions qui disent la meme chose finissent par diverger.
+  */
+  const effectOf = (seat: Seat): string | undefined => {
+    if (!revealing) return undefined;
+    const amplifier = state.seats[seat].amplifiers.at(-1);
+    if (amplifier === undefined) return undefined;
+    return effectForLevel(amplifier, options.ownedEffects?.[seat] ?? []).id;
+  };
+
+  const present1 = (seat: Seat, look: Look): FighterPresentation => {
+    const auraEffectId = effectOf(seat);
+    return {
+      animationId: animationOf(seat),
+      look,
+      ...(auraEffectId === undefined ? {} : { auraEffectId }),
+    };
+  };
+
   return {
-    fighters: {
-      a: { animationId: animationOf('a'), look: looks.a },
-      b: { animationId: animationOf('b'), look: looks.b },
-    },
+    fighters: { a: present1('a', looks.a), b: present1('b', looks.b) },
     hype: HYPE_BY_PHASE[state.phase],
   };
 }

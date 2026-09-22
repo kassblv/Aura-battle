@@ -94,14 +94,13 @@ skins cosmétiques **d'un niveau** ».
 | Boutique | ✅ Rayon « Effets d'aura · un amplificateur chacun » : Flammes (A1, 400), Onde de choc (A2, 850), Aura noire (A3, 850) |
 | Vestiaire | — Sans objet : posséder un skin, c'est le porter au niveau qu'il habille. Il n'y a qu'un skin payant par niveau, donc rien à choisir |
 
-**Reste — le solo ne montre pas l'effet du palier.** En ligne, c'est le serveur
-qui résout l'apparence et l'envoie dans `round:result`. Hors ligne il n'y a
-personne pour le faire, et le client ne peut pas s'en charger : `RoundSeatOutcome`
-et `MatchState.seats[].moves` gardent le *mouvement* joué, jamais
-l'**amplificateur**. Un joueur en solo voit donc toujours la Lueur, y compris
-après avoir acheté un skin. Le corriger demande d'exposer l'amplificateur joué
-dans `packages/rules` — le paquet critique, donc tests d'abord — puis de le
-passer par `PresentOptions` comme `skins` l'est déjà.
+**Le solo aussi**, depuis que `packages/rules` retient l'amplificateur joué
+(`SeatState.amplifiers`, aligné sur `moves`, un par manche y compris pour celui
+qui n'a rien verrouillé). Le moteur gardait le mouvement et jetait
+l'amplificateur : en ligne cela ne se voyait pas, le serveur tient les choix
+verrouillés — hors ligne personne ne s'en souvenait. `present()` résout donc
+l'effet comme le serveur le fait, sous la même garde que l'animation, et l'IA
+ne se voit pas prêter l'inventaire du joueur.
 
 **Reste** : le vestiaire ne permet pas de *revenir* à l'effet offert quand on a
 acheté le skin de ce niveau. Personne ne l'a demandé, et un chooser à une seule

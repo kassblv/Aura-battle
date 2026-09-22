@@ -660,3 +660,95 @@ describe('plafond des taps accumules', () => {
     expect(step.state.pending.b.taps).toHaveLength(3);
   });
 });
+
+/**
+ * L'amplificateur joue survit a la manche.
+ *
+ * Le moteur gardait `moves` — le mouvement — et oubliait l'amplificateur des
+ * la manche resolue. En ligne cela ne se voyait pas : le serveur tient les
+ * choix verrouilles et annonce lui-meme l'apparence. Hors ligne il n'y a
+ * personne pour s'en souvenir, et le solo affichait donc toujours la Lueur,
+ * meme apres l'achat d'un skin.
+ *
+ * L'amplificateur decide de l'effet d'aura qu'on voit tourner autour d'un
+ * combattant (docs/01 §3) : c'est une sortie du moteur au meme titre que le
+ * mouvement, pas une entree qu'on peut jeter apres usage.
+ */
+describe('amplificateurs joues', () => {
+  const amplified = (tier: 0 | 1 | 2 | 3 | 4, amplifier: 0 | 1 | 2 | 3 | 4): Choice => ({
+    move: { style: 'calme', tier },
+    amplifier,
+    useUltimate: false,
+  });
+
+  const lockBoth = (state: MatchState, a: Choice, b: Choice): MatchEvent[] =>
+    (['a', 'b'] as const).map((seat) => ({
+      type: 'CHOICE_LOCKED' as const,
+      seat,
+      choice: seat === 'a' ? a : b,
+      timingTapAtMs: null,
+      atMs: state.phaseEndsAtMs - 1_000,
+    }));
+
+  it('ne garde rien avant la premiere manche', () => {
+    const { state } = createMatch('graine');
+    expect(state.seats.a.amplifiers).toEqual([]);
+    expect(state.seats.b.amplifiers).toEqual([]);
+  });
+
+  it('retient ce que chaque siege a joue', () => {
+    const step = toChoicePhase(createMatch('graine'));
+    const locked = run(step, lockBoth(step.state, amplified(1, 3), amplified(1, 0)));
+    expect(locked.state.seats.a.amplifiers).toEqual([3]);
+    expect(locked.state.seats.b.amplifiers).toEqual([0]);
+  });
+
+  /*
+    Un par manche, dans l'ordre : c'est ce qui permet de lire le dernier sans
+    se demander a quelle manche il appartient.
+  */
+  it('en ajoute un par manche, dans l ordre', () => {
+    let step = toChoicePhase(createMatch('graine'));
+    step = run(step, lockBoth(step.state, amplified(1, 2), amplified(0, 0)));
+    step = toChoicePhase(step);
+    step = run(step, lockBoth(step.state, amplified(1, 4), amplified(0, 1)));
+    expect(step.state.seats.a.amplifiers).toEqual([2, 4]);
+    expect(step.state.seats.b.amplifiers).toEqual([0, 1]);
+  });
+
+  /*
+    Autant d'amplificateurs que de mouvements, toujours. Les deux decrivent la
+    meme manche : un ecart voudrait dire qu'on lit l'amplificateur d'une manche
+    en regardant le mouvement d'une autre.
+  */
+  it('reste aligne sur les mouvements', () => {
+    let step = toChoicePhase(createMatch('graine'));
+    for (let round = 0; round < 2; round += 1) {
+      step = run(step, lockBoth(step.state, amplified(1, round as 0 | 1), amplified(0, 0)));
+      step = toChoicePhase(step);
+    }
+    for (const seat of ['a', 'b'] as const) {
+      expect(step.state.seats[seat].amplifiers.length).toBe(step.state.seats[seat].moves.length);
+    }
+  });
+
+  /*
+    Un siege qui n'a rien verrouille joue le choix par defaut, amplificateur
+    zero. Ne rien ajouter desalignerait les deux tableaux a la premiere
+    manche ou quelqu'un laisse filer le temps.
+  */
+  it('compte aussi la manche de celui qui n a rien joue', () => {
+    let step = toChoicePhase(createMatch('graine'));
+    step = reduce(step.state, {
+      type: 'CHOICE_LOCKED',
+      seat: 'a',
+      choice: amplified(1, 2),
+      timingTapAtMs: null,
+      atMs: step.state.phaseEndsAtMs - 1_000,
+    });
+    step = reduce(step.state, timeout(step.state));
+    expect(step.state.seats.a.amplifiers).toEqual([2]);
+    expect(step.state.seats.b.amplifiers).toHaveLength(1);
+    expect(step.state.seats.b.amplifiers.length).toBe(step.state.seats.b.moves.length);
+  });
+});

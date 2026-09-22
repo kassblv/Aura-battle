@@ -15,7 +15,14 @@ import {
   type RoundSeatInput,
 } from './round.js';
 import { evaluateTiming, generateGaugeParams, type GaugeParams } from './timing.js';
-import { opponentOf, type Choice, type Move, type Seat, type Style } from './types.js';
+import {
+  opponentOf,
+  type AmplifierLevel,
+  type Choice,
+  type Move,
+  type Seat,
+  type Style,
+} from './types.js';
 
 /**
  * Machine d'etat d'un match (docs/01-game-design.md §1, §8, §9 ; ADR 0005).
@@ -42,6 +49,25 @@ export interface SeatState {
   readonly timingDeltaSum: number;
   /** Mouvements deja joues, pour detecter la repetition. */
   readonly moves: readonly Move[];
+  /**
+   * Amplificateurs deja joues, un par manche, dans l'ordre de `moves`.
+   *
+   * Le moteur retenait le mouvement et jetait l'amplificateur une fois la
+   * manche resolue. En ligne cela ne se voyait pas — le serveur tient les
+   * choix verrouilles et annonce lui-meme l'apparence — mais hors ligne
+   * personne ne s'en souvenait, et le solo affichait toujours l'effet offert
+   * du niveau zero, meme apres l'achat d'un skin.
+   *
+   * L'amplificateur decide de l'effet d'aura qu'on voit tourner autour d'un
+   * combattant (docs/01 §3) : c'est une SORTIE du moteur au meme titre que le
+   * mouvement, pas une entree qu'on peut oublier apres usage.
+   *
+   * Aligne sur `moves`, y compris pour une manche ou personne n'a verrouille :
+   * le choix par defaut compte, sinon les deux tableaux se decalent des la
+   * premiere fois que quelqu'un laisse filer le temps, et lire « le dernier
+   * amplificateur » rendrait celui d'une autre manche.
+   */
+  readonly amplifiers: readonly AmplifierLevel[];
   /** Manches consecutives sans la moindre action. Deux d'affilee valent forfait. */
   readonly idleRounds: number;
 }
@@ -157,6 +183,7 @@ const initialSeat = (config: BalanceConfig): SeatState => ({
   totalScore: 0,
   timingDeltaSum: 0,
   moves: [],
+  amplifiers: [],
   idleRounds: 0,
 });
 
@@ -251,6 +278,7 @@ function applyRoundResult(
       totalScore: before.totalScore + outcome.score,
       timingDeltaSum: before.timingDeltaSum + inputs[seat].timing.delta,
       moves: [...before.moves, inputs[seat].choice.move],
+      amplifiers: [...before.amplifiers, inputs[seat].choice.amplifier],
       idleRounds: state.pending[seat].acted ? 0 : before.idleRounds + 1,
     };
   }
