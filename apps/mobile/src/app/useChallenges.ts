@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ChallengeView } from '@aura/protocol';
 import { AuthError } from '../net/auth.js';
 import { claimChallenge, ChallengeRequestError, readChallenges } from '../net/challenges.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
+import { newlyCompleted } from './quests.js';
 
 /**
  * Les defis du jour, tenus par le serveur.
@@ -33,9 +34,26 @@ export interface ChallengesView {
   readonly synced: boolean;
   /** Nombre de recompenses qui attendent : c est le pastillage du rail. */
   readonly claimable: number;
-  claim(challengeId: string): Promise<number | null>;
-  refresh(): void;
-  clearError(): void;
+  /**
+   * Ce qui vient d etre termine, depuis la derniere lecture.
+   *
+   * Le moment qui compte est celui ou le joueur sort de son match : lui dire
+   * au prochain passage par un ecran qu il n a aucune raison d ouvrir revient
+   * a ne pas le lui dire.
+   */
+  readonly justCompleted: readonly ChallengeView[];
+  /*
+    Declarees en PROPRIETES, pas en methodes, et ce n est pas un detail de
+    style : ce sont des fonctions fleches rendues par `useCallback`, donc sans
+    `this`. En syntaxe de methode, ESLint interdit de les extraire de l objet
+    — a juste titre pour une vraie methode, a tort pour celles-ci, et la
+    regle ne peut pas faire la difference depuis la declaration.
+  */
+  /** Efface l annonce, une fois qu elle a ete vue. */
+  readonly dismissCompleted: () => void;
+  readonly claim: (challengeId: string) => Promise<number | null>;
+  readonly refresh: () => void;
+  readonly clearError: () => void;
 }
 
 export function useChallenges(accessToken: string | null, reloadKey: number): ChallengesView {
@@ -44,6 +62,16 @@ export function useChallenges(accessToken: string | null, reloadKey: number): Ch
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
+  const [justCompleted, setJustCompleted] = useState<readonly ChallengeView[]>([]);
+
+  /*
+    La liste precedente vit dans une REF, pas dans une dependance.
+
+    Elle change a chaque reponse du serveur ; la mettre dans les dependances
+    de l effet le relancerait aussitot, donc en boucle. Une ref donne l etat
+    d avant sans participer au cycle de vie de la lecture.
+  */
+  const previous = useRef<readonly ChallengeView[]>([]);
 
   const baseUrl = useCallback(
     () =>
@@ -70,8 +98,11 @@ export function useChallenges(accessToken: string | null, reloadKey: number): Ch
       try {
         const fresh = await readChallenges(baseUrl(), accessToken);
         if (cancelled) return;
+        const completed = newlyCompleted(previous.current, fresh);
+        previous.current = fresh;
         setChallenges(fresh);
         setSynced(true);
+        if (completed.length > 0) setJustCompleted(completed);
       } catch {
         // Hors ligne : liste vide, et le solo reste jouable.
         if (!cancelled) setSynced(false);
@@ -100,6 +131,9 @@ export function useChallenges(accessToken: string | null, reloadKey: number): Ch
         setError(null);
         try {
           const result = await claimChallenge(baseUrl(), accessToken, challengeId);
+          // Encaisser ne termine rien : on met a jour la reference SANS
+          // comparer, sinon le message reparaitrait a chaque recompense prise.
+          previous.current = result.challenges;
           setChallenges(result.challenges);
           setSynced(true);
           return result.reward;
@@ -122,6 +156,12 @@ export function useChallenges(accessToken: string | null, reloadKey: number): Ch
       },
       [accessToken, baseUrl],
     ),
+
+    justCompleted,
+
+    dismissCompleted: useCallback(() => {
+      setJustCompleted([]);
+    }, []),
 
     refresh: useCallback(() => {
       setTick((value) => value + 1);

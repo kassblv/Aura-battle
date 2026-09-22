@@ -135,6 +135,18 @@ export interface MatchScreenProps {
    */
   readonly onRematch: () => void;
   readonly rematchLabel: string;
+  /**
+   * Defis termines pendant CE match.
+   *
+   * Annonces ici et nulle part ailleurs : le moment ou ca compte est celui ou
+   * le joueur sort de sa partie. Le dire au prochain passage par un ecran
+   * qu il n a aucune raison d ouvrir revient a ne pas le dire.
+   */
+  readonly questsDone?: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly reward: number;
+  }[];
 }
 
 function MatchScreenBody({
@@ -147,6 +159,7 @@ function MatchScreenBody({
   onLeave,
   onRematch,
   rematchLabel,
+  questsDone = [],
 }: MatchScreenProps): JSX.Element {
   const [style, setStyle] = useState<Style | null>(null);
   const [tier, setTier] = useState<Tier>(0);
@@ -510,14 +523,39 @@ function MatchScreenBody({
           sous le pouce droit ». Il decrivait une intention, pas la regle
           ecrite juste en dessous.
         */
-        <div className="outcome">
-          <button type="button" className="outcome__home" onClick={onLeave}>
-            Accueil
-          </button>
-          <button type="button" className="outcome__again" onClick={onRematch}>
-            {rematchLabel}
-          </button>
-        </div>
+        <>
+          {/*
+            Les defis tombes pendant ce match, dans le coin gauche.
+
+            A gauche parce que les deux gestes sont a droite : l'annonce se lit
+            pendant que le pouce se pose sur « Rejouer », sans se disputer sa
+            place. Et en bas, pas au milieu — le milieu appartient au verdict,
+            et deux choses qui s'annoncent en meme temps au meme endroit n'en
+            annoncent qu'une.
+          */}
+          {questsDone.length > 0 && (
+            <ul className="questsdone" aria-label="Défis terminés">
+              {questsDone.map((quest) => (
+                <li key={quest.id} className="questsdone__item">
+                  <b>Défi terminé</b>
+                  <span className="questsdone__name">{quest.name}</span>
+                  <span className="questsdone__gain">
+                    <span aria-hidden="true">◈</span> {quest.reward}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          <div className="outcome">
+            <button type="button" className="outcome__home" onClick={onLeave}>
+              Accueil
+            </button>
+            <button type="button" className="outcome__again" onClick={onRematch}>
+              {rematchLabel}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

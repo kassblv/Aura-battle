@@ -195,9 +195,17 @@ joignable depuis un téléphone rend tout le reste vérifiable.
   refus de la base plutôt que sa propre lecture. Vérifié contre Postgres : bourse
   0 → 50 au premier encaissement, 50 et `ALREADY_CLAIMED` au second.
 
-  Écran en trois colonnes, sixième case du rail avec une pastille. **Reste** : rien
-  ne prévient qu'un défi vient d'être terminé pendant le match — il faut ouvrir
-  l'écran pour le voir.
+  Écran en trois colonnes, sixième case du rail avec une pastille, et **annonce en
+  fin de match** : le moment où un défi tombe est celui où le joueur sort de sa
+  partie, pas son prochain passage par un écran qu'il n'a aucune raison d'ouvrir.
+  La comparaison porte sur deux photos prises par le serveur (`newlyCompleted`),
+  jamais sur une progression calculée ici.
+
+  **Les défis n'avancent qu'en duel en ligne**, et l'écran le dit. Le serveur ne
+  voit jamais une partie solo : un résultat annoncé par le client rendrait le défi
+  déclaratif, ce que « validés côté serveur » interdit. Sans cette phrase, un
+  joueur enchaînerait des solos devant des compteurs immobiles et conclurait à une
+  panne.
 - [ ] Passe de saison (gratuit + premium)
 - [ ] Achats intégrés via RevenueCat, reçus validés côté serveur
 

@@ -438,6 +438,24 @@ export function App(): JSX.Element {
     de faire.
   */
   const challenges = useChallenges(session.accessToken, record.matches);
+
+  /*
+    Ce que l'ecran de fin annonce.
+
+    Reduit ici a ce dont il a besoin — un nom et un montant. Lui passer les
+    `ChallengeView` entiers lui donnerait `progress`, `claimed` et le reste,
+    donc l'occasion d'afficher un jour quelque chose que ce moment-la n'a pas
+    a montrer.
+  */
+  const questsDone = useMemo(
+    () =>
+      challenges.justCompleted.map((quest) => ({
+        id: quest.id,
+        name: quest.name,
+        reward: quest.reward,
+      })),
+    [challenges.justCompleted],
+  );
   /**
    * La bourse et les possessions vivent ici en attendant le jalon M5.
    *
@@ -562,9 +580,20 @@ export function App(): JSX.Element {
     [inventory],
   );
 
+  /*
+    Quitter ou rejouer efface l'annonce des defis.
+
+    Elle appartient au match qu'on vient de finir. Sans cet effacement, elle
+    survivrait a la partie suivante et feliciterait le joueur une seconde fois
+    pour la meme chose — et il n'y a rien de plus sur pour apprendre a
+    quelqu'un a ne plus lire un message.
+  */
+  const { dismissCompleted } = challenges;
+
   const leaveMatch = useCallback(() => {
+    dismissCompleted();
     setNav((current) => navigate({ ...current, matchRunning: false }, 'home'));
-  }, []);
+  }, [dismissCompleted]);
 
   return (
     <div className="app">
@@ -785,9 +814,11 @@ export function App(): JSX.Element {
             onRematch={() => {
               // En ligne, « rejouer » c est se remettre en file : l adversaire
               // precedent n a aucune raison d etre encore la.
+              dismissCompleted();
               online.joinQueue(mode);
             }}
             rematchLabel="Rejouer"
+            questsDone={questsDone}
           />
         )}
 
@@ -819,10 +850,12 @@ export function App(): JSX.Element {
               // Depuis une invitation aussi, « rejouer » passe par la file :
               // celui qui avait donne le code n a pas forcement envie d'un
               // second duel, et l attendre laisserait le joueur devant rien.
+              dismissCompleted();
               go('queue');
               online.joinQueue(mode);
             }}
             rematchLabel="Rejouer"
+            questsDone={questsDone}
           />
         )}
 
@@ -833,6 +866,8 @@ export function App(): JSX.Element {
             audio={audio}
             onLeave={leaveMatch}
             ownedEffects={inventory.owned}
+            questsDone={questsDone}
+            onQuestsSeen={dismissCompleted}
           />
         )}
       </div>
@@ -852,6 +887,8 @@ function SoloMatchScreen({
   audio,
   onLeave,
   ownedEffects,
+  questsDone,
+  onQuestsSeen,
 }: {
   readonly looks: Readonly<Record<'a' | 'b', Look>>;
   readonly arena: ArenaControls;
@@ -859,6 +896,14 @@ function SoloMatchScreen({
   readonly onLeave: () => void;
   /** Ce que le joueur possede : l effet d aura de son palier en depend. */
   readonly ownedEffects: Iterable<string>;
+  /** Defis termines pendant ce match, annonces sur l ecran de fin. */
+  readonly questsDone: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly reward: number;
+  }[];
+  /** Efface l annonce : elle appartient au match qu on vient de finir. */
+  readonly onQuestsSeen: () => void;
 }): JSX.Element {
   const session = useSoloMatch(looks, arena, audio, ownedEffects);
   return (
@@ -869,8 +914,12 @@ function SoloMatchScreen({
       clock={session.clock}
       opponentName="Nova"
       onLeave={onLeave}
-      onRematch={session.restart}
+      onRematch={() => {
+        onQuestsSeen();
+        session.restart();
+      }}
       rematchLabel="Rejouer"
+      questsDone={questsDone}
     />
   );
 }

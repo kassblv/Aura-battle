@@ -92,9 +92,17 @@ export function ChallengesScreen({
         </ul>
       )}
 
+      {/*
+        « En duel en ligne » n'est pas un detail : le serveur ne voit jamais
+        une partie solo, donc elle ne fait rien avancer. Le taire laisserait
+        un joueur enchainer des solos en regardant des compteurs immobiles et
+        conclure a une panne — alors que c'est la regle, et qu'elle decoule de
+        « valides cote serveur » : un resultat annonce par le client rendrait
+        le defi declaratif.
+      */}
       <p className="sheet__note">
-        La progression se compte côté serveur, à la fin de chaque manche. Tout repart à zéro à
-        minuit.
+        La progression se compte côté serveur, à la fin de chaque manche, en duel en ligne. Tout
+        repart à zéro à minuit.
       </p>
     </section>
   );

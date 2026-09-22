@@ -2877,6 +2877,80 @@ body {
   joueur lance une seconde partie ou ferme le jeu.
 */
 /*
+  Les defis tombes pendant le match, dans le coin gauche.
+
+  A gauche parce que les deux gestes sont a droite : l'annonce se lit pendant
+  que le pouce se pose sur « Rejouer », sans lui disputer sa place. Et en bas,
+  pas au milieu — le milieu appartient au verdict, et deux choses qui
+  s'annoncent au meme endroit n'en annoncent qu'une.
+*/
+.questsdone {
+  position: absolute;
+  left: var(--safe-left);
+  bottom: calc(var(--safe-bottom) + 8px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-width: 38%;
+}
+
+.questsdone__item {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 2px 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--hud);
+  border: 1px solid var(--good-ink);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  /*
+    Son propre depli, et pas `pop-in` : celui-la porte un
+    `translate(-50%, -50%)` fait pour le verdict centre. Repris tel quel, la
+    carte entrerait de travers depuis un demi-ecran plus haut a gauche — une
+    animation ecrite pour un element qui se recentre ne se prete pas a un
+    element qui s'ancre dans un coin.
+  */
+  animation: quest-in var(--d-chip) var(--e-over) both;
+}
+
+@keyframes quest-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.96);
+  }
+}
+
+.questsdone__item b {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--good-ink);
+}
+
+/* La recompense tient sur les deux lignes : c'est elle qu'on vient lire. */
+.questsdone__gain {
+  grid-row: span 2;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 17px;
+  color: var(--gold-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.questsdone__name {
+  font-size: 13px;
+  font-weight: 700;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/*
   Les deux gestes de fin de match, dans l'arc du pouce DROIT.
 
   Ils etaient a `left: 50%` — la zone morte entre les deux pouces que
