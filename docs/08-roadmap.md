@@ -94,6 +94,15 @@ skins cosmétiques **d'un niveau** ».
 | Boutique | ✅ Rayon « Effets d'aura · un amplificateur chacun » : Flammes (A1, 400), Onde de choc (A2, 850), Aura noire (A3, 850) |
 | Vestiaire | — Sans objet : posséder un skin, c'est le porter au niveau qu'il habille. Il n'y a qu'un skin payant par niveau, donc rien à choisir |
 
+**Reste — le solo ne montre pas l'effet du palier.** En ligne, c'est le serveur
+qui résout l'apparence et l'envoie dans `round:result`. Hors ligne il n'y a
+personne pour le faire, et le client ne peut pas s'en charger : `RoundSeatOutcome`
+et `MatchState.seats[].moves` gardent le *mouvement* joué, jamais
+l'**amplificateur**. Un joueur en solo voit donc toujours la Lueur, y compris
+après avoir acheté un skin. Le corriger demande d'exposer l'amplificateur joué
+dans `packages/rules` — le paquet critique, donc tests d'abord — puis de le
+passer par `PresentOptions` comme `skins` l'est déjà.
+
 **Reste** : le vestiaire ne permet pas de *revenir* à l'effet offert quand on a
 acheté le skin de ce niveau. Personne ne l'a demandé, et un chooser à une seule
 option ne se conçoit pas — à rouvrir le jour où un second skin habillera le même
