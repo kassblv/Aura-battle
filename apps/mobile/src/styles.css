@@ -422,6 +422,8 @@ body {
   font: inherit;
   border: 0;
   cursor: pointer;
+  /* Conteneur de la pastille, qui se pose dans son coin. */
+  position: relative;
   /* La grille decide de la largeur ; le minimum ne sert plus qu'a garantir la
      cible tactile si la grappe est rognee sur un ecran etroit. */
   min-width: var(--touch);
@@ -443,6 +445,30 @@ body {
   transition:
     transform var(--d-tap) var(--e-out),
     box-shadow var(--d-tap) var(--e-out);
+}
+
+/*
+  La pastille du rail : il y a quelque chose a encaisser.
+
+  Posee sur le bouton, pas a cote : elle doit se voir sans qu'on lise, et un
+  joueur qui ouvre le jeu doit savoir en un coup d'oeil s'il a une raison
+  d'aller la. `.rail__btn` devient donc un conteneur positionne.
+*/
+.rail__badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--bad-ink);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .rail__icon {
@@ -889,6 +915,114 @@ body {
   .sheet__cols {
     grid-template-columns: 1fr;
   }
+}
+
+/*
+  Les defis du jour : une colonne par defi.
+
+  En paysage la largeur ne manque pas et la hauteur si. Empiles, trois noms,
+  trois barres et trois boutons debordaient la ou trois colonnes tiennent sans
+  rien faire defiler — et defiler au doigt au milieu d'un jeu est ce qu'on
+  evite partout ailleurs.
+*/
+.quests {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+@media (max-width: 640px) {
+  .quests {
+    grid-template-columns: 1fr;
+  }
+}
+
+.quest {
+  display: grid;
+  gap: 5px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  min-width: 0;
+}
+
+/* Un defi fini se voit sans qu'on lise son compteur. */
+.quest[data-done='true'] {
+  border-color: var(--good-ink);
+}
+
+.quest__name {
+  font-size: 13px;
+  line-height: 1.2;
+}
+
+.quest__bar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--chip-deep);
+  overflow: hidden;
+}
+
+.quest__bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--accent);
+  transition: width var(--d-panel) var(--e-out);
+}
+
+.quest[data-done='true'] .quest__bar i {
+  background: var(--good-ink);
+}
+
+.quest__count {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.quest__claim {
+  font: inherit;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--accent-ink);
+  background: var(--accent);
+  border: 0;
+  border-radius: 12px;
+  /* Cible tactile : le minimum de l'ADR 0008. */
+  min-height: var(--touch);
+  cursor: pointer;
+  box-shadow: 0 3px 0 var(--accent-deep);
+  transition: transform var(--d-tap) var(--e-out);
+}
+
+.quest__claim:active {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 var(--accent-deep);
+}
+
+/*
+  Eteint tant que le defi n'est pas fini — et laisse quand meme lire son
+  montant. C'est lui qui donne envie de finir : le cacher jusqu'au bout
+  reviendrait a demander un effort sans dire ce qu'il paie.
+*/
+.quest__claim:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.quest__done {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--good-ink);
+  text-align: center;
+  line-height: var(--touch);
 }
 
 /* --- classement --- */

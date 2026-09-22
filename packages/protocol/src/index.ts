@@ -14,6 +14,7 @@ export * from './errors.js';
 export * from './primitives.js';
 export * from './handshake.js';
 export * from './auth.js';
+export * from './challenges.js';
 export * from './inventory.js';
 export * from './leaderboard.js';
 export * from './client.js';

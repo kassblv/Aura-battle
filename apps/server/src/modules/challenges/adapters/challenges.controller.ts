@@ -10,6 +10,7 @@ import {
   Post,
   UnauthorizedException,
 } from '@nestjs/common';
+import { parseChallengeClaimRequest } from '@aura/protocol';
 import { readBearer } from '../../auth/application/bearer.js';
 import type { AccessTokenVerifier } from '../../auth/application/socket-auth.js';
 import { ChallengeService, type ChallengeView } from '../application/challenges.js';
@@ -60,10 +61,11 @@ export class ChallengesController {
   ): Promise<ChallengeClaimResponse> {
     const playerId = await this.requirePlayer(authorization);
 
-    const challengeId = readChallengeId(body);
-    if (challengeId === null) {
-      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: 'challengeId manquant' });
+    const parsed = parseChallengeClaimRequest(body);
+    if (!parsed.success) {
+      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
+    const challengeId = parsed.data.challengeId;
 
     const outcome = await this.challenges.claim(playerId, challengeId);
     if (outcome.status === 'unknown') {
@@ -92,18 +94,4 @@ export class ChallengesController {
       throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'session invalide' });
     }
   }
-}
-
-/**
- * Lit l'identifiant du corps, sans rien croire d'autre.
- *
- * Borne a 64 caracteres : un identifiant de defi en fait une trentaine, et
- * une chaine non bornee arrivant jusqu'a une requete `WHERE` est exactement
- * ce qu'on ne laisse pas passer sans regarder.
- */
-function readChallengeId(body: unknown): string | null {
-  if (typeof body !== 'object' || body === null) return null;
-  const value = (body as { challengeId?: unknown }).challengeId;
-  if (typeof value !== 'string' || value.length === 0 || value.length > 64) return null;
-  return value;
 }

@@ -40,6 +40,14 @@ export interface InventoryView {
   readonly error: string | null;
   /** Vrai quand le serveur a repondu au moins une fois. */
   readonly synced: boolean;
+  /**
+   * Relit l inventaire.
+   *
+   * La bourse bouge aussi SANS achat — une recompense de defi la credite. Sans
+   * cette relecture, l ecran garderait l ancien total jusqu au prochain achat,
+   * et le joueur verrait sa recompense disparaitre.
+   */
+  refresh(): void;
   buy(itemId: string): Promise<boolean>;
   equip(look: Look): Promise<boolean>;
   clearError(): void;
@@ -52,6 +60,7 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
   const [synced, setSynced] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tick, setTick] = useState(0);
 
   /**
    * La teinte de peau ne vient pas du serveur.
@@ -93,7 +102,7 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
     return () => {
       cancelled = true;
     };
-  }, [accessToken, baseUrl]);
+  }, [accessToken, baseUrl, tick]);
 
   const run = useCallback(async (action: () => Promise<InventoryState>): Promise<boolean> => {
     setBusy(true);
@@ -123,6 +132,10 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
     busy,
     error,
     synced,
+
+    refresh: useCallback(() => {
+      setTick((value) => value + 1);
+    }, []),
 
     buy: useCallback(
       async (itemId: string) => {

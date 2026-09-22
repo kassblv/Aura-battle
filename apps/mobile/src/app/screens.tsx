@@ -48,6 +48,9 @@ export interface HomeProps {
    * clairiere se mesure, elle ne se devine pas depuis une feuille de style.
    */
   readonly clusters: HomeClusters;
+  /** Recompenses qui attendent : la pastille du rail. */
+  readonly questsReady: number;
+  readonly onChallenges: () => void;
   readonly onWardrobe: () => void;
   readonly onShop: () => void;
   /** Cherche un adversaire : c est le chemin normal vers un duel. */
@@ -87,6 +90,8 @@ export function HomeScreen({
   onOnline,
   onInvite,
   clusters,
+  questsReady,
+  onChallenges,
 }: HomeProps): JSX.Element {
   return (
     <div className="home">
@@ -259,6 +264,35 @@ export function HomeScreen({
               <span className="rail__label" aria-hidden="true">
                 Réglages
               </span>
+            </button>
+
+            {/*
+              La sixieme case du pave, restee vide depuis qu'il est passe sur
+              deux rangees. La pastille dit ce que le rail ne peut pas dire :
+              qu'il y a quelque chose a encaisser, sans obliger a ouvrir pour
+              le savoir.
+            */}
+            <button
+              type="button"
+              className="rail__btn"
+              onClick={onChallenges}
+              aria-label={
+                questsReady > 0
+                  ? `Défis du jour, ${String(questsReady)} récompense${questsReady > 1 ? 's' : ''} à encaisser`
+                  : 'Défis du jour'
+              }
+            >
+              <span className="rail__icon" aria-hidden="true">
+                🎯
+              </span>
+              <span className="rail__label" aria-hidden="true">
+                Défis
+              </span>
+              {questsReady > 0 && (
+                <span className="rail__badge" aria-hidden="true">
+                  {questsReady}
+                </span>
+              )}
             </button>
           </nav>
         </div>

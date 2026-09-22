@@ -177,7 +177,27 @@ joignable depuis un téléphone rend tout le reste vérifiable.
 
 ### M8 — Méta et monétisation cosmétique
 - [x] **Inventaire et loadout côté serveur.** La boutique et le portefeuille vivaient dans `localStorage` — un inventaire qu'on s'offrait soi-même, perdu en changeant d'appareil ; avec le code de récupération, garder son compte sans garder ses achats n'avait plus de sens. Trois routes HTTP (`GET /inventory`, `POST /inventory/buy`, `PUT /inventory/loadout`), la règle d'achat pure avec `PURCHASABLE_KINDS` comme **garde** de la règle d'or n°3, et **deux gardes de concurrence** : la clé primaire `(playerId, itemId)` pour deux achats du même objet, le débit conditionnel pour deux objets différents payables séparément mais pas ensemble. Le serveur **crédite** enfin la récompense qu'il annonçait depuis M5. L'**effet d'aura est équipable** : `AURA_STYLES` attendait un porteur depuis le portage des particules. **Migration : la bourse repart de zéro** (elle se créditait elle-même, elle n'a jamais rien valu), tout ce qui est gratuit est accordé à tous, et l'apparence est conservée pour ce que le joueur possède. La teinte de peau reste locale — ce n'est pas un cosmétique. **Reste : la boutique à rotation**, et la monnaie dure, qui n'a aucun moyen d'être obtenue.
-- [ ] Défis quotidiens côté serveur
+- [x] **Défis quotidiens** (`docs/01` §11). Le catalogue est de la **donnée** (dix
+  défis, règle d'or n°5) ; la sélection du jour est **déterministe depuis le numéro
+  du jour UTC**, donc rien n'en est stocké et un redémarrage ne change pas la
+  journée en cours. Trois défis, jamais deux fois la même mesure.
+
+  **La progression avance à la fin de chaque MANCHE, pas du match** : les chiffres
+  de recharge vivent dans `pending`, effacé au tour suivant — les compter plus tard
+  les compterait à zéro, et deux défis sur cinq deviendraient infinissables sans
+  qu'aucune erreur ne soit levée. La **victoire**, elle, se compte une fois à la
+  fin : par manche, « gagner un duel » serait payé trois fois pour une partie.
+
+  **L'encaissement marque puis crédite, en une transaction**, et le marquage vient
+  en premier — l'inverse d'un achat. Ici c'est le double paiement qu'on redoute :
+  un défi marqué sans crédit se voit et se corrige, un crédit doublé ne se remarque
+  jamais. `updateMany` conditionné sur `claimedAt IS NULL`, et le service croit le
+  refus de la base plutôt que sa propre lecture. Vérifié contre Postgres : bourse
+  0 → 50 au premier encaissement, 50 et `ALREADY_CLAIMED` au second.
+
+  Écran en trois colonnes, sixième case du rail avec une pastille. **Reste** : rien
+  ne prévient qu'un défi vient d'être terminé pendant le match — il faut ouvrir
+  l'écran pour le voir.
 - [ ] Passe de saison (gratuit + premium)
 - [ ] Achats intégrés via RevenueCat, reçus validés côté serveur
 

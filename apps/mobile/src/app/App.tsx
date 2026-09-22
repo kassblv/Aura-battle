@@ -33,7 +33,9 @@ import { useInventory } from './useInventory.js';
 import { LeaderboardScreen } from './LeaderboardScreen.jsx';
 import { SettingsScreen } from './SettingsScreen.jsx';
 import { homeClusters } from '../ui/layout.js';
+import { ChallengesScreen } from './ChallengesScreen.jsx';
 import { panelLayout } from './panel.js';
+import { useChallenges } from './useChallenges.js';
 import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
 import { QueueScreen } from './QueueScreen.jsx';
@@ -206,6 +208,7 @@ export function App(): JSX.Element {
    * c'est son apparence — et le serveur la lui rend, pour ce qu'il possede.
    */
   const inventory = useInventory(session.accessToken, skin);
+
   const wardrobe: Wardrobe = useMemo(
     () => ({ look: inventory.look, owned: inventory.owned }),
     [inventory.look, inventory.owned],
@@ -424,6 +427,17 @@ export function App(): JSX.Element {
    * Aucun de ces chiffres n'est invente : chacun vient d'un `match:end`.
    */
   const [record, setRecord] = useState(saved?.record ?? emptyRecord());
+
+  /*
+    Les defis se relisent APRES chaque match, pas seulement a l'ouverture.
+
+    `record.matches` compte les parties terminees : il change exactement quand
+    la progression a pu bouger. Sans ce rappel, le joueur reviendrait de sa
+    partie avec les chiffres d'avant et croirait que rien n'a compte — alors
+    que la seule chose qui fait avancer un defi est precisement ce qu'il vient
+    de faire.
+  */
+  const challenges = useChallenges(session.accessToken, record.matches);
   /**
    * La bourse et les possessions vivent ici en attendant le jalon M5.
    *
@@ -582,6 +596,10 @@ export function App(): JSX.Element {
         {!showOnboarding && nav.screen === 'home' && (
           <HomeScreen
             clusters={clusters}
+            questsReady={challenges.claimable}
+            onChallenges={() => {
+              go('challenges');
+            }}
             profile={profile}
             mode={mode}
             onToggleMode={() => {
@@ -673,6 +691,27 @@ export function App(): JSX.Element {
           <LeaderboardScreen
             accessToken={session.accessToken}
             onClose={() => {
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'challenges' && (
+          <ChallengesScreen
+            challenges={challenges.challenges}
+            busy={challenges.busy}
+            error={challenges.error}
+            synced={challenges.synced}
+            onClaim={(challengeId) => {
+              void challenges.claim(challengeId).then((reward) => {
+                // La bourse vit dans l'inventaire : une recompense encaissee
+                // la change, donc on relit plutot que d'additionner ici — deux
+                // comptes du meme argent finissent toujours par differer.
+                if (reward !== null) inventory.refresh();
+              });
+            }}
+            onClose={() => {
+              challenges.clearError();
               go('home');
             }}
           />

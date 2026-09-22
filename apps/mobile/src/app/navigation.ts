@@ -10,6 +10,7 @@ export type Screen =
   | 'home'
   | 'profile'
   | 'leaderboard'
+  | 'challenges'
   | 'settings'
   | 'wardrobe'
   | 'shop'
