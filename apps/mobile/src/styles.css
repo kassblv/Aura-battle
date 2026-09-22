@@ -71,6 +71,8 @@
   --gauge-track: 20px;
   --gauge-legend: 10px;
   --gauge-h: 45px;
+  /* Hauteur du bouton d'Ultime : miroir de `ULTIMATE_HEIGHT`, verifie par test. */
+  --ultimate-h: 48px;
   --bet-h: 24px;
 
   --d-tap: 90ms;
@@ -2018,10 +2020,18 @@ body {
  * pousserait les deux grappes — donc dix boutons — a l instant precis ou le
  * pouce vient d en toucher un.
  */
+/*
+  La fente garde la place de la jauge tant qu'elle n'est pas armee.
+
+  La largeur vient desormais de `.band__middle`, qui absorbe ce que les deux
+  grappes laissent ; la fente ne retient que la HAUTEUR. C'est elle qui compte :
+  sans place reservee, l'arrivee de la jauge pousserait les deux grappes —
+  donc dix boutons — a l'instant precis ou le pouce vient d'en toucher un.
+*/
 .gauge-slot {
-  flex: 1 1 0;
+  flex: none;
   min-width: 0;
-  max-width: 420px;
+  width: 100%;
   height: var(--gauge-h);
 }
 .gauge-slot--empty {
@@ -2229,15 +2239,33 @@ body {
   pas pleine : le serveur refuserait le choix, et laisser le bouton vif ferait
   croire a un refus arbitraire.
 */
+/*
+  La colonne du milieu : l'Ultime au-dessus de la jauge.
+
+  Les deux occupaient deja cet espace a l'ecran, mais l'Ultime y flottait en
+  `position: absolute` — au-dessus d'une bande dont le commentaire promet que
+  « rien ne peut se chevaucher, faute de position absolue ». A 667x320 il
+  recouvrait la grappe palier de 35x47 pixels : son libelle disparaissait sous
+  le panneau et deux cibles tactiles se superposaient.
+
+  Dans le flux, le chevauchement n'est plus evite, il est impossible.
+*/
+.band__middle {
+  flex: 1 1 0;
+  min-width: 0;
+  max-width: var(--gauge-max, 420px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: var(--band-gap);
+}
+
 .ultimate {
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%);
-  bottom: calc(var(--safe-bottom) + 64px);
   display: grid;
   gap: 1px;
   /* Cible tactile : au-dessus du minimum de 46 px de l'ADR 0008. */
-  min-height: 46px;
+  min-height: var(--touch);
+  height: var(--ultimate-h);
   padding: 4px 18px;
   border-radius: 14px;
   border: 1px solid var(--line);

@@ -6,6 +6,7 @@ import { describe, expect, it } from 'vitest';
 import {
   BAND_GAP,
   bandFit,
+  bandHeight,
   GAP,
   chunkEvenly,
   clusterHeight,
@@ -25,6 +26,7 @@ import {
   STYLE_CAPACITY,
   STYLE_COLUMNS,
   SUBJECT_FROM,
+  ULTIMATE_HEIGHT,
   SUBJECT_TO,
   styleRows,
   TIER_COLUMNS,
@@ -257,10 +259,34 @@ describe('styles.css', () => {
    * elle, l'arrivee de la jauge pousserait les deux grappes — donc dix boutons
    * — a l'instant precis ou le pouce vient d'en toucher un.
    */
+  it('declare la hauteur de l Ultime', () => {
+    expect(css).toContain(`--ultimate-h: ${String(ULTIMATE_HEIGHT)}px;`);
+  });
+
+  /*
+    L'Ultime etait en `position: absolute`, au-dessus d'une bande dont le
+    commentaire promet que « rien ne peut se chevaucher, faute de position
+    absolue ». A 667x320 il recouvrait la grappe palier de 35x47 pixels : son
+    libelle passait sous le panneau, et deux cibles tactiles se superposaient.
+
+    Une seule chose empeche ca pour de bon, et ce n'est pas un decalage bien
+    choisi : c'est d'etre dans le flux, ou la mise en page interdit le
+    chevauchement au lieu de l'eviter.
+  */
+  it('pose l Ultime dans le flux, jamais au-dessus de la bande', () => {
+    const rule = css.slice(css.indexOf('.ultimate {'));
+    expect(rule.slice(0, rule.indexOf('}'))).not.toContain('position: absolute');
+  });
+
   it('reserve la place de la jauge avant qu elle arrive', () => {
     const slot = css.slice(css.indexOf('.gauge-slot {'), css.indexOf('.gauge-slot--empty'));
-    expect(slot).toContain('flex: 1 1 0');
     expect(slot).toContain('height: var(--gauge-h)');
+
+    // La LARGEUR est absorbee par la colonne du milieu, pas par la fente : la
+    // fente ne retient que la hauteur, qui est ce qui empeche les grappes de
+    // bouger quand la jauge arrive.
+    const middle = css.slice(css.indexOf('.band__middle {'));
+    expect(middle.slice(0, middle.indexOf('}'))).toContain('flex: 1 1 0');
   });
 
   it('deplie la jauge au lieu de l afficher', () => {
@@ -310,6 +336,31 @@ describe('styles.css', () => {
  * colonnes 390 a 465, soit 46,2 % a 55,1 % de la largeur. Le rail s'arretait
  * a 463 et lui coupait les jambes.
  */
+/*
+  L'Ultime vit au-dessus de la jauge, dans la colonne du milieu.
+
+  Il ne coute pas d'energie — il se paie en jauge — donc il ne rentre pas dans
+  la grappe palier/amplificateur, qui affiche un budget. Mais il se decide au
+  meme instant, et la seule colonne qui puisse l'accueillir sans bousculer une
+  cible tactile est celle qui porte deja la jauge.
+*/
+describe('hauteur de la bande', () => {
+  it('donne a l Ultime au moins une cible tactile', () => {
+    expect(ULTIMATE_HEIGHT).toBeGreaterThanOrEqual(TOUCH);
+  });
+
+  /*
+    `bandHeight` ne comptait QUE les deux grappes. L'Ultime flottait au-dessus,
+    absent du calcul : l'invariant « la bande tient sous les combattants » etait
+    donc verifie sur une bande qui n'etait pas celle qu'on affichait.
+  */
+  it('compte la colonne du milieu, Ultime compris', () => {
+    expect(bandHeight(STYLE_CAPACITY)).toBeGreaterThanOrEqual(
+      ULTIMATE_HEIGHT + BAND_GAP + GAUGE_HEIGHT,
+    );
+  });
+});
+
 describe('homeClusters', () => {
   it('arrete la grappe gauche avant le personnage', () => {
     // 844 : la silhouette commence a 390. Bord droit de la grappe = marge de

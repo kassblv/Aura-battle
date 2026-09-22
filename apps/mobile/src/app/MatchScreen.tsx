@@ -619,29 +619,6 @@ const ControlBand = memo(function ControlBand({
   const bet = betFor(tier, amplifier, cap);
   return (
     <>
-      {/*
-        L'Ultime, a cote du reste de la mise.
-
-        Il ne coute pas d'energie — il se paie en jauge — donc il ne rentre pas
-        dans la grappe palier/amplificateur, qui affiche un budget. Mais il se
-        decide au meme instant, alors il se touche au meme endroit.
-      */}
-      <button
-        type="button"
-        className="ultimate"
-        disabled={!ultimateReady || locked}
-        aria-pressed={ultimate}
-        onClick={onUltimate}
-        aria-label={
-          ultimateReady
-            ? 'Ultime : ×1,5 et impossible à contrer'
-            : 'Ultime : jauge pas encore pleine'
-        }
-      >
-        <b>Ultime</b>
-        <small>{ultimateReady ? '×1,5 · incontrable' : 'jauge à remplir'}</small>
-      </button>
-
       <div className="cluster">
         <p className="cluster__label">Style</p>
         {STYLE_ROWS.map((row) => (
@@ -670,22 +647,48 @@ const ControlBand = memo(function ControlBand({
       </div>
 
       {/*
-        La fente garde sa place vide.
-        Faire apparaitre la jauge en poussant les deux grappes ferait bouger
-        dix boutons sous le pouce du joueur, a l instant precis ou il vient
-        d en toucher un.
+        La colonne du milieu : l'Ultime, puis la place de la jauge.
+
+        L'Ultime etait pose en `position: absolute` au-dessus de la bande, a
+        `left: 50%`. Deux defauts d'un coup : la zone morte entre les deux
+        pouces que l'ADR 0008 nomme lui-meme, et un chevauchement de 35x47
+        pixels sur la grappe palier des que l'ecran raccourcit — a 667x320 son
+        libelle passait sous le panneau voisin. Dans le flux, le chevauchement
+        n'est plus evite, il est impossible.
+
+        Et la fente garde sa place vide : faire apparaitre la jauge en poussant
+        les deux grappes ferait bouger dix boutons sous le pouce du joueur, a
+        l'instant precis ou il vient d'en toucher un.
       */}
-      <div className={armed ? 'gauge-slot' : 'gauge-slot gauge-slot--empty'}>
-        {armed && (
-          <Gauge
-            zones={resolveZones({
-              center: meterCenter,
-              zoneWidth: meterZoneWidth,
-              perfectWidth: meterPerfectWidth,
-            })}
-            needleRef={needleRef}
-          />
-        )}
+      <div className="band__middle">
+        <button
+          type="button"
+          className="ultimate"
+          disabled={!ultimateReady || locked}
+          aria-pressed={ultimate}
+          onClick={onUltimate}
+          aria-label={
+            ultimateReady
+              ? 'Ultime : ×1,5 et impossible à contrer'
+              : 'Ultime : jauge pas encore pleine'
+          }
+        >
+          <b>Ultime</b>
+          <small>{ultimateReady ? '×1,5 · incontrable' : 'jauge à remplir'}</small>
+        </button>
+
+        <div className={armed ? 'gauge-slot' : 'gauge-slot gauge-slot--empty'}>
+          {armed && (
+            <Gauge
+              zones={resolveZones({
+                center: meterCenter,
+                zoneWidth: meterZoneWidth,
+                perfectWidth: meterPerfectWidth,
+              })}
+              needleRef={needleRef}
+            />
+          )}
+        </div>
       </div>
 
       <div className="cluster">

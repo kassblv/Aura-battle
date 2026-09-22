@@ -70,6 +70,17 @@ export const GAUGE_LEGEND_GAP = 3;
 export const GAUGE_HEIGHT =
   2 * GAUGE_BORDER + 2 * GAUGE_PADDING + GAUGE_TRACK + GAUGE_LEGEND_GAP + GAUGE_LEGEND;
 
+/**
+ * Hauteur du bouton d'Ultime, bordures comprises.
+ *
+ * Il vit au-dessus de la jauge, dans la colonne du milieu. Il etait avant en
+ * `position: absolute` au-dessus de la bande — et a 667x320 il recouvrait la
+ * grappe palier de 35x47 pixels, deux cibles tactiles l'une sur l'autre. Ce
+ * qui empeche ca n'est pas un decalage mieux choisi, c'est d'etre dans le
+ * flux : la mise en page interdit alors le chevauchement au lieu de l'eviter.
+ */
+export const ULTIMATE_HEIGHT = TOUCH + 2 * CLUSTER_BORDER;
+
 /** Largeur au-dela de laquelle la jauge ne s'etale plus : la course est temporelle. */
 export const GAUGE_MAX_WIDTH = 420;
 
@@ -211,10 +222,18 @@ export function bandFit(viewportWidth: number, styleCount: number): BandFit {
   };
 }
 
-/** Hauteur de la bande : celle de la plus haute des deux grappes. */
+/**
+ * Hauteur de la bande : celle de sa plus haute colonne.
+ *
+ * Trois colonnes, pas deux. La colonne du milieu porte l'Ultime au-dessus de
+ * la jauge, et elle comptait pour zero tant que l'Ultime flottait en absolu —
+ * l'invariant « la bande tient sous les combattants » etait donc verifie sur
+ * une bande qui n'etait pas celle qu'on affichait.
+ */
 export function bandHeight(styleCount: number): number {
   const fit = bandFit(0, styleCount);
-  return Math.max(fit.styleHeight, fit.tierHeight);
+  const middle = ULTIMATE_HEIGHT + BAND_GAP + GAUGE_HEIGHT;
+  return Math.max(fit.styleHeight, fit.tierHeight, middle);
 }
 
 /**
