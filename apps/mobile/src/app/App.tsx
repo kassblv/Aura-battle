@@ -32,6 +32,7 @@ import type { ShopState } from './shop.js';
 import { useInventory } from './useInventory.js';
 import { LeaderboardScreen } from './LeaderboardScreen.jsx';
 import { SettingsScreen } from './SettingsScreen.jsx';
+import { homeClusters } from '../ui/layout.js';
 import { panelLayout } from './panel.js';
 import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
@@ -492,6 +493,15 @@ export function App(): JSX.Element {
     pendant un choc d auras deplacerait la scene sous les yeux du joueur.
   */
   const panel = useMemo(() => panelLayout(viewportWidth), [viewportWidth]);
+
+  /*
+    Les deux grappes de l'accueil, de part et d'autre du personnage.
+
+    Leur largeur ne vient pas de celle de l'ecran mais de la CLAIRIERE que la
+    silhouette laisse au milieu : elle se tient toujours au meme endroit du
+    cadre, donc en parts de largeur (voir `ui/layout.ts`).
+  */
+  const clusters = useMemo(() => homeClusters(viewportWidth), [viewportWidth]);
   const panelOpen = nav.screen === 'shop' || nav.screen === 'wardrobe';
   arena.sidePanel.current = panelOpen && !inDuel ? panel.width : 0;
 
@@ -571,6 +581,7 @@ export function App(): JSX.Element {
 
         {!showOnboarding && nav.screen === 'home' && (
           <HomeScreen
+            clusters={clusters}
             profile={profile}
             mode={mode}
             onToggleMode={() => {

@@ -346,6 +346,15 @@ body {
   Une rangee ne peut pas se chevaucher : c'est la mise en page qui l'interdit,
   pas un reglage a reprendre a chaque format.
 */
+/*
+  Les deux grappes flanquent le personnage au lieu de le recouvrir.
+
+  `justify-content: space-between` et des largeurs posees en ligne par
+  `homeClusters` : la contrainte n'est pas la largeur de l'ecran mais la
+  clairiere que la silhouette laisse au milieu — a 844 px elle occupe les
+  colonnes 390 a 465, et le rail s'etendait jusqu'a 463. Il lui coupait les
+  jambes, et rien nulle part ne disait pourquoi il n'aurait pas du.
+*/
 .home__bottom {
   position: absolute;
   left: var(--safe-left);
@@ -353,6 +362,7 @@ body {
   bottom: var(--safe-bottom);
   display: flex;
   align-items: flex-end;
+  justify-content: space-between;
   gap: 8px;
 }
 
@@ -364,17 +374,31 @@ body {
   surmonte le rail lui emprunte sa largeur au lieu de la lui prendre.
 */
 .home__left {
-  flex: 1 1 auto;
+  flex: none;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 8px;
 }
 
+/*
+  Le rail : un pave de trois colonnes, pas une rangee de cinq.
+
+  En rangee, les cinq menus se partageaient les 357 px laisses par la
+  clairiere, soit 66 px chacun — moins que la largeur du mot « Classement ».
+  Un onglet de jeu se reconnait a sa taille autant qu'a son icone ; cinq
+  languettes serrees ne sont plus des onglets. Sur deux rangees, chacun
+  retrouve 115 px, la taille qu'il a dans les jeux dont on s'inspire, et le
+  pave entier reste dans l'arc du pouce gauche.
+
+  La derniere rangee n'en porte que deux, et c'est voulu : un vide dans un
+  coin se lit comme de la place, une grille etiree se lit comme une erreur.
+*/
 .rail {
   flex: none;
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
   gap: 8px;
 }
 
@@ -382,7 +406,9 @@ body {
   font: inherit;
   border: 0;
   cursor: pointer;
-  min-width: 82px;
+  /* La grille decide de la largeur ; le minimum ne sert plus qu'a garantir la
+     cible tactile si la grappe est rognee sur un ecran etroit. */
+  min-width: var(--touch);
   min-height: 74px;
   padding: 9px 10px;
   border-radius: 18px;
@@ -442,10 +468,22 @@ body {
   Ecrit au-dessus, le media query perdait contre le `min-width: 82px` qu'il
   etait cense corriger — sans que rien ne le signale.
 */
-@media (max-width: 780px) {
+/*
+  Sur un ecran etroit, le rail redevient une rangee de pictogrammes.
+
+  Le pave de trois colonnes demande environ 345 px pour que « Classement »
+  tienne sous son icone. En dessous, mieux vaut cinq icones lisibles qu'un
+  pave de libelles coupes : un menu se reconnait a son symbole, et
+  l'`aria-label` porte toujours son nom pour qui ne voit pas l'ecran.
+*/
+@media (max-width: 700px) {
+  .rail {
+    grid-template-columns: repeat(5, 1fr);
+  }
+
   .rail__btn {
-    min-width: 46px;
     padding: 9px;
+    min-height: 62px;
   }
 
   .rail__label {
@@ -453,13 +491,21 @@ body {
   }
 }
 
-/* action : arc du pouce droit, et le plus gros element de l ecran */
+/*
+  L'action : arc du pouce droit, et le plus gros element de l'ecran.
+
+  « Le plus gros » se mesure : le bouton de duel fait 349x104, un onglet du
+  rail 115x74. Cinq fois l'aire. C'est la proportion qu'ont les jeux dont on
+  s'inspire entre leur bouton de jeu et leurs onglets, et elle n'est pas
+  decorative — c'est elle qui fait qu'on n'a jamais a chercher par ou
+  commencer.
+*/
 .launch {
   flex: none;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 7px;
+  gap: 8px;
   text-align: center;
 }
 
@@ -499,28 +545,21 @@ body {
   text-transform: uppercase;
 }
 
-.launch__row {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
-}
-
 /*
-  Les deux detours, empiles a cote du bouton principal.
+  Les deux detours, sous le bouton principal.
 
-  Le code d'invitation et le solo restent accessibles mais ne se disputent pas
-  la place : ce sont des chemins de cote. Empiles, ils tiennent la hauteur du
-  gros bouton sans lui prendre de largeur.
+  Ils etaient a sa DROITE, empiles : deux cibles de 46 px collees au gros
+  bouton se lisaient comme un choix a trois branches, alors qu'il y a un
+  chemin et deux detours. Dessous, moitie-moitie et plus bas, la hierarchie
+  se voit sans qu'on ait rien a lire.
 */
-.launch__side {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  justify-content: stretch;
+.launch__alts {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
 }
 
 .launch__alt {
-  flex: 1;
   font: inherit;
   font-size: 12px;
   font-weight: 700;
@@ -548,14 +587,15 @@ body {
   font: inherit;
   font-family: var(--display);
   font-weight: 400;
-  font-size: clamp(20px, 3.4vw, 28px);
+  font-size: clamp(26px, 4.2vw, 38px);
   letter-spacing: 0.02em;
   border: 0;
   cursor: pointer;
-  min-width: clamp(150px, 22vw, 210px);
-  min-height: 74px;
-  padding: 0 28px;
-  border-radius: 20px;
+  /* Toute la largeur de la grappe : c'est le bouton, pas un bouton. */
+  width: 100%;
+  min-height: 104px;
+  padding: 0 20px;
+  border-radius: 22px;
   color: var(--accent-ink);
   background: var(--accent);
   box-shadow:
@@ -1230,17 +1270,18 @@ body {
   display: flex;
   align-items: center;
   gap: 6px;
-  max-width: 420px;
   margin: 0;
 }
 
 .memes__arrow {
   flex: none;
   /* Cible tactile : l'ADR 0008 impose 46 px, et une fleche qu'on rate fait
-     defiler la galerie deux fois plus lentement qu'elle ne devrait. */
-  width: 46px;
-  height: 46px;
-  border-radius: 12px;
+     defiler la galerie deux fois plus lentement qu'elle ne devrait. Ici 54,
+     parce que parcourir le catalogue est le deuxieme geste de cet ecran et
+     qu'il se fait en rafale — on appuie dix fois, pas une. */
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
   border: 1px solid var(--hud-line);
   background: var(--hud);
   color: var(--ink);
@@ -1253,13 +1294,19 @@ body {
 
 .memes__arrow:active {
   background: var(--chip-deep);
+  transform: translateY(2px);
 }
 
 .memes__card {
   flex: 1 1 auto;
   min-width: 0;
   margin: 0;
-  padding: 5px 12px;
+  /*
+    Le mème porte l'identite du joueur : c'est ce qu'il montre quand il gagne.
+    La commande qui le choisit etait la plus petite chose de l'accueil.
+  */
+  min-height: 54px;
+  padding: 6px 14px;
   color: var(--ink);
   font: inherit;
   cursor: pointer;
@@ -1277,7 +1324,7 @@ body {
    les fleches hors de portee du pouce. */
 .memes__name {
   font-weight: 700;
-  font-size: 14px;
+  font-size: 15px;
   letter-spacing: 0.01em;
   white-space: nowrap;
   overflow: hidden;

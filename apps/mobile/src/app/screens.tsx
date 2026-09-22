@@ -3,6 +3,7 @@ import type { JSX } from 'react';
 import type { MemeCard } from './memes.js';
 import { leagueProgress, styleShares, summarize, type PlayerProfile } from './profile.js';
 import type { PanelLayout } from './panel.js';
+import type { HomeClusters } from '../ui/layout.js';
 import { isOwned, wardrobeSections, type LookSlot, type Wardrobe } from './wardrobe.js';
 
 /**
@@ -39,6 +40,14 @@ export interface HomeProps {
   readonly onProfile: () => void;
   readonly onSettings: () => void;
   readonly onLeaderboard: () => void;
+  /**
+   * Largeur des deux grappes, de part et d'autre du personnage.
+   *
+   * Calculee par `homeClusters`, parce que la contrainte n'est pas la largeur
+   * de l'ecran mais la CLAIRIERE que la silhouette laisse au milieu — et cette
+   * clairiere se mesure, elle ne se devine pas depuis une feuille de style.
+   */
+  readonly clusters: HomeClusters;
   readonly onWardrobe: () => void;
   readonly onShop: () => void;
   /** Cherche un adversaire : c est le chemin normal vers un duel. */
@@ -77,6 +86,7 @@ export function HomeScreen({
   onShop,
   onOnline,
   onInvite,
+  clusters,
 }: HomeProps): JSX.Element {
   return (
     <div className="home">
@@ -120,7 +130,7 @@ export function HomeScreen({
         largeur a personne, elle prend celle du rail qu'elle surmonte.
       */}
       <div className="home__bottom">
-        <div className="home__left">
+        <div className="home__left" style={{ width: `${String(clusters.left)}px` }}>
           {/*
         La galerie de memes.
 
@@ -241,7 +251,7 @@ export function HomeScreen({
           </nav>
         </div>
 
-        <div className="launch">
+        <div className="launch" style={{ width: `${String(clusters.right)}px` }}>
           {/*
           Le mode se choisit ici, pas dans un menu.
 
@@ -258,26 +268,28 @@ export function HomeScreen({
             <b>{mode === 'ranked' ? 'Classé' : 'Partie rapide'}</b>
             <small>{mode === 'ranked' ? 'Ta ligue bouge' : 'Rien à perdre'}</small>
           </button>
-          <div className="launch__row">
-            {/*
+          {/*
             Un seul gros bouton, et il cherche un adversaire.
 
             C'est le mode que le jeu existe pour offrir, et il ne doit rien
-            demander : un joueur seul devant son telephone appuie et joue. Le
-            code d'invitation et le solo restent accessibles, mais en second —
-            ce sont des detours, pas le chemin.
+            demander : un joueur seul devant son telephone appuie et joue.
+
+            Il prend TOUTE la largeur de la grappe, et les deux detours passent
+            dessous. Cote a cote, « Code » et « Solo » lui prenaient 72 px de
+            large et autant d'importance visuelle qu'ils en meritent peu : deux
+            cibles empilees a cote du bouton principal se lisent comme un choix
+            a trois branches, alors qu'il y a un chemin et deux detours.
           */}
-            <button type="button" className="launch__btn" onClick={onOnline}>
-              Duel
+          <button type="button" className="launch__btn" onClick={onOnline}>
+            Duel
+          </button>
+          <div className="launch__alts">
+            <button type="button" className="launch__alt" onClick={onInvite}>
+              Code
             </button>
-            <div className="launch__side">
-              <button type="button" className="launch__alt" onClick={onInvite}>
-                Code
-              </button>
-              <button type="button" className="launch__alt" onClick={onPlay}>
-                Solo
-              </button>
-            </div>
+            <button type="button" className="launch__alt" onClick={onPlay}>
+              Solo
+            </button>
           </div>
         </div>
       </div>

@@ -216,3 +216,73 @@ export function bandHeight(styleCount: number): number {
   const fit = bandFit(0, styleCount);
   return Math.max(fit.styleHeight, fit.tierHeight);
 }
+
+/**
+ * La clairiere du personnage, sur l'accueil.
+ *
+ * L'accueil obeit a une contrainte differente de la bande de match. Le sujet
+ * n'y est pas deux combattants poses dans le dernier cinquieme de la hauteur :
+ * c'est UN personnage debout au milieu de l'ecran, qui porte ce qu'on lui
+ * essaie. Les commandes se rangent donc a sa GAUCHE et a sa DROITE, et la
+ * question devient horizontale.
+ *
+ * Mesure sur le client en marche a 844x390, en masquant l'interface et en
+ * comptant les colonnes sombres du canvas : la silhouette occupe 390 a 465,
+ * soit 46,2 % a 55,1 % de la largeur. Le rail, lui, s'etendait jusqu'a 463 —
+ * il lui coupait les jambes, et personne ne l'avait ecrit nulle part.
+ *
+ * Des PARTS, pas des pixels : la camera cadre le personnage a la meme place
+ * quelle que soit la largeur, donc ce sont bien des proportions qui se
+ * conservent d'un appareil a l'autre.
+ */
+export const SUBJECT_FROM = 0.45;
+export const SUBJECT_TO = 0.56;
+
+/** Le souffle laisse entre une grappe et la silhouette. */
+export const SUBJECT_CLEARANCE = 10;
+
+/** Largeur minimale de la grappe d'action : sous ca, « Duel » ne pese plus. */
+export const LAUNCH_MIN = 240;
+
+export interface HomeClusters {
+  /** Largeur de la grappe gauche : galerie de memes et rail de menus. */
+  readonly left: number;
+  /** Largeur de la grappe droite : mode, duel, et les deux detours. */
+  readonly right: number;
+}
+
+export function homeClusters(viewportWidth: number): HomeClusters {
+  const width = viewportWidth > 0 ? viewportWidth : 0;
+
+  // Le rail se reduit a ses pictogrammes quand il faut, mais jamais en deca :
+  // cinq cibles tactiles et leurs ecarts sont un plancher, pas une preference.
+  const railFloor = 5 * TOUCH + 4 * GAP;
+
+  const left = Math.max(
+    railFloor,
+    Math.floor(width * SUBJECT_FROM) - SAFE_SIDE - SUBJECT_CLEARANCE,
+  );
+  const right = Math.max(
+    LAUNCH_MIN,
+    width - Math.ceil(width * SUBJECT_TO) - SAFE_SIDE - SUBJECT_CLEARANCE,
+  );
+
+  const available = width - 2 * SAFE_SIDE;
+  if (left + right <= available) return { left, right };
+
+  /*
+    Dernier recours : l'ecran est trop etroit pour les deux grappes ET la
+    clairiere. On rogne la clairiere, pas les boutons — un bouton hors de
+    portee est pire qu'un personnage a moitie cache, parce qu'on peut
+    contourner le second et pas le premier.
+
+    Le partage suit les largeurs demandees plutot que de couper au milieu : le
+    rail et le bloc de duel n'ont pas les memes besoins, et les ecraser a
+    parts egales rendrait le plus exigeant des deux inutilisable en premier.
+  */
+  const share = available / (left + right);
+  return {
+    left: Math.max(1, Math.floor(left * share)),
+    right: Math.max(1, Math.floor(right * share)),
+  };
+}

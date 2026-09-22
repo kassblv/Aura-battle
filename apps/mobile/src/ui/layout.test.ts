@@ -15,6 +15,7 @@ import {
   GAUGE_MIN_WIDTH,
   BET_HEADER,
   GAUGE_TRACK,
+  homeClusters,
   NAME_LONG,
   NAME_MAX,
   PICK_STYLE,
@@ -23,6 +24,8 @@ import {
   SAFE_SIDE,
   STYLE_CAPACITY,
   STYLE_COLUMNS,
+  SUBJECT_FROM,
+  SUBJECT_TO,
   styleRows,
   TIER_COLUMNS,
   TOUCH,
@@ -292,5 +295,64 @@ describe('styles.css', () => {
     expect(cluster).toContain('flex: none');
     // Une largeur plafonnee en pourcentage ecrase la quatrieme colonne.
     expect(cluster).not.toContain('max-width');
+  });
+});
+
+/**
+ * La clairiere du personnage, sur l'accueil.
+ *
+ * L'accueil n'est pas un ecran de match : le sujet n'y est pas deux
+ * combattants dans le dernier cinquieme de la hauteur, c'est UN personnage
+ * debout au milieu. Les grappes de commandes se posent donc a gauche et a
+ * droite de lui, pas sous lui — et la question devient horizontale.
+ *
+ * Mesure sur le client en marche a 844x390 : la silhouette occupe les
+ * colonnes 390 a 465, soit 46,2 % a 55,1 % de la largeur. Le rail s'arretait
+ * a 463 et lui coupait les jambes.
+ */
+describe('homeClusters', () => {
+  it('arrete la grappe gauche avant le personnage', () => {
+    // 844 : la silhouette commence a 390. Bord droit de la grappe = marge de
+    // securite plus sa largeur, et il doit rester en deca.
+    expect(SAFE_SIDE + homeClusters(844).left).toBeLessThan(844 * SUBJECT_FROM);
+  });
+
+  it('commence la grappe droite apres le personnage', () => {
+    expect(844 - SAFE_SIDE - homeClusters(844).right).toBeGreaterThan(844 * SUBJECT_TO);
+  });
+
+  /*
+    Le rail porte cinq destinations. Reduites a leurs pictogrammes elles
+    demandent cinq cibles tactiles et leurs ecarts : en dessous, une grappe
+    « propre » cacherait un bouton qu'on ne peut plus toucher.
+  */
+  it('garde de quoi poser les cinq menus, meme serre', () => {
+    for (const width of [568, 640, 667, 740, 844, 926]) {
+      expect(homeClusters(width).left, `${String(width)} px`).toBeGreaterThanOrEqual(
+        5 * TOUCH + 4 * GAP,
+      );
+    }
+  });
+
+  /*
+    Le dernier recours : sur un ecran trop etroit pour les deux grappes ET la
+    clairiere, on rogne la clairiere — un bouton hors de portee est pire qu'un
+    personnage a moitie cache.
+  */
+  it('ne laisse jamais les deux grappes se chevaucher', () => {
+    for (const width of [400, 480, 520, 568, 667, 844, 1280]) {
+      const { left, right } = homeClusters(width);
+      expect(left + right + 2 * SAFE_SIDE, `${String(width)} px`).toBeLessThanOrEqual(width);
+    }
+  });
+
+  it('rend des largeurs entieres et positives', () => {
+    for (const width of [0, -20, Number.NaN, 333, 701, 844]) {
+      const { left, right } = homeClusters(width);
+      expect(Number.isInteger(left)).toBe(true);
+      expect(Number.isInteger(right)).toBe(true);
+      expect(left).toBeGreaterThan(0);
+      expect(right).toBeGreaterThan(0);
+    }
   });
 });
