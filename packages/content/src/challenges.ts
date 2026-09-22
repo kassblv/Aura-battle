@@ -28,11 +28,31 @@ export interface ChallengeDefinition {
   readonly id: string;
   readonly name: { readonly fr: string };
   readonly metric: ChallengeMetric;
-  readonly accumulate: ChallengeAccumulation;
   /** Ce qu'il faut atteindre dans la journee. */
   readonly target: number;
   /** Ce que la journee paie, en monnaie douce. */
   readonly reward: number;
+}
+
+/**
+ * Comment chaque mesure s'accumule — une propriete de la MESURE, pas du defi.
+ *
+ * Un combo est un maximum quel que soit le defi qui le demande, et des
+ * contres se cumulent toujours. Porter ce choix sur chaque definition
+ * inviterait un jour une declaration fausse : un nouveau defi de combo ecrit
+ * `sum` par distraction deviendrait trivial, et rien ne le signalerait.
+ */
+export const METRIC_ACCUMULATION: Readonly<Record<ChallengeMetric, ChallengeAccumulation>> =
+  Object.freeze({
+    counters: 'sum',
+    perfects: 'sum',
+    wins: 'sum',
+    rechargePoints: 'sum',
+    bestCombo: 'best',
+  });
+
+export function accumulationOf(metric: ChallengeMetric): ChallengeAccumulation {
+  return METRIC_ACCUMULATION[metric];
 }
 
 /**
@@ -62,7 +82,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.counter.2',
     name: { fr: 'Contrer deux fois' },
     metric: 'counters',
-    accumulate: 'sum',
     target: 2,
     reward: 40,
   },
@@ -70,7 +89,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.counter.5',
     name: { fr: 'Contrer cinq fois' },
     metric: 'counters',
-    accumulate: 'sum',
     target: 5,
     reward: 80,
   },
@@ -78,7 +96,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.perfect.3',
     name: { fr: 'Trois timings parfaits' },
     metric: 'perfects',
-    accumulate: 'sum',
     target: 3,
     reward: 50,
   },
@@ -86,7 +103,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.perfect.8',
     name: { fr: 'Huit timings parfaits' },
     metric: 'perfects',
-    accumulate: 'sum',
     target: 8,
     reward: 90,
   },
@@ -94,7 +110,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.win.1',
     name: { fr: 'Gagner un duel' },
     metric: 'wins',
-    accumulate: 'sum',
     target: 1,
     reward: 30,
   },
@@ -102,7 +117,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.win.3',
     name: { fr: 'Gagner trois duels' },
     metric: 'wins',
-    accumulate: 'sum',
     target: 3,
     reward: 70,
   },
@@ -110,7 +124,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.recharge.400',
     name: { fr: 'Quatre cents points de recharge' },
     metric: 'rechargePoints',
-    accumulate: 'sum',
     target: 400,
     reward: 45,
   },
@@ -118,7 +131,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.recharge.900',
     name: { fr: 'Neuf cents points de recharge' },
     metric: 'rechargePoints',
-    accumulate: 'sum',
     target: 900,
     reward: 85,
   },
@@ -126,7 +138,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.combo.8',
     name: { fr: 'Un combo de huit' },
     metric: 'bestCombo',
-    accumulate: 'best',
     target: 8,
     reward: 50,
   },
@@ -134,7 +145,6 @@ export const CHALLENGES: readonly ChallengeDefinition[] = Object.freeze([
     id: 'challenge.combo.14',
     name: { fr: 'Un combo de quatorze' },
     metric: 'bestCombo',
-    accumulate: 'best',
     target: 14,
     reward: 95,
   },

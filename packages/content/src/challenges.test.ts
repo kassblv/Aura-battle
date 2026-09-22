@@ -4,6 +4,7 @@ import {
   CHALLENGES_PER_DAY,
   challengeById,
   challengesForDay,
+  accumulationOf,
   dayIndexOf,
   type ChallengeMetric,
 } from './challenges.js';
@@ -61,7 +62,18 @@ describe('CHALLENGES', () => {
   it('cumule ce qui se cumule, et garde le meilleur du reste', () => {
     for (const challenge of CHALLENGES) {
       const expected = challenge.metric === 'bestCombo' ? 'best' : 'sum';
-      expect(challenge.accumulate, challenge.id).toBe(expected);
+      expect(accumulationOf(challenge.metric), challenge.id).toBe(expected);
+    }
+  });
+
+  /*
+    Chaque mesure a une regle, et une seule. Une mesure oubliee dans la table
+    rendrait `undefined` — donc ni somme ni maximum, et une progression qui ne
+    bouge jamais pour ce defi-la.
+  */
+  it('donne une regle d accumulation a chaque mesure', () => {
+    for (const challenge of CHALLENGES) {
+      expect(['sum', 'best'], challenge.metric).toContain(accumulationOf(challenge.metric));
     }
   });
 
