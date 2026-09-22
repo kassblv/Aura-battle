@@ -64,7 +64,7 @@ Référence : prototype, `docs/02-architecture.md`.
 
 - [x] Vite + React + Three.js récent ; structure `app/ net/ match/ arena/ animation/ audio/ platform/`
 - [x] **Paysage exclusif** (ADR 0008) : écran « tourne ton téléphone » ✅, commandes dans les arcs de pouce ✅, rien d'interactif au centre haut ✅, cibles tactiles ≥ 46 px ✅, verrouillage par l'API `screen.orientation` ✅, **verrouillage natif ✅** — imposé au manifeste Android et à l'`Info.plist` iOS, donc avant tout JavaScript (voir M6)
-- [ ] Port du rendu 3D du prototype en modules : scène ✅, foule instanciée ✅ (avec les téléphones braqués), rig avec mains ✅, caméra ✅, calque 2D ✅, **choc des auras ✅** (`clash.ts`, piloté par `director.ts` et dessiné dans le puits à particules), **particules d'aura ✅** — un émetteur et un voile par siège, branchés dans `scene.ts` et alimentés par `useArena`. L'intensité vient de trois sources et **jamais du choix secret** : valeur de repos hors match, `hype` (dérivée de la seule phase, donc identique aux deux sièges) avant la révélation, et `director.auraWeight(seat)` pendant le choc, une fois les deux choix publics. La garantie tient dans la signature de `AuraDrive`, qui n'a aucun champ propre à un siège. **Reste : l'effet d'aura équipé** (`Look` ne porte qu'une couleur ; tout le monde joue la Lueur jusqu'au loadout de M8)
+- [ ] Port du rendu 3D du prototype en modules : scène ✅, foule instanciée ✅ (avec les téléphones braqués), rig avec mains ✅, caméra ✅, calque 2D ✅, **choc des auras ✅** (`clash.ts`, piloté par `director.ts` et dessiné dans le puits à particules), **particules d'aura ✅** — un émetteur et un voile par siège, branchés dans `scene.ts` et alimentés par `useArena`. L'intensité vient de trois sources et **jamais du choix secret** : valeur de repos hors match, `hype` (dérivée de la seule phase, donc identique aux deux sièges) avant la révélation, et `director.auraWeight(seat)` pendant le choc, une fois les deux choix publics. La garantie tient dans la signature de `AuraDrive`, qui n'a aucun champ propre à un siège. **Reste : l'effet d'aura, qui n'est jouable par personne.** Le rendu est câblé (`useArena` lit `look.auraEffect` et `styleForEffect` sait le dessiner), le catalogue existe (8 effets, dont 3 skins payants), le serveur les vend et le protocole les transporte — mais **aucun écran ne les montre** : ni la boutique ni le vestiaire n'ont de rayon « effet d'aura ». Trois cosmétiques à 400 et 850 pièces, les plus spectaculaires du jeu, sont inatteignables. Détail dans « Effets d'aura : la chaîne cassée » ci-dessous.
 - [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains) ✅ — **page `/dev/animation-viewer` : non faite** (la galerie de mèmes de l'accueil la remplace pour l'usage courant, pas pour le débogage image par image)
 - [x] Client réseau : synchronisation d'horloge, reconnexion automatique, reprise de `match:state`
 - [x] Écrans : accueil ✅ (avec galerie de mèmes jouée par le personnage), créer/rejoindre une invitation ✅, attente ✅, match ✅, résultat ✅, revanche ✅ — en solo elle relance une partie sur une nouvelle graine, en ligne elle remet en file (l'adversaire précédent n'a aucune raison d'être encore là)
@@ -72,6 +72,29 @@ Référence : prototype, `docs/02-architecture.md`.
 - [x] Moteur audio du prototype porté ; musique et effets activables — 23 sons synthétisés, aucun fichier embarqué ; déverrouillé au premier geste (sans quoi iOS reste muet en silence)
 - [x] Solo contre IA fonctionnel hors ligne (même `@aura/rules`)
 - [x] Test manuel documenté : `docs/09-testing.md`, § « Test manuel : un duel à deux navigateurs » — sept étapes, avec le piège des deux onglets d'une même origine qui partagent la même identité
+
+### Effets d'aura : la chaîne cassée
+
+Vérifié pièce par pièce sur le code et sur le client en marche. Le modèle est
+posé par `docs/01-game-design.md` § 3 : un amplificateur **s'affiche sous le nom
+de son effet offert**, et « Flammes, Onde de choc, Aura noire deviennent des
+skins cosmétiques **d'un niveau** ».
+
+| Maillon | État |
+|---|---|
+| Catalogue (`AURA_EFFECTS`) | ✅ 8 effets — 5 offerts (un par niveau d'amplificateur), 3 skins payants aux niveaux A1, A2, A3 |
+| Amorçage et vente serveur | ✅ `AURA_EFFECT` est un `PURCHASABLE_KINDS`, les effets sont dans le catalogue amorcé |
+| Protocole | ✅ `round:result` porte `cosmetic.effectId` **par siège** — le seul endroit où les deux apparaissent |
+| Serveur : effet de révélation | ⚠️ `cosmeticOf` retombe bien sur `defaultEffectForLevel(amplificateur)`, mais **seulement** faute de cosmétique équipé. Celui qui est équipé écrase le niveau, donc un skin A1 s'afficherait aussi en A4 — ce que le game design ne dit pas |
+| Serveur : possession | ❌ **Le cosmétique est déclaré par le client** dans `choice:lock` et relayé tel quel. Aucune vérification de possession : n'importe qui peut porter « Aura noire » (850 ◈) sans l'avoir achetée |
+| Client : rendu à la révélation | ❌ `onlinePresentation` ne lit que `cosmetic.animationId`. L'`effectId` envoyé par le serveur est **jeté**, et l'arène affiche à la place `look.auraEffect`, constant toute la partie |
+| Boutique | ❌ Aucun rayon « effet d'aura » |
+| Vestiaire | ❌ Aucun rayon « effet d'aura » |
+
+Conséquence : le jeu possède, vend et transporte huit effets d'aura dont aucun
+joueur ne peut voir la différence. C'est la boutique entière — règle d'or n°3,
+« la boutique ne vend que du cosmétique » — qui n'a pour l'instant rien de
+visible à vendre au-delà des couleurs.
 
 ## M5 — Classé, matchmaking et fantômes
 
