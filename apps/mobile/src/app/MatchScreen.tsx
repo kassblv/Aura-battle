@@ -473,33 +473,50 @@ function MatchScreenBody({
             <span>{opponentName}</span>
             <b>{view.lastRound.opponentScore}</b>
           </p>
+
+          {/*
+            Le verdict du MATCH vit dans la carte de la manche, pas a cote.
+
+            Les deux panneaux etaient poses separement — la carte centree, le
+            mot « Defaite » ancre au bas de l'ecran — et a 844x390 ils se
+            recouvraient de huit pixels : le mot mordait le bord arrondi de la
+            carte. Deux boites centrees independamment se chevauchent des que
+            l'ecran raccourcit, et aucun decalage fixe ne repare ca pour de
+            bon. Dans la meme boite, la question ne se pose plus.
+          */}
+          {view.ended !== null && (
+            <p className="outcome__verdict" data-won={view.ended.winner === 'moi'}>
+              {view.ended.winner === 'moi'
+                ? 'Victoire'
+                : view.ended.winner === null
+                  ? 'Égalité'
+                  : 'Défaite'}
+            </p>
+          )}
         </div>
       )}
 
       {view.ended !== null && (
-        <div className="outcome">
-          {/*
-            Le verdict d'abord, puis le geste le plus probable.
+        /*
+          Les deux gestes, dans l'arc du pouce droit.
 
-            Un ecran de fin qui n'offre que « accueil » renvoie le joueur au
-            menu au moment precis ou il veut rejouer — et c'est ce moment-la
-            qui decide s'il lance une seconde partie ou s'il ferme le jeu.
-          */}
-          <p className="outcome__verdict" data-won={view.ended.winner === 'moi'}>
-            {view.ended.winner === 'moi'
-              ? 'Victoire'
-              : view.ended.winner === null
-                ? 'Égalité'
-                : 'Défaite'}
-          </p>
-          <div className="outcome__row">
-            <button type="button" className="outcome__again" onClick={onRematch}>
-              {rematchLabel}
-            </button>
-            <button type="button" className="outcome__home" onClick={onLeave}>
-              Accueil
-            </button>
-          </div>
+          Ils etaient centres — `left: 50%` — c'est-a-dire dans la zone morte
+          entre les deux pouces que l'ADR 0008 nomme lui-meme. Et « Rejouer »
+          est le bouton le plus presse du jeu : on y revient apres CHAQUE
+          match, et c'est ce moment-la qui decide si le joueur lance une
+          seconde partie ou ferme le jeu.
+
+          Le commentaire de la feuille de style promettait deja « le premier
+          sous le pouce droit ». Il decrivait une intention, pas la regle
+          ecrite juste en dessous.
+        */
+        <div className="outcome">
+          <button type="button" className="outcome__home" onClick={onLeave}>
+            Accueil
+          </button>
+          <button type="button" className="outcome__again" onClick={onRematch}>
+            {rematchLabel}
+          </button>
         </div>
       )}
     </div>

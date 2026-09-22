@@ -2714,18 +2714,36 @@ body {
   et le premier sous le pouce droit : c'est ce moment-la qui decide si le
   joueur lance une seconde partie ou ferme le jeu.
 */
+/*
+  Les deux gestes de fin de match, dans l'arc du pouce DROIT.
+
+  Ils etaient a `left: 50%` — la zone morte entre les deux pouces que
+  l'ADR 0008 nomme lui-meme — pendant que le commentaire juste au-dessus
+  promettait « le premier sous le pouce droit ». Le commentaire decrivait
+  l'intention, la regle faisait autre chose, et rien ne pouvait le signaler.
+
+  « Rejouer » en dernier dans le balisage, donc le plus a droite : c'est le
+  bouton le plus presse du jeu et le pouce y tombe sans deplacer la main.
+  « Accueil » a sa gauche, plus petit — un ecran de fin qui n'offre que la
+  sortie renvoie le joueur au menu au moment precis ou il voulait rejouer.
+*/
 .outcome {
   position: absolute;
-  left: 50%;
-  bottom: calc(var(--safe-bottom) + 12px);
-  transform: translateX(-50%);
-  display: grid;
-  justify-items: center;
+  right: var(--safe-right);
+  bottom: calc(var(--safe-bottom) + 8px);
+  display: flex;
+  align-items: stretch;
   gap: 8px;
 }
 
+/*
+  Le mot du verdict vit DANS la carte de la manche (voir `MatchScreen.tsx`) :
+  deux boites centrees independamment se chevauchent des que l'ecran
+  raccourcit, et c'est ce qui arrivait a 844x390 — huit pixels de morsure sur
+  le bord arrondi de la carte.
+*/
 .outcome__verdict {
-  margin: 0;
+  margin: 8px 0 0;
   font-family: var(--display);
   font-size: clamp(22px, 4vw, 34px);
   letter-spacing: 0.02em;
@@ -2735,12 +2753,6 @@ body {
 
 .outcome__verdict[data-won='true'] {
   color: var(--gold-ink);
-}
-
-.outcome__row {
-  display: flex;
-  gap: 8px;
-  align-items: stretch;
 }
 
 .outcome__again {
