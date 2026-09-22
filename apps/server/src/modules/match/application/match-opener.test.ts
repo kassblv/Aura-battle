@@ -9,7 +9,7 @@ import {
   type PlayerPresence,
   type QueueEviction,
 } from './match-opener.js';
-import type { MatchSeats } from './match-runtime.js';
+import type { MatchSeats, SeatWearing } from './match-runtime.js';
 
 /**
  * Chemin unique d'ouverture : invitation et file d'attente passent par ici.
@@ -50,6 +50,8 @@ class FakeRuntime implements MatchStarter {
     sentBefore: number;
   }[] = [];
   readonly abandonArmed: string[] = [];
+  /** Ce que l'ouverture a pose sur chaque siege, pour pouvoir le relire. */
+  readonly worn: { matchId: string; seat: 'a' | 'b'; wearing: SeatWearing }[] = [];
   busy = new Set<string>();
   refuse = false;
 
@@ -57,6 +59,10 @@ class FakeRuntime implements MatchStarter {
 
   isBusy(playerId: string): boolean {
     return this.busy.has(playerId);
+  }
+
+  setWearing(matchId: string, seat: 'a' | 'b', wearing: SeatWearing): void {
+    this.worn.push({ matchId, seat, wearing });
   }
 
   createMatch(input: {
@@ -98,6 +104,7 @@ class FakePresence implements PlayerPresence {
   readonly absent = new Set<string>();
   readonly anonymous = new Set<string>();
   readonly leagues = new Map<string, string>();
+  readonly wearing = new Map<string, SeatWearing>();
 
   isConnected(playerId: string): boolean {
     return !this.absent.has(playerId);
@@ -105,6 +112,10 @@ class FakePresence implements PlayerPresence {
 
   displayNameOf(playerId: string): string {
     return this.anonymous.has(playerId) ? UNKNOWN_PLAYER_NAME : `Nom de ${playerId}`;
+  }
+
+  wearingOf(playerId: string): SeatWearing {
+    return this.wearing.get(playerId) ?? { ownedEffects: [], dances: {} };
   }
 
   leagueOf(playerId: string): string {

@@ -5,7 +5,7 @@ import { RULES_VERSION, type Seat } from '@aura/rules';
 import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import type { MatchNotifier } from '../domain/ports.js';
-import type { MatchSeats } from './match-runtime.js';
+import type { MatchSeats, SeatWearing } from './match-runtime.js';
 
 /**
  * Ouverture d'un match, **chemin unique et entierement synchrone**
@@ -43,6 +43,14 @@ export interface MatchStarter {
       league: string;
     } | null;
   }): boolean;
+  /**
+   * Enregistre ce que porte un siege, apres la creation.
+   *
+   * Separe de `createMatch` a dessein : ses trois appelants n'ont pas tous
+   * une apparence a fournir, et un match qui l'ignore reste un match qui
+   * marche — chacun y porte alors l'effet offert de son palier.
+   */
+  setWearing(matchId: string, seat: Seat, wearing: SeatWearing): void;
   /** Arme le compte a rebours d'abandon d'un joueur absent. */
   notePlayerDisconnected(playerId: string): void;
 }
@@ -61,6 +69,16 @@ export interface PlayerPresence {
   displayNameOf(playerId: string): string;
   /** Ligue publique du joueur (docs/05 « MMR et ligues » : la ligue, pas le MMR, est publique). */
   leagueOf(playerId: string): string;
+  /**
+   * Ce que le joueur porte, resolu a sa connexion.
+   *
+   * Synchrone pour la meme raison que le nom et la ligue : l'ouverture ne peut
+   * rien attendre entre le controle des sieges et leur reservation. Un joueur
+   * dont on ne sait rien porte l'effet offert de son palier, comme tout le
+   * monde avant la boutique — une apparence manquante ne vaut pas un duel
+   * annule.
+   */
+  wearingOf(playerId: string): SeatWearing;
 }
 
 /**
@@ -174,6 +192,19 @@ export class MatchOpener {
     const matchId = `m_${randomUUID()}`;
     const seed = randomUUID();
     const ghost = request.ghost;
+
+    /*
+      Ce que chaque siege porte, fige pour la duree du match.
+
+      Resolu ici plutot que dans `createMatch` : deux de ses trois appelants
+      n'ont que faire de l'apparence, et un match sans cette information reste
+      un match qui marche. C'est le SERVEUR qui la detient — elle arrivait
+      avant par `choice:lock`, declaree par le client et relayee sans controle
+      de possession.
+    */
+    for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
+      this.runtime.setWearing(matchId, seat, this.presence.wearingOf(seats[seat]));
+    }
 
     for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
       // Rien a annoncer a un fantome : il n'y a personne au bout, et

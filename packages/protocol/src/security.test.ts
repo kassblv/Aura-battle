@@ -53,13 +53,18 @@ describe('identifiants — pas d injection de journal ni de collision de cle', (
   });
 
   /**
-   * Un identifiant de contenu est pointe, jamais un chemin.
+   * Le client n'envoie plus aucun identifiant de contenu.
    *
-   * C'est sur `choice:lock` que ca compte le plus : c'est l'identifiant que le
-   * serveur ira chercher dans le catalogue, et une traversee de chemin qui
-   * passerait la validation irait lire ce qu'elle veut sur le disque.
+   * C'etait la derniere surface ou il en fournissait un — celui que le serveur
+   * irait chercher dans le catalogue, donc celui ou une traversee de chemin
+   * qui passerait la validation irait lire ce qu'elle veut sur le disque. Le
+   * schema le refusait deja ; il refuse maintenant le champ entier, ce qui est
+   * plus fort : il n'y a plus de chaine a valider, donc plus rien a rater.
+   *
+   * Le meme controle vaut toujours cote SORTANT, ou `round:result` porte
+   * encore un cosmetique — emis par le serveur, mais valide a l'emission.
    */
-  it('impose un identifiant de cosmetique pointe', () => {
+  it('n accepte plus aucun identifiant de contenu venu du client', () => {
     const choix = {
       matchId: 'm_01',
       round: 1,
@@ -69,18 +74,16 @@ describe('identifiants — pas d injection de journal ni de collision de cle', (
       ult: false,
       timing: { chargeAt: 0, tapAt: 400 },
     };
-    expect(
-      parseClientMessage('choice:lock', {
-        ...choix,
-        cosmetic: { animationId: 'anim.hype.t2.floss', effectId: 'fx.glow' },
-      }).success,
-    ).toBe(true);
-    expect(
-      parseClientMessage('choice:lock', {
-        ...choix,
-        cosmetic: { animationId: '../../etc/passwd', effectId: 'fx.glow' },
-      }).success,
-    ).toBe(false);
+    expect(parseClientMessage('choice:lock', choix).success).toBe(true);
+    for (const animationId of ['anim.hype.t2.floss', '../../etc/passwd']) {
+      expect(
+        parseClientMessage('choice:lock', {
+          ...choix,
+          cosmetic: { animationId, effectId: 'fx.glow' },
+        }).success,
+        animationId,
+      ).toBe(false);
+    }
   });
 });
 

@@ -2,7 +2,6 @@ import { BALANCE } from '@aura/rules';
 import { z } from 'zod';
 import {
   amplifierSchema,
-  cosmeticSchema,
   matchIdSchema,
   moveSchema,
   roundSchema,
@@ -116,7 +115,17 @@ export const CLIENT_MESSAGES = {
     move: moveSchema,
     amp: amplifierSchema,
     ult: z.boolean(),
-    cosmetic: cosmeticSchema.optional(),
+    /*
+      **Pas de cosmetique ici.** Il y en avait un, facultatif, et le serveur le
+      relayait tel quel a l'adversaire a la revelation — sans aucun controle de
+      possession. N'importe qui pouvait donc porter le skin a 850 pieces en
+      fabriquant un message.
+
+      Regle d'or n°1 : le client n'envoie que des INTENTIONS. Une apparence
+      n'en est pas une — c'est un etat que la base detient deja, et que le
+      serveur resout seul a partir du palier joue et de ce que le joueur
+      possede (`MatchRuntime.cosmeticOf`).
+    */
     timing: timingSchema,
   }),
 

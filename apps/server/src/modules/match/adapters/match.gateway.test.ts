@@ -10,6 +10,7 @@ import { MessageMetrics } from '../../../shared/metrics.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { InviteService } from '../application/invites.js';
 import { PLAYER_DIRECTORY } from '../domain/directory.js';
+import { PLAYER_WARDROBE } from '../domain/wardrobe.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { matchmakingTestProviders } from '../application/testing-wiring.js';
 import { MatchGateway } from './match.gateway.js';
@@ -120,6 +121,12 @@ beforeAll(async () => {
        * noms — et un annuaire muet couvre au passage le repli sur
        * `UNKNOWN_PLAYER_NAME`, qui est le cas reel d'un compte efface.
        */
+      {
+        // Personne ne porte rien de particulier : chacun aura l'effet offert
+        // de son palier, comme tout le monde avant la boutique.
+        provide: PLAYER_WARDROBE,
+        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], dances: {} }) },
+      },
       {
         provide: PLAYER_DIRECTORY,
         useValue: { displayNames: () => Promise.resolve(new Map<string, string>()) },

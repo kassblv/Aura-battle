@@ -11,6 +11,7 @@ import { MessageMetrics } from '../../../shared/metrics.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { InviteService } from '../application/invites.js';
 import { PLAYER_DIRECTORY } from '../domain/directory.js';
+import { PLAYER_WARDROBE } from '../domain/wardrobe.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { matchmakingTestProviders } from '../application/testing-wiring.js';
 import { MatchGateway } from './match.gateway.js';
@@ -162,6 +163,12 @@ beforeAll(async () => {
        * Le vrai lit Postgres ; ce qu'on veut verifier ici, c'est que la
        * passerelle annonce le nom de l'ADVERSAIRE et non celui du destinataire.
        */
+      {
+        // Personne ne porte rien de particulier : chacun aura l'effet offert
+        // de son palier, comme tout le monde avant la boutique.
+        provide: PLAYER_WARDROBE,
+        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], dances: {} }) },
+      },
       {
         provide: PLAYER_DIRECTORY,
         useValue: {

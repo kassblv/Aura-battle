@@ -9,6 +9,7 @@ import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
 import { MessageMetrics } from '../../../shared/metrics.js';
 import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { PLAYER_DIRECTORY } from '../domain/directory.js';
+import { PLAYER_WARDROBE } from '../domain/wardrobe.js';
 import { InviteService } from '../application/invites.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { matchmakingTestProviders } from '../application/testing-wiring.js';
@@ -91,6 +92,12 @@ beforeAll(async () => {
               }, AUTH_DELAY_MS);
             }),
         }),
+      },
+      {
+        // Personne ne porte rien de particulier : chacun aura l'effet offert
+        // de son palier, comme tout le monde avant la boutique.
+        provide: PLAYER_WARDROBE,
+        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], dances: {} }) },
       },
       {
         provide: PLAYER_DIRECTORY,

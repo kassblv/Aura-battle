@@ -1,4 +1,4 @@
-import { AURA_COLORS, HAIRSTYLES, OUTFITS, SKIN_TONES, type Move } from '@aura/content';
+import { AURA_COLORS, danceKey, HAIRSTYLES, OUTFITS, SKIN_TONES, type Move } from '@aura/content';
 import { memeGallery } from './memes.js';
 
 /**
@@ -40,9 +40,16 @@ export interface Look {
   readonly auraEffect?: string;
 }
 
-/** La cle d un mouvement dans `Look.dances`. */
+/**
+ * La cle d un mouvement dans `Look.dances`.
+ *
+ * Delegue a `@aura/content` : le serveur lit la meme table pour annoncer la
+ * danse equipee a la revelation, et deux conventions qui divergent ne
+ * produiraient aucune erreur — seulement une danse que l adversaire ne voit
+ * jamais.
+ */
 export function moveKey(move: Move): string {
-  return `${move.style}.t${String(move.tier)}`;
+  return danceKey(move);
 }
 
 export interface Wardrobe {

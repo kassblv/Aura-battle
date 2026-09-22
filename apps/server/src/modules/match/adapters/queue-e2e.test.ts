@@ -14,6 +14,7 @@ import { InviteService } from '../application/invites.js';
 import { MatchRuntime } from '../application/match-runtime.js';
 import { matchmakingTestProviders } from '../application/testing-wiring.js';
 import { PLAYER_DIRECTORY } from '../domain/directory.js';
+import { PLAYER_WARDROBE } from '../domain/wardrobe.js';
 import { MatchGateway } from './match.gateway.js';
 import { SocketNotifier } from './socket-notifier.js';
 import { SystemMatchClock, TimeoutScheduler } from './timeout-scheduler.js';
@@ -168,6 +169,12 @@ beforeAll(async () => {
               : Promise.resolve({ sub });
           },
         }),
+      },
+      {
+        // Personne ne porte rien de particulier : chacun aura l'effet offert
+        // de son palier, comme tout le monde avant la boutique.
+        provide: PLAYER_WARDROBE,
+        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], dances: {} }) },
       },
       {
         provide: PLAYER_DIRECTORY,

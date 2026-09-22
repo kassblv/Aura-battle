@@ -6,6 +6,7 @@ import { MessageMetrics } from '../../../shared/metrics.js';
 import type { PresenceLeagueCache } from '../../rating/domain/ports.js';
 import { UNKNOWN_PLAYER_NAME } from '../domain/directory.js';
 import type { MatchNotifier } from '../domain/ports.js';
+import type { SeatWearing } from '../application/match-runtime.js';
 
 /**
  * Ligue montree quand aucune n'est connue — a la connexion d'un joueur qui
@@ -43,7 +44,22 @@ interface Session {
   readonly socket: Socket;
   readonly displayName: string;
   league: string;
+  /**
+   * Ce que le joueur porte, lu a la connexion.
+   *
+   * `readonly` comme le nom : un changement de tenue en pleine partie ferait
+   * changer d'aura entre la revelation et le choc. Le vestiaire prend effet
+   * au duel suivant, ce que personne ne remarque et qui evite une incoherence
+   * que tout le monde verrait.
+   */
+  readonly wearing: SeatWearing;
 }
+
+/** Ce que porte quelqu'un dont on ne sait rien : rien de particulier. */
+const NOTHING_WORN: SeatWearing = Object.freeze({
+  ownedEffects: Object.freeze([]),
+  dances: Object.freeze({}),
+});
 
 @Injectable()
 export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
@@ -78,9 +94,10 @@ export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
     socket: Socket,
     displayName: string,
     league: string = DEFAULT_LEAGUE,
+    wearing: SeatWearing = NOTHING_WORN,
   ): void {
     const previous = this.sessions.get(playerId);
-    this.sessions.set(playerId, { socket, displayName, league });
+    this.sessions.set(playerId, { socket, displayName, league, wearing });
     if (previous !== undefined && previous.socket !== socket) {
       previous.socket.disconnect(true);
     }
@@ -134,6 +151,19 @@ export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
    */
   leagueOf(playerId: string): string {
     return this.sessions.get(playerId)?.league ?? DEFAULT_LEAGUE;
+  }
+
+  /**
+   * Ce que porte un joueur connecte, lu dans son inventaire a la connexion.
+   *
+   * Synchrone, pour la meme raison que le nom et la ligue : l'ouverture d'un
+   * match ne peut rien attendre. Un joueur inconnu — deconnecte entre-temps,
+   * ou dont la lecture d'inventaire a echoue — ne porte rien de particulier :
+   * il aura l'effet offert de son palier, comme tout le monde avant la
+   * boutique. Une apparence manquante ne vaut pas un duel annule.
+   */
+  wearingOf(playerId: string): SeatWearing {
+    return this.sessions.get(playerId)?.wearing ?? NOTHING_WORN;
   }
 
   /**

@@ -1191,3 +1191,53 @@ describe('fantomes — enregistrement et siege', () => {
     expect(settlements[0]).toEqual({ seat: 'b', mmr: 1_100, sourcePlayerId: 'p_source' });
   });
 });
+
+/**
+ * L'effet d'aura annonce a la revelation.
+ *
+ * `docs/01-game-design.md` §3 : l'amplificateur s'affiche sous le nom de son
+ * effet offert, et un skin paye habille UN niveau. Le serveur est le seul a
+ * pouvoir le dire — il connait le palier joue ET ce que le joueur possede.
+ *
+ * Il l'etait deja pour les effets offerts. Ce qui manquait, c'est le skin :
+ * trois cosmetiques a 400 et 850 pieces qu'aucun adversaire n'aurait jamais
+ * vus. Et le cosmetique arrivait par `choice:lock`, donc **declare par le
+ * client**, sans aucun controle de possession.
+ */
+describe('effet d aura a la revelation', () => {
+  const revealed = (seat: Seat): string => {
+    const [result] = notifier.to(SEATS[seat], 'round:result') as [ServerMessage<'round:result'>];
+    return result.sides[seat].cosmetic.effectId;
+  };
+
+  it('annonce l effet offert du palier joue', () => {
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', { ...choice(1), amplifier: 2 }, null);
+    runtime.lockChoice(MATCH_ID, 'b', { ...choice(1), amplifier: 0 }, null);
+    expect(revealed('a')).toBe('fx.lightning');
+    expect(revealed('b')).toBe('fx.glow');
+  });
+
+  it('annonce le skin possede, au niveau qu il habille', () => {
+    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: ['fx.shock'], dances: {} });
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', { ...choice(1), amplifier: 2 }, null);
+    runtime.lockChoice(MATCH_ID, 'b', { ...choice(1), amplifier: 2 }, null);
+    // Meme palier, deux auras differentes : l'un a paye, l'autre non.
+    expect(revealed('a')).toBe('fx.shock');
+    expect(revealed('b')).toBe('fx.lightning');
+  });
+
+  /*
+    Le coeur de la regle, et ce qui la distingue d'un skin permanent : jouer un
+    autre palier montre l'effet de CE palier. Sinon l'amplificateur cesse
+    d'etre lisible — son nom est celui de son effet.
+  */
+  it('ne montre pas le skin a un autre palier', () => {
+    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: ['fx.shock'], dances: {} });
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', { ...choice(1), amplifier: 4 }, null);
+    runtime.lockChoice(MATCH_ID, 'b', { ...choice(1), amplifier: 0 }, null);
+    expect(revealed('a')).toBe('fx.galaxy');
+  });
+});

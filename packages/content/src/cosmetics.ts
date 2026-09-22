@@ -162,6 +162,47 @@ export function effectsForLevel(level: AmplifierLevel): readonly AuraEffect[] {
   return AURA_EFFECTS.filter((effect) => effect.level === level);
 }
 
+/**
+ * L'effet que ce joueur voit tourner autour de son aura a ce niveau.
+ *
+ * `docs/01-game-design.md` §3 : un amplificateur s'affiche sous le nom de son
+ * effet offert, et « Flammes, Onde de choc, Aura noire deviennent des skins
+ * cosmetiques d'un NIVEAU ». Un skin achete habille donc UN niveau — celui
+ * qu'il a toujours habille depuis le prototype, ou il portait ce cout-la.
+ *
+ * Deux consequences, et les deux comptent :
+ *
+ * - le skin apparait au moment ou le joueur l'a paye, c'est-a-dire quand il
+ *   depense pour cet amplificateur, et pas en fond permanent ou il finirait
+ *   par ne plus se voir ;
+ * - l'amplificateur reste LISIBLE a l'ecran. Son nom est celui de son effet :
+ *   un skin qui deborderait sur les cinq niveaux effacerait l'information que
+ *   la revelation existe pour donner.
+ *
+ * Un identifiant inconnu — vieux catalogue, message bricole — ne fait pas
+ * disparaitre l'aura : on retombe sur l'effet offert.
+ */
+export function effectForLevel(level: AmplifierLevel, ownedIds: readonly string[]): AuraEffect {
+  const owned = new Set(ownedIds);
+  const skin = effectsForLevel(level).find(
+    (candidate) => candidate.rarity !== 'default' && owned.has(candidate.id),
+  );
+  return skin ?? defaultEffectForLevel(level);
+}
+
+/**
+ * La cle d'un mouvement dans la table des danses equipees.
+ *
+ * Elle vivait en UNE copie, cote client, alors que le format est documente
+ * deux fois — dans `LoadoutData.dances` et dans le schema Prisma — et lu des
+ * deux cotes. Le serveur doit y retrouver la danse equipee pour l'annoncer a
+ * la revelation : deux conventions qui divergent ne produiraient aucune
+ * erreur, seulement une danse qui ne s'affiche jamais chez l'adversaire.
+ */
+export function danceKey(move: { readonly style: string; readonly tier: number }): string {
+  return `${move.style}.t${String(move.tier)}`;
+}
+
 /** L'effet offert a tous pour un niveau d'amplificateur. */
 export function defaultEffectForLevel(level: AmplifierLevel): AuraEffect {
   const effect = effectsForLevel(level).find((candidate) => candidate.rarity === 'default');

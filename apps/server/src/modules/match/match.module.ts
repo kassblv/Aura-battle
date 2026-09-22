@@ -35,7 +35,9 @@ import {
 } from '../rating/domain/ports.js';
 import { MatchGateway } from './adapters/match.gateway.js';
 import { PrismaPlayerDirectory } from './adapters/prisma-directory.js';
+import { PrismaInventoryRepository } from '../inventory/adapters/prisma-inventory.repository.js';
 import { PLAYER_DIRECTORY } from './domain/directory.js';
+import { PLAYER_WARDROBE, type PlayerWardrobe } from './domain/wardrobe.js';
 import { PrismaMatchRepository } from './adapters/prisma-match.repository.js';
 import { SocketNotifier } from './adapters/socket-notifier.js';
 import { SystemMatchClock, TimeoutScheduler } from './adapters/timeout-scheduler.js';
@@ -209,6 +211,27 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
           ghostRecorder,
         ),
     },
+    PrismaInventoryRepository,
+    /**
+     * Ce que porte un joueur, lu a sa connexion.
+     *
+     * Le module `match` depend du PORT : il n'a que faire d'une bourse, d'un
+     * catalogue ou d'un prix. Il lui faut l'apparence a annoncer a la
+     * revelation, et rien d'autre. L'adaptateur de l'inventaire fait deja
+     * cette lecture — on la reutilise plutot que d'en ecrire une seconde qui
+     * finirait par diverger.
+     */
+    {
+      provide: PLAYER_WARDROBE,
+      inject: [PrismaInventoryRepository],
+      useFactory: (inventory: PrismaInventoryRepository): PlayerWardrobe => ({
+        async wearingOf(playerId: string) {
+          const { owned, loadout } = await inventory.read(playerId);
+          return { ownedEffects: owned, dances: loadout?.dances ?? {} };
+        },
+      }),
+    },
+
     PrismaPlayerDirectory,
     // Jeton nomme : la passerelle depend du **port**, pas de Prisma. Le nom
     // affiche est la seule chose que `match` sait d'un joueur.

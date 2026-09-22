@@ -134,13 +134,23 @@ describe('choice:lock', () => {
     ).toBe(true);
   });
 
-  it('accepte un cosmetique optionnel', () => {
+  /*
+    L'apparence ne vient plus du client, et le schema le refuse desormais.
+
+    Le champ existait, facultatif, et le serveur relayait son contenu tel quel
+    a l'adversaire a la revelation — sans controle de possession. N'importe
+    qui pouvait porter le skin a 850 pieces en fabriquant un message. Regle
+    d'or n°1 : le client n'envoie que des intentions, et une apparence n'en
+    est pas une. Le serveur la resout seul, a partir du palier joue et de ce
+    que la base dit du joueur.
+  */
+  it('refuse un cosmetique : l apparence ne vient plus du client', () => {
     expect(
       parseClientMessage('choice:lock', {
         ...validLock,
         cosmetic: { animationId: 'anim.provoc.t2.mewing', effectId: 'fx.sparks' },
       }).success,
-    ).toBe(true);
+    ).toBe(false);
   });
 
   it('refuse un style ou un palier inconnu', () => {

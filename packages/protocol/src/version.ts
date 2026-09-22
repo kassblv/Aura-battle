@@ -6,7 +6,16 @@
  * difference mineure ou corrective reste compatible — un champ ajoute ne casse
  * pas un client qui l'ignore.
  */
-export const PROTOCOL_VERSION = '1.0.0';
+/*
+  1.1.0 — `choice:lock` a PERDU son champ `cosmetic`.
+
+  Retirer un champ d'un `strictObject` est en theorie une rupture : un client
+  qui l'envoyait serait desormais refuse. Aucun ne l'envoyait — il etait
+  facultatif et le client n'a jamais rempli ce champ — donc personne ne casse.
+  Passer en 2.0.0 aurait renvoye tous les joueurs sur un ecran de mise a jour
+  pour un champ que pas un seul message ne portait.
+*/
+export const PROTOCOL_VERSION = '1.1.0';
 
 const MAJOR = /^(\d+)\./;
 

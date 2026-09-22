@@ -26,6 +26,8 @@ import {
   UNKNOWN_PLAYER_NAME,
   type PlayerDirectory,
 } from '../domain/directory.js';
+import { PLAYER_WARDROBE, type PlayerWardrobe } from '../domain/wardrobe.js';
+import type { SeatWearing } from '../application/match-runtime.js';
 import { MatchmakingQueue } from '../../matchmaking/application/queue.service.js';
 import { RATING_DIRECTORY, type RatingDirectory } from '../../rating/domain/ports.js';
 import { InviteService } from '../application/invites.js';
@@ -139,6 +141,7 @@ export class MatchGateway implements OnGatewayConnection {
     @Inject(MatchmakingQueue) private readonly queue: MatchmakingQueue,
     @Inject(PLAYER_DIRECTORY) private readonly directory: PlayerDirectory,
     @Inject(RATING_DIRECTORY) private readonly ratings: RatingDirectory,
+    @Inject(PLAYER_WARDROBE) private readonly wardrobe: PlayerWardrobe,
     /**
      * Mesure du temps de traitement (jalon M7). Eteinte, chacun de ses appels
      * se reduit a un test de booleen.
@@ -219,6 +222,27 @@ export class MatchGateway implements OnGatewayConnection {
    * (`SocketNotifier.setLeague`, port `PresenceLeagueCache`) — cette lecture
    * ne sert donc qu'une fois par session, au pire.
    */
+  /**
+   * Ce que porte le joueur, ou rien de particulier.
+   *
+   * Meme raison, meme forme et meme repli que le nom et la ligue : lue une
+   * fois a la connexion pour que l'ouverture d'un match n'ait jamais a
+   * attendre. Une base qui hoquete coute une apparence par defaut, jamais une
+   * socket refusee — et cette apparence par defaut est exactement ce que tout
+   * le monde portait avant la boutique.
+   */
+  private async wearingOf(playerId: string): Promise<SeatWearing> {
+    try {
+      return await this.wardrobe.wearingOf(playerId);
+    } catch (cause) {
+      this.logger.warn(
+        `inventaire indisponible a la connexion de ${playerId} : ${describeCause(cause)}`,
+        'MatchGateway',
+      );
+      return { ownedEffects: [], dances: {} };
+    }
+  }
+
   private async leagueOf(playerId: string): Promise<string> {
     try {
       return (await this.ratings.leaguesOf([playerId], Date.now())).get(playerId) ?? DEFAULT_LEAGUE;
@@ -423,16 +447,17 @@ export class MatchGateway implements OnGatewayConnection {
      * autre, et elle vient avant. Le commentaire qui l'affirmait etait faux, et
      * c'est exactement ce que le filtre pose en tete rend sans consequence.
      */
-    const [displayName, league] = await Promise.all([
+    const [displayName, league, wearing] = await Promise.all([
       this.displayNameOf(state.playerId),
       this.leagueOf(state.playerId),
+      this.wearingOf(state.playerId),
     ]);
 
     // Parti pendant la lecture : l'enregistrer maintenant laisserait une
     // session fantome que `isConnected` declarerait vivante pour toujours.
     if (!socket.connected) return;
 
-    this.notifier.register(state.playerId, socket, displayName, league);
+    this.notifier.register(state.playerId, socket, displayName, league, wearing);
 
     // Revenu a temps : le compte a rebours d'abandon est desarme.
     this.runtime.notePlayerReconnected(state.playerId);
@@ -712,7 +737,6 @@ export class MatchGateway implements OnGatewayConnection {
       seat,
       { move: body.move, amplifier: body.amp, useUltimate: body.ult },
       timingTapAtMs,
-      body.cosmetic,
     );
   }
 

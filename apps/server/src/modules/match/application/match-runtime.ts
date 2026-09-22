@@ -1,4 +1,4 @@
-import { defaultAnimationFor, defaultEffectForLevel } from '@aura/content';
+import { danceKey, defaultAnimationFor, effectForLevel } from '@aura/content';
 import type { ErrorCode, ServerMessage } from '@aura/protocol';
 import {
   BALANCE,
@@ -66,6 +66,36 @@ const NEUTRAL_RATING: Readonly<Record<Seat, SeatRatingOutcome>> = {
  * c'est ce qui tient la regle d'or n°4.
  */
 
+/**
+ * Ce qu'un siege porte, resolu a la connexion et fige pour le match.
+ *
+ * **Le serveur le sait, le client ne le dit pas.** Le cosmetique arrivait
+ * avant dans `choice:lock`, donc declare par le client et relaye sans aucun
+ * controle de possession : n'importe qui pouvait porter le skin a 850 pieces.
+ * Regle d'or n°1 — le client n'envoie que des intentions, et une apparence
+ * n'en est pas une, c'est un etat que la base detient deja.
+ *
+ * Fige pour la duree du match, a dessein : changer de tenue en pleine manche
+ * ferait changer d'aura entre la revelation et le choc.
+ */
+export interface SeatWearing {
+  /**
+   * Les effets d'aura possedes, pas celui qui est equipe.
+   *
+   * Un skin habille UN niveau d'amplificateur (docs/01 §3), et le niveau joue
+   * n'est connu qu'a la revelation : il n'y a donc rien a equiper d'avance.
+   * Posseder, c'est porter — au niveau concerne, et seulement la.
+   */
+  readonly ownedEffects: readonly string[];
+  /** Danse equipee par mouvement, indexee `<style>.t<palier>`. */
+  readonly dances: Readonly<Record<string, string>>;
+}
+
+const NOTHING_WORN: SeatWearing = Object.freeze({
+  ownedEffects: Object.freeze([]),
+  dances: Object.freeze({}),
+});
+
 export interface MatchSeats {
   readonly a: string;
   readonly b: string;
@@ -86,7 +116,7 @@ interface LiveMatch {
   readonly startedAtMs: number;
   state: MatchState;
   /** Cosmetiques de la manche en cours, par siege. */
-  cosmetics: Record<Seat, Cosmetic | null>;
+  wearing: Record<Seat, SeatWearing>;
   /**
    * Dernier `seq` traite par siege.
    *
@@ -282,6 +312,21 @@ export class MatchRuntime {
   ) {}
 
   /**
+   * Enregistre ce que porte un siege.
+   *
+   * Appele par l'ouvreur juste apres la creation, avec ce que la presence a
+   * resolu a la connexion. Separe de `createMatch` pour ne pas obliger ses
+   * trois appelants a porter une donnee dont deux n'ont que faire — et parce
+   * qu'un match sans cette information reste un match qui marche : chacun y
+   * porte l'effet offert de son palier, comme tout le monde avant la boutique.
+   */
+  setWearing(matchId: string, seat: Seat, wearing: SeatWearing): void {
+    const match = this.matches.get(matchId);
+    if (match === undefined) return;
+    match.wearing[seat] = wearing;
+  }
+
+  /**
    * Signale la deconnexion d'un joueur.
    *
    * Le match **continue** : couper tout de suite punirait quelqu'un qui passe
@@ -433,7 +478,7 @@ export class MatchRuntime {
       mode: input.mode ?? 'INVITE',
       startedAtMs: this.clock.now(),
       state: step.state,
-      cosmetics: { a: null, b: null },
+      wearing: { a: NOTHING_WORN, b: NOTHING_WORN },
       lastSeq: { a: 0, b: 0 },
       journal: [],
       rejected: { a: 0, b: 0 },
@@ -550,13 +595,7 @@ export class MatchRuntime {
     return tapAtMs <= elapsedMs + LOCK_TOLERANCE_MS + CLOCK_ALLOWANCE_MS;
   }
 
-  lockChoice(
-    matchId: string,
-    seat: Seat,
-    choice: Choice,
-    timingTapAtMs: number | null,
-    cosmetic?: Cosmetic,
-  ): void {
+  lockChoice(matchId: string, seat: Seat, choice: Choice, timingTapAtMs: number | null): void {
     const match = this.matches.get(matchId);
     if (match === undefined) return;
 
@@ -568,8 +607,6 @@ export class MatchRuntime {
       match.impossibleTaps[seat] += 1;
     }
 
-    // Le cosmetique n'est retenu que si le verrouillage est accepte : sinon un
-    // choix refuse changerait quand meme l'apparence.
     const before = match.state.pending[seat].locked;
     this.apply(match, {
       type: 'CHOICE_LOCKED',
@@ -583,9 +620,6 @@ export class MatchRuntime {
     // seul fait — ni le mouvement, ni le timing, ni le cout.
     const after = this.matches.get(matchId)?.state.pending[seat].locked;
     if (before === null && after !== null && after !== undefined) {
-      if (cosmetic !== undefined) {
-        match.cosmetics[seat] = cosmetic;
-      }
       const opponent = opponentOf(seat);
       this.notifier.send(match.seats[opponent], 'opponent:locked', {
         matchId,
@@ -695,18 +729,30 @@ export class MatchRuntime {
     }
   }
 
-  /** Cosmetique effectif d'un siege : celui equipe, sinon celui offert a tous. */
+  /**
+   * Ce que l'adversaire voit de ce siege a la revelation.
+   *
+   * Resolu **ici**, a partir du palier reellement joue et de ce que le joueur
+   * possede en base. Deux choses que le client ne peut pas mentir, parce
+   * qu'il ne les fournit plus : le cosmetique arrivait avant dans
+   * `choice:lock`, sans controle de possession.
+   *
+   * L'effet suit le NIVEAU joue (docs/01 §3) : un skin achete habille un seul
+   * amplificateur. C'est ce qui le fait apparaitre au moment ou on l'a paye,
+   * et c'est aussi ce qui garde l'amplificateur lisible — son nom est celui de
+   * son effet, et un skin qui deborderait sur les cinq niveaux effacerait
+   * l'information que la revelation existe pour donner.
+   */
   private cosmeticOf(match: LiveMatch, seat: Seat, result: RoundResult): Cosmetic {
-    const chosen = match.cosmetics[seat];
-    if (chosen !== null) return chosen;
-
     const locked = match.state.pending[seat].locked;
     const move = locked?.choice.move ?? FALLBACK_MOVE;
     const amplifier = locked?.choice.amplifier ?? 0;
+    const wearing = match.wearing[seat];
     void result;
+
     return {
-      animationId: defaultAnimationFor(move),
-      effectId: defaultEffectForLevel(amplifier).id,
+      animationId: wearing.dances[danceKey(move)] ?? defaultAnimationFor(move),
+      effectId: effectForLevel(amplifier, wearing.ownedEffects).id,
     };
   }
 
@@ -784,9 +830,6 @@ export class MatchRuntime {
         rechargeTaps: pending.taps.length,
       });
     }
-
-    // La manche est jouee : les cosmetiques de la suivante seront redemandes.
-    match.cosmetics = { a: null, b: null };
   }
 
   /**
