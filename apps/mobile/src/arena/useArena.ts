@@ -448,9 +448,19 @@ export function useArena(
       const auraHype = Math.max(scene?.hype ?? 0.2, director.hype);
       for (const seat of ['a', 'b'] as const) {
         arena.auras[seat].set({
-          // L effet equipe, tenu par le serveur. Le repli n est plus une
-          // regle, c est ce que porte quelqu un qui n a rien choisi.
-          effectId: scene?.fighters[seat].look.auraEffect ?? DEFAULT_AURA_EFFECT,
+          /*
+            L effet annonce par le serveur avec le resultat, quand il existe.
+
+            Il depend du palier d amplificateur joue, que le serveur seul
+            connait — et qu il n envoie qu a `round:result`, une fois les deux
+            choix publics. Avant la revelation, `auraEffectId` est absent et
+            les deux sieges portent le meme effet : la regle d or n°4 tient
+            parce qu il n y a rien a dire, pas parce qu on evite de le dire.
+          */
+          effectId:
+            scene?.fighters[seat].auraEffectId ??
+            scene?.fighters[seat].look.auraEffect ??
+            DEFAULT_AURA_EFFECT,
           color: scene?.fighters[seat].look.aura ?? '#ffcf3f',
           intensity: auraIntensity({
             showcase: solo,

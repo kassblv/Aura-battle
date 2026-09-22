@@ -2,7 +2,7 @@ import type { Seat } from '@aura/rules';
 import { animationFor, systemAnimation } from '../content/animations.js';
 import type { Look } from '../app/wardrobe.js';
 import type { OnlinePhase, OnlineState } from './online.js';
-import type { Presentation, PresentOptions } from './presentation.js';
+import type { FighterPresentation, Presentation, PresentOptions } from './presentation.js';
 
 /**
  * De l etat d un match en ligne a ce que l arene doit afficher.
@@ -80,11 +80,29 @@ export function presentOnline(
     return animationFor(side.move, side.cosmetic.animationId).id;
   };
 
+  /*
+    L effet d aura suit exactement l animation : meme message, meme condition.
+
+    Il depend du palier joue, donc le montrer avant la revelation dirait le
+    choix secret (regle d or n°4). L aligner sur `animationOf` plutot que sur
+    une condition ecrite a cote est ce qui garantit que les deux ne peuvent
+    pas se desynchroniser — un jour ou l autre, l une des deux conditions
+    aurait bouge sans l autre.
+  */
+  const effectOf = (rig: Seat): string | undefined =>
+    round === null ? undefined : round.sides[seatOfRig[rig]].cosmetic.effectId;
+
+  const present = (rig: Seat, look: Look): FighterPresentation => {
+    const effectId = effectOf(rig);
+    return {
+      animationId: animationOf(rig),
+      look,
+      ...(effectId === undefined ? {} : { auraEffectId: effectId }),
+    };
+  };
+
   return {
-    fighters: {
-      a: { animationId: animationOf('a'), look: looks.a },
-      b: { animationId: animationOf('b'), look: looks.b },
-    },
+    fighters: { a: present('a', looks.a), b: present('b', looks.b) },
     hype: HYPE_BY_PHASE[state.phase],
   };
 }

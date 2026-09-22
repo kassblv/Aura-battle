@@ -18,6 +18,16 @@ import type { Look } from '../app/wardrobe.js';
 export interface FighterPresentation {
   readonly animationId: string;
   readonly look: Look;
+  /**
+   * L effet d aura annonce par le serveur avec le resultat de la manche.
+   *
+   * **Absent tant que la manche n est pas revelee**, et c est la regle d or
+   * n°4 : l effet depend du palier d amplificateur joue, donc le montrer avant
+   * `round:result` dirait le choix secret de l adversaire. Il apparait a la
+   * meme seconde que son animation, et sous la meme condition — les deux
+   * viennent du meme message, celui ou les deux choix deviennent publics.
+   */
+  readonly auraEffectId?: string;
 }
 
 export interface Presentation {

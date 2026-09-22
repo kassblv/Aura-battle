@@ -6,16 +6,25 @@ import { presentOnline } from './onlinePresentation.js';
 
 const looks = { a: defaultLook(), b: { ...defaultLook(), outfit: 'outfit.rouge' } };
 
+/*
+  L'effet est un parametre, et il l'est parce qu'il ne l'etait pas.
+
+  Les deux cotes portaient le meme `effect.none` code en dur. Un test
+  d'inversion des sieges comparait donc deux valeurs identiques : il passait
+  aussi bien avec le bon code qu'avec le mauvais — verifie en cassant
+  l'inversion exprès, et il restait vert.
+*/
 function side(
   style: 'calme' | 'hype' | 'provoc',
   tier: 0 | 1 | 2 | 3 | 4,
   animationId: string,
+  effectId = 'effect.none',
 ): ServerMessage<'round:result'>['sides']['a'] {
   return {
     move: { style, tier },
     amp: 0,
     ult: false,
-    cosmetic: { animationId, effectId: 'effect.none' },
+    cosmetic: { animationId, effectId },
     recharge: { points: 0, bestCombo: 0, boostPct: 0, ultGain: 0, energyGain: 0 },
     timing: { quality: 'good', error: 0.1 },
     repeat: false,
@@ -33,8 +42,8 @@ const ROUND: ServerMessage<'round:result'> = {
   matchId: 'm_1',
   round: 1,
   sides: {
-    a: side('hype', 4, 'anim.hype.t4.boat'),
-    b: side('calme', 3, 'anim.calme.t3.meditate'),
+    a: side('hype', 4, 'anim.hype.t4.boat', 'fx.dark'),
+    b: side('calme', 3, 'anim.calme.t3.meditate', 'fx.glow'),
   },
   winner: 'a',
   roundsWon: { a: 1, b: 0 },
@@ -89,6 +98,49 @@ describe('presentOnline', () => {
     const scene = presentOnline(state('choice', { opponentLocked: true }), looks);
     expect(scene.fighters.a.animationId).toBe('anim.system.none.charge');
     expect(scene.fighters.b.animationId).toBe('anim.system.none.charge');
+  });
+
+  /**
+   * L effet d aura est aussi un canal, et il porte le palier joue.
+   *
+   * L amplificateur s affiche sous le nom de son effet (docs/01 §3) : montrer
+   * l effet avant `round:result`, c est annoncer le palier — donc une partie
+   * du choix secret. Regle d or n°4 : le protocole ne l envoie qu a la
+   * revelation, et l ecran ne doit pas le deduire plus tot.
+   */
+  it('ne montre aucun effet d aura avant la revelation', () => {
+    for (const scene of [
+      presentOnline(state('recharge', { lastRound: ROUND, round: 2 }), looks),
+      presentOnline(state('choice', { opponentLocked: true }), looks),
+      presentOnline(state('intro'), looks),
+    ]) {
+      expect(scene.fighters.a.auraEffectId).toBeUndefined();
+      expect(scene.fighters.b.auraEffectId).toBeUndefined();
+    }
+  });
+
+  /*
+    A la revelation, chacun porte l effet que LE SERVEUR a resolu pour lui —
+    celui du palier qu il a joue, ou le skin qu il a paye pour ce palier. Le
+    client ne le calcule pas : il ne connait ni le palier de l adversaire ni ce
+    que l adversaire possede, et c est tres bien ainsi.
+  */
+  it('porte l effet annonce par le serveur a la revelation', () => {
+    const scene = presentOnline(state('reveal', { lastRound: ROUND }), looks);
+    expect(scene.fighters.a.auraEffectId).toBe(ROUND.sides.a.cosmetic.effectId);
+    expect(scene.fighters.b.auraEffectId).toBe(ROUND.sides.b.cosmetic.effectId);
+  });
+
+  /*
+    Le siege B lit `sides.b`, mais le RIG b est l adversaire de celui qui
+    regarde : assis en b, c est `sides.a` qui doit habiller le rig b. La meme
+    inversion que pour l animation — et la rater ferait porter a chacun l aura
+    de l autre, un defaut que seul un joueur sur deux verrait.
+  */
+  it('donne a chaque rig l effet de son siege, vu du bon cote', () => {
+    const scene = presentOnline(state('reveal', { seat: 'b', lastRound: ROUND }), looks);
+    expect(scene.fighters.a.auraEffectId).toBe(ROUND.sides.b.cosmetic.effectId);
+    expect(scene.fighters.b.auraEffectId).toBe(ROUND.sides.a.cosmetic.effectId);
   });
 
   it('joue les deux mouvements a la revelation', () => {

@@ -14,7 +14,38 @@ describe('shopSections', () => {
       'dance',
       'outfit',
       'hair',
+      'effect',
       'aura',
+    ]);
+  });
+
+  /*
+    Les trois effets payants etaient invendables : le catalogue les portait,
+    le serveur savait les vendre, le protocole les transportait, l'arene savait
+    les dessiner — et aucun ecran ne les montrait. Ils sont les plus
+    spectaculaires du jeu, donc exactement ce que la boutique existe pour
+    vendre (regle d'or n°3).
+  */
+  it('met en vente les effets d aura payants', () => {
+    const effets = shopSections().find((section) => section.id === 'effect');
+    expect(effets?.items.map((item) => item.id).sort()).toEqual([
+      'fx.dark',
+      'fx.flames',
+      'fx.shock',
+    ]);
+  });
+
+  /*
+    Le niveau fait partie de ce qu'on achete : un skin habille UN amplificateur
+    (docs/01 §3). Le taire laisserait croire a un effet permanent, et le joueur
+    se sentirait vole la premiere fois qu'il jouerait un autre palier.
+  */
+  it('dit a quel amplificateur chaque effet appartient', () => {
+    const effets = shopSections().find((section) => section.id === 'effect');
+    expect(effets?.items.map((item) => item.name)).toEqual([
+      'Flammes · A1',
+      'Onde de choc · A2',
+      'Aura noire · A3',
     ]);
   });
 

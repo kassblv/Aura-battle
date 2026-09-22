@@ -1,4 +1,4 @@
-import { AURA_COLORS, HAIRSTYLES, OUTFITS } from '@aura/content';
+import { AURA_COLORS, AURA_EFFECTS, HAIRSTYLES, OUTFITS } from '@aura/content';
 import { memeGallery } from './memes.js';
 import type { Wallet } from './profile.js';
 
@@ -11,7 +11,7 @@ import type { Wallet } from './profile.js';
  * peut ainsi remonter jusqu a l etalage le jour ou le catalogue gagne un champ.
  */
 
-export type ShopSectionId = 'dance' | 'outfit' | 'hair' | 'aura';
+export type ShopSectionId = 'dance' | 'outfit' | 'hair' | 'aura' | 'effect';
 
 export interface ShopItem {
   readonly id: string;
@@ -35,6 +35,19 @@ export interface ShopState {
 }
 
 const HAIR_SWATCH = '#1b1426';
+
+/**
+ * Le symbole d'un effet d'aura payant.
+ *
+ * Une pastille de couleur ne dirait rien : un effet est un MOUVEMENT de
+ * particules, pas une teinte. Le symbole en donne l'idee, et le personnage a
+ * gauche donnera le reste — c'est tout l'interet d'une boutique ou l'on essaie.
+ */
+const EFFECT_GLYPHS: Readonly<Record<string, string>> = {
+  'fx.flames': '🔥',
+  'fx.shock': '💥',
+  'fx.dark': '🖤',
+};
 
 /** Le style d'une danse se lit d'un coup d'oeil ; son nom, non. */
 const STYLE_GLYPHS = { calme: '🧊', hype: '🔥', provoc: '😏' } as const;
@@ -88,6 +101,31 @@ export function shopSections(): readonly ShopSection[] {
         name: hair.name.fr,
         swatch: HAIR_SWATCH,
         price: hair.price,
+      })),
+    },
+    /**
+     * Les effets d'aura.
+     *
+     * Huit existaient au catalogue, le serveur savait les vendre, le protocole
+     * les transportait et l'arene savait les dessiner — et aucun ecran ne les
+     * montrait. Trois cosmetiques inatteignables, les plus spectaculaires du
+     * jeu.
+     *
+     * Le titre dit ce qu'on achete, parce que ca ne se devine pas : un skin
+     * habille UN amplificateur (docs/01 §3). Acheter les Flammes ne repeint
+     * pas toute la partie — ca change ce que l'adversaire voit quand on joue
+     * ce palier-la, au moment de la revelation.
+     */
+    {
+      id: 'effect',
+      title: 'Effets d’aura · un amplificateur chacun',
+      items: AURA_EFFECTS.filter((effect) => effect.price > 0).map((effect) => ({
+        id: effect.id,
+        // « Flammes · A1 » : le niveau fait partie de ce qu'on achete, et le
+        // taire laisserait croire a un effet permanent.
+        name: `${effect.name.fr} · A${String(effect.level)}`,
+        glyph: EFFECT_GLYPHS[effect.id] ?? '✨',
+        price: effect.price,
       })),
     },
     {
