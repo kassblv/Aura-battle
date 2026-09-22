@@ -159,5 +159,27 @@ Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de c
 
 - **Classement :** voir `05-matchmaking-ranking.md`.
 - **Défis quotidiens** (validés côté serveur) : contres, parfaits, victoires, points de recharge, combos.
+
+  **Trois par jour**, tirés d'une réserve de dix, jamais deux fois la même
+  mesure dans la journée — trois objectifs qui comptent la même chose feraient
+  une journée à objectif unique, et un joueur qui n'aime pas cette mesure-là
+  n'aurait rien à faire ce jour-là. Le tirage est **déterministe à partir du
+  numéro du jour** : rien de la sélection n'a besoin d'être stocké, et un
+  redémarrage du serveur ne change pas la journée en cours.
+
+  **Minuit UTC pour tout le monde.** Un découpage par fuseau obligerait à
+  stocker celui de chaque joueur et à décider ce qui arrive quand il voyage —
+  deux problèmes créés pour une journée qui commence de toute façon au moment
+  où le joueur ouvre le jeu.
+
+  **Récompense : de 30 à 95 pièces douces**, soit 145 à 235 par journée
+  complète. Calé sur la boutique : une danse d'entrée vaut 90, une tenue
+  moyenne 280, l'article le plus cher 1 500. Une journée entièrement remplie
+  paie donc à peu près une danse d'entrée ; une semaine complète, l'article le
+  plus cher du catalogue. C'est un rythme, pas une grille de production.
+
+  **Un combo est un maximum, pas une somme.** « Atteindre un combo de 14 » ne
+  s'obtient pas en cumulant quatre combos de trois. Le catalogue porte donc
+  `accumulate: 'best'` sur cette mesure et `'sum'` sur les quatre autres.
 - **Monnaie douce** gagnée en jouant, **monnaie premium** achetée ; toutes deux ne servent qu'au cosmétique et au passe de saison.
 - **Solo :** entraînement contre les 4 IA du prototype, adaptées aux règles ci-dessus (tableaux d'IA dans `packages/rules/src/ai`).

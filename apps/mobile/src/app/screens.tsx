@@ -104,15 +104,27 @@ export function HomeScreen({
         <span className="tag__lp">{profile.lp}</span>
       </button>
 
+      {/*
+        Une seule bourse affichee, et c'est deliberé.
+
+        La monnaie premium s'ACHETE (docs/01 §11) : il n'y a aucun moyen d'en
+        gagner, et les achats integres n'existent pas encore. Un « ◆ 0 » pose
+        a cote du reste est donc une promesse que le jeu ne tient pas — le
+        joueur cherche comment en obtenir et ne trouve rien. On la montrera le
+        jour ou elle voudra dire quelque chose ; elle reste dans `Wallet`, que
+        le serveur tient deja.
+      */}
       <div className="wallet">
         <span className="coin">
           <b aria-hidden="true">◈</b>
           {profile.wallet.soft}
         </span>
-        <span className="coin coin--hard">
-          <b aria-hidden="true">◆</b>
-          {profile.wallet.hard}
-        </span>
+        {profile.wallet.hard > 0 && (
+          <span className="coin coin--hard">
+            <b aria-hidden="true">◆</b>
+            {profile.wallet.hard}
+          </span>
+        )}
       </div>
 
       {/*
