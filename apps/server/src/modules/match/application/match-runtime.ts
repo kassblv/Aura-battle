@@ -1,4 +1,11 @@
 import { danceKey, defaultAnimationFor, effectForLevel } from '@aura/content';
+import type { ChallengeTracker } from '../../challenges/domain/ports.js';
+import {
+  emptyContribution,
+  mergeContributions,
+  roundContribution,
+  type MatchContribution,
+} from '../../challenges/domain/progress.js';
 import type { ErrorCode, ServerMessage } from '@aura/protocol';
 import {
   BALANCE,
@@ -117,6 +124,14 @@ interface LiveMatch {
   state: MatchState;
   /** Cosmetiques de la manche en cours, par siege. */
   wearing: Record<Seat, SeatWearing>;
+  /**
+   * Ce que le match a rapporte a chaque siege, pour les defis quotidiens.
+   *
+   * Accumule MANCHE PAR MANCHE, et pas reconstruit a la fin : les chiffres de
+   * recharge — points et meilleur combo — vivent dans `pending`, qui est remis
+   * a zero au tour suivant. A la fin du match ils n'existent plus nulle part.
+   */
+  contributions: Record<Seat, MatchContribution>;
   /**
    * Dernier `seq` traite par siege.
    *
@@ -309,6 +324,11 @@ export class MatchRuntime {
      * serveur sans fantomes reste un serveur qui marche.
      */
     private readonly ghostRecorder: GhostRecorder | null = null,
+    /**
+     * Defis quotidiens (docs/01 §11). Absent, on ne compte rien — un serveur
+     * sans defis reste un serveur qui marche.
+     */
+    private readonly challengeTracker: ChallengeTracker | null = null,
   ) {}
 
   /**
@@ -479,6 +499,7 @@ export class MatchRuntime {
       startedAtMs: this.clock.now(),
       state: step.state,
       wearing: { a: NOTHING_WORN, b: NOTHING_WORN },
+      contributions: { a: emptyContribution(), b: emptyContribution() },
       lastSeq: { a: 0, b: 0 },
       journal: [],
       rejected: { a: 0, b: 0 },
@@ -757,6 +778,29 @@ export class MatchRuntime {
   }
 
   private announceResult(match: LiveMatch, result: RoundResult): void {
+    /*
+      Les defis avancent ICI, pas a la fin du match.
+
+      Les chiffres de recharge — points, meilleur combo — vivent dans
+      `pending`, remis a zero des la manche suivante. A la fin du match ils
+      n'existent plus nulle part : les compter plus tard reviendrait a les
+      compter a zero, ce qui rendrait deux defis sur cinq impossibles a finir
+      sans qu'aucune erreur ne soit levee.
+    */
+    for (const seat of SEATS) {
+      const outcome = result.seats[seat];
+      const recharge = match.state.pending[seat].recharge;
+      match.contributions[seat] = mergeContributions(
+        match.contributions[seat],
+        roundContribution({
+          countered: outcome.countered,
+          perfect: outcome.timing.quality === 'perfect',
+          rechargePoints: recharge?.points ?? 0,
+          bestCombo: recharge?.bestCombo ?? 0,
+        }),
+      );
+    }
+
     const sideFor = (seat: Seat): ServerMessage<'round:result'>['sides']['a'] => {
       const outcome = result.seats[seat];
       const locked = match.state.pending[seat].locked;
@@ -859,6 +903,7 @@ export class MatchRuntime {
 
     this.persist(match, result);
     this.recordGhost(match);
+    this.recordChallenges(match, result);
 
     if (this.ratingSettlement === null) {
       // Pas de classement cable (tests, ou jalon anterieur a M5) : le match
@@ -986,6 +1031,37 @@ export class MatchRuntime {
    * ne remonte jamais : perdre un enregistrement ne coute qu'un fantome de
    * moins dans la reserve.
    */
+  /**
+   * Remonte aux defis quotidiens ce que ce match a rapporte.
+   *
+   * La VICTOIRE s'ajoute ici, une seule fois : la compter par manche paierait
+   * trois fois le defi « gagner un duel » pour une seule partie, et le
+   * paierait meme a qui a perdu deux manches sur trois.
+   *
+   * Sans attendre, et sans jamais remonter d'erreur : un defi non compte est
+   * un desagrement, un `match:end` retarde par une base lente est une panne
+   * visible pour deux joueurs.
+   */
+  private recordChallenges(match: LiveMatch, result: { winner: Seat | null }): void {
+    if (this.challengeTracker === null) return;
+
+    for (const seat of SEATS) {
+      // Un fantome n'est personne : il n'a pas de defis a avancer.
+      if (match.ghost?.seat === seat) continue;
+
+      const contribution = mergeContributions(match.contributions[seat], {
+        ...emptyContribution(),
+        wins: result.winner === seat ? 1 : 0,
+      });
+
+      void this.challengeTracker
+        .recordMatch(match.seats[seat], contribution)
+        .catch((cause: unknown) => {
+          this.log?.warn(`defis non comptes pour ${match.seats[seat]} : ${describeCause(cause)}`);
+        });
+    }
+  }
+
   private recordGhost(match: LiveMatch): void {
     if (this.ghostRecorder === null) return;
     if (match.mode !== 'RANKED' || match.ghost !== null) return;

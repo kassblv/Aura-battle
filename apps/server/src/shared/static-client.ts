@@ -17,6 +17,7 @@
 export const API_PREFIXES = [
   '/admin',
   '/auth',
+  '/challenges',
   '/health',
   '/inventory',
   '/leaderboard',

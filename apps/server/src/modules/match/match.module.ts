@@ -35,6 +35,8 @@ import {
 } from '../rating/domain/ports.js';
 import { MatchGateway } from './adapters/match.gateway.js';
 import { PrismaPlayerDirectory } from './adapters/prisma-directory.js';
+import { ChallengeService } from '../challenges/application/challenges.js';
+import { ChallengesModule } from '../challenges/challenges.module.js';
 import { PrismaInventoryRepository } from '../inventory/adapters/prisma-inventory.repository.js';
 import { PLAYER_DIRECTORY } from './domain/directory.js';
 import { PLAYER_WARDROBE, type PlayerWardrobe } from './domain/wardrobe.js';
@@ -66,7 +68,7 @@ import { MatchRuntime } from './application/match-runtime.js';
 const MATCH_GAUGES = Symbol('MATCH_GAUGES');
 
 @Module({
-  imports: [AuthModule, RedisModule],
+  imports: [AuthModule, RedisModule, ChallengesModule],
   controllers: [LeaderboardController],
   providers: [
     {
@@ -187,6 +189,7 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
         RatingSettlementService,
         PinoLoggerService,
         GhostRecorderService,
+        ChallengeService,
       ],
       useFactory: (
         // Le runtime parle a des **sieges**, pas a des sockets : ce notifier-la
@@ -199,6 +202,7 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
         ratingSettlement: RatingSettlementService,
         logger: PinoLoggerService,
         ghostRecorder: GhostRecorderService,
+        challenges: ChallengeService,
       ) =>
         new MatchRuntime(
           notifier,
@@ -209,6 +213,7 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
           ratingSettlement,
           logger,
           ghostRecorder,
+          challenges,
         ),
     },
     PrismaInventoryRepository,

@@ -32,6 +32,7 @@ model Player {
   inventory     InventoryItem[]
   loadout       Loadout?
   matchSeats    MatchSeat[]
+  challenges    PlayerChallenge[]
 }
 
 /// Une facon de prouver qu'on est ce joueur.
@@ -236,6 +237,35 @@ model InventoryItem {
   item   CosmeticItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
 
   @@id([playerId, itemId])
+}
+
+/// Progression d'un defi quotidien, pour un joueur et un jour.
+///
+/// `day` est le numero de jour UTC (`dayIndexOf`), pas une date : la journee
+/// commence a la meme seconde pour tout le monde, et un entier se compare sans
+/// se demander de quel fuseau il vient.
+///
+/// La SELECTION du jour n'est pas stockee — elle se recalcule a partir de
+/// `day` (`challengesForDay`, deterministe). Seule la progression a besoin
+/// d'une ligne, et une ligne n'apparait que quand le joueur avance.
+///
+/// La cle est `(playerId, day, challengeId)` : c'est elle qui rend deux
+/// parties terminees en meme temps incapables de creer deux lignes pour le
+/// meme defi. L'upsert s'y appuie plutot que sur une lecture suivie d'une
+/// ecriture.
+model PlayerChallenge {
+  playerId    String
+  day         Int
+  challengeId String
+  progress    Int       @default(0)
+  /// Non nul des que la recompense est encaissee. Une date plutot qu'un
+  /// booleen : savoir QUAND vaut mieux que savoir seulement que oui.
+  claimedAt   DateTime?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, day, challengeId])
+  @@index([playerId, day])
 }
 
 model Loadout {

@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AdminModule } from './modules/admin/admin.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
+import { ChallengesModule } from './modules/challenges/challenges.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { MatchModule } from './modules/match/match.module.js';
 import { ConfigModule } from './shared/config.module.js';
@@ -25,6 +26,7 @@ import { MetricsModule } from './shared/metrics.module.js';
     AuthModule,
     MatchModule,
     InventoryModule,
+    ChallengesModule,
     AdminModule,
   ],
 })

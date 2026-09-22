@@ -10,6 +10,7 @@ import type {
   SeatRatingOutcome,
   TimerScheduler,
 } from '../domain/ports.js';
+import type { MatchContribution } from '../../challenges/domain/progress.js';
 import { MatchRuntime } from './match-runtime.js';
 
 /** Attend que les micro-taches en attente (les `await` de `settleAndAnnounce`) se resolvent. */
@@ -1239,5 +1240,94 @@ describe('effet d aura a la revelation', () => {
     runtime.lockChoice(MATCH_ID, 'a', { ...choice(1), amplifier: 4 }, null);
     runtime.lockChoice(MATCH_ID, 'b', { ...choice(1), amplifier: 0 }, null);
     expect(revealed('a')).toBe('fx.galaxy');
+  });
+});
+
+/**
+ * Ce que le match remonte aux defis quotidiens.
+ *
+ * Le branchement est court, et il a deux facons discretes de se tromper : le
+ * moment ou l'on compte, et ce qu'on compte comme victoire. Les deux sont
+ * invisibles sans ce test — les defis avanceraient, simplement moins qu'ils ne
+ * devraient, et personne ne pourrait dire de combien.
+ */
+describe('defis quotidiens', () => {
+  class RecordingTracker {
+    readonly seen: { playerId: string; contribution: MatchContribution }[] = [];
+    recordMatch(playerId: string, contribution: MatchContribution): Promise<void> {
+      this.seen.push({ playerId, contribution });
+      return Promise.resolve();
+    }
+  }
+
+  let tracker: RecordingTracker;
+
+  beforeEach(() => {
+    tracker = new RecordingTracker();
+    runtime = new MatchRuntime(
+      notifier,
+      scheduler,
+      clock,
+      BALANCE,
+      null,
+      null,
+      null,
+      null,
+      tracker,
+    );
+    runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS });
+  });
+
+  /** Joue jusqu'a la fin du match, `winner` remportant chaque manche. */
+  const playOut = (winner: Seat): void => {
+    for (let round = 0; round < 3 && runtime.phaseOf(MATCH_ID) !== null; round += 1) {
+      advanceTo('choice');
+      runtime.lockChoice(MATCH_ID, winner, choice(4), null);
+      runtime.lockChoice(MATCH_ID, winner === 'a' ? 'b' : 'a', choice(0), null);
+    }
+  };
+
+  it('remonte une ligne par joueur, a la fin du match', () => {
+    playOut('a');
+    expect(tracker.seen.map((entry) => entry.playerId).sort()).toEqual([SEATS.a, SEATS.b].sort());
+  });
+
+  /*
+    La victoire vaut UN, pas un par manche gagnee. Le defi « gagner un duel »
+    serait sinon paye trois fois pour une seule partie — et paye aussi a qui a
+    perdu deux manches sur trois.
+  */
+  it('compte une seule victoire, au vainqueur seul', () => {
+    playOut('a');
+    const forA = tracker.seen.find((entry) => entry.playerId === SEATS.a);
+    const forB = tracker.seen.find((entry) => entry.playerId === SEATS.b);
+    expect(forA?.contribution.wins).toBe(1);
+    expect(forB?.contribution.wins).toBe(0);
+  });
+
+  /*
+    Le coeur du branchement : les chiffres de recharge vivent dans `pending`,
+    remis a zero a la manche suivante. Compter a la fin du match les compterait
+    a zero — deux defis sur cinq deviendraient impossibles a finir, sans
+    qu'aucune erreur ne soit levee.
+  */
+  it('garde les points de recharge de chaque manche', () => {
+    advanceTo('recharge');
+    const [start] = notifier.to(SEATS.a, 'recharge:start') as [ServerMessage<'recharge:start'>];
+    const orb = start.orbs[0];
+    if (orb !== undefined) {
+      runtime.submitTaps(MATCH_ID, 'a', [{ orbIndex: orb.index, atMs: 50 }]);
+    }
+    playOut('a');
+
+    const forA = tracker.seen.find((entry) => entry.playerId === SEATS.a);
+    expect(forA?.contribution.rechargePoints).toBeGreaterThan(0);
+  });
+
+  it('ne remonte rien tant que le match n est pas fini', () => {
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', choice(4), null);
+    runtime.lockChoice(MATCH_ID, 'b', choice(0), null);
+    expect(tracker.seen).toHaveLength(0);
   });
 });
