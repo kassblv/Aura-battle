@@ -9,6 +9,7 @@ import {
 } from '@aura/rules';
 import { memo, useCallback, useEffect, useRef, useState, type JSX, type RefObject } from 'react';
 import type { MatchView } from '../match/view.js';
+import { leagueLabel } from './leagues.js';
 import {
   chargeClock,
   gaugeBands,
@@ -305,6 +306,9 @@ function MatchScreenBody({
   const cap = Math.min(BALANCE.maxRoundCost, view.me.energy ?? BALANCE.maxRoundCost);
   const armed = style !== null;
 
+  /** Ce que la partie a rapporte, ou `null` en solo — il n y a rien a crediter. */
+  const spoils = view.ended?.spoils ?? null;
+
   /**
    * Stable d un rendu a l autre : c est ce qui permet a `ControlBand` de se
    * reconnaitre. Une fonction recreee a chaque rendu suffirait a lui faire
@@ -504,6 +508,38 @@ function MatchScreenBody({
                 : view.ended.winner === null
                   ? 'Égalité'
                   : 'Défaite'}
+            </p>
+          )}
+
+          {/*
+            Ce que la partie a rapporte.
+
+            Le serveur le calculait, le creditait et l'envoyait dans
+            `match:end` — et l'ecran ne le disait pas. Un joueur gagnait des
+            pieces sans jamais l'apprendre, et decouvrait un autre total au
+            prochain passage par l'accueil. C'est pourtant la seule chose qui
+            donne une raison d'en relancer une.
+
+            Rien ne s'affiche quand il n'y a rien : « +0 ◈ » apprend a ne plus
+            lire la ligne, et le jour ou elle porte un vrai chiffre elle ne
+            sera plus lue.
+          */}
+          {spoils !== null && !spoils.empty && (
+            <p className="spoils">
+              {spoils.coins !== null && (
+                <span className="spoils__coins">
+                  <span aria-hidden="true">◈</span> +{spoils.coins}
+                </span>
+              )}
+              {spoils.lp !== null && (
+                <span className="spoils__lp" data-up={spoils.lp > 0}>
+                  {spoils.lp > 0 ? '+' : '−'}
+                  {Math.abs(spoils.lp)} LP
+                </span>
+              )}
+              {spoils.league !== null && (
+                <span className="spoils__league">{leagueLabel(spoils.league)}</span>
+              )}
             </p>
           )}
         </div>

@@ -144,6 +144,7 @@ qui ne se voient qu'en construisant l'image :
 
 - **Poser un écouteur au moment où l'on s'intéresse à un message arrive trop tard.** Une phase de match dure quelques dizaines de millisecondes en test : il faut enregistrer avec `onAny` dès la connexion et lire le journal ensuite.
 - **Un résultat de tâche mis en cache ment** quand des agents écrivent en parallèle : Turbo peut servir un typecheck calculé avant la dernière édition. `--force` avant de conclure qu'un agent s'est trompé.
+- **Un test lourd posé sur le délai par défaut passe seul et tombe sous Turbo.** Le contrôle de cadrage des 26 animations prend ~6 s au repos, pour un délai de 5 s : vert en lançant `vitest` sur le seul paquet mobile, rouge dès que `pnpm test` lance les cinq paquets en parallèle. Un test qui est lourd **par nature** porte son `timeout` explicite ; échantillonner moins pour rentrer dans le délai coûterait ce qui justifie le test.
 - **Chaque scénario doit utiliser des identifiants de joueur distincts.** Le notifier indexe les sockets par joueur et une nouvelle socket remplace l'ancienne — c'est le comportement voulu pour une reconnexion, mais deux tests qui partagent une identité se volent leurs messages.
 
 ### Interface et cascade CSS

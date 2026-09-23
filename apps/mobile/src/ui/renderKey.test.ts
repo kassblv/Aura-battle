@@ -118,8 +118,10 @@ describe('renderKey', () => {
   });
 
   it('change quand le match se termine, et selon son vainqueur', () => {
-    expect(key({ ended: { winner: 'moi' } })).not.toBe(key());
-    expect(key({ ended: { winner: null } })).not.toBe(key({ ended: { winner: 'moi' } }));
+    expect(key({ ended: { winner: 'moi', spoils: null } })).not.toBe(key());
+    expect(key({ ended: { winner: null, spoils: null } })).not.toBe(
+      key({ ended: { winner: 'moi', spoils: null } }),
+    );
   });
 
   /**

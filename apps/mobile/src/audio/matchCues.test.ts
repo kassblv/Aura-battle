@@ -120,23 +120,29 @@ describe('cuesForTransition', () => {
   });
 
   it('sonne la victoire au vainqueur et la defaite au perdant', () => {
-    const won = cuesForTransition(view('reveal'), view('ended', { ended: { winner: 'moi' } }));
+    const won = cuesForTransition(
+      view('reveal'),
+      view('ended', { ended: { winner: 'moi', spoils: null } }),
+    );
     expect(won).toContainEqual({ type: 'matchEnd', outcome: 'win' });
 
     const lost = cuesForTransition(
       view('reveal'),
-      view('ended', { ended: { winner: 'adversaire' } }),
+      view('ended', { ended: { winner: 'adversaire', spoils: null } }),
     );
     expect(lost).toContainEqual({ type: 'matchEnd', outcome: 'loss' });
   });
 
   it('reconnait un match nul', () => {
-    const cues = cuesForTransition(view('reveal'), view('ended', { ended: { winner: null } }));
+    const cues = cuesForTransition(
+      view('reveal'),
+      view('ended', { ended: { winner: null, spoils: null } }),
+    );
     expect(cues).toContainEqual({ type: 'matchEnd', outcome: 'draw' });
   });
 
   it('ne sonne la fin qu une fois', () => {
-    const ended = view('ended', { ended: { winner: 'moi' } });
+    const ended = view('ended', { ended: { winner: 'moi', spoils: null } });
     expect(cuesForTransition(ended, ended)).toEqual([]);
   });
 });

@@ -2877,6 +2877,55 @@ body {
   joueur lance une seconde partie ou ferme le jeu.
 */
 /*
+  Ce que la partie a rapporte, sous le verdict.
+
+  Dans la carte, pas a cote : c'est le RESUME du match, et le poser ailleurs
+  en ferait une seconde chose a regarder au moment ou le joueur n'en regarde
+  qu'une. Rien ne s'affiche quand il n'y a rien — « +0 ◈ » apprend a ne plus
+  lire la ligne.
+*/
+.spoils {
+  display: flex;
+  justify-content: center;
+  align-items: baseline;
+  gap: 14px;
+  margin: 6px 0 0;
+  padding-top: 8px;
+  border-top: 1px solid var(--hud-line);
+  font-variant-numeric: tabular-nums;
+}
+
+.spoils__coins {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 19px;
+  color: var(--gold-ink);
+}
+
+.spoils__lp {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--bad-ink);
+}
+
+/* Le signe se voit AUSSI par la couleur : un « − » se rate d'un coup d'oeil. */
+.spoils__lp[data-up='true'] {
+  color: var(--good-ink);
+}
+
+/* Changer de ligue est le plus gros moment de la progression : on le nomme. */
+.spoils__league {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent-deep);
+  color: var(--ink);
+}
+
+/*
   Les defis tombes pendant le match, dans le coin gauche.
 
   A gauche parce que les deux gestes sont a droite : l'annonce se lit pendant

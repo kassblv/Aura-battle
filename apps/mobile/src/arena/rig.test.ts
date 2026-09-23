@@ -452,7 +452,19 @@ describe('bras et epaules', () => {
  * centimetres. Ce test-la est le seul qui l aurait vu.
  */
 describe('ce qui est dessine tient dans ce qui est cadre', () => {
-  it('sur les 26 animations livrees', () => {
+  /*
+    Delai explicite : ce test est lourd PAR NATURE.
+
+    Vingt-six animations, seize poses chacune, et a chaque pose un parcours
+    complet du graphe de scene pour mesurer ce qui est dessine. Environ six
+    secondes sur une machine au repos — donc au-dessus du delai par defaut de
+    cinq, et il tombait des que Turbo lancait les autres paquets en parallele.
+
+    Echantillonner moins irait plus vite et couterait la seule chose qui
+    justifie ce test : son commentaire dit qu'il est le SEUL a avoir vu quatre
+    animations deborder de sept centimetres. On paie les secondes.
+  */
+  it('sur les 26 animations livrees', { timeout: 30_000 }, () => {
     const rig = build(-0.5, 1);
     rig.dress(LOOK);
     const fautes: string[] = [];

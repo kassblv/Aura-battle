@@ -1,6 +1,7 @@
 import { BALANCE, type Orb, type RechargeTap, type TimingQuality } from '@aura/rules';
 import type { OnlineMatch } from './online.js';
 import type { SoloMatch } from './solo.js';
+import { matchSpoils, type MatchSpoils } from './spoils.js';
 
 /**
  * Ce que l ecran de match a besoin de savoir.
@@ -69,7 +70,19 @@ export interface MatchView {
   readonly meterPeriodMs: number;
   readonly opponentLocked: boolean;
   readonly lastRound: RoundView | null;
-  readonly ended: { readonly winner: 'moi' | 'adversaire' | null } | null;
+  readonly ended: {
+    readonly winner: 'moi' | 'adversaire' | null;
+    /**
+     * Ce que la partie a rapporte.
+     *
+     * `null` en solo : il n y a pas de serveur pour crediter quoi que ce soit.
+     * En ligne, le serveur calcule, credite ET envoie — et le client se
+     * contentait de jeter le message. Un joueur gagnait des pieces sans jamais
+     * l apprendre, et decouvrait un autre total au prochain passage par
+     * l accueil.
+     */
+    readonly spoils: MatchSpoils | null;
+  } | null;
 }
 
 const DURATIONS: Readonly<Record<ViewPhase, number>> = {
@@ -120,6 +133,7 @@ export function viewOfSolo(match: SoloMatch): MatchView {
       state.result === null
         ? null
         : {
+            spoils: null,
             winner:
               state.result.winner === null
                 ? null
@@ -163,6 +177,13 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
       state.result === null
         ? null
         : {
+            spoils: matchSpoils({
+              softCurrency: state.result.rewards.softCurrency,
+              ratingBefore: state.result.rating.before,
+              ratingAfter: state.result.rating.after,
+              leagueBefore: state.result.rating.leagueBefore,
+              leagueAfter: state.result.rating.leagueAfter,
+            }),
             winner:
               state.result.winner === null
                 ? null
