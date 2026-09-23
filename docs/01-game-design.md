@@ -181,5 +181,22 @@ Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de c
   **Un combo est un maximum, pas une somme.** « Atteindre un combo de 14 » ne
   s'obtient pas en cumulant quatre combos de trois. Le catalogue porte donc
   `accumulate: 'best'` sur cette mesure et `'sum'` sur les quatre autres.
+- **Vitrine du jour :** trois articles payants mis en avant à **−30 %**, et
+  **rien n'est caché**. Avec une trentaine d'articles au catalogue, masquer le
+  reste derrière une rotation ferait attendre des semaines quelqu'un qui veut
+  une danse précise ; la vitrine s'ajoute, tout le reste demeure achetable au
+  prix plein.
+
+  Les articles défilent sur un **cycle**, pas un tirage. Deux conséquences
+  qu'un tirage ne donne pas : la vitrine d'hier ne peut pas revenir aujourd'hui
+  — une vitrine qui se répète ne donne aucune raison de revenir — et **l'attente
+  est bornée**, chaque article passant une fois par tour (cinq jours). Quelqu'un
+  qui en veut un précis sait qu'il viendra, et quand.
+
+  **Le prix remisé se décide côté serveur**, avec le prix du catalogue et le
+  jour de son horloge. Le client ne l'envoie pas et ne pourrait pas : il
+  annoncerait « cet article est en vitrine » et achèterait tout à −30 %. Règle
+  d'or n°1.
+
 - **Monnaie douce** gagnée en jouant, **monnaie premium** achetée ; toutes deux ne servent qu'au cosmétique et au passe de saison.
 - **Solo :** entraînement contre les 4 IA du prototype, adaptées aux règles ci-dessus (tableaux d'IA dans `packages/rules/src/ai`).

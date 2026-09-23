@@ -1,3 +1,4 @@
+import { discountedPrice, isFeatured } from '@aura/content';
 import type { CosmeticKind } from '@prisma/client';
 
 /**
@@ -53,6 +54,27 @@ export interface PurchaseRequest {
   readonly wallet: Wallet;
   readonly owned: boolean;
   readonly now: Date;
+  /**
+   * Le numero du jour, pour la vitrine (`docs/01` §11).
+   *
+   * Un PARAMETRE, pas une lecture d'horloge : la regle reste pure, et le jour
+   * vient du serveur. Absent, c'est le prix plein — le defaut doit etre celui
+   * qui ne donne rien, jamais celui qui offre une remise a tout le monde.
+   */
+  readonly day?: number;
+}
+
+/**
+ * Le prix reellement facture pour cet article aujourd'hui.
+ *
+ * La remise se calcule ICI, avec le prix du catalogue. Le client ne l'envoie
+ * pas et ne pourrait pas : il annoncerait « cet article est en vitrine » et
+ * acheterait tout a moins trente pour cent. Regle d'or n°1.
+ */
+function effectiveSoft(item: CatalogueEntry, day: number | undefined): number | null {
+  if (item.priceSoft === null) return null;
+  if (day === undefined || !isFeatured(item.id, day)) return item.priceSoft;
+  return discountedPrice(item.priceSoft);
 }
 
 function purchasable(kind: CosmeticKind): boolean {
@@ -61,6 +83,7 @@ function purchasable(kind: CosmeticKind): boolean {
 
 export function purchaseOutcome(request: PurchaseRequest): PurchaseOutcome {
   const { item, wallet, owned, now } = request;
+  const soft = effectiveSoft(item, request.day);
 
   /*
     L'ordre des refus compte.
@@ -92,8 +115,15 @@ export function purchaseOutcome(request: PurchaseRequest): PurchaseOutcome {
     voir prelever la monnaie qu'il a achetee — c'est la seule des deux qu'il ne
     peut pas regagner.
   */
-  if (item.priceSoft !== null && wallet.soft >= item.priceSoft) {
-    return { ok: true, spend: { soft: item.priceSoft, hard: 0 } };
+  /*
+    Les fonds se jugent sur le prix REELLEMENT facture.
+
+    Juger sur le prix plein puis debiter le prix remise refuserait un achat que
+    le joueur peut s'offrir ; l'inverse le laisserait passer a decouvert. Une
+    seule valeur pour les deux, et la question ne se pose plus.
+  */
+  if (soft !== null && wallet.soft >= soft) {
+    return { ok: true, spend: { soft, hard: 0 } };
   }
   if (item.priceHard !== null && wallet.hard >= item.priceHard) {
     return { ok: true, spend: { soft: 0, hard: item.priceHard } };

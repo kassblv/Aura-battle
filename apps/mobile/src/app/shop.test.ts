@@ -1,5 +1,6 @@
 import { HAIRSTYLES, OUTFITS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
+import { discountedPrice, featuredForDay } from '@aura/content';
 import { memeGallery } from './memes.js';
 import { buy, shopSections, type ShopState } from './shop.js';
 
@@ -8,9 +9,17 @@ const state = (soft: number, owned: string[] = []): ShopState => ({
   owned: new Set(owned),
 });
 
+/*
+  Un jour fixe : la vitrine depend du jour, donc les tests aussi. Le prendre a
+  l'horloge ferait echouer la suite une fois sur cinq, le jour ou la vitrine
+  contient l'article que tel test suppose absent.
+*/
+const DAY = 20_718;
+
 describe('shopSections', () => {
   it('range le catalogue par nature', () => {
-    expect(shopSections().map((section) => section.id)).toEqual([
+    expect(shopSections(DAY).map((section) => section.id)).toEqual([
+      'featured',
       'dance',
       'outfit',
       'hair',
@@ -27,7 +36,7 @@ describe('shopSections', () => {
     vendre (regle d'or n°3).
   */
   it('met en vente les effets d aura payants', () => {
-    const effets = shopSections().find((section) => section.id === 'effect');
+    const effets = shopSections(DAY).find((section) => section.id === 'effect');
     expect(effets?.items.map((item) => item.id).sort()).toEqual([
       'fx.dark',
       'fx.flames',
@@ -41,7 +50,7 @@ describe('shopSections', () => {
     se sentirait vole la premiere fois qu'il jouerait un autre palier.
   */
   it('dit a quel amplificateur chaque effet appartient', () => {
-    const effets = shopSections().find((section) => section.id === 'effect');
+    const effets = shopSections(DAY).find((section) => section.id === 'effect');
     expect(effets?.items.map((item) => item.name)).toEqual([
       'Flammes · A1',
       'Onde de choc · A2',
@@ -52,13 +61,13 @@ describe('shopSections', () => {
   it('ne met en vente que ce qui a un prix', () => {
     // Ce qui est offert appartient deja a tout le monde : l'afficher a zero
     // franc donnerait a un joueur l'impression d'avoir a l'acheter.
-    for (const section of shopSections()) {
+    for (const section of shopSections(DAY)) {
       for (const item of section.items) expect(item.price).toBeGreaterThan(0);
     }
   });
 
   it('expose le catalogue reel', () => {
-    const tenues = shopSections().find((section) => section.id === 'outfit');
+    const tenues = shopSections(DAY).find((section) => section.id === 'outfit');
     expect(tenues?.items).toHaveLength(OUTFITS.filter((outfit) => outfit.price > 0).length);
   });
 
@@ -67,7 +76,7 @@ describe('shopSections', () => {
    * ce qui est en vente ne porte de valeur de jeu.
    */
   it('ne vend aucune valeur de jeu', () => {
-    for (const section of shopSections()) {
+    for (const section of shopSections(DAY)) {
       for (const item of section.items) {
         const keys = Object.keys(item);
         expect(keys).not.toContain('power');
@@ -122,11 +131,68 @@ describe('buy', () => {
   });
 });
 
-describe('danses en boutique', () => {
-  const dances = shopSections().find((section) => section.id === 'dance');
+describe('vitrine du jour', () => {
+  const vitrine = shopSections(DAY).find((section) => section.id === 'featured');
 
-  it('met les danses en tete de l etalage', () => {
-    expect(shopSections()[0]?.id).toBe('dance');
+  it('reprend exactement les articles du jour', () => {
+    expect(vitrine?.items.map((item) => item.id).sort()).toEqual([...featuredForDay(DAY)].sort());
+  });
+
+  /*
+    Elle AJOUTE, elle ne retire pas : chaque article de la vitrine figure aussi
+    dans son rayon, au prix plein. Cacher le reste derriere une rotation ferait
+    attendre des semaines quelqu'un qui veut un article precis.
+  */
+  it('laisse chaque article dans son rayon, au prix plein', () => {
+    for (const item of vitrine?.items ?? []) {
+      const ailleurs = shopSections(DAY)
+        .filter((section) => section.id !== 'featured')
+        .flatMap((section) => section.items)
+        .find((entry) => entry.id === item.id);
+      expect(ailleurs, item.id).toBeDefined();
+      expect(ailleurs?.price, item.id).toBe(item.fullPrice);
+    }
+  });
+
+  it('affiche un prix remise, et le prix plein a cote', () => {
+    for (const item of vitrine?.items ?? []) {
+      expect(item.fullPrice, item.id).toBeGreaterThan(item.price);
+      expect(item.price, item.id).toBe(discountedPrice(item.fullPrice ?? 0));
+    }
+  });
+
+  /*
+    Hors vitrine, pas de prix plein : porter les deux partout inviterait a
+    afficher une fausse remise le jour ou quelqu'un lit `fullPrice` sans
+    verifier le rayon.
+  */
+  it('ne porte un prix plein que dans la vitrine', () => {
+    for (const section of shopSections(DAY)) {
+      if (section.id === 'featured') continue;
+      for (const item of section.items) {
+        expect(item.fullPrice, `${section.id} : ${item.id}`).toBeUndefined();
+      }
+    }
+  });
+});
+
+describe('danses en boutique', () => {
+  const dances = shopSections(DAY).find((section) => section.id === 'dance');
+
+  /*
+    Les danses restent le premier RAYON — une aura battle est un clash ou deux
+    personnes rejouent des memes, et la danse est ce que le joueur vient
+    chercher. La vitrine passe au-dessus parce que ce n'est pas un rayon : c'est
+    un bandeau de trois articles qui change chaque jour, et sa raison d'etre est
+    d'etre vue en ouvrant.
+  */
+  it('met les danses en tete des rayons', () => {
+    const rayons = shopSections(DAY).filter((section) => section.id !== 'featured');
+    expect(rayons[0]?.id).toBe('dance');
+  });
+
+  it('ne laisse que la vitrine passer devant elles', () => {
+    expect(shopSections(DAY)[0]?.id).toBe('featured');
   });
 
   it('vend exactement les memes qui ne sont pas offerts', () => {

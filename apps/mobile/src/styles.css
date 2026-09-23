@@ -1757,6 +1757,20 @@ body {
   white-space: nowrap;
 }
 
+/*
+  Le prix plein barre, dans la vitrine.
+
+  Une remise qu'on ne peut pas comparer n'est pas une remise, c'est un prix :
+  le barre est ce qui fait la difference entre « 56 ◈ » et « 56 au lieu de 80 ».
+  Discret a dessein — c'est le prix du jour qu'on doit lire, pas l'ancien.
+*/
+.shop__was {
+  flex: none;
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
 /* L'etiquette dit quoi faire, pas seulement combien ca coute. */
 .shop__tag {
   flex: none;

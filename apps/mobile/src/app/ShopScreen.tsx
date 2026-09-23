@@ -1,6 +1,7 @@
 import type { CSSProperties, JSX } from 'react';
 import type { PanelLayout } from './panel.js';
 import type { Wallet } from './profile.js';
+import { dayIndexOf } from '@aura/content';
 import { shopSections, type ShopState } from './shop.js';
 
 /**
@@ -56,7 +57,7 @@ export function ShopScreen({
       <p className="shop__hint">Touche un article pour l’essayer sur ton personnage.</p>
 
       <div className="shop__scroll">
-        {shopSections().map((section) => (
+        {shopSections(dayIndexOf(Date.now())).map((section) => (
           <div key={section.id} className="shop__section">
             <h3>{section.title}</h3>
             <ul className="shop__items">
@@ -96,6 +97,16 @@ export function ShopScreen({
                         />
                       )}
                       <span className="shop__name">{item.name}</span>
+                      {/*
+                        Le prix plein barre, a cote du remise.
+
+                        Une remise qu'on ne peut pas comparer n'est pas une
+                        remise : c'est un prix. Le barre est ce qui fait la
+                        difference entre « 56 ◈ » et « 56 au lieu de 80 ».
+                      */}
+                      {item.fullPrice !== undefined && !owned && (
+                        <s className="shop__was">{item.fullPrice}</s>
+                      )}
                       <small className="shop__tag" data-state={label(owned, afford, essai)}>
                         {owned
                           ? 'acquis'

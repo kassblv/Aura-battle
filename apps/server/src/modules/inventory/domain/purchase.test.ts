@@ -1,10 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import {
+  AURA_COLORS,
+  AURA_EFFECTS,
+  discountedPrice,
+  featuredForDay,
+  HAIRSTYLES,
+  OUTFITS,
+} from '@aura/content';
+import {
   PURCHASABLE_KINDS,
   purchaseOutcome,
   type CatalogueEntry,
   type Wallet,
 } from './purchase.js';
+
+/** Tout ce qui a un prix : la reserve dans laquelle la vitrine puise. */
+const PAID_IDS = [...AURA_EFFECTS, ...AURA_COLORS, ...HAIRSTYLES, ...OUTFITS]
+  .filter((entry) => entry.price > 0)
+  .map((entry) => entry.id);
 
 const item = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   id: 'color.violet',
@@ -184,5 +197,74 @@ describe('purchaseOutcome', () => {
         now: NOW,
       }),
     ).toEqual({ ok: false, reason: 'ALREADY_OWNED' });
+  });
+});
+
+/**
+ * La vitrine du jour.
+ *
+ * Le prix remise se decide ICI, avec le prix plein : c'est le serveur qui
+ * facture, et la regle d'or n°1 veut que le client n'envoie qu'une intention.
+ * Un client qui annoncerait « cet article est en vitrine » acheterait tout a
+ * moins trente pour cent.
+ */
+describe('vitrine du jour', () => {
+  const DAY = 20_718;
+  const [enVitrine] = featuredForDay(DAY);
+  const horsVitrine = PAID_IDS.find((id) => !featuredForDay(DAY).includes(id));
+
+  const buy = (id: string, soft: number): ReturnType<typeof purchaseOutcome> =>
+    purchaseOutcome({
+      item: item({ id, priceSoft: 100 }),
+      wallet: { soft, hard: 0 },
+      owned: false,
+      now: NOW,
+      day: DAY,
+    });
+
+  it('facture le prix remise pour un article en vitrine', () => {
+    const outcome = buy(enVitrine ?? '', 1_000);
+    expect(outcome.ok && outcome.spend.soft).toBe(discountedPrice(100));
+  });
+
+  it('facture le prix plein pour un article qui n y est pas', () => {
+    const outcome = buy(horsVitrine ?? '', 1_000);
+    expect(outcome.ok && outcome.spend.soft).toBe(100);
+  });
+
+  /*
+    Le prix remise decide AUSSI de ce qu'on peut se payer. Juger les fonds sur
+    le prix plein puis debiter le prix remise refuserait un achat que le joueur
+    peut s'offrir ; l'inverse le laisserait passer a decouvert.
+  */
+  it('juge les fonds sur le prix reellement facture', () => {
+    const juste = discountedPrice(100);
+    expect(buy(enVitrine ?? '', juste).ok).toBe(true);
+    expect(buy(enVitrine ?? '', juste - 1).ok).toBe(false);
+  });
+
+  /*
+    La vitrine d'HIER ne vaut plus. Sans le jour en parametre, garder l'ecran
+    ouvert par-dessus minuit suffirait a payer le prix remise le lendemain.
+  */
+  it('ne remise pas sur la vitrine de la veille', () => {
+    const [hier] = featuredForDay(DAY - 1);
+    const outcome = buy(hier ?? '', 1_000);
+    expect(outcome.ok && outcome.spend.soft).toBe(100);
+  });
+
+  /*
+    Sans jour fourni — un appelant qui ne s'occupe pas de la vitrine — c'est le
+    prix plein. Le defaut doit etre celui qui ne donne rien, jamais celui qui
+    offre une remise a tout le monde.
+  */
+  it('facture le prix plein quand aucun jour n est donne', () => {
+    const outcome = purchaseOutcome({
+      item: item({ id: enVitrine ?? '', priceSoft: 100 }),
+      wallet: RICH,
+      owned: false,
+      now: NOW,
+    });
+    expect(outcome.ok && outcome.spend.soft).toBe(100);
   });
 });

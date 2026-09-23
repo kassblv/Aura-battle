@@ -1,3 +1,4 @@
+import { dayIndexOf } from '@aura/content';
 import { purchaseOutcome, type PurchaseRefusal } from '../domain/purchase.js';
 import type { Clock, InventoryRepository, LoadoutData, PlayerInventory } from '../domain/ports.js';
 
@@ -58,11 +59,20 @@ export class InventoryService {
     const item = catalogue.find((entry) => entry.id === itemId);
     if (item === undefined) throw new InventoryError('UNKNOWN_ITEM');
 
+    const now = this.deps.clock.now();
     const outcome = purchaseOutcome({
       item,
       wallet: inventory.wallet,
       owned: inventory.owned.includes(itemId),
-      now: this.deps.clock.now(),
+      now,
+      /*
+        Le jour vient de l'horloge du SERVEUR, jamais de la requete.
+
+        C'est lui qui decide de la remise : un client qui enverrait son propre
+        numero de jour achèterait tout a moins trente pour cent en choisissant
+        bien. Regle d'or n°1 — le client n'envoie que des intentions.
+      */
+      day: dayIndexOf(now.getTime()),
     });
     if (!outcome.ok) throw new InventoryError(outcome.reason);
 

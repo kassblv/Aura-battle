@@ -1,4 +1,11 @@
-import { AURA_COLORS, AURA_EFFECTS, HAIRSTYLES, OUTFITS } from '@aura/content';
+import {
+  AURA_COLORS,
+  AURA_EFFECTS,
+  discountedPrice,
+  featuredForDay,
+  HAIRSTYLES,
+  OUTFITS,
+} from '@aura/content';
 import { memeGallery } from './memes.js';
 import type { Wallet } from './profile.js';
 
@@ -11,7 +18,7 @@ import type { Wallet } from './profile.js';
  * peut ainsi remonter jusqu a l etalage le jour ou le catalogue gagne un champ.
  */
 
-export type ShopSectionId = 'dance' | 'outfit' | 'hair' | 'aura' | 'effect';
+export type ShopSectionId = 'featured' | 'dance' | 'outfit' | 'hair' | 'aura' | 'effect';
 
 export interface ShopItem {
   readonly id: string;
@@ -21,6 +28,13 @@ export interface ShopItem {
   readonly swatch?: string;
   readonly swatchSecondary?: string;
   readonly price: number;
+  /**
+   * Le prix plein, quand l article est en vitrine.
+   *
+   * Present uniquement la : partout ailleurs le prix affiche EST le prix
+   * plein, et porter les deux inviterait a afficher une fausse remise.
+   */
+  readonly fullPrice?: number;
 }
 
 export interface ShopSection {
@@ -59,7 +73,29 @@ const STYLE_GLYPHS = { calme: '🧊', hype: '🔥', provoc: '😏' } as const;
  * tout le monde, et l afficher a zero franc donnerait au joueur l impression
  * d avoir a l acheter.
  */
-export function shopSections(): readonly ShopSection[] {
+export function shopSections(day: number): readonly ShopSection[] {
+  const featured = new Set(featuredForDay(day));
+
+  /*
+    La vitrine reprend des articles qui figurent DEJA plus bas, au prix plein.
+
+    Elle s ajoute, elle ne remplace pas : avec une trentaine d articles, cacher
+    le reste derriere une rotation ferait attendre des semaines quelqu un qui
+    veut une danse precise. Ici il peut toujours l acheter — et il a une raison
+    de repasser demain pour voir si elle est remisee.
+  */
+  const all = allSections();
+  const featuredItems = all
+    .flatMap((section) => section.items)
+    .filter((entry) => featured.has(entry.id))
+    .map((entry) => ({ ...entry, price: discountedPrice(entry.price), fullPrice: entry.price }));
+
+  return featuredItems.length === 0
+    ? all
+    : [{ id: 'featured' as const, title: 'Vitrine du jour · −30 %', items: featuredItems }, ...all];
+}
+
+function allSections(): readonly ShopSection[] {
   return [
     /**
      * Les danses d'abord.
@@ -141,8 +177,15 @@ export function shopSections(): readonly ShopSection[] {
   ];
 }
 
+/*
+  Le catalogue du client sert a nommer, jamais a facturer.
+
+  Construit a partir des sections SANS vitrine : le prix qui compte est celui
+  que le serveur applique, et il le recalcule avec SON jour. Y ranger les prix
+  remises ferait croire ici a un total que la-bas on refuserait.
+*/
 const catalogue = new Map<string, ShopItem>();
-for (const section of shopSections()) {
+for (const section of allSections()) {
   for (const item of section.items) catalogue.set(item.id, item);
 }
 
