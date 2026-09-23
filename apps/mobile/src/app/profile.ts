@@ -24,6 +24,14 @@ export interface PlayerProfile {
   readonly bestStreak: number;
   readonly roundsByStyle: Readonly<Record<Style, number>>;
   readonly wallet: Wallet;
+  /**
+   * Experience cumulee, telle que le serveur l a annoncee.
+   *
+   * Le NIVEAU ne figure pas ici : il se deduit (`levelFor`, @aura/rules). Le
+   * ranger a cote donnerait deux valeurs pour la meme chose, et ce serait
+   * toujours celle qu on a oublie de mettre a jour qui s afficherait.
+   */
+  readonly xp: number;
 }
 
 /**
@@ -110,6 +118,9 @@ export function newProfile(name: string, playerId: string): PlayerProfile {
     lp: 0,
     // Le premier palier de classement : il donne une cible des la premiere partie.
     lpForNextLeague: 100,
+    // Personne ne commence avec de l'experience : elle se gagne en jouant, et
+    // c'est ce qui fait que le niveau 2 veut dire quelque chose.
+    xp: 0,
     matches: 0,
     wins: 0,
     currentStreak: 0,

@@ -266,6 +266,8 @@ body {
 }
 
 .tag__avatar {
+  /* Conteneur de l'ecusson, qui se pose dans son coin. */
+  position: relative;
   width: 38px;
   height: 38px;
   flex: none;
@@ -277,6 +279,33 @@ body {
   font-family: var(--display);
   font-weight: 400;
   font-size: 16px;
+}
+
+/*
+  L'ecusson de niveau, sur l'avatar.
+
+  Il lui fallait une place permanente : le niveau n'existait qu'une seconde,
+  sur l'ecran de fin de match. Un compteur qu'on ne voit qu'au moment ou il
+  bouge ne donne envie de rien — c'est entre deux parties qu'on regarde ou on
+  en est.
+*/
+.tag__level {
+  position: absolute;
+  right: -4px;
+  bottom: -4px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--gold-ink);
+  color: var(--bg);
+  font-family: var(--body);
+  font-style: normal;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
 }
 
 .tag__who {
@@ -778,6 +807,50 @@ body {
 .sheet__ident,
 .sheet__note {
   margin: 0;
+}
+
+/*
+  Le niveau et sa barre, dans le profil.
+
+  Juste sous l'identite : c'est le seul compteur qui monte meme quand on perd,
+  donc celui qu'on vient verifier apres une mauvaise soiree. La barre dit ce
+  qu'il reste, le chiffre dit ou l'on est — les deux, parce qu'une barre seule
+  ne se compare a rien et qu'un chiffre seul ne bouge jamais assez vite.
+*/
+.sheet__level {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.sheet__level b {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 15px;
+}
+
+.sheet__level small {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.sheet__levelbar {
+  display: block;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--chip-deep);
+  overflow: hidden;
+}
+
+.sheet__levelbar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: var(--gold-ink);
+  transition: width var(--d-panel) var(--e-out);
 }
 
 .stats {

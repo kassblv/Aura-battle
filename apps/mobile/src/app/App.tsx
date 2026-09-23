@@ -356,6 +356,8 @@ export function App(): JSX.Element {
         won:
           (online.view.ended?.winner ?? null) === null ? null : online.view.ended?.winner === 'moi',
         lp: settled.rating.after,
+        // Le TOTAL, pas le gain : recopié, jamais cumulé, comme les LP.
+        xp: settled.rewards.xpTotal,
       }),
     );
     online.clearSettled();
@@ -508,6 +510,7 @@ export function App(): JSX.Element {
       wins: record.wins,
       currentStreak: record.currentStreak,
       bestStreak: record.bestStreak,
+      xp: record.xp,
     };
   }, [session.identity, shop.wallet, league, record]);
 

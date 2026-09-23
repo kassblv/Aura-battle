@@ -1,4 +1,5 @@
 import { tierName } from '@aura/content';
+import { levelFor } from '@aura/rules';
 import type { JSX } from 'react';
 import type { MemeCard } from './memes.js';
 import { leagueProgress, styleShares, summarize, type PlayerProfile } from './profile.js';
@@ -96,8 +97,21 @@ export function HomeScreen({
   return (
     <div className="home">
       <button type="button" className="tag" onClick={onProfile}>
+        {/*
+          Le niveau sur l'avatar, en ecusson.
+
+          Il lui fallait une place permanente : jusqu'ici il n'existait qu'une
+          seconde, sur l'ecran de fin de match. Un compteur qu'on ne voit qu'au
+          moment ou il bouge ne donne envie de rien — c'est entre deux parties
+          qu'on regarde ou on en est.
+
+          Sur l'avatar plutot qu'en ligne de plus : le bandeau porte deja le
+          nom, la ligue et les points, et une quatrieme ligne en ferait un
+          tableau.
+        */}
         <span className="tag__avatar" aria-hidden="true">
           {profile.name.slice(0, 1)}
+          <i className="tag__level">{levelFor(profile.xp).level}</i>
         </span>
         <span className="tag__who">
           <b>{profile.name}</b>
@@ -350,6 +364,7 @@ export interface ProfileProps {
 
 export function ProfileScreen({ profile, onClose }: ProfileProps): JSX.Element {
   const stats = summarize(profile);
+  const level = levelFor(profile.xp);
   return (
     <section className="sheet" aria-label="Profil">
       <header className="sheet__head">
@@ -365,6 +380,23 @@ export function ProfileScreen({ profile, onClose }: ProfileProps): JSX.Element {
         </b>
         <small>
           {profile.league} — {profile.lp} / {profile.lpForNextLeague} PL
+        </small>
+      </p>
+
+      {/*
+        Le niveau et sa barre.
+
+        Juste sous l'identite, avant les statistiques : c'est le seul compteur
+        qui monte meme quand on perd, donc celui qu'on vient verifier apres une
+        mauvaise soiree.
+      */}
+      <p className="sheet__level">
+        <b>Niveau {level.level}</b>
+        <span className="sheet__levelbar">
+          <i style={{ width: `${((level.into / level.needed) * 100).toFixed(1)}%` }} />
+        </span>
+        <small>
+          {level.into} / {level.needed} XP
         </small>
       </p>
 

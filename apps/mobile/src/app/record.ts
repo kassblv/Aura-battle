@@ -18,16 +18,25 @@ export interface PlayerRecord {
   readonly bestStreak: number;
   /** Points de ligue, tels que le serveur les a annonces. */
   readonly lp: number;
+  /**
+   * Experience cumulee, telle que le serveur l a annoncee.
+   *
+   * Le niveau s en DEDUIT (`levelFor`) plutot que d etre range a cote : deux
+   * valeurs qui decrivent la meme chose finissent par se contredire.
+   */
+  readonly xp: number;
 }
 
 export interface MatchOutcome {
   /** `null` pour une egalite : personne n'a gagne, personne n'a perdu. */
   readonly won: boolean | null;
   readonly lp: number;
+  /** Experience TOTALE apres ce match, telle que le serveur l a envoyee. */
+  readonly xp: number;
 }
 
 export function emptyRecord(): PlayerRecord {
-  return { matches: 0, wins: 0, currentStreak: 0, bestStreak: 0, lp: 0 };
+  return { matches: 0, wins: 0, currentStreak: 0, bestStreak: 0, lp: 0, xp: 0 };
 }
 
 export function recordMatch(record: PlayerRecord, outcome: MatchOutcome): PlayerRecord {
@@ -52,5 +61,18 @@ export function recordMatch(record: PlayerRecord, outcome: MatchOutcome): Player
      * finirait par afficher un classement que la base ne confirme pas.
      */
     lp: Math.max(0, outcome.lp),
+    /*
+      L experience aussi est RECOPIEE, pour la meme raison que les LP.
+
+      Cumuler les gains deriverait a la premiere annonce manquee — une coupure
+      reseau, un rechargement — et le joueur verrait un niveau que la base ne
+      confirme pas. Il le perdrait au match suivant, ce qui est pire que ne
+      jamais l avoir vu.
+
+      Et jamais vers le BAS : une reponse incomplete — un credit rate cote
+      serveur rend un total a zero — ne doit pas effacer une progression deja
+      acquise. On garde alors ce qu on avait.
+    */
+    xp: Math.max(record.xp, Math.max(0, outcome.xp)),
   };
 }

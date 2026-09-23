@@ -21,6 +21,7 @@ const profile = (over: Partial<PlayerProfile> = {}): PlayerProfile => ({
   bestStreak: 9,
   roundsByStyle: { calme: 120, hype: 170, provoc: 98 },
   wallet: { soft: 450, hard: 60 },
+  xp: 4_146,
   ...over,
 });
 

@@ -206,7 +206,14 @@ joignable depuis un téléphone rend tout le reste vérifiable.
   déclaratif, ce que « validés côté serveur » interdit. Sans cette phrase, un
   joueur enchaînerait des solos devant des compteurs immobiles et conclurait à une
   panne.
-- [ ] Passe de saison (gratuit + premium)
+- [x] **Niveau de joueur** (`docs/01` §11) : l'expérience était calculée, envoyée
+  dans `match:end` et écrite **nulle part**. Elle a maintenant sa colonne, elle
+  est créditée dans la même transaction que les pièces, et le niveau s'en déduit
+  (`levelFor`). Affiché en écusson sur la pastille d'accueil et en barre dans le
+  profil. Le total est **recopié** du serveur, jamais cumulé localement — la même
+  règle que les LP, pour la même raison.
+- [ ] Passe de saison (gratuit + premium) — **le niveau lui sert de socle** : il
+  compte déjà ce qu'une saison devrait récompenser.
 - [ ] Achats intégrés via RevenueCat, reçus validés côté serveur
 
 ### M9 — Partage
