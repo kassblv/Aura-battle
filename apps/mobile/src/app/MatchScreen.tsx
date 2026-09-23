@@ -531,11 +531,20 @@ function MatchScreenBody({
                   <span aria-hidden="true">◈</span> +{spoils.coins}
                 </span>
               )}
+              {spoils.xp !== null && <span className="spoils__xp">+{spoils.xp} XP</span>}
               {spoils.lp !== null && (
                 <span className="spoils__lp" data-up={spoils.lp > 0}>
                   {spoils.lp > 0 ? '+' : '−'}
                   {Math.abs(spoils.lp)} LP
                 </span>
+              )}
+              {/*
+                Un palier se NOMME. Le deduire d'une barre qui a l'air pleine
+                reviendrait a laisser passer le seul moment de cette
+                progression ou il se passe quelque chose.
+              */}
+              {spoils.levelUp !== null && (
+                <span className="spoils__level">Niveau {spoils.levelUp}</span>
               )}
               {spoils.league !== null && (
                 <span className="spoils__league">{leagueLabel(spoils.league)}</span>

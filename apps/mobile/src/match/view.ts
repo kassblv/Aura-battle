@@ -179,6 +179,8 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
         : {
             spoils: matchSpoils({
               softCurrency: state.result.rewards.softCurrency,
+              xp: state.result.rewards.xp,
+              xpTotal: state.result.rewards.xpTotal,
               ratingBefore: state.result.rating.before,
               ratingAfter: state.result.rating.after,
               leagueBefore: state.result.rating.leagueBefore,

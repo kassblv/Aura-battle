@@ -2927,6 +2927,26 @@ body {
   color: var(--good-ink);
 }
 
+/* L'experience monte meme quand on perd : elle se lit, sans crier. */
+.spoils__xp {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--muted);
+}
+
+/* Un palier franchi : le seul moment de cette progression ou il se passe
+   quelque chose, donc le seul qui merite la couleur d'action. */
+.spoils__level {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+
 /* Changer de ligue est le plus gros moment de la progression : on le nomme. */
 .spoils__league {
   font-size: 12px;

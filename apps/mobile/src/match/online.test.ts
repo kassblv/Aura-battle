@@ -206,7 +206,7 @@ describe('createOnlineMatch', () => {
       winner: 'b',
       reason: 'rounds',
       rating: { before: 1200, after: 1185, leagueBefore: 'Or II', leagueAfter: 'Or II' },
-      rewards: { softCurrency: 12, xp: 40 },
+      rewards: { softCurrency: 12, xp: 40, xpTotal: 40 },
     });
     expect(match.state.phase).toBe('ended');
     expect(match.state.result?.winner).toBe('b');

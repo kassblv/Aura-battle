@@ -192,6 +192,16 @@ export const SERVER_MESSAGES = {
     rewards: z.strictObject({
       softCurrency: z.number().int().min(0),
       xp: z.number().int().min(0),
+      /**
+       * Experience TOTALE apres ce match.
+       *
+       * Le gain seul ne suffit pas : le niveau se deduit du cumul, et sans lui
+       * le client ne peut ni dessiner la barre ni savoir qu'un palier vient
+       * d'etre franchi. Avec le total il calcule les deux, en relisant la meme
+       * courbe que le serveur (`levelFor`, @aura/rules) — deux courbes
+       * separees afficheraient un niveau que le serveur ne reconnait pas.
+       */
+      xpTotal: z.number().int().min(0),
     }),
   }),
 

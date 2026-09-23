@@ -198,5 +198,23 @@ Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de c
   annoncerait « cet article est en vitrine » et achèterait tout à −30 %. Règle
   d'or n°1.
 
+- **Niveau de joueur.** L'expérience était déjà calculée — 30 pour une victoire,
+  18 pour une égalité, 12 pour une défaite — envoyée dans `match:end`, et écrite
+  nulle part. C'est pourtant **le seul compteur qui monte même quand on perd**,
+  donc le contrepoids des LP, qui descendent : sans lui une soirée de défaites ne
+  laisse rien derrière elle.
+
+  Courbe géométrique (`BALANCE.progression`) : 100 d'expérience pour le premier
+  palier, puis +8 % à chaque niveau, jusqu'au niveau 50. Cela place le niveau 2 à
+  cinq matchs — dans la **première session**, la seule qui décide si quelqu'un
+  revient — le niveau 20 vers 7 heures de jeu et le niveau 50 vers 88. À +12 %, le
+  niveau 50 demandait 350 heures : un plafond que personne n'atteint n'est pas un
+  horizon, c'est une décoration.
+
+  Le niveau se **déduit** du cumul (`levelFor`, `@aura/rules`), il n'est pas
+  stocké à côté : deux colonnes qui décrivent la même chose finissent par se
+  contredire, et c'est toujours celle qu'on a oublié de mettre à jour qui
+  s'affiche.
+
 - **Monnaie douce** gagnée en jouant, **monnaie premium** achetée ; toutes deux ne servent qu'au cosmétique et au passe de saison.
 - **Solo :** entraînement contre les 4 IA du prototype, adaptées aux règles ci-dessus (tableaux d'IA dans `packages/rules/src/ai`).

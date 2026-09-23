@@ -26,7 +26,7 @@ import {
 const SEATS: readonly Seat[] = ['a', 'b'];
 
 /** Ce que rapporte un siege que personne n'occupe. */
-const NO_REWARDS = { softCurrency: 0, xp: 0 } as const;
+const NO_REWARDS = { softCurrency: 0, xp: 0, xpTotal: 0 } as const;
 
 /**
  * Classement et recompenses d'un match acheve (docs/05, ADR 0010).
@@ -100,8 +100,8 @@ export class RatingSettlementService implements MatchRatingSettlement {
     if (season === null) {
       // Hors saison, ou lecture en echec : personne n'a de classement a
       // afficher, et il n'y a de toute facon rien a ecrire.
-      await this.creditWallets(seats, rewards, ghost);
-      return this.neutralOutcome(rewards, ghost);
+      const totals = await this.creditWallets(seats, rewards, ghost);
+      return this.neutralOutcome(this.withTotals(seats, rewards, totals), ghost);
     }
 
     const loadedSeason = season;
@@ -162,13 +162,13 @@ export class RatingSettlementService implements MatchRatingSettlement {
         this.log?.warn(
           `ecriture du classement en echec, classement inchange affiche : ${describeCause(cause)}`,
         );
-        await this.creditWallets(seats, rewards, ghost);
-        return this.buildOutcome(existing, existing, rewards);
+        const totals = await this.creditWallets(seats, rewards, ghost);
+        return this.buildOutcome(existing, existing, this.withTotals(seats, rewards, totals));
       }
     }
 
-    await this.creditWallets(seats, rewards, ghost);
-    return this.buildOutcome(existing, updated, rewards);
+    const totals = await this.creditWallets(seats, rewards, ghost);
+    return this.buildOutcome(existing, updated, this.withTotals(seats, rewards, totals));
   }
 
   /**
@@ -185,25 +185,63 @@ export class RatingSettlementService implements MatchRatingSettlement {
     seats: Readonly<Record<Seat, string>>,
     rewards: Record<Seat, { softCurrency: number; xp: number }>,
     ghost: GhostSeatInfo | null,
-  ): Promise<void> {
-    if (this.wallets === null) return;
+  ): Promise<ReadonlyMap<string, number>> {
+    if (this.wallets === null) return new Map();
 
+    /*
+      On credite des qu'il y a QUELQUE CHOSE a crediter.
+
+      Le filtre ne portait que sur la monnaie : un match qui n'aurait rapporte
+      que de l'experience n'aurait rien ecrit du tout — et l'experience est
+      precisement ce qui doit monter meme quand le reste ne monte pas.
+    */
     const entries = SEATS.filter((seat) => seat !== ghost?.seat)
-      .filter((seat) => rewards[seat].softCurrency > 0)
-      .map((seat) => ({ playerId: seats[seat], soft: rewards[seat].softCurrency }));
-    if (entries.length === 0) return;
+      .filter((seat) => rewards[seat].softCurrency > 0 || rewards[seat].xp > 0)
+      .map((seat) => ({
+        playerId: seats[seat],
+        soft: rewards[seat].softCurrency,
+        xp: rewards[seat].xp,
+      }));
+    if (entries.length === 0) return new Map();
 
     try {
-      await this.wallets.credit(entries);
+      return await this.wallets.credit(entries);
     } catch (cause) {
       this.log?.warn(`credit de la monnaie douce en echec : ${describeCause(cause)}`);
+      /*
+        Un credit rate rend une carte VIDE, donc un total d'experience a zero.
+
+        C'est le bon defaut : le client dessine alors la barre du niveau un et
+        n'annonce aucun palier. Inventer un total en additionnant le gain a un
+        chiffre qu'on n'a pas lu ferait feter un niveau que la base ne
+        connait pas — et que le joueur perdrait au prochain match.
+      */
+      return new Map();
     }
+  }
+
+  /**
+   * Recolle le total d'experience a ce qui a ete annonce.
+   *
+   * Le gain seul ne dit rien du niveau : c'est le cumul qui le decide. Le
+   * siege du fantome n'a pas de total — il n'a pas de compte.
+   */
+  private withTotals(
+    seats: Readonly<Record<Seat, string>>,
+    rewards: Record<Seat, { softCurrency: number; xp: number }>,
+    totals: ReadonlyMap<string, number>,
+  ): Record<Seat, { softCurrency: number; xp: number; xpTotal: number }> {
+    const forSeat = (seat: Seat) => ({
+      ...rewards[seat],
+      xpTotal: totals.get(seats[seat]) ?? 0,
+    });
+    return { a: forSeat('a'), b: forSeat('b') };
   }
 
   private buildOutcome(
     before: Record<Seat, RatingSnapshot>,
     after: Record<Seat, RatingSnapshot>,
-    rewards: Record<Seat, { softCurrency: number; xp: number }>,
+    rewards: Record<Seat, { softCurrency: number; xp: number; xpTotal: number }>,
   ): Record<Seat, SeatRatingOutcome> {
     const forSeat = (seat: Seat): SeatRatingOutcome => ({
       before: { leaguePoints: before[seat].leaguePoints, league: before[seat].league },
@@ -214,7 +252,7 @@ export class RatingSettlementService implements MatchRatingSettlement {
   }
 
   private neutralOutcome(
-    rewards: Record<Seat, { softCurrency: number; xp: number }>,
+    rewards: Record<Seat, { softCurrency: number; xp: number; xpTotal: number }>,
     ghost: GhostSeatInfo | null,
   ): Record<Seat, SeatRatingOutcome> {
     // Le siege du fantome n'a pas plus de classement ici qu'ailleurs : on

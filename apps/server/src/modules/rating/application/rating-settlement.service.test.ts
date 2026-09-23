@@ -63,15 +63,23 @@ class FakePresenceCache implements PresenceLeagueCache {
   }
 }
 
-/** Le portefeuille : on note qui est credite de combien. */
+/** Le portefeuille : on note qui est credite de combien, monnaie ET experience. */
 class FakeWallets implements WalletCredit {
-  readonly credits: { playerId: string; soft: number }[] = [];
+  readonly credits: { playerId: string; soft: number; xp: number }[] = [];
   failure: Error | null = null;
 
-  credit(entries: readonly { playerId: string; soft: number }[]): Promise<void> {
+  /** Total d experience simule apres credit : on empile les gains. */
+  readonly totals = new Map<string, number>();
+
+  credit(
+    entries: readonly { playerId: string; soft: number; xp: number }[],
+  ): Promise<ReadonlyMap<string, number>> {
     if (this.failure !== null) return Promise.reject(this.failure);
     this.credits.push(...entries);
-    return Promise.resolve();
+    for (const entry of entries) {
+      this.totals.set(entry.playerId, (this.totals.get(entry.playerId) ?? 0) + entry.xp);
+    }
+    return Promise.resolve(new Map(this.totals));
   }
 }
 
@@ -174,7 +182,7 @@ describe('RatingSettlementService — abandon (anti-ferme, docs/05)', () => {
   it('ne rapporte rien a celui qui abandonne', async () => {
     const outcome = await settle({ result: { winner: 'b', reason: 'forfeit' } });
 
-    expect(outcome.a.rewards).toEqual({ softCurrency: 0, xp: 0 });
+    expect(outcome.a.rewards).toEqual({ softCurrency: 0, xp: 0, xpTotal: 0 });
     expect(outcome.b.rewards.softCurrency).toBeGreaterThan(0);
   });
 
@@ -194,8 +202,8 @@ describe('RatingSettlementService — abandon (anti-ferme, docs/05)', () => {
 
     expect(outcome.a.after.leaguePoints).toBe(outcome.a.before.leaguePoints);
     expect(outcome.b.after.leaguePoints).toBe(outcome.b.before.leaguePoints);
-    expect(outcome.a.rewards).toEqual({ softCurrency: 0, xp: 0 });
-    expect(outcome.b.rewards).toEqual({ softCurrency: 0, xp: 0 });
+    expect(outcome.a.rewards).toEqual({ softCurrency: 0, xp: 0, xpTotal: 0 });
+    expect(outcome.b.rewards).toEqual({ softCurrency: 0, xp: 0, xpTotal: 0 });
     expect(writer.saved).toHaveLength(0);
   });
 });
@@ -298,7 +306,7 @@ describe('RatingSettlementService — contre un fantome', () => {
 
   it('ne recompense pas un siege que personne n occupe', async () => {
     const outcome = await settle({ ghost: GHOST });
-    expect(outcome.b.rewards).toEqual({ softCurrency: 0, xp: 0 });
+    expect(outcome.b.rewards).toEqual({ softCurrency: 0, xp: 0, xpTotal: 0 });
     expect(outcome.a.rewards.softCurrency).toBeGreaterThan(0);
   });
 
@@ -330,9 +338,29 @@ describe('credit de la monnaie douce', () => {
     const outcome = await settle({ mode: 'RANKED', result: { winner: 'a', reason: 'rounds' } });
 
     expect(wallets.credits).toEqual([
-      { playerId: 'p1', soft: outcome.a.rewards.softCurrency },
-      { playerId: 'p2', soft: outcome.b.rewards.softCurrency },
+      { playerId: 'p1', soft: outcome.a.rewards.softCurrency, xp: outcome.a.rewards.xp },
+      { playerId: 'p2', soft: outcome.b.rewards.softCurrency, xp: outcome.b.rewards.xp },
     ]);
+  });
+
+  /*
+    L'experience etait CALCULEE, ENVOYEE dans `match:end`, et ecrite nulle
+    part : pas de colonne en base, pas une mention dans le client. Le jeu
+    inventait un nombre a chaque match et l'oubliait aussitot.
+
+    C'est pourtant le seul compteur qui monte meme quand on perd — une defaite
+    vaut douze, une victoire trente — donc le contrepoids des LP, qui
+    descendent.
+  */
+  it('credite l experience, pas seulement la monnaie', async () => {
+    const outcome = await settle({ mode: 'RANKED', result: { winner: 'a', reason: 'rounds' } });
+
+    expect(outcome.a.rewards.xp).toBeGreaterThan(0);
+    // Le perdant aussi : c'est tout l'interet de ce compteur-la.
+    expect(outcome.b.rewards.xp).toBeGreaterThan(0);
+    for (const credit of wallets.credits) {
+      expect(credit.xp, credit.playerId).toBeGreaterThan(0);
+    }
   });
 
   it('credite aussi hors classe', async () => {

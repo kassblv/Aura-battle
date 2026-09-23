@@ -53,12 +53,12 @@ const NEUTRAL_RATING: Readonly<Record<Seat, SeatRatingOutcome>> = {
   a: {
     before: { leaguePoints: 0, league: 'sans_aura' },
     after: { leaguePoints: 0, league: 'sans_aura' },
-    rewards: { softCurrency: 0, xp: 0 },
+    rewards: { softCurrency: 0, xp: 0, xpTotal: 0 },
   },
   b: {
     before: { leaguePoints: 0, league: 'sans_aura' },
     after: { leaguePoints: 0, league: 'sans_aura' },
-    rewards: { softCurrency: 0, xp: 0 },
+    rewards: { softCurrency: 0, xp: 0, xpTotal: 0 },
   },
 };
 

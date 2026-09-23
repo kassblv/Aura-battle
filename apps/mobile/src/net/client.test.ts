@@ -195,7 +195,7 @@ describe('cycle de vie', () => {
       winner: 'a',
       reason: 'rounds',
       rating: { before: 1200, after: 1215, leagueBefore: 'Or II', leagueAfter: 'Or II' },
-      rewards: { softCurrency: 40, xp: 120 },
+      rewards: { softCurrency: 40, xp: 120, xpTotal: 120 },
     });
     link.drop();
     link.connect();

@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
+import { xpForLevel } from '@aura/rules';
 import { matchSpoils, type MatchEndFacts } from './spoils.js';
 
 const facts = (over: Partial<MatchEndFacts> = {}): MatchEndFacts => ({
   softCurrency: 0,
+  xp: 0,
+  xpTotal: 0,
   ratingBefore: 1200,
   ratingAfter: 1200,
   leagueBefore: 'stable',
@@ -80,6 +83,34 @@ describe('matchSpoils', () => {
     expect(spoils.league).toBe('stable');
   });
 
+  it('annonce l experience gagnee', () => {
+    expect(matchSpoils(facts({ xp: 30, xpTotal: 30 })).xp).toBe(30);
+  });
+
+  /*
+    L experience monte MEME QUAND ON PERD — douze pour une defaite. C est tout
+    l interet de ce compteur : le contrepoids des LP, qui descendent. Une
+    partie qui n aurait rien rapporte du tout n en affiche pas.
+  */
+  it('ne dit rien d une experience nulle', () => {
+    expect(matchSpoils(facts()).xp).toBeNull();
+  });
+
+  /*
+    Le palier se lit en comparant avant et apres. Trente d experience font
+    franchir un niveau ou pas selon ou l on etait : le gain seul ne dit rien.
+  */
+  it('nomme le niveau quand il vient d etre franchi', () => {
+    const seuil = xpForLevel(2);
+    expect(matchSpoils(facts({ xp: 30, xpTotal: seuil })).levelUp).toBe(2);
+  });
+
+  it('ne nomme aucun niveau quand on reste dans le meme', () => {
+    const seuil = xpForLevel(2);
+    expect(matchSpoils(facts({ xp: 30, xpTotal: seuil - 1 })).levelUp).toBeNull();
+    expect(matchSpoils(facts({ xp: 30, xpTotal: seuil + 30 })).levelUp).toBeNull();
+  });
+
   /*
     Rien du tout : le solo, ou une partie contre un fantome en mode rapide.
     L appelant doit pouvoir ne RIEN afficher plutot qu un bandeau vide.
@@ -88,5 +119,6 @@ describe('matchSpoils', () => {
     expect(matchSpoils(facts()).empty).toBe(true);
     expect(matchSpoils(facts({ softCurrency: 12 })).empty).toBe(false);
     expect(matchSpoils(facts({ ratingAfter: 1210 })).empty).toBe(false);
+    expect(matchSpoils(facts({ xp: 12, xpTotal: 12 })).empty).toBe(false);
   });
 });

@@ -91,6 +91,22 @@ export interface BalanceConfig {
   };
   /** Multiplicateur applique quand on rejoue un mouvement deja joue dans le match. */
   readonly repeatMultiplier: number;
+  /**
+   * Niveau de joueur (docs/01 §11).
+   *
+   * Le seul compteur qui MONTE MEME QUAND ON PERD — une defaite vaut 12
+   * d'experience, une victoire 30. C'est le contrepoids des LP, qui
+   * descendent : sans lui, une soiree de defaites ne laisse rien derriere
+   * elle, et c'est comme ca qu'on arrete de jouer.
+   */
+  readonly progression: {
+    /** Experience du premier palier, donc du niveau 1 au niveau 2. */
+    readonly base: number;
+    /** Ce que chaque palier coute de plus que le precedent. */
+    readonly growth: number;
+    /** Dernier niveau : au-dela, l'experience s'accumule sans rien changer. */
+    readonly maxLevel: number;
+  };
 }
 
 export const BALANCE: BalanceConfig = deepFreeze({
@@ -153,4 +169,16 @@ export const BALANCE: BalanceConfig = deepFreeze({
     multiplier: 1.5,
   },
   repeatMultiplier: 0.7,
+  /*
+    Cent d'experience pour le premier palier : cinq matchs environ, donc le
+    niveau 2 tombe dans la PREMIERE SESSION — la seule qui decide si quelqu'un
+    revient.
+
+    Huit pour cent de plus a chaque palier ensuite, et pas douze : a douze, le
+    niveau 50 demandait 215 000 d'experience, soit plus de dix mille parties —
+    environ trois cent cinquante heures. Un plafond que personne n'atteint
+    n'est pas un horizon, c'est une decoration. A huit, il tombe vers deux mille
+    six cents parties : long, mais atteignable par quelqu'un qui reste.
+  */
+  progression: { base: 100, growth: 1.08, maxLevel: 50 },
 });

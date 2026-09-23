@@ -111,5 +111,28 @@ export const PRESENCE_LEAGUE_CACHE = 'PRESENCE_LEAGUE_CACHE';
  * achete.
  */
 export interface WalletCredit {
-  credit(entries: readonly { readonly playerId: string; readonly soft: number }[]): Promise<void>;
+  credit(
+    entries: readonly {
+      readonly playerId: string;
+      readonly soft: number;
+      /**
+       * Experience gagnee par ce match.
+       *
+       * Creditee avec la monnaie, et dans la meme transaction : les deux
+       * recompensent le meme match, et n'en accorder qu'une laisserait un
+       * joueur paye sans avoir progresse — ou l'inverse, sans que rien ne
+       * puisse le dire ensuite.
+       */
+      readonly xp: number;
+    }[],
+    /*
+      Rend l'experience TOTALE apres credit, par joueur.
+
+      Le total ne se deduit pas d'un increment : il faut le relire, et la
+      transaction qui ecrit est le seul endroit ou il est juste. Le calculer
+      ailleurs — lecture avant, addition apres — donnerait un total faux des
+      que deux matchs du meme joueur s'achevent ensemble, ce qui arrive avec
+      deux onglets.
+    */
+  ): Promise<ReadonlyMap<string, number>>;
 }

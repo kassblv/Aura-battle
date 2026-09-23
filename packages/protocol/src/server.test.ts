@@ -259,7 +259,7 @@ describe('match:found et match:end', () => {
           winner: 'a',
           reason,
           rating: { before: 1_000, after: 1_020, leagueBefore: 'bronze', leagueAfter: 'bronze' },
-          rewards: { softCurrency: 40, xp: 120 },
+          rewards: { softCurrency: 40, xp: 120, xpTotal: 3_400 },
         }).success,
       ).toBe(true);
     }

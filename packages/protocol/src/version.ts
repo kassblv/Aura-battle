@@ -15,7 +15,13 @@
   Passer en 2.0.0 aurait renvoye tous les joueurs sur un ecran de mise a jour
   pour un champ que pas un seul message ne portait.
 */
-export const PROTOCOL_VERSION = '1.1.0';
+/*
+  1.2.0 — `match:end.rewards` porte `xpTotal`.
+
+  Un champ AJOUTE : un client qui l'ignore continue de fonctionner, donc pas
+  de rupture majeure.
+*/
+export const PROTOCOL_VERSION = '1.2.0';
 
 const MAJOR = /^(\d+)\./;
 

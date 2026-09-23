@@ -142,7 +142,12 @@ export interface GhostRecorder {
 export interface SeatRatingOutcome {
   readonly before: { readonly leaguePoints: number; readonly league: string };
   readonly after: { readonly leaguePoints: number; readonly league: string };
-  readonly rewards: { readonly softCurrency: number; readonly xp: number };
+  readonly rewards: {
+    readonly softCurrency: number;
+    readonly xp: number;
+    /** Experience TOTALE apres ce match : c'est d'elle que le niveau se deduit. */
+    readonly xpTotal: number;
+  };
 }
 
 /**

@@ -222,17 +222,24 @@ export class PrismaRatingRepository
    * dans la base, qui sait les empiler.
    */
   async credit(
-    entries: readonly { readonly playerId: string; readonly soft: number }[],
-  ): Promise<void> {
-    if (entries.length === 0) return;
-    await this.prisma.$transaction(
+    entries: readonly { readonly playerId: string; readonly soft: number; readonly xp: number }[],
+  ): Promise<ReadonlyMap<string, number>> {
+    if (entries.length === 0) return new Map();
+    const rows = await this.prisma.$transaction(
       entries.map((entry) =>
         this.prisma.player.update({
           where: { id: entry.playerId },
-          data: { softCurrency: { increment: entry.soft } },
+          data: {
+            softCurrency: { increment: entry.soft },
+            // Meme increment, meme transaction : les deux recompensent le meme
+            // match, et l'experience ne se recalcule pas apres coup.
+            xp: { increment: entry.xp },
+          },
+          select: { id: true, xp: true },
         }),
       ),
     );
+    return new Map(rows.map((row) => [row.id, row.xp]));
   }
 
   async saveMany(

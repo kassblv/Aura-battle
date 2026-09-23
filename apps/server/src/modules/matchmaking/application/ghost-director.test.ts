@@ -416,7 +416,7 @@ describe('GhostDirector — cycle de vie', () => {
       winner: 'a',
       reason: 'rounds',
       rating: { before: 0, after: 0, leagueBefore: 'sans_aura', leagueAfter: 'sans_aura' },
-      rewards: { softCurrency: 0, xp: 0 },
+      rewards: { softCurrency: 0, xp: 0, xpTotal: 0 },
     });
 
     expect(b.scheduler.armed.size).toBe(0);

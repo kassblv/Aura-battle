@@ -896,12 +896,12 @@ describe('classement de fin de match (docs/05, jalon M5)', () => {
     a: {
       before: { leaguePoints: 100, league: 'naissante' },
       after: { leaguePoints: 122, league: 'naissante' },
-      rewards: { softCurrency: 20, xp: 30 },
+      rewards: { softCurrency: 20, xp: 30, xpTotal: 30 },
     },
     b: {
       before: { leaguePoints: 100, league: 'naissante' },
       after: { leaguePoints: 82, league: 'naissante' },
-      rewards: { softCurrency: 8, xp: 12 },
+      rewards: { softCurrency: 8, xp: 12, xpTotal: 12 },
     },
   };
 
@@ -946,7 +946,7 @@ describe('classement de fin de match (docs/05, jalon M5)', () => {
       leagueBefore: 'sans_aura',
       leagueAfter: 'sans_aura',
     });
-    expect(end.rewards).toEqual({ softCurrency: 0, xp: 0 });
+    expect(end.rewards).toEqual({ softCurrency: 0, xp: 0, xpTotal: 0 });
   });
 
   it('libere les sieges sur-le-champ, avant meme que le classement ne reponde', () => {
@@ -968,7 +968,12 @@ describe('classement de fin de match (docs/05, jalon M5)', () => {
       leagueBefore: 'naissante',
       leagueAfter: 'naissante',
     });
-    expect(endA.rewards).toEqual({ softCurrency: 20, xp: 30 });
+    /*
+      `xpTotal` accompagne le gain : c'est de lui que le niveau se deduit, et
+      le gain seul n'en dit rien. Ici le faux service de classement rend le
+      cumul du seul match joue.
+    */
+    expect(endA.rewards).toEqual({ softCurrency: 20, xp: 30, xpTotal: 30 });
     expect(endB.rating.after).toBe(82);
   });
 
@@ -1166,12 +1171,12 @@ describe('fantomes — enregistrement et siege', () => {
           a: {
             before: { leaguePoints: 0, league: 'sans_aura' },
             after: { leaguePoints: 0, league: 'sans_aura' },
-            rewards: { softCurrency: 0, xp: 0 },
+            rewards: { softCurrency: 0, xp: 0, xpTotal: 0 },
           },
           b: {
             before: { leaguePoints: 0, league: 'sans_aura' },
             after: { leaguePoints: 0, league: 'sans_aura' },
-            rewards: { softCurrency: 0, xp: 0 },
+            rewards: { softCurrency: 0, xp: 0, xpTotal: 0 },
           },
         } as Readonly<Record<Seat, SeatRatingOutcome>>);
       },

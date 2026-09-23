@@ -24,6 +24,11 @@ model Player {
   lastSeenAt   DateTime  @default(now())
   softCurrency Int       @default(0)
   hardCurrency Int       @default(0)
+  /// Experience cumulee. Le niveau s'en DEDUIT (`levelFor`, @aura/rules) au
+  /// lieu d'etre stocke a cote : deux colonnes qui decrivent la meme chose
+  /// finissent par se contredire, et c'est toujours celle qu'on n'a pas mise a
+  /// jour qui s'affiche.
+  xp           Int       @default(0)
   bannedUntil  DateTime?
 
   identities    AuthIdentity[]
