@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { styleSchema } from '@aura/protocol';
 import { z } from 'zod';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import type { GhostRecording, GhostRound } from '../domain/ghost.js';
@@ -29,7 +30,9 @@ import type { GhostRecordingStore } from '../domain/ports.js';
  */
 const ghostRoundSchema = z.strictObject({
   move: z.strictObject({
-    style: z.enum(['calme', 'hype', 'provoc']),
+    // Les familles du protocole, donc du moteur : un fantome enregistre en
+    // Acrobatie doit se relire, sinon il quitte le vivier en silence.
+    style: styleSchema,
     tier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),
   }),
   amplifier: z.union([z.literal(0), z.literal(1), z.literal(2), z.literal(3), z.literal(4)]),

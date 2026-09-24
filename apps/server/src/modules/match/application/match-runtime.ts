@@ -1,4 +1,4 @@
-import { danceKey, defaultAnimationFor, effectForLevel } from '@aura/content';
+import { defaultAnimationFor, effectForLevel, moveOfAnimation } from '@aura/content';
 import type { ChallengeTracker } from '../../challenges/domain/ports.js';
 import {
   emptyContribution,
@@ -94,8 +94,11 @@ export interface SeatWearing {
    * Posseder, c'est porter — au niveau concerne, et seulement la.
    */
   readonly ownedEffects: readonly string[];
-  /** Danse equipee par mouvement, indexee `<style>.t<palier>`. */
-  readonly dances: Readonly<Record<string, string>>;
+  /**
+   * Tout ce que le joueur possede, objets offerts compris : c'est la que
+   * `lockPose` verifie qu'une pose payante a bien ete obtenue.
+   */
+  readonly owned: readonly string[];
   /**
    * Ce que l'adversaire a le droit de voir des l'ouverture : tenue, coiffure,
    * couleur d'aura, danse signature.
@@ -117,8 +120,15 @@ export interface PublicLook {
 
 const NOTHING_WORN: SeatWearing = Object.freeze({
   ownedEffects: Object.freeze([]),
-  dances: Object.freeze({}),
+  owned: Object.freeze([]),
 });
+
+/** L'intention d'un verrouillage, telle que le client la formule (2.0.0). */
+export interface PoseIntent {
+  readonly poseId: string;
+  readonly amplifier: Choice['amplifier'];
+  readonly useUltimate: boolean;
+}
 
 export interface MatchSeats {
   readonly a: string;
@@ -188,6 +198,14 @@ interface LiveMatch {
    * empoisonnerait le score de suspicion de chaque personne qu'il croise.
    */
   impossibleTaps: Record<Seat, number>;
+  /**
+   * La pose verrouillee par siege, avec la manche ou elle l'a ete.
+   *
+   * La manche fait partie de la valeur : un siege qui ne verrouille pas a la
+   * manche suivante joue le choix par defaut du moteur, et lui montrer la
+   * pose de la manche d'avant ferait danser un mouvement qu'il ne joue pas.
+   */
+  poses: Record<Seat, { readonly round: number; readonly poseId: string } | null>;
   /** Transitions de phase deja journalisees, pour tenir leur reserve. */
   phaseEntries: number;
   /**
@@ -361,28 +379,6 @@ export class MatchRuntime {
     const match = this.matches.get(matchId);
     if (match === undefined) return;
     match.wearing[seat] = wearing;
-  }
-
-  /**
-   * Remplace les danses par mouvement d'un joueur assis, pour la suite du match.
-   *
-   * Le joueur peut changer la danse d'un mouvement depuis le panneau de choix :
-   * l'inventaire l'enregistre, puis previent ici. Elle vaut des la prochaine
-   * revelation — `cosmeticOf` la lit a cet instant-la, pas avant.
-   *
-   * SEULES les danses bougent. La tenue, la coiffure, la couleur et la
-   * signature ont ete annoncees a l'adversaire dans `match:found` : les changer
-   * en route ferait mentir cette annonce. Les effets possedes restent aussi
-   * ceux de l'ouverture — la boutique n'est pas joignable pendant un duel.
-   *
-   * Rien ne part : une danse n'est publique qu'avec le mouvement qu'elle
-   * habille, dans `round:result` (regle d'or n°4).
-   */
-  refreshDances(playerId: string, dances: Readonly<Record<string, string>>): void {
-    const found = this.locate(playerId);
-    if (found === null) return;
-    const { match, seat } = found;
-    match.wearing[seat] = { ...match.wearing[seat], dances };
   }
 
   /**
@@ -580,6 +576,7 @@ export class MatchRuntime {
       rejected: { a: 0, b: 0 },
       dropped: { a: 0, b: 0 },
       impossibleTaps: { a: 0, b: 0 },
+      poses: { a: null, b: null },
       phaseEntries: 0,
       ghost:
         input.ghost == null
@@ -691,9 +688,51 @@ export class MatchRuntime {
     return tapAtMs <= elapsedMs + LOCK_TOLERANCE_MS + CLOCK_ALLOWANCE_MS;
   }
 
-  lockChoice(matchId: string, seat: Seat, choice: Choice, timingTapAtMs: number | null): void {
+  /**
+   * Verrouille une POSE, l'intention que le client envoie depuis la 2.0.0.
+   *
+   * Le mouvement se deduit du catalogue, jamais du client. Une pose inconnue,
+   * ou payante sans avoir ete obtenue, est refusee et imputee au seul siege
+   * fautif (`rejected`, docs/06) : un client honnete n'en envoie jamais. Le
+   * siege n'est alors pas verrouille, et l'adversaire n'en apprend rien.
+   */
+  lockPose(matchId: string, seat: Seat, intent: PoseIntent, timingTapAtMs: number | null): void {
     const match = this.matches.get(matchId);
     if (match === undefined) return;
+
+    const move = moveOfAnimation(intent.poseId);
+    const offered = move !== null && defaultAnimationFor(move) === intent.poseId;
+    if (move === null || (!offered && !match.wearing[seat].owned.includes(intent.poseId))) {
+      match.rejected[seat] += 1;
+      // Au seul interesse, et rejouable : un client honnete a l'inventaire
+      // perime (pose obtenue sur un autre appareil) doit pouvoir verrouiller
+      // autre chose plutot que perdre sa manche en silence.
+      this.notifier.send(match.seats[seat], 'error', {
+        code: move === null ? 'INVALID_PAYLOAD' : 'COSMETIC_NOT_OWNED',
+        message: move === null ? 'pose inconnue' : 'pose non possedee',
+        retryable: true,
+      });
+      return;
+    }
+
+    // Posee AVANT le verrouillage : le second siege a verrouiller declenche la
+    // resolution de la manche dans le meme appel, et la revelation lit la pose
+    // a cet instant-la. Retiree si le moteur refuse le choix.
+    const previous = match.poses[seat];
+    match.poses[seat] = { round: match.state.round, poseId: intent.poseId };
+    const choice: Choice = { move, amplifier: intent.amplifier, useUltimate: intent.useUltimate };
+    if (!this.lockChoice(matchId, seat, choice, timingTapAtMs)) match.poses[seat] = previous;
+  }
+
+  /**
+   * Verrouille un choix deja resolu. Rend `true` si le moteur l'a accepte.
+   *
+   * C'est le chemin des fantomes et des bots, qui n'ont pas de pose : la
+   * revelation leur montre la pose offerte de leur case.
+   */
+  lockChoice(matchId: string, seat: Seat, choice: Choice, timingTapAtMs: number | null): boolean {
+    const match = this.matches.get(matchId);
+    if (match === undefined) return false;
 
     // Un timing qui annonce plus de temps qu'il ne s'en est ecoule est
     // impossible : on le remplace par « pas de tap » plutot que de refuser le
@@ -715,13 +754,15 @@ export class MatchRuntime {
     // Le verrouillage a-t-il ete accepte ? Si oui, l'adversaire apprend ce
     // seul fait — ni le mouvement, ni le timing, ni le cout.
     const after = this.matches.get(matchId)?.state.pending[seat].locked;
-    if (before === null && after !== null && after !== undefined) {
+    const accepted = before === null && after !== null && after !== undefined;
+    if (accepted) {
       const opponent = opponentOf(seat);
       this.notifier.send(match.seats[opponent], 'opponent:locked', {
         matchId,
         round: match.state.round,
       });
     }
+    return accepted;
   }
 
   forfeit(matchId: string, seat: Seat): void {
@@ -844,10 +885,14 @@ export class MatchRuntime {
     const move = locked?.choice.move ?? FALLBACK_MOVE;
     const amplifier = locked?.choice.amplifier ?? 0;
     const wearing = match.wearing[seat];
+    const pose = match.poses[seat];
     void result;
 
     return {
-      animationId: wearing.dances[danceKey(move)] ?? defaultAnimationFor(move),
+      animationId:
+        locked !== null && pose !== null && pose.round === match.state.round
+          ? pose.poseId
+          : defaultAnimationFor(move),
       effectId: effectForLevel(amplifier, wearing.ownedEffects).id,
     };
   }

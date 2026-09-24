@@ -50,8 +50,8 @@ interface Session {
    *
    * C'est ce que le PROCHAIN match copiera a son ouverture. Le match en cours,
    * lui, garde son apparence : un changement de tenue en pleine partie ferait
-   * changer d'aura entre la revelation et le choc — seules les danses par
-   * mouvement le suivent, voir `MatchRuntime.refreshDances`.
+   * changer d'aura entre la revelation et le choc. La pose jouee, elle, arrive
+   * avec chaque verrouillage (`MatchRuntime.lockPose`).
    */
   wearing: SeatWearing;
 }
@@ -59,7 +59,7 @@ interface Session {
 /** Ce que porte quelqu'un dont on ne sait rien : rien de particulier. */
 const NOTHING_WORN: SeatWearing = Object.freeze({
   ownedEffects: Object.freeze([]),
-  dances: Object.freeze({}),
+  owned: Object.freeze([]),
 });
 
 @Injectable()

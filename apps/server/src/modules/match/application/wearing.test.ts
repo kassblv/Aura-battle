@@ -33,7 +33,8 @@ describe('wearingFrom', () => {
       auraColor: 'color.violet',
       signature: 'anim.hype.t2.floss',
     });
-    expect(worn.dances).toEqual({ 'hype.t2': 'anim.hype.t2.floss' });
+    // Tout ce qui est possede, pour que le match verifie une pose verrouillee.
+    expect(worn.owned).toEqual(['outfit.kimono', 'anim.hype.t2.floss', 'color.violet']);
   });
 
   /*
@@ -53,7 +54,6 @@ describe('wearingFrom', () => {
     );
 
     expect(worn.look).toEqual({});
-    expect(worn.dances).toEqual({});
   });
 
   /*
@@ -78,7 +78,6 @@ describe('wearingFrom', () => {
     );
 
     expect(worn.look).toEqual({});
-    expect(worn.dances).toEqual({});
   });
 
   it('ecarte un objet dont le catalogue ignore le kind', () => {
@@ -89,7 +88,7 @@ describe('wearingFrom', () => {
   it('rend les defauts sans loadout', () => {
     expect(wearingFrom(['fx.glow'], null, KINDS)).toEqual({
       ownedEffects: ['fx.glow'],
-      dances: {},
+      owned: ['fx.glow'],
       look: {},
     });
   });
@@ -98,13 +97,17 @@ describe('wearingFrom', () => {
 describe('WearingRefresh', () => {
   const WORN: SeatWearing = {
     ownedEffects: [],
-    dances: { 'hype.t2': 'anim.hype.t2.floss' },
+    owned: ['anim.hype.t2.floss'],
     look: { signature: 'anim.hype.t2.floss' },
   };
 
-  it('met a jour la session et les danses du match en cours', async () => {
+  /*
+    Seule la session suit : c'est ce que le PROCHAIN match copiera. Le match en
+    cours garde l'apparence annoncee a son ouverture, et la pose jouee arrive
+    avec chaque verrouillage — il n'y a plus rien a lui transmettre.
+  */
+  it('met a jour la session, que le prochain match copiera', async () => {
     const sessions: [string, SeatWearing][] = [];
-    const matches: [string, Readonly<Record<string, string>>][] = [];
     const given: InventorySnapshot[] = [];
     const refresh = new WearingRefresh(
       {
@@ -114,7 +117,6 @@ describe('WearingRefresh', () => {
         },
       },
       { setWearing: (id, w) => sessions.push([id, w]) },
-      { refreshDances: (id, d) => matches.push([id, d]) },
     );
 
     const snapshot = {
@@ -126,7 +128,6 @@ describe('WearingRefresh', () => {
     // L'etat que l'inventaire vient d'ecrire, pas une relecture de la base.
     expect(given).toEqual([snapshot]);
     expect(sessions).toEqual([['p1', WORN]]);
-    expect(matches).toEqual([['p1', WORN.dances]]);
   });
 
   it('ne leve pas quand l inventaire ne repond pas, et le dit', async () => {
@@ -134,7 +135,6 @@ describe('WearingRefresh', () => {
     const refresh = new WearingRefresh(
       { wearingFor: () => Promise.reject(new Error('base indisponible')) },
       { setWearing: () => undefined },
-      { refreshDances: () => undefined },
       { warn: (message) => warnings.push(message) },
     );
 
@@ -155,7 +155,6 @@ describe('WearingRefresh', () => {
     const refresh = new WearingRefresh(
       { wearingFor: () => Promise.reject(cause) },
       { setWearing: () => undefined },
-      { refreshDances: () => undefined },
       { warn: (message) => warnings.push(message) },
     );
 

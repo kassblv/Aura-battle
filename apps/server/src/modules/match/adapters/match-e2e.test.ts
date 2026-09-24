@@ -1,3 +1,4 @@
+import { defaultAnimationFor } from '@aura/content';
 import { PROTOCOL_VERSION, type ServerMessage } from '@aura/protocol';
 import { BALANCE, type BalanceConfig } from '@aura/rules';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
@@ -172,7 +173,7 @@ beforeAll(async () => {
           wearingOf: () =>
             Promise.resolve({
               ownedEffects: [],
-              dances: {},
+              owned: [],
               look: { hair: 'hair.long', signature: 'anim.calme.t3.moonwalk' },
             }),
         },
@@ -333,7 +334,7 @@ const lock = (player: Recorder, matchId: string, round: number, tier: 0 | 1 | 2 
     matchId,
     round,
     seq: round,
-    move: { style: 'calme', tier },
+    poseId: defaultAnimationFor({ style: 'calme', tier }),
     amp: 0,
     ult: false,
     timing: { chargeAt: 0, tapAt: 400 },
@@ -425,7 +426,7 @@ describe('manche complete', () => {
       matchId,
       round: 1,
       seq: 1,
-      move: { style: 'provoc', tier: 4 },
+      poseId: 'anim.provoc.t4.back',
       amp: 4,
       ult: false,
       timing: { chargeAt: 0, tapAt: 400 },
@@ -437,6 +438,67 @@ describe('manche complete', () => {
     expect(JSON.stringify(vu)).not.toContain('provoc');
     // Et rien d'autre n'est arrive entre-temps qui le trahirait.
     expect(guest.received.map((m) => m.name)).not.toContain('round:result');
+
+    close(host, guest);
+  });
+
+  /*
+    2.0.0 : le client envoie la pose, le serveur en deduit le mouvement et la
+    montre des deux cotes a la revelation — et nulle part avant.
+  */
+  it('revele les deux poses, avec le contre des nouvelles familles', async () => {
+    const { host, guest, matchId } = await seatTwoPlayers();
+    await host.first('choice:start');
+
+    const lockPose = (player: Recorder, poseId: string): void => {
+      player.socket.emit('choice:lock', {
+        matchId,
+        round: 1,
+        seq: 1,
+        poseId,
+        amp: 0,
+        ult: false,
+        timing: { chargeAt: 0, tapAt: 400 },
+      });
+    };
+    lockPose(host, 'anim.acrobatie.t2.wheel');
+    await guest.first('opponent:locked');
+    // Le verrouillage de l'hote est connu ; sa pose, non.
+    expect(JSON.stringify(guest.received)).not.toContain('wheel');
+    expect(JSON.stringify(guest.received)).not.toContain('acrobatie');
+    lockPose(guest, 'anim.prouesse.t2.plank');
+
+    const vuHote = await host.first<ServerMessage<'round:result'>>('round:result');
+    const vuInvite = await guest.first<ServerMessage<'round:result'>>('round:result');
+    expect(vuInvite).toEqual(vuHote);
+    expect(vuHote.sides.a.move).toEqual({ style: 'acrobatie', tier: 2 });
+    expect(vuHote.sides.a.cosmetic.animationId).toBe('anim.acrobatie.t2.wheel');
+    expect(vuHote.sides.b.cosmetic.animationId).toBe('anim.prouesse.t2.plank');
+    // Acrobatie bat Prouesse.
+    expect(vuHote.sides.a.counter).toBe(true);
+    expect(vuHote.winner).toBe('a');
+
+    close(host, guest);
+  });
+
+  it('refuse une pose payante non possedee et ne le dit qu au seul interesse', async () => {
+    const { host, guest, matchId } = await seatTwoPlayers();
+    await host.first('choice:start');
+
+    host.socket.emit('choice:lock', {
+      matchId,
+      round: 1,
+      seq: 1,
+      poseId: 'anim.hype.t2.floss',
+      amp: 0,
+      ult: false,
+      timing: { chargeAt: 0, tapAt: 400 },
+    });
+
+    const error = await host.first<{ code: string }>('error');
+    expect(error.code).toBe('COSMETIC_NOT_OWNED');
+    expect(guest.received.map((m) => m.name)).not.toContain('opponent:locked');
+    expect(guest.received.map((m) => m.name)).not.toContain('error');
 
     close(host, guest);
   });
@@ -500,7 +562,7 @@ describe('securite du match', () => {
       matchId,
       round: 1,
       seq: 1,
-      move: { style: 'hype', tier: 4 },
+      poseId: 'anim.hype.t4.boat',
       amp: 3,
       ult: false,
       timing: { chargeAt: 0, tapAt: 400 },
@@ -542,7 +604,7 @@ describe('securite du match', () => {
       matchId,
       round: 1,
       seq: 2,
-      move: { style: 'calme', tier: 1 },
+      poseId: 'anim.calme.t1.pocket',
       amp: 0,
       ult: false,
       timing: { chargeAt: 0, tapAt: 400 },

@@ -6,12 +6,7 @@ import type {
 } from '../../inventory/domain/ports.js';
 import type { CosmeticKind } from '@prisma/client';
 import { ownedWithFree } from '../../inventory/domain/purchase.js';
-import {
-  fitsDanceSlot,
-  fitsLookSlot,
-  fitsSignature,
-  lookEntries,
-} from '../../inventory/domain/slots.js';
+import { fitsLookSlot, fitsSignature, lookEntries } from '../../inventory/domain/slots.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import { describeErrorKind } from '../../../shared/describe-cause.js';
 import type { PlayerWardrobe } from '../domain/wardrobe.js';
@@ -37,11 +32,6 @@ export function wearingFrom(
   const has = new Set(owned);
   const kindOf = (id: string): CosmeticKind | undefined => kinds.get(id);
 
-  const dances: Record<string, string> = {};
-  for (const [key, id] of Object.entries(loadout?.dances ?? {})) {
-    if (has.has(id) && fitsDanceSlot(key, id)) dances[key] = id;
-  }
-
   // Recopie emplacement par emplacement : un emplacement ajoute un jour a
   // l'inventaire ne doit pas arriver chez l'adversaire sans qu'on l'ait decide
   // ici. L'effet d'aura n'en fait pas partie — il se joue par niveau, a la
@@ -55,7 +45,10 @@ export function wearingFrom(
     look.signature = signature;
   }
 
-  return { ownedEffects: owned, dances, look };
+  // La presélection des poses (`loadout.dances`) n'a rien a faire ici : le
+  // client envoie la pose jouee a chaque verrouillage, et `lockPose` la
+  // verifie contre `owned`.
+  return { ownedEffects: owned, owned, look };
 }
 
 /** Ce que porte un joueur, calcule a partir d'un etat d'inventaire deja lu. */
@@ -98,18 +91,14 @@ export interface WearingPresence {
   setWearing(playerId: string, wearing: SeatWearing): void;
 }
 
-/** Le match en cours, vu d'ici : seules ses danses par mouvement suivent. */
-export interface WearingRuntime {
-  refreshDances(playerId: string, dances: Readonly<Record<string, string>>): void;
-}
-
 /**
  * L'ecoute des changements d'inventaire, cote match.
  *
  * Le match lisait l'apparence **une fois, a la connexion**. La socket vit d'un
- * duel a l'autre : une danse equipee au vestiaire n'etait donc vue par
- * l'adversaire qu'apres une reconnexion, et une danse choisie en plein duel,
- * jamais.
+ * duel a l'autre : une tenue ou une pose obtenue entre deux duels n'etait donc
+ * vue qu'apres une reconnexion. On met a jour la session, que le prochain
+ * match copie ; le match en cours, lui, garde ce qu'il a annonce a son
+ * ouverture, et recoit la pose jouee avec chaque verrouillage.
  *
  * Ne leve jamais : l'equipement est deja enregistre quand on arrive ici, et un
  * rafraichissement manque ne doit pas le faire passer pour refuse. Le prochain
@@ -121,7 +110,6 @@ export class WearingRefresh implements InventoryChanges {
   constructor(
     private readonly wardrobe: WearingSource,
     private readonly presence: WearingPresence,
-    private readonly runtime: WearingRuntime,
     private readonly log: AppLog | null = null,
   ) {}
 
@@ -129,7 +117,6 @@ export class WearingRefresh implements InventoryChanges {
     try {
       const wearing = await this.wardrobe.wearingFor(snapshot);
       this.presence.setWearing(playerId, wearing);
-      this.runtime.refreshDances(playerId, wearing.dances);
     } catch (cause) {
       this.log?.warn(`apparence non rafraichie pour ${playerId} : ${describeErrorKind(cause)}`);
     }

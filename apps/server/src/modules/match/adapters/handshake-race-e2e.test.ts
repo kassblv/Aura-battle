@@ -97,7 +97,7 @@ beforeAll(async () => {
         // Personne ne porte rien de particulier : chacun aura l'effet offert
         // de son palier, comme tout le monde avant la boutique.
         provide: PLAYER_WARDROBE,
-        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], dances: {} }) },
+        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], owned: [] }) },
       },
       {
         provide: PLAYER_DIRECTORY,

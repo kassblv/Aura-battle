@@ -108,6 +108,36 @@ describe.skipIf(!reachable)('PrismaGhostStore — reserve reelle', () => {
     await cleanUp(playerId);
   });
 
+  /*
+    Un fantome enregistre dans une des deux nouvelles familles doit se relire :
+    le refuser au schema le retirerait en silence du vivier, et les joueurs
+    n'affronteraient plus que des fantomes a trois familles.
+  */
+  it('relit un enregistrement des nouvelles familles', async () => {
+    const playerId = newPlayerId();
+    const rounds = [
+      aRound({ move: { style: 'acrobatie', tier: 2 } }),
+      aRound({ move: { style: 'prouesse', tier: 4 }, amplifier: 0 }),
+    ];
+    await store().save({
+      playerId,
+      mmr: 1_444,
+      rulesVersion: 'itest-1.0.0',
+      rounds,
+      atMs: Date.now(),
+    });
+
+    const found = await store().candidates({
+      rulesVersion: 'itest-1.0.0',
+      mmr: 1_444,
+      range: 10,
+      limit: 10,
+    });
+    expect(found.find((recording) => recording.playerId === playerId)?.rounds).toEqual(rounds);
+
+    await cleanUp(playerId);
+  });
+
   /** Une ligne par joueur : sans cela la table grossit d'une ligne par match classe. */
   it('remplace l enregistrement precedent du meme joueur', async () => {
     const playerId = newPlayerId();

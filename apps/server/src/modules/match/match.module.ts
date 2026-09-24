@@ -259,14 +259,13 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
      */
     {
       provide: INVENTORY_CHANGES,
-      inject: [PrismaInventoryRepository, SocketNotifier, MatchRuntime, PinoLoggerService],
+      inject: [PrismaInventoryRepository, SocketNotifier, PinoLoggerService],
       useFactory: (
         inventory: PrismaInventoryRepository,
         notifier: SocketNotifier,
-        runtime: MatchRuntime,
         logger: PinoLoggerService,
       ) =>
-        new WearingRefresh(wardrobeFromInventory(inventory), notifier, runtime, {
+        new WearingRefresh(wardrobeFromInventory(inventory), notifier, {
           warn: (message: string) => {
             logger.warn(message, 'WearingRefresh');
           },

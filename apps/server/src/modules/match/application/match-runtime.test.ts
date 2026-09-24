@@ -1250,7 +1250,7 @@ describe('effet d aura a la revelation', () => {
   });
 
   it('annonce le skin possede, au niveau qu il habille', () => {
-    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: ['fx.shock'], dances: {} });
+    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: ['fx.shock'], owned: ['fx.shock'] });
     advanceTo('choice');
     runtime.lockChoice(MATCH_ID, 'a', { ...choice(1), amplifier: 2 }, null);
     runtime.lockChoice(MATCH_ID, 'b', { ...choice(1), amplifier: 2 }, null);
@@ -1265,7 +1265,7 @@ describe('effet d aura a la revelation', () => {
     d'etre lisible — son nom est celui de son effet.
   */
   it('ne montre pas le skin a un autre palier', () => {
-    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: ['fx.shock'], dances: {} });
+    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: ['fx.shock'], owned: ['fx.shock'] });
     advanceTo('choice');
     runtime.lockChoice(MATCH_ID, 'a', { ...choice(1), amplifier: 4 }, null);
     runtime.lockChoice(MATCH_ID, 'b', { ...choice(1), amplifier: 0 }, null);
@@ -1274,47 +1274,106 @@ describe('effet d aura a la revelation', () => {
 });
 
 /**
- * La danse du mouvement joue, choisie en cours de match.
+ * La pose verrouillee (protocole 2.0.0).
  *
- * Le joueur peut changer la danse d'un mouvement depuis le panneau de choix.
- * Le serveur l'apprend par l'inventaire (`refreshDances`) et l'annonce a la
- * revelation suivante. Le reste de l'apparence est fige a l'ouverture : c'est
- * ce qui a ete annonce a l'adversaire dans `match:found`.
+ * Le client ne dit que la pose ; le serveur en deduit famille et palier, et
+ * verifie qu'elle est offerte ou possedee. Une pose refusee est imputee au
+ * seul siege fautif, et le siege joue alors le choix par defaut du moteur.
  */
-describe('danse changee en cours de match', () => {
-  const FLOSS = 'anim.hype.t2.floss';
-  const animationOf = (seat: Seat): string => {
-    const results = notifier.to(SEATS[seat], 'round:result') as ServerMessage<'round:result'>[];
-    return results.at(-1)!.sides[seat].cosmetic.animationId;
+describe('pose verrouillee', () => {
+  const WHEEL = 'anim.acrobatie.t2.wheel'; // offerte
+  const FLEX = 'anim.prouesse.t0.flex'; // offerte
+  const FLOSS = 'anim.hype.t2.floss'; // payante
+  const result = (): ServerMessage<'round:result'> =>
+    (notifier.to(SEATS.a, 'round:result') as ServerMessage<'round:result'>[]).at(-1)!;
+  const record = (): MatchRecord => {
+    runtime.forfeit(MATCH_ID, 'a');
+    return keeper.saved.at(-1)!;
   };
+  class Keeper {
+    readonly saved: MatchRecord[] = [];
+    save(saved: MatchRecord): Promise<void> {
+      this.saved.push(saved);
+      return Promise.resolve();
+    }
+  }
+  let keeper: Keeper;
 
-  it('annonce la danse choisie pendant la manche a sa revelation', () => {
-    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: [], dances: {} });
+  beforeEach(() => {
+    keeper = new Keeper();
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, keeper);
+    runtime.createMatch({ matchId: MATCH_ID, seed: 'graine', seats: SEATS });
+  });
+
+  it('revele la pose offerte et le mouvement qu elle porte', () => {
     advanceTo('choice');
-    runtime.refreshDances(SEATS.a, { 'hype.t2': FLOSS });
-    runtime.lockChoice(MATCH_ID, 'a', { ...choice(2), move: { style: 'hype', tier: 2 } }, null);
-    runtime.lockChoice(MATCH_ID, 'b', choice(1), null);
-    expect(animationOf('a')).toBe(FLOSS);
+    runtime.lockPose(MATCH_ID, 'a', { poseId: WHEEL, amplifier: 0, useUltimate: false }, null);
+    runtime.lockPose(MATCH_ID, 'b', { poseId: FLEX, amplifier: 0, useUltimate: false }, null);
+    expect(result().sides.a.move).toEqual({ style: 'acrobatie', tier: 2 });
+    expect(result().sides.a.cosmetic.animationId).toBe(WHEEL);
+    expect(result().sides.b.cosmetic.animationId).toBe(FLEX);
+    // acrobatie bat prouesse
+    expect(result().sides.a.counter).toBe(true);
   });
 
-  it('garde l apparence publique annoncee a l ouverture', () => {
-    runtime.setWearing(MATCH_ID, 'a', {
-      ownedEffects: [],
-      dances: {},
-      look: { signature: 'anim.calme.t3.moonwalk' },
-    });
-    runtime.refreshDances(SEATS.a, { 'hype.t2': FLOSS });
-    expect(runtime.publicLookOf(MATCH_ID, 'a')).toEqual({ signature: 'anim.calme.t3.moonwalk' });
+  it('accepte une pose payante possedee', () => {
+    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: [], owned: [FLOSS] });
+    advanceTo('choice');
+    runtime.lockPose(MATCH_ID, 'a', { poseId: FLOSS, amplifier: 0, useUltimate: false }, null);
+    runtime.lockChoice(MATCH_ID, 'b', choice(0), null);
+    expect(result().sides.a.cosmetic.animationId).toBe(FLOSS);
+    expect(result().sides.a.move).toEqual({ style: 'hype', tier: 2 });
   });
 
-  it('ignore un joueur qui n est dans aucun match', () => {
-    expect(() => {
-      runtime.refreshDances('personne', { 'hype.t2': FLOSS });
-    }).not.toThrow();
+  it('refuse une pose payante non possedee, au seul siege fautif', () => {
+    advanceTo('choice');
+    runtime.lockPose(MATCH_ID, 'a', { poseId: FLOSS, amplifier: 0, useUltimate: false }, null);
+    // Rien n'est verrouille : l'adversaire n'apprend rien.
+    expect(notifier.to(SEATS.b, 'opponent:locked')).toEqual([]);
+    // Le seul interesse l'apprend, et peut verrouiller autre chose : un client
+    // honnete a l'inventaire perime ne doit pas perdre sa manche en silence.
+    expect(notifier.to(SEATS.a, 'error')).toEqual([
+      { code: 'COSMETIC_NOT_OWNED', message: 'pose non possedee', retryable: true },
+    ]);
+    expect(notifier.to(SEATS.b, 'error')).toEqual([]);
+    const saved = record();
+    expect(saved.rejectedEvents.a).toBe(1);
+    expect(saved.rejectedEvents.b).toBe(0);
   });
 
-  it('ne rend aucune apparence pour un match inconnu', () => {
-    expect(runtime.publicLookOf('m_inconnu', 'a')).toBeNull();
+  it.each(['anim.system.none.victory', 'fx.flames', 'anim.hype.t4.wheel', 'hair.long'])(
+    'refuse %s, qui n est pas une pose de mouvement',
+    (poseId) => {
+      advanceTo('choice');
+      runtime.lockPose(MATCH_ID, 'a', { poseId, amplifier: 0, useUltimate: false }, null);
+      expect(notifier.to(SEATS.b, 'opponent:locked')).toEqual([]);
+      expect(notifier.to(SEATS.a, 'error')).toEqual([
+        { code: 'INVALID_PAYLOAD', message: 'pose inconnue', retryable: true },
+      ]);
+      expect(record().rejectedEvents.a).toBe(1);
+    },
+  );
+
+  it('revele la pose offerte de la case pour un siege sans pose', () => {
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', { ...choice(3), move: { style: 'calme', tier: 3 } }, null);
+    runtime.lockPose(MATCH_ID, 'b', { poseId: FLEX, amplifier: 0, useUltimate: false }, null);
+    expect(result().sides.a.cosmetic.animationId).toBe('anim.calme.t3.meditate');
+  });
+
+  it('ne garde une pose que pour la manche ou elle a ete verrouillee', () => {
+    advanceTo('choice');
+    runtime.lockPose(MATCH_ID, 'a', { poseId: WHEEL, amplifier: 0, useUltimate: false }, null);
+    runtime.lockPose(MATCH_ID, 'b', { poseId: FLEX, amplifier: 0, useUltimate: false }, null);
+    // Manche 2 : personne ne verrouille, le moteur joue le choix par defaut.
+    advanceTo('reveal');
+    scheduler.fire(MATCH_ID);
+    advanceTo('choice');
+    scheduler.fire(MATCH_ID); // echeance du choix
+    const second = result();
+    expect(second.round).toBe(2);
+    expect(second.sides.a.cosmetic.animationId).not.toBe(WHEEL);
+    expect(second.sides.a.cosmetic.animationId).toMatch(/^anim\.[a-z]+\.t0\./);
   });
 });
 

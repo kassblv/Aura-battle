@@ -143,7 +143,7 @@ const close = (...recorders: Recorder[]): void => {
  * par defaut — ce qui donnerait plus tard un fantome au palier 0 (CLAUDE.md,
  * « Tests temps reel »).
  */
-function autoPlay(joueur: Recorder, move: { style: string; tier: number }): void {
+function autoPlay(joueur: Recorder, poseId: string): void {
   let seq = 0;
   joueur.socket.onAny((name: string, payload: unknown) => {
     if (name === 'recharge:start') {
@@ -165,7 +165,7 @@ function autoPlay(joueur: Recorder, move: { style: string; tier: number }): void
         matchId: message.matchId,
         round: message.round,
         seq,
-        move,
+        poseId,
         amp: 1,
         ult: false,
         timing: { chargeAt: 0, tapAt: 120 },
@@ -181,8 +181,8 @@ function autoPlay(joueur: Recorder, move: { style: string; tier: number }): void
  * soit **classe** et joue par deux humains, exactement comme docs/05 l'exige.
  */
 async function playFullMatch(un: Recorder, deux: Recorder): Promise<void> {
-  autoPlay(un, { style: 'hype', tier: 3 });
-  autoPlay(deux, { style: 'calme', tier: 1 });
+  autoPlay(un, 'anim.hype.t3.griddy');
+  autoPlay(deux, 'anim.calme.t1.pocket');
 
   un.socket.emit('queue:join', { mode: 'ranked' });
   deux.socket.emit('queue:join', { mode: 'ranked' });
@@ -223,7 +223,7 @@ beforeAll(async () => {
         // Personne ne porte rien de particulier : chacun aura l'effet offert
         // de son palier, comme tout le monde avant la boutique.
         provide: PLAYER_WARDROBE,
-        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], dances: {} }) },
+        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], owned: [] }) },
       },
       {
         provide: PLAYER_DIRECTORY,
@@ -373,7 +373,7 @@ describe('fantomes — un joueur seul ne reste pas devant une file vide', () => 
     const seul = await record();
     // Ecouteur pose avant l'entree en file : une manche dure ici quelques
     // dizaines de millisecondes.
-    autoPlay(seul, { style: 'calme', tier: 1 });
+    autoPlay(seul, 'anim.calme.t1.pocket');
     seul.socket.emit('queue:join', { mode: 'ranked' });
 
     const found = await seul.first<ServerMessage<'match:found'>>('match:found');
@@ -429,7 +429,7 @@ describe('fantomes — un joueur seul ne reste pas devant une file vide', () => 
    */
   it('rappelle a la reconnexion que l adversaire est un rejeu', async () => {
     const seul = await record();
-    autoPlay(seul, { style: 'calme', tier: 1 });
+    autoPlay(seul, 'anim.calme.t1.pocket');
     seul.socket.emit('queue:join', { mode: 'ranked' });
 
     const found = await seul.first<ServerMessage<'match:found'>>('match:found');

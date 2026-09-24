@@ -239,7 +239,7 @@ export class MatchGateway implements OnGatewayConnection {
         `inventaire indisponible a la connexion de ${playerId} : ${describeCause(cause)}`,
         'MatchGateway',
       );
-      return { ownedEffects: [], dances: {} };
+      return { ownedEffects: [], owned: [] };
     }
   }
 
@@ -732,10 +732,12 @@ export class MatchGateway implements OnGatewayConnection {
     const timingTapAtMs =
       body.timing.tapAt === null ? null : body.timing.tapAt - body.timing.chargeAt;
 
-    this.runtime.lockChoice(
+    // Le client ne dit que la pose : le runtime en deduit le mouvement et
+    // verifie qu'elle est offerte ou possedee (protocole 2.0.0).
+    this.runtime.lockPose(
       body.matchId,
       seat,
-      { move: body.move, amplifier: body.amp, useUltimate: body.ult },
+      { poseId: body.poseId, amplifier: body.amp, useUltimate: body.ult },
       timingTapAtMs,
     );
   }

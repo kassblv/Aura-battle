@@ -1,4 +1,5 @@
-import { BALANCE } from '@aura/rules';
+import { defaultAnimationFor, STYLES } from '@aura/content';
+import { BALANCE, type Tier } from '@aura/rules';
 import { io, type Socket } from 'socket.io-client';
 import { PROTOCOL_VERSION } from '@aura/protocol';
 
@@ -77,7 +78,9 @@ interface Slot {
   spawnedAtMs: number;
 }
 
-const STYLES = ['calme', 'hype', 'provoc'] as const;
+/** Le banc joue les poses offertes : tout joueur les possede. */
+const poseFor = (tier: Tier): string =>
+  defaultAnimationFor({ style: STYLES[Math.floor(Math.random() * STYLES.length)]!, tier });
 
 /** Instants monotones, en millisecondes : jamais `Date.now()` pour une duree. */
 const nowMs = (): number => Number(process.hrtime.bigint() / 1_000n) / 1_000;
@@ -435,7 +438,7 @@ export class BenchPlayer {
         matchId: this.matchId,
         round: this.round,
         seq: (this.seq += 1),
-        move: { style: STYLES[Math.floor(Math.random() * STYLES.length)]!, tier },
+        poseId: poseFor(tier),
         amp,
         ult: false,
         timing: { chargeAt: Math.round(chargeAt), tapAt: Math.round(chargeAt + 600) },

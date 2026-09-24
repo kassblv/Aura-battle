@@ -126,7 +126,7 @@ class FakePresence implements PlayerPresence {
   }
 
   wearingOf(playerId: string): SeatWearing {
-    return this.wearing.get(playerId) ?? { ownedEffects: [], dances: {} };
+    return this.wearing.get(playerId) ?? { ownedEffects: [], owned: [] };
   }
 
   leagueOf(playerId: string): string {
@@ -202,12 +202,12 @@ describe('MatchOpener', () => {
   it('annonce a chaque joueur l apparence de son ADVERSAIRE, jamais la sienne', () => {
     presence.wearing.set('p1', {
       ownedEffects: ['fx.shock'],
-      dances: { 'hype.t2': 'anim.hype.t2.floss' },
+      owned: ['fx.shock', 'anim.hype.t2.floss'],
       look: { outfit: 'outfit.kimono', auraColor: 'color.violet', signature: 'anim.hype.t2.floss' },
     });
     presence.wearing.set('p2', {
       ownedEffects: [],
-      dances: {},
+      owned: [],
       look: { hair: 'hair.long', signature: 'anim.calme.t3.moonwalk' },
     });
 
@@ -225,14 +225,14 @@ describe('MatchOpener', () => {
   });
 
   /*
-    Les danses par mouvement et les effets possedes ne partent JAMAIS a
-    l'ouverture : la danse du mouvement joue n'est publique qu'avec lui, dans
-    `round:result` (regle d'or n°4).
+    Ce que le joueur possede ne part JAMAIS a l'ouverture : la liste de ses
+    poses dirait a l'adversaire ce qu'il peut jouer, et la pose jouee n'est
+    publique qu'avec son mouvement, dans `round:result` (regle d'or n°4).
   */
-  it('n annonce ni les danses par mouvement ni les effets possedes', () => {
+  it('n annonce ni les poses ni les effets possedes', () => {
     presence.wearing.set('p1', {
       ownedEffects: ['fx.shock'],
-      dances: { 'hype.t2': 'anim.hype.t2.floss' },
+      owned: ['fx.shock', 'anim.hype.t2.floss'],
     });
 
     open();
@@ -249,7 +249,7 @@ describe('MatchOpener', () => {
     eux, l'apparence apres la creation : ils ne pouvaient pas le voir.
   */
   it('pose l apparence de chaque siege sur un match deja cree', () => {
-    presence.wearing.set('p1', { ownedEffects: ['fx.shock'], dances: {} });
+    presence.wearing.set('p1', { ownedEffects: ['fx.shock'], owned: ['fx.shock'] });
 
     open();
 

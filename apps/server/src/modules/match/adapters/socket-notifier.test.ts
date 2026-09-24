@@ -81,7 +81,7 @@ describe('register', () => {
 describe('setWearing', () => {
   it('remplace ce que porte un joueur connecte', () => {
     notifier.register('p1', new FakeSocket().asSocket(), 'Aura Rouge');
-    const worn = { ownedEffects: ['fx.shock'], dances: {}, look: { signature: 'anim.x' } };
+    const worn = { ownedEffects: ['fx.shock'], owned: ['fx.shock'], look: { signature: 'anim.x' } };
 
     notifier.setWearing('p1', worn);
 
@@ -89,8 +89,8 @@ describe('setWearing', () => {
   });
 
   it('ignore un joueur sans session', () => {
-    notifier.setWearing('absent', { ownedEffects: [], dances: {} });
-    expect(notifier.wearingOf('absent')).toEqual({ ownedEffects: [], dances: {} });
+    notifier.setWearing('absent', { ownedEffects: [], owned: [] });
+    expect(notifier.wearingOf('absent')).toEqual({ ownedEffects: [], owned: [] });
   });
 });
 
