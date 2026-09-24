@@ -170,6 +170,20 @@ joignable depuis un téléphone rend tout le reste vérifiable.
 
 ## Phase 2 — Durer
 
+### Duel — poses jouables et cinq familles
+
+Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 0014.
+
+- [x] **Chantier n°1 — cœur** (2026-09-24).
+  - Cinq familles sur une roue où chacune en bat deux ; 25 cases, une pose offerte par case, 39 poses.
+  - Protocole 2.0.0 : le choix désigne une pose, et le serveur vérifie qu'elle est offerte ou possédée.
+  - Simulation : chaque famille entre 49,5 et 50,6 % de victoires.
+  - Six poses nouvelles : Roulade, Biceps contractés, Pompes, Planche, Poirier, Drapeau humain.
+- [ ] **Chantier n°2 — écran de choix** : des cartes de pose (nom, silhouette, famille, puissance, coût) à la place des boutons de famille et du bouton « danse suivante ».
+- [ ] **Chantier n°3 — révélation** : le nom des deux poses, la mise en scène du contre (qui bat qui, et pourquoi), la caméra.
+- [ ] **Chantier n°4 — animations 3D** : des poses plus fluides et plus spectaculaires, et des variantes pour Acrobatie et Prouesse.
+- [ ] **Chantier n°5 — vestiaire et boutique** : parcourir, essayer et acheter des poses ; les jetons (monnaie dure) pour débloquer plus vite, sans jamais vendre de puissance (règle d'or n°3).
+
 ### M7 — Anti-triche et robustesse
 - [ ] Contrôles de cohérence temporelle et plafonds (voir `06-anti-cheat.md`)
 - [ ] **Numérotation des actions après une horloge reculée.** Le client numérote ses actions depuis l'heure murale (le serveur retient le dernier `seq` pour tout le match) : si l'horloge de l'appareil recule entre deux sessions d'un même match — recalage à la sortie de veille, second appareil en retard —, les taps et le verrouillage restants sont jetés **en silence**. Correctif prévu : `match:state` renvoie au joueur son propre dernier `seq`, et le client reprend à `max(Date.now(), lastSeq + 1)`. Les actions visant une autre manche que la manche en cours sont, elles, déjà refusées.

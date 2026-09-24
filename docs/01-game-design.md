@@ -9,25 +9,38 @@ Toutes les valeurs de ce document vivent dans `packages/rules/src/balance.ts`. T
 - Déroulé d'une manche :
   1. **Intro** (2 s)
   2. **Recharge** (6 s, simultanée) : taper des orbes pour gagner un boost d'aura, de la jauge d'Ultime et un peu d'énergie.
-  3. **Choix** (15 s max, simultané et secret) : mouvement (style + palier), amplificateur, activation éventuelle de l'Ultime, puis jauge de timing.
+  3. **Choix** (15 s max, simultané et secret) : une pose (qui porte une famille et un palier), amplificateur, activation éventuelle de l'Ultime, puis jauge de timing.
   4. **Révélation** (≈ 4,5 s) : révélation des deux auras, résolution des contres, choc, vainqueur de la manche.
 - Fin : vainqueur, variation de classement, récompenses.
 
-## 2. Mouvements (gameplay) et animations (cosmétique)
+## 2. Poses, familles et contres
 
-Le score dépend d'un **mouvement** = un **style** et un **palier**. L'**animation** jouée n'est qu'un skin de ce mouvement : toutes les animations d'un même mouvement sont strictement équivalentes.
+Le score dépend d'un **mouvement** = une **famille** et un **palier**. Le joueur
+choisit une **pose** : chaque pose appartient à une case (famille × palier), et
+toutes les poses d'une même case sont **strictement équivalentes** au score. Le
+moteur (`@aura/rules`) ne voit jamais la pose, seulement le mouvement : c'est ce
+qui garantit qu'aucune pose achetée n'est plus forte qu'une autre (règle d'or
+n°3, ADR 0014).
 
-### Styles et contres
+### La roue des cinq familles
 
-| Style | Icône | Bat |
-|---|---|---|
-| Calme | 🧊 | Hype |
-| Hype | 🔥 | Provoc |
-| Provoc | 😏 | Calme |
+| Famille | Icône | Bat | Perd contre |
+|---|---|---|---|
+| Calme | 🧊 | Hype, Acrobatie | Provoc, Prouesse |
+| Hype | 🔥 | Provoc, Prouesse | Calme, Acrobatie |
+| Provoc | 😏 | Calme, Acrobatie | Hype, Prouesse |
+| Acrobatie | 🤸 | Hype, Prouesse | Calme, Provoc |
+| Prouesse | 💪 | Calme, Provoc | Hype, Acrobatie |
 
-- Contrer (style qui bat celui de l'adversaire) : **×1,35** sur son score.
+- Construction : sur le cercle Calme → Hype → Provoc → Acrobatie → Prouesse,
+  chaque famille bat la suivante et celle à trois crans. C'est la seule roue à
+  cinq où toutes ont le même profil. Les trois contres historiques (🧊 > 🔥 > 😏
+  > 🧊) sont conservés.
+- Deux familles différentes ont **toujours** un vainqueur : face à un choix au
+  hasard, 40 % de contrer, 40 % d'être contré, 20 % de miroir.
+- Contrer (famille qui bat celle de l'adversaire) : **×1,35** sur son score.
 - Être contré : **×0,85** sur son score.
-- Même style des deux côtés : aucun effet.
+- Même famille des deux côtés : aucun effet.
 
 ### Paliers
 
@@ -41,30 +54,31 @@ Le score dépend d'un **mouvement** = un **style** et un **palier**. L'**animati
 
 Le nom est du vocabulaire, pas de l'équilibrage : il vit dans
 `packages/content/src/naming.ts` et aucune valeur de score n'en dépend. Il doit
-valoir pour les trois styles — un palier 4 calme est une lévitation, un palier 4
+valoir pour les cinq familles — un palier 4 calme est une lévitation, un palier 4
 hype une danse du bateau, et « Apogée » couvre les deux.
 
 L'interface montre le nom **et** les chiffres : cacher la puissance et le coût
 rendrait le choix opaque, et c'est sur eux que se décide une manche.
 
-### Animations par défaut
+### Les 25 cases et leurs poses
 
-| Mouvement | Calme 🧊 | Hype 🔥 | Provoc 😏 |
-|---|---|---|---|
-| Palier 0 (gratuit) | Bras croisés, Mains dans le dos | Dab, Saut applaudi | Chut, Doigt vers le ciel |
-| Palier 1 | Main dans la poche, Marche assurée | Six Seven, Épaules qui roulent | Doigt pointé, T-pose |
-| Palier 2 | Regard au loin, Mains en couronne | Poing levé, Floss, Célébration de but | Mewing, Haussement d'épaules, Applaudissement lent |
-| Palier 3 | Méditation, Moonwalk, Coup de pied lent | Griddy, Toupie | L sur le front, Épaules époussetées |
-| Palier 4 | Lévitation, Salto arrière | Danse du bateau, Roue | Dos tourné, Révérence |
+Chaque case a **une pose offerte à tous**, la première de la liste. Les autres
+sont des variantes qui s'obtiennent en jouant ou avec des jetons, et ne sont
+jamais plus fortes.
 
-La première animation de chaque case est offerte à tous. Les autres sont des cosmétiques. Voir `07-content-pipeline.md` pour les noms à revoir avant publication.
+| Palier | Calme 🧊 | Hype 🔥 | Provoc 😏 | Acrobatie 🤸 | Prouesse 💪 |
+|---|---|---|---|---|---|
+| 0 | **Bras croisés**, Mains dans le dos | **Dab** | **Chut**, Doigt vers le ciel | **Saut applaudi** | **Biceps contractés** |
+| 1 | **Main dans la poche**, Marche assurée | **Six Seven**, Épaules qui roulent | **Doigt pointé**, T-pose | **Roulade** | **Pompes** |
+| 2 | **Regard au loin**, Mains en couronne | **Poing levé**, Floss, Célébration de but | **Mewing**, Haussement d'épaules, Applaudissement lent | **Roue** | **Planche** |
+| 3 | **Méditation**, Moonwalk, Coup de pied lent | **Griddy** | **L sur le front**, Épaules époussetées | **Toupie** | **Poirier** |
+| 4 | **Lévitation** | **Danse du bateau** | **Dos tourné**, Révérence | **Salto arrière** | **Drapeau humain** |
 
-33 animations de mouvement, 11 par style. Les 21 premières sont portées du
-prototype ; les 12 suivantes complètent ce que font réellement les participants
-d'une *aura battle* — un échange de danses courtes, d'**acrobaties**, de
-**prouesses physiques** et de **poses marquantes**, dont le prototype ne portait
-que le premier tiers. Chaque style garde sa voix : `calme` est posé et maîtrisé,
-`hype` explose, `provoc` nargue.
+En gras : la pose offerte. 39 poses au total, 25 offertes et 14 variantes. Voir
+`07-content-pipeline.md` pour les noms à revoir avant publication.
+
+Chaque famille garde sa voix : `calme` est posé et maîtrisé, `hype` explose,
+`provoc` nargue, `acrobatie` vole, `prouesse` montre sa force.
 
 ## 3. Amplificateurs d'aura
 
@@ -124,7 +138,7 @@ Coût total d'une manche = coût du palier + coût de l'amplificateur (8 maximum
 
 - Jauge 0–100, conservée entre les manches.
 - Gains : parfait +40, contre réussi +35, manche perdue +25, recharge (voir §4).
-- Activable à la phase de choix si la jauge est pleine : **×1,5** et **impossible à contrer**. Si l'adversaire avait le style gagnant, son contre est annulé (« Contre bloqué ») et il ne subit pas de malus.
+- Activable à la phase de choix si la jauge est pleine : **×1,5** et **impossible à contrer**. Si l'adversaire avait la famille gagnante, son contre est annulé (« Contre bloqué ») et il ne subit pas de malus.
 - L'activation vide la jauge.
 
 ## 7. Calcul du score d'une manche
@@ -136,7 +150,7 @@ final = base × (contre ? 1,35 : 1) × (contré ? 0,85 : 1)
 score = arrondi(final)
 ```
 
-- **Répétition :** rejouer exactement le même mouvement (style + palier) qu'une manche précédente du match.
+- **Répétition :** rejouer exactement le même mouvement (famille + palier) qu'une manche précédente du match.
 - **Pas d'aléatoire dans le score en PvP.** Le hasard ne porte que sur la génération des orbes et de la jauge, identique pour les deux joueurs dans une manche.
 - Vainqueur de la manche : score le plus élevé. En cas d'égalité, le plus petit écart de timing gagne. Si l'égalité persiste, manche nulle.
 
@@ -148,12 +162,12 @@ score = arrondi(final)
 
 ## 9. Délais et actions par défaut
 
-- Phase de choix sans verrouillage à l'échéance : mouvement palier 0 d'un style tiré par la graine de la manche, A0, sans Ultime, timing « Raté ».
+- Phase de choix sans verrouillage à l'échéance : pose offerte du palier 0 d'une famille tirée par la graine de la manche, A0, sans Ultime, timing « Raté ».
 - Deux manches consécutives sans aucune action du joueur : forfait.
 
 ## 10. Bulle d'intention (optionnelle, à tester en bêta)
 
-Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de choix, chaque joueur peut afficher publiquement un style (vrai ou bluff). S'il gagne la manche avec le style annoncé : +10 de jauge d'Ultime. Activée par feature flag, désactivée par défaut.
+Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de choix, chaque joueur peut afficher publiquement une famille (vraie ou bluff). S'il gagne la manche avec la famille annoncée : +10 de jauge d'Ultime. Activée par feature flag, désactivée par défaut.
 
 ## 11. Méta hors match
 

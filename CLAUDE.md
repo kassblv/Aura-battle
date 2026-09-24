@@ -1,6 +1,6 @@
 # Aura Battle — mémoire projet
 
-Jeu mobile (iOS/Android) de **duels d'aura en PvP**. Deux joueurs s'affrontent au meilleur des 3 manches. Chaque manche enchaîne une recharge (taper des orbes), un choix secret (mouvement + amplificateur + Ultime), une jauge de timing, puis la révélation et le choc des auras.
+Jeu mobile (iOS/Android) de **duels d'aura en PvP**. Deux joueurs s'affrontent au meilleur des 3 manches. Chaque manche enchaîne une recharge (taper des orbes), un choix secret (une pose parmi cinq familles de contres + amplificateur + Ultime), une jauge de timing, puis la révélation et le choc des auras.
 
 Double objectif produit : **sortir vite pendant la tendance « aura »** et **durer au-delà du mème**. Le cœur du jeu (contres, bluff, énergie, timing) ne dépend d'aucun mème : les danses tendance sont des cosmétiques interchangeables.
 
@@ -10,7 +10,7 @@ Le prototype jouable (solo contre IA + duel local) est `prototype/aura-battle.ht
 
 1. **Le serveur fait autorité.** Le client n'envoie que des intentions (taps, choix, instants). Le serveur calcule tout : scores, contres, énergie, Ultime, vainqueur. Aucune valeur calculée par le client n'est crue.
 2. **`packages/rules` est pur et déterministe.** Pas d'I/O, pas de `Date.now()`, pas de `Math.random()` : le temps et un RNG seedé sont passés en entrée. Même code côté serveur (vérité) et client (prévisualisation).
-3. **Aucun avantage payant.** Tout ce qui modifie un score est accessible à tous. La boutique ne vend que du cosmétique (animations, tenues, couleurs d'aura, effets visuels).
+3. **Des poses de côté, jamais au-dessus.** Tout ce qui modifie un score s'obtient en jouant ; l'argent ne fait que raccourcir l'attente. Une pose achetable n'est jamais plus forte que la pose offerte de sa case, et chaque case en a une (ADR 0014). La boutique vend du temps et du style, jamais de la puissance.
 4. **Aucune fuite d'information.** Le choix adverse, son timing et ses points de recharge ne sont jamais envoyés avant `round:result`. Seul « l'adversaire a verrouillé » est public.
 5. **Le contenu est de la donnée.** Une danse = un fichier JSON validé (`packages/content`). Ajouter une danse ne doit demander aucun changement de code.
 6. **Tout changement d'équilibrage** passe par `packages/rules/src/balance.ts`, un test, et une mise à jour de `docs/01-game-design.md`.

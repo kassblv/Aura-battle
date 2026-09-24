@@ -197,6 +197,34 @@ Ce qui en découle pour l'écriture :
   parce qu'il va vite : `ease: true` plus une part de boucle large sur la pose
   tenue.
 
+## Poses au sol, à l'envers et en boule (mesuré en écrivant Acrobatie et Prouesse)
+
+Les six poses du 2026-09-24 (Roulade, Biceps contractés, Pompes, Planche,
+Poirier, Drapeau humain) ont révélé quatre pièges que le validateur ne voit pas,
+mais que le test de garde au sol du rig attrape :
+
+- **Le poignet n'est pas le bout de la main.** La main se prolonge d'environ
+  10 à 14 cm dans l'axe de l'avant-bras. Un appui au sol (pompes, poirier) pose
+  donc le **poignet** à ~9 cm, jamais à 0. Et `["open","down"]` enfonce les
+  doigts dans le sol : préférer le poing (`fist`) ou une paume `fwd`.
+- **`pitch` tourne autour d'un pivot fixe à 85 cm**, et `lift` ne peut que
+  monter. Une pose couchée ou roulée au ras du sol ne s'obtient donc **pas**
+  par `pitch` (elle flotterait) : on la dessine articulation par articulation
+  (planche, pompes), ou on fait tourner la pose autour d'un centre bas calculé
+  à la main (roulade). `pitch` convient au poirier (π) et au drapeau (π/2), avec
+  un `lift` qui ramène les mains au sol.
+- **Un quart de tour interpolé en ligne droite traverse le sol.** Une roulade
+  qui s'arrête à 270° puis « saute » vers la pose accroupie fait passer le tibia
+  sous le plancher. Faire le tour complet (0, 90, 180, 270, 360°).
+- **Une tangente non nulle à la couture fait plonger les pieds.** Avant une image
+  posée au sol, ajouter une image de maintien ou un petit élan **dans le sens de
+  la rotation**, pour que la courbe reste monotone. Sinon le Catmull-Rom repart
+  d'abord en arrière.
+
+Un aperçu couché se cadre sur sa **longueur** : `previewFraming` prend le plus
+grand de la hauteur et de 1,6 × le rayon au sol, sans quoi la caméra coupe la
+tête et les pieds d'une planche de 40 cm de haut.
+
 ## Noms et droits (à vérifier avant publication)
 
 Le prototype utilise des noms de tendances. Avant la sortie sur les stores :
