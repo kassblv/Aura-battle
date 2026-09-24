@@ -8,6 +8,36 @@ import type { CapacitorConfig } from '@capacitor/cli';
  * creent avec `npx cap add ios` et `npx cap add android`, qui demandent Xcode
  * et Android Studio.
  */
+/**
+ * Le serveur de dev a charger, s'il est demande — et seulement s'il est LOCAL.
+ *
+ * `server.url` fait charger toute la page par cette adresse, en clair : une
+ * variable oubliee dans un terminal ou une CI au moment d'une vraie version
+ * publierait une application pilotee par un serveur quelconque. On n'accepte
+ * donc que la machine elle-meme et le reseau prive (10/8, 172.16/12,
+ * 192.168/16, *.local), et on refuse bruyamment le reste plutot que de
+ * l'ignorer : une commande qui echoue se voit, une option ignoree non.
+ */
+function devServer(raw: string | undefined): { url?: string; cleartext?: boolean } {
+  if (raw === undefined || raw.trim() === '') return {};
+  const url = new URL(raw.trim());
+  const host = url.hostname;
+  const local =
+    host === 'localhost' ||
+    host === '127.0.0.1' ||
+    host.endsWith('.local') ||
+    host.startsWith('10.') ||
+    host.startsWith('192.168.') ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host);
+  if (!local || (url.protocol !== 'http:' && url.protocol !== 'https:')) {
+    throw new Error(
+      `CAP_DEV_URL doit viser un serveur de developpement local (recu : ${raw}). ` +
+        'Retire la variable pour une version publiee.',
+    );
+  }
+  return { url: url.origin, cleartext: url.protocol === 'http:' };
+}
+
 const config: CapacitorConfig = {
   appId: 'com.aurabattle.app',
   appName: 'Aura Battle',
@@ -33,7 +63,7 @@ const config: CapacitorConfig = {
       variable, rien ne change : le client reste embarque, comme ci-dessus.
       Le fichier genere cote iOS est ignore par git.
     */
-    ...(process.env.CAP_DEV_URL ? { url: process.env.CAP_DEV_URL, cleartext: true } : {}),
+    ...devServer(process.env.CAP_DEV_URL),
   },
 
   plugins: {
