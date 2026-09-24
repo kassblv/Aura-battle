@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
 import type { Animation } from '@aura/content';
 import { animationBounds, type AnimationBounds } from '../animation/bounds.js';
-import { createPoseSmoother, breatheInto } from '../animation/smooth.js';
-import { samplePose } from '../animation/sample.js';
+import { livePose } from '../animation/secondary.js';
+import { createPoseSmoother } from '../animation/smooth.js';
 import { ANIMATIONS } from '../content/animations.js';
 import { gestureCues } from '../audio/gestures.js';
 import type { AudioCue } from '../audio/cues.js';
@@ -360,7 +360,12 @@ export function useArena(
         if (seat === 'a') showcaseAnimation = animation;
         // Le decalage de phase evite que les deux respirent a l unisson.
         const offset = seat === 'a' ? 0 : 1.7;
-        const target = breatheInto(samplePose(animation, danceClock, offset), danceClock, offset);
+        // La ferveur est la meme pour les deux sieges (voir `auraHype`) : le
+        // rebond des genoux ne peut rien dire du coup joue.
+        const target = livePose(animation, danceClock, offset, {
+          hype: Math.max(scene?.hype ?? 0.2, director.hype),
+          reducedMotion: motion.reduced,
+        });
         fighter.pose(smoothers[seat].step(target, danceDelta), animation, danceClock, danceDelta);
 
         /**

@@ -2,6 +2,7 @@ import type { Animation } from '@aura/content';
 import { CM, FLIP_PIVOT, SHOULDER_DROP, skeletonDepths } from './layout.js';
 import { JOINT_NAMES, type JointName } from './pose.js';
 import { samplePose } from './sample.js';
+import { SECONDARY_REACH } from './secondary.js';
 
 /**
  * Encombrement d une animation, en metres.
@@ -170,12 +171,22 @@ export function animationBounds(animation: Animation, samples = SAMPLES): Animat
     if (name === 'hip') hipSum += y;
   });
 
+  /**
+   * La pose affichee n est pas la pose ecrite : le mouvement secondaire
+   * (`secondary.ts`) respire, transfere le poids et fait trainer les mains. Il
+   * ne s en ecarte jamais de plus de `SECONDARY_REACH` — c est ce qu on ajoute
+   * ici, plutot que d esperer que la marge de volume l absorbe : elle n avait
+   * que 2,4 cm de jeu sur la moitie du catalogue.
+   */
+  const margin = LIMB_MARGIN + SECONDARY_REACH * CM;
   return {
-    radius: radius + LIMB_MARGIN,
+    radius: radius + margin,
     // Le sol reste le sol : un personnage debout ne doit pas etre cadre avec
     // une marge de dix-huit centimetres de plancher sous les pieds.
+    // Vers le bas, rien a ajouter : le mouvement secondaire ne bouge pas les
+    // pieds, et c est eux qui touchent le sol.
     minY: Math.max(0, minY - LIMB_MARGIN),
-    maxY: maxY + LIMB_MARGIN,
+    maxY: maxY + margin,
     headY: headSum / steps,
     hipY: hipSum / steps,
   };

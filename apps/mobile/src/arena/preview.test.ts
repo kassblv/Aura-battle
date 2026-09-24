@@ -7,6 +7,8 @@ import {
   LIMB_MARGIN,
   type AnimationBounds,
 } from '../animation/bounds.js';
+import { CM } from '../animation/layout.js';
+import { SECONDARY_REACH } from '../animation/secondary.js';
 import { ANIMATIONS } from '../content/animations.js';
 import {
   ArenaCameraRig,
@@ -63,7 +65,9 @@ function inFrame(camera: ReturnType<typeof createArenaCamera>, point: Vector3, s
  */
 function volumeOf(animation: Animation, samples: number, worldX: number): Vector3[] {
   const points: Vector3[] = [];
-  const m = LIMB_MARGIN;
+  // Le volume de la pose AFFICHEE : le mouvement secondaire s ajoute a la
+  // pose ecrite, dans la limite de `SECONDARY_REACH`.
+  const m = LIMB_MARGIN + SECONDARY_REACH * CM;
   forEachWorldJoint(animation, samples, (x, y, z) => {
     points.push(
       new Vector3(worldX + x + m, y, z),

@@ -17,6 +17,7 @@ import {
 import { describe, expect, it } from 'vitest';
 import { animationBounds } from '../animation/bounds.js';
 import { samplePose } from '../animation/sample.js';
+import { livePose } from '../animation/secondary.js';
 import { createToonGradientMap } from './toonGradient.js';
 import { createFighterRig, type FighterLook } from './rig.js';
 
@@ -529,7 +530,9 @@ describe('ce qui est dessine tient dans ce qui est cadre', () => {
       const bounds = animationBounds(anim);
       for (let step = 0; step < 16; step++) {
         const t = (anim.loop.duration * step) / 16;
-        rig.pose(samplePose(anim, t), anim, t, 1 / 60);
+        // La pose AFFICHEE, mouvement secondaire compris, a pleine ferveur :
+        // c est elle que la camera doit contenir, pas la pose ecrite.
+        rig.pose(livePose(anim, t, 0, { hype: 1, reducedMotion: false }), anim, t, 1 / 60);
         const { radius, maxY } = drawnExtent(rig.root);
         if (radius > bounds.radius) {
           fautes.push(
