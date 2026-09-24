@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { allCosmetics, priceForRarity, RARITY_ORDER } from './pricing.js';
+import { allAnimationIds, defaultAnimationFor, STYLES, TIERS } from './catalogue.js';
+import { allCosmetics, animationPrice, priceForRarity, RARITY_ORDER } from './pricing.js';
 
 describe('bareme de rarete', () => {
   it('donne un prix a chaque rarete', () => {
@@ -61,5 +62,34 @@ describe('catalogue complet', () => {
   it('ne liste chaque cosmetique qu une fois', () => {
     const ids = allCosmetics().map((item) => item.id);
     expect(new Set(ids).size).toBe(ids.length);
+  });
+});
+
+describe('prix d une animation — une seule regle, pour le client ET le serveur', () => {
+  /*
+    Le client appliquait docs/01 §2 (la premiere animation de chaque case est
+    offerte, les autres se vendent selon leur rarete) ; le seed du serveur
+    mettait TOUTES les animations a zero. Le serveur les donnait donc a tout le
+    monde, et la boutique affichait en tete dix-huit danses « acquises » qu'on
+    ne pouvait pas acheter.
+  */
+  it('offre la premiere animation de chaque case, quelle que soit sa rarete', () => {
+    for (const style of STYLES) {
+      for (const tier of TIERS) {
+        expect(animationPrice(defaultAnimationFor({ style, tier }), 'legendary')).toBe(0);
+      }
+    }
+  });
+
+  it('offre les animations systeme', () => {
+    expect(animationPrice('anim.system.none.victory', 'rare')).toBe(0);
+  });
+
+  it('fait payer les autres selon le bareme', () => {
+    const paid = allAnimationIds().filter(
+      (id) => !id.startsWith('anim.system.') && animationPrice(id, 'rare') > 0,
+    );
+    expect(paid.length).toBeGreaterThan(0);
+    for (const id of paid) expect(animationPrice(id, 'epic')).toBe(priceForRarity('epic'));
   });
 });

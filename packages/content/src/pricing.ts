@@ -1,3 +1,4 @@
+import { defaultAnimationFor, STYLES, TIERS } from './catalogue.js';
 import { AURA_EFFECTS, type Rarity } from './cosmetics.js';
 
 /**
@@ -27,6 +28,27 @@ const PRICES: Readonly<Record<Rarity, number>> = {
 
 export function priceForRarity(rarity: Rarity): number {
   return PRICES[rarity];
+}
+
+/** Les animations offertes : la premiere de chaque case (docs/01 §2). */
+const OFFERED_ANIMATIONS: ReadonlySet<string> = new Set(
+  STYLES.flatMap((style) => TIERS.map((tier) => defaultAnimationFor({ style, tier }))),
+);
+
+/**
+ * Le prix d'une animation, en monnaie douce.
+ *
+ * **Une seule regle, lue par le client ET par le serveur.** Il y en avait deux :
+ * le client appliquait docs/01 §2, le seed du serveur mettait tout a zero — et
+ * comme le serveur considere que ce qui vaut zero appartient a tout le monde,
+ * il donnait gratuitement les danses que la boutique affichait a la vente.
+ *
+ * Offertes : la premiere animation de chaque case, et les animations systeme
+ * (victoire, chute…) qui ne se choisissent pas. Les autres suivent le bareme.
+ */
+export function animationPrice(id: string, rarity: Rarity): number {
+  if (id.startsWith('anim.system.') || OFFERED_ANIMATIONS.has(id)) return 0;
+  return priceForRarity(rarity);
 }
 
 /** Un cosmetique, reduit a ce que le bareme doit verifier. */

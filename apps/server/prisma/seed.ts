@@ -1,6 +1,14 @@
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { allAnimationIds, AURA_COLORS, AURA_EFFECTS, HAIRSTYLES, OUTFITS } from '@aura/content';
+import {
+  allAnimationIds,
+  animationPrice,
+  AURA_COLORS,
+  AURA_EFFECTS,
+  HAIRSTYLES,
+  OUTFITS,
+  type Rarity,
+} from '@aura/content';
 import { RULES_VERSION } from '@aura/rules';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient, type CosmeticKind, type Prisma } from '@prisma/client';
@@ -56,7 +64,11 @@ async function seedCosmetics(): Promise<number> {
       id,
       kind: 'ANIMATION' as const,
       rarity: animationRarity(id),
-      priceSoft: 0,
+      // docs/01 §2 : la premiere animation de chaque case est offerte, les
+      // autres se vendent. Ce prix etait 0 pour toutes — et ce qui vaut 0
+      // appartient a tout le monde (`Inventory.read`) : le serveur donnait les
+      // danses que la boutique affichait a la vente. Meme regle que le client.
+      priceSoft: animationPrice(id, animationRarity(id) as Rarity),
     })),
     ...AURA_EFFECTS.map((effect) => ({
       id: effect.id,

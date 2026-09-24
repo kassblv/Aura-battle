@@ -1,7 +1,7 @@
 import {
   animationsFor,
   animationId,
-  priceForRarity,
+  animationPrice,
   STYLES,
   TIERS,
   type Rarity,
@@ -66,7 +66,9 @@ export function memeGallery(): readonly MemeCard[] {
           style,
           tier,
           rarity,
-          price: priceForRarity(rarity),
+          // La meme regle que le serveur (`animationPrice`) : deux regles avaient
+          // diverge, et le serveur donnait ce que la boutique affichait a vendre.
+          price: animationPrice(id, rarity),
           free,
         });
       });
