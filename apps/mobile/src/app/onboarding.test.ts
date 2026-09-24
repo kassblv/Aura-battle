@@ -1,6 +1,6 @@
 import { DISPLAY_NAME_MAX } from '@aura/protocol';
 import { describe, expect, it } from 'vitest';
-import { nameHint, needsOnboarding, type StoredIdentity } from './onboarding.js';
+import { nameHint, needsOnboarding, welcomeStep, type StoredIdentity } from './onboarding.js';
 
 const named = (displayName: string): StoredIdentity => ({ playerId: 'p_1', displayName });
 
@@ -56,5 +56,79 @@ describe('nameHint', () => {
 
   it('ignore les espaces de bord, comme le schema', () => {
     expect(nameHint('  Kassim  ')).toBeNull();
+  });
+});
+
+describe('welcomeStep', () => {
+  const empty = { name: '', email: '', password: '', confirm: '' };
+  const creds = {
+    email: 'Kassim@Gmail.com ',
+    password: 'aura du dimanche',
+    confirm: 'aura du dimanche',
+  };
+
+  it('enregistre le nom seul quand les identifiants sont vides', () => {
+    expect(welcomeStep({ ...empty, name: ' Kassim ' }, false)).toEqual({
+      rename: 'Kassim',
+      credentials: null,
+      problem: null,
+      ready: true,
+    });
+  });
+
+  it('rattache les identifiants et enregistre le nom quand tout est rempli', () => {
+    const step = welcomeStep({ name: 'Kassim', ...creds }, false);
+    expect(step.ready).toBe(true);
+    expect(step.rename).toBe('Kassim');
+    expect(step.credentials).toEqual({ email: 'Kassim@Gmail.com', password: 'aura du dimanche' });
+  });
+
+  /* S'inscrire sans choisir de nom est permis : le nom d'invite reste. */
+  it('permet de creer son compte en gardant le nom d invite', () => {
+    const step = welcomeStep({ name: '', ...creds }, false);
+    expect(step.ready).toBe(true);
+    expect(step.rename).toBeNull();
+  });
+
+  it('ne part pas d un formulaire vide : « Plus tard » est la pour ca', () => {
+    expect(welcomeStep(empty, false).ready).toBe(false);
+  });
+
+  /*
+    Des identifiants a moitie remplis ne partent pas en silence sans eux : le
+    joueur croirait avoir cree son compte.
+  */
+  it('dit quoi faire d identifiants a moitie remplis', () => {
+    const step = welcomeStep({ ...empty, name: 'Kassim', email: 'k@gmail.com' }, false);
+    expect(step.ready).toBe(false);
+    expect(step.problem).toMatch(/laisse-les vides/);
+  });
+
+  it('bloque sur un mot de passe trop court ou mal confirme', () => {
+    expect(
+      welcomeStep(
+        { name: 'Kassim', email: 'k@gmail.com', password: 'court', confirm: 'court' },
+        false,
+      ).problem,
+    ).toMatch(/8/);
+    expect(welcomeStep({ name: 'Kassim', ...creds, confirm: 'autre' }, false).problem).toMatch(
+      /identiques/,
+    );
+  });
+
+  it('bloque sur un nom invalide, meme avec des identifiants corrects', () => {
+    expect(welcomeStep({ name: 'K', ...creds }, false).ready).toBe(false);
+  });
+
+  /*
+    Deuxieme essai apres un renommage refuse : les identifiants sont deja
+    rattaches, les renvoyer rendrait EMAIL_ALREADY_LINKED.
+  */
+  it('ne renvoie pas des identifiants deja rattaches', () => {
+    const step = welcomeStep({ name: 'Kassim', ...creds }, true);
+    expect(step.credentials).toBeNull();
+    expect(step.rename).toBe('Kassim');
+    expect(step.ready).toBe(true);
+    expect(welcomeStep({ ...empty, ...creds }, true).ready).toBe(true);
   });
 });

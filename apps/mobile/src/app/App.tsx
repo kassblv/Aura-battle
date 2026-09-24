@@ -619,6 +619,7 @@ export function App(): JSX.Element {
                 if (done) setGreeted(true);
               });
             }}
+            onLink={(email, password) => session.linkEmail(email, password)}
             onSkip={() => {
               setGreeted(true);
             }}

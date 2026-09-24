@@ -1,7 +1,7 @@
 import { DISPLAY_NAME_MAX } from '@aura/protocol';
 import { useState, type JSX } from 'react';
 import { FORGOT_PASSWORD_HINT, emailFormProblem } from './emailAccount.js';
-import { nameHint } from './onboarding.js';
+import { nameHint, welcomeStep } from './onboarding.js';
 
 /**
  * Le premier ecran d un nouveau joueur.
@@ -27,6 +27,11 @@ export interface OnboardingProps {
   /** Message du serveur quand il a refuse : reseau, session, nom. */
   readonly error: string | null;
   readonly onSubmit: (displayName: string) => void;
+  /**
+   * Rattache un email et un mot de passe au compte invite deja ouvert : c est
+   * ca, s inscrire. Aucun second compte n est cree.
+   */
+  readonly onLink: (email: string, password: string) => Promise<boolean>;
   readonly onSkip: () => void;
   /** Presente un code de recuperation : ce navigateur rejoint ce compte. */
   readonly onRestore: (code: string) => void;
@@ -39,6 +44,7 @@ export function OnboardingScreen({
   busy,
   error,
   onSubmit,
+  onLink,
   onSkip,
   onRestore,
   onLogin,
@@ -51,9 +57,35 @@ export function OnboardingScreen({
   const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
+  const [signupEmail, setSignupEmail] = useState('');
+  const [signupPassword, setSignupPassword] = useState('');
+  const [signupConfirm, setSignupConfirm] = useState('');
+  // Rattache lors d un essai precedent dont seul le renommage a echoue.
+  const [linked, setLinked] = useState(false);
+  const [linkFailed, setLinkFailed] = useState(false);
   const hint = nameHint(name);
   const trimmed = name.trim();
-  const ready = trimmed.length > 0 && hint === null && !busy;
+  const step = welcomeStep(
+    { name, email: signupEmail, password: signupPassword, confirm: signupConfirm },
+    linked,
+  );
+  const ready = step.ready && !busy;
+
+  /*
+    Les identifiants D ABORD, le nom ensuite. Un nom enregistre fait
+    disparaitre cet ecran (le joueur n est plus un invite) : rattacher apres
+    ne laisserait plus d endroit ou dire que le rattachement a echoue.
+  */
+  const welcome = async (): Promise<void> => {
+    if (step.credentials !== null) {
+      const ok = await onLink(step.credentials.email, step.credentials.password);
+      setLinkFailed(!ok);
+      if (!ok) return;
+      setLinked(true);
+    }
+    if (step.rename !== null) onSubmit(step.rename);
+    else onSkip();
+  };
 
   if (mode === 'restore') {
     const loginProblem = emailFormProblem('login', { email, password });
@@ -209,68 +241,160 @@ export function OnboardingScreen({
 
   return (
     <section className="onboard" aria-label="Choisis ton nom">
-      <div className="onboard__panel">
-        <h1 className="onboard__title">Bienvenue</h1>
-        <p className="onboard__lede">
-          Tu joues déjà sous le nom <b>{guestName}</b>. Choisis le tien — il s’affichera au-dessus
-          de ton aura à chaque duel.
-        </p>
-
+      {/*
+        Deux colonnes : le nom a gauche, le compte a droite. Empiles, trois
+        champs de plus debordaient des 390 pixels du paysage.
+      */}
+      <div className="onboard__panel onboard__panel--wide">
         <form
-          className="onboard__form"
+          className="onboard__cols"
           onSubmit={(event) => {
             event.preventDefault();
-            if (ready) onSubmit(trimmed);
+            if (ready) void welcome();
           }}
         >
-          <label className="onboard__label" htmlFor="display-name">
-            Ton nom
-          </label>
-          <input
-            id="display-name"
-            className="onboard__input"
-            value={name}
-            onChange={(event) => {
-              setName(event.target.value);
-            }}
-            maxLength={DISPLAY_NAME_MAX}
-            autoComplete="nickname"
-            autoCapitalize="words"
-            // `off` : un nom de joueur n est pas une faute a corriger.
-            spellCheck={false}
-            enterKeyHint="done"
-            placeholder={guestName}
-            disabled={busy}
-          />
+          <div className="onboard__col">
+            <h1 className="onboard__title">Bienvenue</h1>
+            <p className="onboard__lede">
+              Tu joues déjà sous le nom <b>{guestName}</b>. Choisis le tien — il s’affichera
+              au-dessus de ton aura à chaque duel.
+            </p>
 
-          {/* Le compteur ne devient un avertissement qu a l approche de la borne. */}
-          <p className={`onboard__count ${trimmed.length > DISPLAY_NAME_MAX - 3 ? 'near' : ''}`}>
-            {trimmed.length} / {DISPLAY_NAME_MAX}
-          </p>
+            <div className="onboard__form">
+              <label className="onboard__label" htmlFor="display-name">
+                Ton nom
+              </label>
+              <input
+                id="display-name"
+                className="onboard__input"
+                value={name}
+                onChange={(event) => {
+                  setName(event.target.value);
+                }}
+                maxLength={DISPLAY_NAME_MAX}
+                autoComplete="nickname"
+                autoCapitalize="words"
+                // `off` : un nom de joueur n est pas une faute a corriger.
+                spellCheck={false}
+                enterKeyHint="next"
+                placeholder={guestName}
+                disabled={busy}
+              />
 
-          {hint !== null && <p className="onboard__hint">{hint}</p>}
-          {error !== null && <p className="onboard__error">{error}</p>}
+              {/* Le compteur ne devient un avertissement qu a l approche de la borne. */}
+              <p
+                className={`onboard__count ${trimmed.length > DISPLAY_NAME_MAX - 3 ? 'near' : ''}`}
+              >
+                {trimmed.length} / {DISPLAY_NAME_MAX}
+              </p>
+              {hint !== null && <p className="onboard__hint">{hint}</p>}
 
-          <button type="submit" className="onboard__go" disabled={!ready}>
-            {busy ? 'Un instant…' : 'C’est parti'}
-          </button>
+              <button type="submit" className="onboard__go" disabled={!ready}>
+                {busy
+                  ? 'Un instant…'
+                  : step.credentials !== null
+                    ? 'Créer mon compte'
+                    : 'C’est parti'}
+              </button>
+            </div>
+
+            <div className="onboard__alts">
+              <button
+                type="button"
+                className="onboard__skip"
+                onClick={() => {
+                  // Apres un rattachement refuse, on garde au moins le nom
+                  // choisi : le joueur ne doit pas payer l'echec de l'email.
+                  if (linkFailed && step.rename !== null) onSubmit(step.rename);
+                  else onSkip();
+                }}
+                disabled={busy}
+              >
+                {linkFailed ? 'Continuer sans email' : 'Plus tard'}
+              </button>
+              <button
+                type="button"
+                className="onboard__skip"
+                onClick={() => {
+                  setMode('restore');
+                }}
+                disabled={busy}
+              >
+                J’ai déjà un compte
+              </button>
+            </div>
+          </div>
+
+          <div className="onboard__col onboard__form">
+            <p className="onboard__pitch">
+              {linked
+                ? 'Email rattaché : ton compte te suivra sur tous tes appareils.'
+                : 'Crée ton compte pour jouer sur tous tes appareils.'}
+            </p>
+            {!linked && (
+              <>
+                <label className="onboard__label" htmlFor="signup-email">
+                  Email <small>(facultatif)</small>
+                </label>
+                <input
+                  id="signup-email"
+                  className="onboard__input"
+                  type="email"
+                  name="email"
+                  value={signupEmail}
+                  onChange={(event) => {
+                    setSignupEmail(event.target.value);
+                  }}
+                  autoComplete="email"
+                  inputMode="email"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  enterKeyHint="next"
+                  disabled={busy}
+                />
+                <label className="onboard__label" htmlFor="signup-password">
+                  Mot de passe
+                </label>
+                <input
+                  id="signup-password"
+                  className="onboard__input"
+                  type="password"
+                  name="password"
+                  value={signupPassword}
+                  onChange={(event) => {
+                    setSignupPassword(event.target.value);
+                  }}
+                  autoComplete="new-password"
+                  enterKeyHint="next"
+                  disabled={busy}
+                />
+                <label className="onboard__label" htmlFor="signup-confirm">
+                  Confirme le mot de passe
+                </label>
+                <input
+                  id="signup-confirm"
+                  className="onboard__input"
+                  type="password"
+                  name="confirm-password"
+                  value={signupConfirm}
+                  onChange={(event) => {
+                    setSignupConfirm(event.target.value);
+                  }}
+                  autoComplete="new-password"
+                  enterKeyHint="done"
+                  disabled={busy}
+                />
+              </>
+            )}
+
+            {step.problem !== null && <p className="onboard__hint">{step.problem}</p>}
+            {error !== null && (
+              <p className="onboard__error" role="alert">
+                {error}
+              </p>
+            )}
+          </div>
         </form>
-
-        <div className="onboard__alts">
-          <button type="button" className="onboard__skip" onClick={onSkip} disabled={busy}>
-            Plus tard
-          </button>
-          <button
-            type="button"
-            className="onboard__skip"
-            onClick={() => {
-              setMode('restore');
-            }}
-            disabled={busy}
-          >
-            J’ai déjà un compte
-          </button>
-        </div>
       </div>
     </section>
   );

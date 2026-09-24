@@ -1,4 +1,5 @@
 import { DISPLAY_NAME_MAX, DISPLAY_NAME_MIN, displayNameSchema } from '@aura/protocol';
+import { emailFormProblem } from './emailAccount.js';
 
 /**
  * L accueil des nouveaux.
@@ -52,4 +53,62 @@ export function nameHint(input: string): string | null {
   }
   if (/\s{2}/.test(trimmed)) return 'Un seul espace à la fois.';
   return 'Lettres, chiffres, espace, tiret, point ou souligné — et une lettre ou un chiffre pour commencer.';
+}
+
+/** Le formulaire de bienvenue : un nom, et des identifiants facultatifs. */
+export interface WelcomeForm {
+  readonly name: string;
+  readonly email: string;
+  readonly password: string;
+  readonly confirm: string;
+}
+
+export interface WelcomeStep {
+  /** Le nom a enregistrer, ou `null` pour garder le nom d invite. */
+  readonly rename: string | null;
+  /** Les identifiants a rattacher, ou `null` : rien a rattacher. */
+  readonly credentials: { readonly email: string; readonly password: string } | null;
+  /** Ce qui empeche d envoyer, dit au joueur ; `null` s il n y a rien a dire. */
+  readonly problem: string | null;
+  readonly ready: boolean;
+}
+
+/**
+ * Ce que « C est parti » va faire du formulaire de bienvenue.
+ *
+ * S inscrire, ici, ce n est pas creer un compte : il existe deja, ouvert par
+ * le secret d appareil. C est rattacher un email et un mot de passe a CE
+ * compte, et choisir son nom. Les identifiants sont facultatifs — un jeu qui
+ * retient son joueur derriere un formulaire perd celui qui voulait juste voir.
+ *
+ * `linked` : les identifiants sont deja rattaches, lors d un essai precedent
+ * dont seul le renommage a echoue. On ne les renvoie pas.
+ */
+export function welcomeStep(form: WelcomeForm, linked: boolean): WelcomeStep {
+  const name = form.name.trim();
+  const nameProblem = nameHint(form.name);
+  const rename = name.length > 0 && nameProblem === null ? name : null;
+
+  const touched =
+    !linked &&
+    (form.email.trim().length > 0 || form.password.length > 0 || form.confirm.length > 0);
+  const complete =
+    form.email.trim().length > 0 && form.password.length > 0 && form.confirm.length > 0;
+  const credentialProblem = touched ? emailFormProblem('link', form) : null;
+
+  const problem =
+    credentialProblem ??
+    (touched && !complete
+      ? 'Pour créer ton compte, remplis l’email et les deux mots de passe — ou laisse-les vides.'
+      : null);
+  const credentials =
+    touched && complete && credentialProblem === null
+      ? { email: form.email.trim(), password: form.password }
+      : null;
+
+  const ready =
+    nameProblem === null &&
+    problem === null &&
+    (rename !== null || credentials !== null || (linked && name.length === 0));
+  return { rename, credentials, problem, ready };
 }

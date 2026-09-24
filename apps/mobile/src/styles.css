@@ -1654,6 +1654,22 @@ body {
   min-width: 0;
 }
 
+/*
+  L'invitation a creer son compte : lue avant les champs, et mise en avant
+  sans crier — les identifiants restent facultatifs.
+*/
+.onboard__pitch {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--gold-ink);
+}
+
+.onboard__label small {
+  letter-spacing: normal;
+  text-transform: none;
+}
+
 /* Le choix de la methode : deux onglets, et celui qui est actif se voit. */
 .onboard__tabs {
   display: grid;
