@@ -146,5 +146,9 @@ export function matchStateFor(
       perfect: context.gauge.perfectWidth,
       center: context.gauge.center,
     },
+    // SA case brillante en phase de choix, et seulement la sienne.
+    ...(state.phase === 'choice' && state.roundContext !== null
+      ? { shiny: state.roundContext.shiny[seat] }
+      : {}),
   };
 }

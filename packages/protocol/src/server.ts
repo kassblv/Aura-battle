@@ -261,6 +261,12 @@ export const SERVER_MESSAGES = {
      * Optionnel : un annuaire injoignable ne doit pas empecher une reprise.
      */
     opponent: opponentSchema.optional(),
+    /**
+     * La case brillante du DESTINATAIRE, en phase de choix (2.1.x). Sans elle,
+     * une reprise en plein choix la faisait disparaitre pour ce seul joueur,
+     * alors que l'adversaire voyait toujours la sienne.
+     */
+    shiny: moveSchema.optional(),
     orbs: z.array(orbSpecSchema).max(MAX_ORBS_PER_ROUND).optional(),
     meter: z
       .strictObject({

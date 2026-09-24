@@ -206,6 +206,17 @@ describe('createLogger — les secrets ne partent jamais dans les journaux', () 
     expect(sortie).not.toContain('"amp":3');
   });
 
+  it('masque la carte brillante et le contexte de manche qui la porte', () => {
+    const { lines, stream } = capture();
+    createLogger(config, stream).info(
+      { shiny: { style: 'prouesse', tier: 4 }, state: { roundContext: { shiny: { a: 'x' } } } },
+      'manche',
+    );
+    const sortie = lines.join('');
+    expect(sortie).not.toContain('prouesse');
+    expect(sortie).not.toContain('"a":"x"');
+  });
+
   it('laisse passer ce qui n est pas sensible', () => {
     const { lines, stream } = capture();
     createLogger(config, stream).info({ matchId: 'm_01', round: 2 }, 'manche');

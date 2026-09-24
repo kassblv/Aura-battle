@@ -78,6 +78,11 @@ const REDACTED_PATHS = [
   // le choix. L'amplificateur et l'Ultime l'accompagnent dans le meme message.
   'poseId',
   '*.poseId',
+  // La carte brillante : secrete jusqu'a la revelation, pour chaque siege.
+  'shiny',
+  '*.shiny',
+  'roundContext',
+  '*.roundContext',
   '*.amp',
   '*.ult',
 ];

@@ -494,3 +494,58 @@ function side(style: 'calme' | 'hype' | 'provoc', tier: 0 | 1 | 2 | 3 | 4) {
     ultAfter: 0.2,
   };
 }
+
+describe('carte brillante — reprise et nouvelle manche', () => {
+  const found = {
+    matchId: MATCH,
+    seat: 'a',
+    opponent: { displayName: 'Nova', league: 'Or II', cosmetics: {} },
+    protocolVersion: PROTOCOL_VERSION,
+    rulesVersion: '1.0.0',
+    contentVersion: '1.0.0',
+    ghost: false,
+  };
+
+  it('retrouve sa case brillante apres une reprise en pleine phase de choix', () => {
+    const { match, emit } = harness();
+    emit('match:found', found);
+    emit('match:state', {
+      matchId: MATCH,
+      seat: 'a',
+      phase: 'choice',
+      round: 2,
+      endsAt: 530_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 11,
+      ult: 20,
+      opponentLocked: false,
+      ghost: false,
+      history: [],
+      shiny: { style: 'acrobatie', tier: 2 },
+    });
+    expect(match.state.shiny).toEqual({ style: 'acrobatie', tier: 2 });
+  });
+
+  it('oublie la case de la manche precedente des l intro suivante', () => {
+    const { match, emit } = harness();
+    emit('match:found', found);
+    emit('choice:start', {
+      matchId: MATCH,
+      round: 1,
+      endsAt: 523_000,
+      meter: { period: 1300, zone: 0.4, perfect: 0.09, center: 0.5 },
+      energy: 14,
+      ult: 0,
+      shiny: { style: 'hype', tier: 1 },
+    });
+    emit('round:intro', {
+      matchId: MATCH,
+      round: 2,
+      endsAt: 540_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 12,
+      ult: 10,
+    });
+    expect(match.state.shiny).toBeNull();
+  });
+});

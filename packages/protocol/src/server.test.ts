@@ -195,6 +195,26 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
     ).toBe(false);
   });
 
+  // 2.1.x : la reprise rend au joueur SA case brillante, perdue sinon.
+  it('accepte un match:state qui rappelle la case brillante du destinataire', () => {
+    const base = {
+      matchId: 'm_01',
+      seat: 'a',
+      phase: 'choice',
+      round: 2,
+      endsAt: 1_700_000_050_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 11,
+      ult: 57.5,
+      opponentLocked: false,
+      ghost: false,
+      history: [],
+    };
+    expect(
+      parseServerMessage('match:state', { ...base, shiny: { style: 'hype', tier: 3 } }).success,
+    ).toBe(true);
+  });
+
   it('refuse un match:state qui contiendrait le choix verrouille de l adversaire', () => {
     const valide = {
       matchId: 'm_01',

@@ -108,6 +108,22 @@ describe('matchStateFor — reprise apres reconnexion', () => {
     const view = matchStateFor('a', state, MATCH_ID);
     expect(view.history).toHaveLength(state.history.length);
   });
+
+  // Une reprise en pleine phase de choix rend SA case, et jamais celle de l'autre.
+  it('rend au siege sa case brillante, et seulement la sienne', () => {
+    const shiny = state.roundContext!.shiny;
+    expect(matchStateFor('a', state, MATCH_ID).shiny).toEqual(shiny.a);
+    expect(matchStateFor('b', state, MATCH_ID).shiny).toEqual(shiny.b);
+    if (shiny.a.style !== shiny.b.style || shiny.a.tier !== shiny.b.tier) {
+      expect(JSON.stringify(matchStateFor('a', state, MATCH_ID))).not.toContain(
+        JSON.stringify(shiny.b),
+      );
+    }
+  });
+
+  it('ne rend aucune case hors de la phase de choix', () => {
+    expect(matchStateFor('a', advanceTo('recharge'), MATCH_ID).shiny).toBeUndefined();
+  });
 });
 
 describe('aucune fuite d information (regle d or n°4)', () => {

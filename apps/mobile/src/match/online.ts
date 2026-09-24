@@ -196,6 +196,8 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       orbs: [],
       sentTaps: [],
       meter: null,
+      // La brillante de la manche precedente ne vaut plus rien.
+      shiny: null,
       lastRound: null,
     };
   });
@@ -295,6 +297,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       // sinon une reconnexion les compterait deux fois a l affichage.
       sentTaps: [],
       meter: data.meter ?? null,
+      shiny: data.shiny ?? null,
     };
   });
 
