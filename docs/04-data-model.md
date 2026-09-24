@@ -64,20 +64,23 @@ Trois règles, et chacune a une raison qui se perd si on ne l'écrit pas :
   voulu : une fonction « revoir mon code » serait une fonction « voler un compte
   depuis une session ouverte ».
 
-**Le rattachement d'appareil qui suit.** Présenter un code ouvre une session,
-mais le navigateur garde *son* secret d'appareil : au rechargement suivant il
-rouvrirait le compte invité local et la récupération serait perdue — le joueur
-verrait son compte revenir, puis disparaître. Le client tire donc un secret
-**neuf** (l'ancien appartient encore au compte abandonné, et se heurterait à
-`@@unique([provider, subject])`) et le rattache au compte retrouvé par
-`POST /auth/device/link`. Là encore : on **ajoute** une ligne, on n'en déplace
-aucune.
+**Le rattachement d'appareil, dans le même geste.** Présenter un code ouvre une
+session, mais le navigateur garde *son* secret d'appareil : au rechargement
+suivant il rouvrirait le compte invité local et la récupération serait perdue.
+Le client tire donc un secret **neuf** (l'ancien appartient encore au compte
+abandonné, et se heurterait à `@@unique([provider, subject])`) et l'envoie
+**avec le code** : `POST /auth/recovery/claim { code, deviceSecret }` rattache
+l'appareil puis ouvre la session. Il n'existe pas de route de rattachement à
+part — un jeton volé suffisait à l'appeler (ADR 0013). Le client ne range le
+secret neuf qu'une fois la requête acceptée. Là encore : on **ajoute** une
+ligne, on n'en déplace aucune, et un joueur garde au plus dix appareils (les
+plus anciens sont détachés).
 
 ### `EMAIL` — un email et un mot de passe
 
 Même principe que le code : une ligne de plus, rattachée par un joueur
 connecté (`POST /auth/email/link`), présentée d'ailleurs pour ouvrir le compte
-(`POST /auth/email/login`, suivi du même rattachement d'appareil).
+(`POST /auth/email/login`, qui rattache l'appareil dans la même requête).
 
 - **`subject` porte l'adresse normalisée** (rognée, en minuscules), **en
   clair** : c'est un identifiant qu'on cherche, pas un secret. Elle n'est ni
