@@ -87,18 +87,16 @@ export const sessionResponseSchema = z.strictObject({
  */
 export const recoveryCodeInputSchema = z.string().trim().min(1).max(64);
 
+/**
+ * Presenter un code, et rattacher l'appareil dans le meme geste.
+ *
+ * `deviceSecret` est le secret NEUF de l'appareil qui rejoint le compte. Il
+ * est rattache par la meme requete que la preuve : une route de rattachement
+ * autonome laissait n'importe quel jeton vole fabriquer une « preuve
+ * d'appareil » (ADR 0013).
+ */
 export const authRecoveryClaimRequestSchema = z.strictObject({
   code: recoveryCodeInputSchema,
-});
-
-/**
- * Rattachement de l'appareil courant au compte que l'on vient de retrouver.
- *
- * Meme schema que l'ouverture de session : c'est le meme genre de secret, avec
- * les memes exigences. Une seule definition, donc aucune chance que les deux
- * divergent.
- */
-export const authDeviceLinkRequestSchema = z.strictObject({
   deviceSecret: deviceSecretSchema,
 });
 
@@ -176,9 +174,11 @@ export const authEmailLinkRequestSchema = z.strictObject({
   deviceSecret: deviceSecretSchema,
 });
 
+/** Comme `recovery/claim` : la preuve et le rattachement de l'appareil, ensemble. */
 export const authEmailLoginRequestSchema = z.strictObject({
   email: emailSchema,
   password: presentedPasswordSchema,
+  deviceSecret: deviceSecretSchema,
 });
 
 /**
@@ -252,6 +252,8 @@ export const AUTH_ERROR_CODES = [
   'PASSWORD_REQUIRED',
   /** Le secret d'un appareil deja rattache a ce joueur est exige. */
   'DEVICE_PROOF_REQUIRED',
+  /** Ce secret d'appareil appartient deja a un autre compte. */
+  'DEVICE_ALREADY_LINKED',
   'TOO_MANY_ATTEMPTS',
   /** Trop de hachages en cours : reessayer dans un instant. */
   'BUSY',
@@ -261,7 +263,6 @@ export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
 
 export type AuthDeviceRequest = z.infer<typeof authDeviceRequestSchema>;
 export type AuthRecoveryClaimRequest = z.infer<typeof authRecoveryClaimRequestSchema>;
-export type AuthDeviceLinkRequest = z.infer<typeof authDeviceLinkRequestSchema>;
 export type RecoveryCodeResponse = z.infer<typeof recoveryCodeResponseSchema>;
 export type AuthRefreshRequest = z.infer<typeof authRefreshRequestSchema>;
 export type AuthRenameRequest = z.infer<typeof authRenameRequestSchema>;
@@ -291,11 +292,6 @@ export function parseAuthRecoveryClaimRequest(
   payload: unknown,
 ): ParseResult<AuthRecoveryClaimRequest> {
   const parsed = authRecoveryClaimRequestSchema.safeParse(payload);
-  return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
-}
-
-export function parseAuthDeviceLinkRequest(payload: unknown): ParseResult<AuthDeviceLinkRequest> {
-  const parsed = authDeviceLinkRequestSchema.safeParse(payload);
   return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
 }
 

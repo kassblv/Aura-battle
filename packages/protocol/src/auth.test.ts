@@ -146,7 +146,10 @@ describe('code de recuperation', () => {
     meme que quiconque les regarde.
   */
   it('accepte un code tel qu il est affiche', () => {
-    expect(parseAuthRecoveryClaimRequest({ code: 'AURA-7K2M-94PX-QTJD-3HVN' }).success).toBe(true);
+    expect(
+      parseAuthRecoveryClaimRequest({ code: 'AURA-7K2M-94PX-QTJD-3HVN', deviceSecret: secret })
+        .success,
+    ).toBe(true);
   });
 
   it('accepte les variantes qu un humain produit', () => {
@@ -155,7 +158,7 @@ describe('code de recuperation', () => {
       'aura 7k2m 94px qtjd 3hvn',
       ' AURA-7K2M94PXQTJD3HVN ',
     ]) {
-      expect(parseAuthRecoveryClaimRequest({ code }).success).toBe(true);
+      expect(parseAuthRecoveryClaimRequest({ code, deviceSecret: secret }).success).toBe(true);
     }
   });
 
@@ -165,17 +168,23 @@ describe('code de recuperation', () => {
     pas la somme des messages », appliquee a un seul champ.
   */
   it('refuse une saisie demesuree', () => {
-    expect(parseAuthRecoveryClaimRequest({ code: 'A'.repeat(200) }).success).toBe(false);
+    expect(
+      parseAuthRecoveryClaimRequest({ code: 'A'.repeat(200), deviceSecret: secret }).success,
+    ).toBe(false);
   });
 
   it('refuse une saisie vide ou absente', () => {
-    expect(parseAuthRecoveryClaimRequest({ code: '' }).success).toBe(false);
-    expect(parseAuthRecoveryClaimRequest({}).success).toBe(false);
+    expect(parseAuthRecoveryClaimRequest({ code: '', deviceSecret: secret }).success).toBe(false);
+    expect(parseAuthRecoveryClaimRequest({ deviceSecret: secret }).success).toBe(false);
   });
 
   it('refuse un champ inconnu', () => {
     expect(
-      parseAuthRecoveryClaimRequest({ code: '7K2M94PXQTJD3HVN', playerId: 'p-1' }).success,
+      parseAuthRecoveryClaimRequest({
+        code: '7K2M94PXQTJD3HVN',
+        deviceSecret: secret,
+        playerId: 'p-1',
+      }).success,
     ).toBe(false);
   });
 
@@ -243,19 +252,27 @@ describe('email et mot de passe', () => {
     entrer avec le mot de passe qu'il a choisi avant.
   */
   it('laisse passer a la connexion un mot de passe court choisi sous une ancienne regle', () => {
-    expect(parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: 'court' }).success).toBe(
-      true,
-    );
     expect(
-      parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: 'x'.repeat(PASSWORD_MAX + 1) })
+      parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: 'court', deviceSecret: secret })
+        .success,
+    ).toBe(true);
+    expect(
+      parseAuthEmailLoginRequest({
+        email: 'k@gmail.com',
+        password: 'x'.repeat(PASSWORD_MAX + 1),
+        deviceSecret: secret,
+      }).success,
+    ).toBe(false);
+    expect(
+      parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: '', deviceSecret: secret })
         .success,
     ).toBe(false);
-    expect(parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: '' }).success).toBe(false);
   });
 
   it('refuse un champ inconnu', () => {
     expect(
-      parseAuthEmailLoginRequest({ email: 'k@gmail.com', password, deviceSecret: 'a' }).success,
+      parseAuthEmailLoginRequest({ email: 'k@gmail.com', password, deviceSecret: secret, x: 1 })
+        .success,
     ).toBe(false);
   });
 
@@ -375,5 +392,21 @@ describe('preuve d appareil', () => {
 
   it('nomme le refus', () => {
     expect(AUTH_ERROR_CODES).toContain('DEVICE_PROOF_REQUIRED');
+  });
+});
+
+describe('rattachement d appareil dans le meme geste', () => {
+  it('exige le secret de l appareil avec un code ou un email presentes', () => {
+    expect(parseAuthRecoveryClaimRequest({ code: 'AURA-7K2M-94PX-QTJD-3HVN' }).success).toBe(false);
+    expect(
+      parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: 'une phrase' }).success,
+    ).toBe(false);
+    expect(
+      parseAuthEmailLoginRequest({
+        email: 'k@gmail.com',
+        password: 'une phrase',
+        deviceSecret: secret,
+      }).success,
+    ).toBe(true);
   });
 });
