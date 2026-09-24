@@ -121,9 +121,9 @@ describe.skipIf(!reachable)('PrismaInventoryRepository', () => {
     await repository().grant(playerId, itemId, { soft: 80, hard: 0 });
     // La VRAIE erreur de Postgres, passee par l'adaptateur pg, doit etre
     // reconnue : un double ne prouve pas que Prisma la leve sous cette forme.
-    await expect(
-      repository().grant(playerId, itemId, { soft: 80, hard: 0 }),
-    ).rejects.toMatchObject({ name: 'PurchaseConflictError', reason: 'ALREADY_OWNED' });
+    await expect(repository().grant(playerId, itemId, { soft: 80, hard: 0 })).rejects.toMatchObject(
+      { name: 'PurchaseConflictError', reason: 'ALREADY_OWNED' },
+    );
 
     expect((await repository().read(playerId)).wallet.soft).toBe(420);
   });

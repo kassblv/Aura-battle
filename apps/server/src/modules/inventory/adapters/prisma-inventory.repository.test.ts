@@ -79,15 +79,14 @@ function prismaError(code: string): Prisma.PrismaClientKnownRequestError {
  * Double de la transaction de `grant` : le debit touche `debited` lignes, puis
  * la creation de la possession echoue avec `createFails`, s'il est donne.
  */
-function grantingWith(debited: number, createFails?: unknown): PrismaInventoryRepository {
+function grantingWith(debited: number, createFails?: Error): PrismaInventoryRepository {
   const tx = {
     player: {
       updateMany: () => Promise.resolve({ count: debited }),
       findUniqueOrThrow: () => Promise.resolve({ softCurrency: 20, hardCurrency: 0 }),
     },
     inventoryItem: {
-      create: () =>
-        createFails === undefined ? Promise.resolve({}) : Promise.reject(createFails as Error),
+      create: () => (createFails === undefined ? Promise.resolve({}) : Promise.reject(createFails)),
     },
   };
   const prisma = { $transaction: (run: (client: typeof tx) => Promise<unknown>) => run(tx) };
