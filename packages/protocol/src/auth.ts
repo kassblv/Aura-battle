@@ -221,6 +221,16 @@ export const authRecoveryIssueRequestSchema = z.strictObject({
 });
 
 /**
+ * Reponse d'un changement de mot de passe : une session fraiche, et le code de
+ * recuperation NEUF qui remplace l'ancien (ADR 0013). L'ancien pouvait avoir
+ * ete delivre a un intrus qui connaissait l'ancien mot de passe ; le nouveau ne
+ * sera plus jamais reaffiche.
+ */
+export const passwordChangeResponseSchema = sessionResponseSchema.extend({
+  recoveryCode: z.string().min(1).max(64),
+});
+
+/**
  * Ce que le client sait de l'adresse rattachee : si elle existe, et sa forme
  * **masquee** (`k•••@gmail.com`). Assez pour que le joueur reconnaisse la
  * sienne, pas assez pour qu'un ecran photographie la publie. `strictObject` :
@@ -271,6 +281,7 @@ export type AuthEmailLinkRequest = z.infer<typeof authEmailLinkRequestSchema>;
 export type AuthEmailLoginRequest = z.infer<typeof authEmailLoginRequestSchema>;
 export type AuthEmailPasswordRequest = z.infer<typeof authEmailPasswordRequestSchema>;
 export type EmailStatusResponse = z.infer<typeof emailStatusResponseSchema>;
+export type PasswordChangeResponse = z.infer<typeof passwordChangeResponseSchema>;
 export type AuthRecoveryIssueRequest = z.infer<typeof authRecoveryIssueRequestSchema>;
 
 export function parseAuthDeviceRequest(payload: unknown): ParseResult<AuthDeviceRequest> {

@@ -18,6 +18,7 @@ import {
   parseAuthEmailLoginRequest,
   parseAuthEmailPasswordRequest,
   parseAuthRecoveryIssueRequest,
+  passwordChangeResponseSchema,
 } from './auth.js';
 
 const secret = 'a'.repeat(64);
@@ -408,5 +409,25 @@ describe('rattachement d appareil dans le meme geste', () => {
         deviceSecret: secret,
       }).success,
     ).toBe(true);
+  });
+});
+
+describe('reponse d un changement de mot de passe', () => {
+  const session = {
+    accessToken: 'a',
+    refreshToken: 'r',
+    expiresIn: 900,
+    player: { id: 'p', displayName: 'Kassim', guest: true },
+  };
+
+  it('porte une session et le code neuf, rien de plus', () => {
+    expect(
+      passwordChangeResponseSchema.safeParse({ ...session, recoveryCode: 'AURA-7K2M' }).success,
+    ).toBe(true);
+    expect(passwordChangeResponseSchema.safeParse(session).success).toBe(false);
+    expect(
+      passwordChangeResponseSchema.safeParse({ ...session, recoveryCode: 'AURA', hash: 'x' })
+        .success,
+    ).toBe(false);
   });
 });
