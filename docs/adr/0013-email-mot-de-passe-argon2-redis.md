@@ -64,7 +64,12 @@ Une session seule (téléphone déverrouillé, jeton volé) ne suffit plus :
   rafraîchissement sont révoqués et toutes les identités `DEVICE` détachées,
   sauf celle de l'appareil qui fait la demande (il joint son secret). Un
   appareil détaché qui se relance ouvre un compte invité neuf, plus celui-ci.
-  Le code de récupération, lui, reste : c'est la porte de secours.
+  **Le code de récupération est remplacé** dans la même transaction, et le
+  code neuf renvoyé dans la réponse (le client l'affiche comme à la
+  délivrance). L'ancien pouvait appartenir à un intrus qui connaissait l'ancien
+  mot de passe : il s'en serait servi après coup pour rouvrir le compte, puis,
+  une heure plus tard, pour en changer le mot de passe. Le code neuf vient
+  d'être délivré, donc il ne prouve lui-même un changement qu'après une heure.
 
 **L'intrus chassé ne revient pas : des identifiants versionnés.**
 `Player.credentialsVersion` est incrémentée par le changement de mot de passe,
@@ -93,12 +98,25 @@ disparu : un jeton volé suffisait à y rattacher le secret de l'intrus, qui
 devenait ensuite une « preuve d'appareil ». `recovery/claim` et `email/login`
 prennent le secret **neuf** de l'appareil et le rattachent dans la même requête
 que le code ou le mot de passe ; le client ne range ce secret qu'une fois la
-requête acceptée. **Au plus dix appareils par joueur** : au-delà, les plus
+requête acceptée. **La preuve est liée à une version** : `login` et le code
+rendent la version des identifiants lue avec eux, et le rattachement plus
+l'émission du jeton se font dans une transaction qui verrouille le joueur
+(`FOR UPDATE`) et exige encore cette version — sinon `INVALID_CREDENTIALS`, et
+rien n'est écrit. Sans cela, une connexion vérifiée juste avant un changement de
+mot de passe rattachait son appareil juste après, et recevait un jeton à la
+nouvelle version. Le changement de mot de passe prend ce même verrou **en
+premier** : un rattachement concurrent passe entièrement avant (et il est
+détaché) ou entièrement après (et il est refusé). **Au plus dix appareils par joueur** : au-delà, les plus
 anciens sont détachés. Refuser aurait bloqué le joueur sur ordinateur, dont
 chaque navigateur vidé laisse un appareil mort ; remplacer borne ce qu'un
 compte accumule sans fermer la porte à personne. Le prix : un joueur qui
 rejoint son compte depuis onze navigateurs perd le plus ancien, qui rouvrira un
 compte invité au prochain lancement.
+
+**Les connexions réussies sont bornées aussi** : 30 connexions par quart
+d'heure et par seau d'IP, réussies comprises, jamais rendues. Une réussite coûte
+un hachage argon2 comme un échec ; une rafale de connexions réussies à son
+propre compte aurait saturé le plafond global et rendu `503` à tout le monde.
 
 **Limite de débit par IP des routes publiques** (`/auth/device` 60,
 `/auth/refresh` 60, `/auth/recovery/claim` 20, par quart d'heure et par seau
@@ -147,6 +165,24 @@ les compteurs d'adresse à zéro, ce qui est sans conséquence.
 
 La longueur minimale est recomptée côté serveur **après NFKC, en caractères** :
 c'est ce qui est haché.
+
+## Réserves connues
+
+Ce qui reste ouvert, en connaissance de cause :
+
+- **Session volée sur un compte invité** : sans adresse, rien ne permet au
+  joueur de fermer les autres sessions ; un jeton de rafraîchissement volé
+  donne accès jusqu'à son expiration (30 jours). Une action « fermer les autres
+  sessions » est à faire.
+- **Handshake Socket.IO et `CredentialsEvents` en mémoire** : la fermeture des
+  sockets au changement de mot de passe ne vaut que pour le nœud qui l'a
+  traité, et une socket dont le handshake est en cours à cet instant peut
+  passer. Au passage multi-nœuds, l'évènement doit transiter par Redis.
+- **Création de comptes invités** : bornée seulement par seau d'IP (/64 en
+  IPv6). Un seau /48, un plafond global et une purge des `RefreshToken`
+  expirés restent à prévoir.
+- **Réseaux d'opérateur (CGNAT)** : plus de soixante joueurs derrière une même
+  IPv4 partagée atteignent la limite de `/auth/device` et `/auth/refresh`.
 
 ## Conséquences
 
