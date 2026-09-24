@@ -1,4 +1,9 @@
-import type { InventoryChanges, LoadoutData } from '../../inventory/domain/ports.js';
+import type {
+  InventoryChanges,
+  InventoryRepository,
+  LoadoutData,
+} from '../../inventory/domain/ports.js';
+import { ownedWithFree } from '../../inventory/domain/purchase.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import { describeCause } from '../../../shared/describe-cause.js';
 import type { PlayerWardrobe } from '../domain/wardrobe.js';
@@ -35,6 +40,28 @@ export function wearingFrom(owned: readonly string[], loadout: LoadoutData | nul
   }
 
   return { ownedEffects: owned, dances, look };
+}
+
+/**
+ * Ce que porte un joueur, lu dans l'inventaire.
+ *
+ * Les objets offerts comptent comme possedes : ils ne sont jamais ecrits en
+ * base. Les oublier retirait de l'apparence annoncee la tenue, la couleur et
+ * la danse signature de quiconque n'avait rien achete — c'est-a-dire de
+ * presque tout le monde.
+ */
+export function wardrobeFromInventory(
+  inventory: Pick<InventoryRepository, 'read' | 'catalogue'>,
+): PlayerWardrobe {
+  return {
+    async wearingOf(playerId: string): Promise<SeatWearing> {
+      const [{ owned, loadout }, catalogue] = await Promise.all([
+        inventory.read(playerId),
+        inventory.catalogue(),
+      ]);
+      return wearingFrom(ownedWithFree(owned, catalogue), loadout);
+    },
+  };
 }
 
 /** Le registre des sessions, vu d'ici : ce que le prochain match copiera. */

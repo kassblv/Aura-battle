@@ -131,3 +131,22 @@ export function purchaseOutcome(request: PurchaseRequest): PurchaseOutcome {
 
   return { ok: false, reason: 'INSUFFICIENT_FUNDS' };
 }
+
+/**
+ * Ce que possede un joueur, les objets offerts compris.
+ *
+ * **Tout ce qui est a zero appartient a tout le monde**, et n'est jamais ecrit
+ * en base. Deux lecteurs en ont besoin — l'inventaire et le match — et le
+ * match l'avait oublie : il tenait pour non possedes la tenue, les couleurs et
+ * les danses offertes, et les retirait de l'apparence annoncee a l'adversaire.
+ */
+export function ownedWithFree(
+  stored: readonly string[],
+  catalogue: readonly CatalogueEntry[],
+): readonly string[] {
+  const owned = new Set(stored);
+  for (const item of catalogue) {
+    if (item.priceSoft === 0) owned.add(item.id);
+  }
+  return [...owned];
+}

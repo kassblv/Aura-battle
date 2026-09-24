@@ -40,7 +40,7 @@ import { ChallengeService } from '../challenges/application/challenges.js';
 import { ChallengesModule } from '../challenges/challenges.module.js';
 import { PrismaInventoryRepository } from '../inventory/adapters/prisma-inventory.repository.js';
 import { INVENTORY_CHANGES } from '../inventory/domain/ports.js';
-import { WearingRefresh, wearingFrom } from './application/wearing.js';
+import { wardrobeFromInventory, WearingRefresh } from './application/wearing.js';
 import { PLAYER_DIRECTORY } from './domain/directory.js';
 import { PLAYER_WARDROBE, type PlayerWardrobe } from './domain/wardrobe.js';
 import { PrismaMatchRepository } from './adapters/prisma-match.repository.js';
@@ -242,12 +242,8 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
     {
       provide: PLAYER_WARDROBE,
       inject: [PrismaInventoryRepository],
-      useFactory: (inventory: PrismaInventoryRepository): PlayerWardrobe => ({
-        async wearingOf(playerId: string) {
-          const { owned, loadout } = await inventory.read(playerId);
-          return wearingFrom(owned, loadout);
-        },
-      }),
+      useFactory: (inventory: PrismaInventoryRepository): PlayerWardrobe =>
+        wardrobeFromInventory(inventory),
     },
     /**
      * L'ecoute des changements d'inventaire.

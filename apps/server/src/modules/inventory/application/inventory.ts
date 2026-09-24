@@ -1,5 +1,5 @@
 import { animationIdsFor, danceKey, dayIndexOf, STYLES, TIERS } from '@aura/content';
-import { purchaseOutcome, type PurchaseRefusal } from '../domain/purchase.js';
+import { ownedWithFree, purchaseOutcome, type PurchaseRefusal } from '../domain/purchase.js';
 import type {
   Clock,
   InventoryChanges,
@@ -65,12 +65,7 @@ export class InventoryService {
       this.deps.inventory.catalogue(),
     ]);
 
-    const owned = new Set(stored.owned);
-    for (const item of catalogue) {
-      if (item.priceSoft === 0) owned.add(item.id);
-    }
-
-    return { ...stored, owned: [...owned] };
+    return { ...stored, owned: ownedWithFree(stored.owned, catalogue) };
   }
 
   async buy(playerId: string, itemId: string): Promise<void> {

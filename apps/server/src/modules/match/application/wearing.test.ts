@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { WearingRefresh, wearingFrom } from './wearing.js';
+import { wardrobeFromInventory, WearingRefresh, wearingFrom } from './wearing.js';
 import type { SeatWearing } from './match-runtime.js';
 
 describe('wearingFrom', () => {
@@ -78,5 +78,40 @@ describe('WearingRefresh', () => {
     await expect(refresh.changed('p1')).resolves.toBeUndefined();
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('p1');
+  });
+});
+
+describe('wardrobeFromInventory', () => {
+  /*
+    Le defaut qu'on a eu : l'inventaire en base ne contient que les ACHATS.
+    La tenue offerte et la danse offerte etaient donc « non possedees » et
+    retirees de l'apparence annoncee — l'adversaire voyait toujours les
+    defauts, signature comprise.
+  */
+  it('compte les objets offerts comme possedes', async () => {
+    const wardrobe = wardrobeFromInventory({
+      read: () =>
+        Promise.resolve({
+          wallet: { soft: 0, hard: 0 },
+          owned: [],
+          loadout: { outfit: 'outfit.blanc', signature: 'anim.calme.t2.lookaway' },
+        }),
+      catalogue: () =>
+        Promise.resolve(
+          ['outfit.blanc', 'anim.calme.t2.lookaway'].map((id) => ({
+            id,
+            kind: 'OUTFIT' as const,
+            priceSoft: 0,
+            priceHard: null,
+            availableFrom: null,
+            availableTo: null,
+          })),
+        ),
+    });
+
+    expect((await wardrobe.wearingOf('p1')).look).toEqual({
+      outfit: 'outfit.blanc',
+      signature: 'anim.calme.t2.lookaway',
+    });
   });
 });
