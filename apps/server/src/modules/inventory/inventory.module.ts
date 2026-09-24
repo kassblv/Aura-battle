@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { SystemClock } from '../../shared/clock.js';
+import { PinoLoggerService } from '../../shared/logger.js';
 import { InventoryService } from './application/inventory.js';
 import { InventoryRateLimit } from './application/inventory-rate-limit.js';
 import { InventoryController } from './adapters/inventory.controller.js';
@@ -26,12 +27,23 @@ import { MatchModule } from '../match/match.module.js';
     PrismaInventoryRepository,
     {
       provide: InventoryService,
-      inject: [PrismaInventoryRepository, SystemClock, INVENTORY_CHANGES],
+      inject: [PrismaInventoryRepository, SystemClock, INVENTORY_CHANGES, PinoLoggerService],
       useFactory: (
         inventory: PrismaInventoryRepository,
         clock: SystemClock,
         changes: InventoryChanges,
-      ) => new InventoryService({ inventory, clock, changes }),
+        logger: PinoLoggerService,
+      ) =>
+        new InventoryService({
+          inventory,
+          clock,
+          changes,
+          log: {
+            warn: (message: string) => {
+              logger.warn(message, 'InventoryService');
+            },
+          },
+        }),
     },
     SystemClock,
     // Un seul exemplaire pour le processus : les seaux vivent en memoire, et

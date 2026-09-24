@@ -5,14 +5,17 @@ import {
   type CatalogueEntry,
   type PurchaseRefusal,
 } from '../domain/purchase.js';
+import { describeErrorKind } from '../../../shared/describe-cause.js';
 import { KeyedSerializer } from '../../../shared/keyed-serializer.js';
+import type { AppLog } from '../../../shared/log-port.js';
 import { fitsDanceSlot, fitsLookSlot, fitsSignature, lookEntries } from '../domain/slots.js';
-import type {
-  Clock,
-  InventoryChanges,
-  InventoryRepository,
-  LoadoutData,
-  PlayerInventory,
+import {
+  PurchaseConflictError,
+  type Clock,
+  type InventoryChanges,
+  type InventoryRepository,
+  type LoadoutData,
+  type PlayerInventory,
 } from '../domain/ports.js';
 
 /**
@@ -38,6 +41,8 @@ export interface InventoryDependencies {
   readonly clock: Clock;
   /** Qui doit apprendre qu'un inventaire a change. Absent : personne. */
   readonly changes?: InventoryChanges;
+  /** Ou signaler une panne de la base pendant un achat. Absent : nulle part. */
+  readonly log?: AppLog;
 }
 
 export class InventoryService {
@@ -118,16 +123,26 @@ export class InventoryService {
     let wallet;
     try {
       wallet = await this.deps.inventory.grant(playerId, itemId, outcome.spend);
-    } catch {
+    } catch (cause) {
       /*
-        La base a refuse : un autre appel a accorde le meme objet entre notre
-        lecture et notre ecriture. Deux onglets ouverts suffisent.
+        La base a refuse, avec SA raison : un autre appel a accorde le meme
+        objet entre notre lecture et notre ecriture (ALREADY_OWNED), ou la
+        bourse ne couvre plus le prix (INSUFFICIENT_FUNDS). Les ecritures d'un
+        joueur passent en file, mais un credit ou un accord venu d'ailleurs
+        (fin de match, defi) peut toujours se glisser entre les deux.
 
-        Le perdant repart avec « tu le possedes deja » — ce qui est vrai — et
-        surtout **sans second debit**. Traduire ca en erreur serveur ferait
-        payer deux fois quelqu'un qui a seulement double-clique.
+        Le perdant repart avec la vraie raison, et surtout **sans debit** : la
+        transaction a tout annule.
       */
-      throw new InventoryError('ALREADY_OWNED');
+      if (cause instanceof PurchaseConflictError) throw new InventoryError(cause.reason);
+      /*
+        Tout le reste est une PANNE. La deguiser en « deja possede » la
+        rendait invisible ; relancee, elle devient un 500 et se voit. Le
+        journal n'en garde que le nom et le code : le message d'une erreur
+        Prisma recopie les arguments refuses.
+      */
+      this.deps.log?.warn(`achat : accord impossible (${describeErrorKind(cause)})`);
+      throw cause;
     }
     const after: PlayerInventory = {
       wallet,

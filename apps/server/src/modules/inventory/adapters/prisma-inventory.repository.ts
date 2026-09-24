@@ -1,15 +1,13 @@
 import { Inject, Injectable } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
-import type { InventoryRepository, LoadoutData, PlayerInventory } from '../domain/ports.js';
+import {
+  PurchaseConflictError,
+  type InventoryRepository,
+  type LoadoutData,
+  type PlayerInventory,
+} from '../domain/ports.js';
 import type { CatalogueEntry, Wallet } from '../domain/purchase.js';
-
-/** Leve quand la base refuse l'achat : objet deja possede, ou bourse a sec. */
-export class PurchaseConflictError extends Error {
-  constructor(cause?: unknown) {
-    super('PURCHASE_CONFLICT', { cause });
-    this.name = 'PurchaseConflictError';
-  }
-}
 
 @Injectable()
 export class PrismaInventoryRepository implements InventoryRepository {
@@ -86,8 +84,23 @@ export class PrismaInventoryRepository implements InventoryRepository {
    * DIFFERENTS, payables chacun mais pas ensemble. La cle primaire ne la voit
    * pas — deux objets distincts, aucun conflit — et sans le `WHERE`, la bourse
    * passerait dans le negatif.
+   *
+   * Chaque garde a SA raison : le debit refuse, c'est une bourse a sec ;
+   * l'unicite violee (`P2002`), un objet deja possede. Tout le reste est une
+   * panne, et remonte tel quel.
    */
   async grant(playerId: string, itemId: string, spend: Wallet): Promise<Wallet> {
+    try {
+      return await this.grantInTransaction(playerId, itemId, spend);
+    } catch (cause) {
+      if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
+        throw new PurchaseConflictError('ALREADY_OWNED', cause);
+      }
+      throw cause;
+    }
+  }
+
+  private grantInTransaction(playerId: string, itemId: string, spend: Wallet): Promise<Wallet> {
     return this.prisma.$transaction(async (tx) => {
       const debited = await tx.player.updateMany({
         where: {
@@ -100,7 +113,7 @@ export class PrismaInventoryRepository implements InventoryRepository {
           hardCurrency: { decrement: spend.hard },
         },
       });
-      if (debited.count === 0) throw new PurchaseConflictError();
+      if (debited.count === 0) throw new PurchaseConflictError('INSUFFICIENT_FUNDS');
 
       // Apres le debit : un objet accorde sans paiement est pire qu'un
       // paiement sans objet, qui lui se rembourse.

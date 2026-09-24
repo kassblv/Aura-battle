@@ -2,7 +2,8 @@ import { randomUUID } from 'node:crypto';
 import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
-import { PrismaInventoryRepository, PurchaseConflictError } from './prisma-inventory.repository.js';
+import { PurchaseConflictError } from '../domain/ports.js';
+import { PrismaInventoryRepository } from './prisma-inventory.repository.js';
 
 /**
  * Test d'integration : ce sont les CONTRAINTES de Postgres qui doivent tenir
@@ -118,7 +119,11 @@ describe.skipIf(!reachable)('PrismaInventoryRepository', () => {
     const itemId = await newItem(80);
 
     await repository().grant(playerId, itemId, { soft: 80, hard: 0 });
-    await expect(repository().grant(playerId, itemId, { soft: 80, hard: 0 })).rejects.toThrow();
+    // La VRAIE erreur de Postgres, passee par l'adaptateur pg, doit etre
+    // reconnue : un double ne prouve pas que Prisma la leve sous cette forme.
+    await expect(
+      repository().grant(playerId, itemId, { soft: 80, hard: 0 }),
+    ).rejects.toMatchObject({ name: 'PurchaseConflictError', reason: 'ALREADY_OWNED' });
 
     expect((await repository().read(playerId)).wallet.soft).toBe(420);
   });
@@ -151,9 +156,9 @@ describe.skipIf(!reachable)('PrismaInventoryRepository', () => {
     const playerId = await newPlayer(10);
     const itemId = await newItem(80);
 
-    await expect(
-      repository().grant(playerId, itemId, { soft: 80, hard: 0 }),
-    ).rejects.toBeInstanceOf(PurchaseConflictError);
+    const refused = repository().grant(playerId, itemId, { soft: 80, hard: 0 });
+    await expect(refused).rejects.toBeInstanceOf(PurchaseConflictError);
+    await expect(refused).rejects.toMatchObject({ reason: 'INSUFFICIENT_FUNDS' });
     expect((await repository().read(playerId)).owned).toHaveLength(0);
   });
 

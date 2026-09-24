@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { describeCause, MAX_CAUSE_CHARS } from './describe-cause.js';
+import { describeCause, describeErrorKind, MAX_CAUSE_CHARS } from './describe-cause.js';
 
 /**
  * Ce qu'un journal a le droit de recopier d'une erreur.
@@ -57,5 +57,35 @@ describe('describeCause', () => {
     expect(describeCause({ token: 'secret' })).toBe('cause inconnue');
     expect(describeCause('mot de passe')).toBe('cause inconnue');
     expect(describeCause(null)).toBe('cause inconnue');
+  });
+});
+
+/**
+ * Plus strict encore : le nom et le code, sans une ligne du message. Pour les
+ * chemins ou le message ne sert a rien et peut tout recopier — l'ecriture d'un
+ * achat, par exemple, ou il porterait l'identifiant du joueur et de l'objet.
+ */
+describe('describeErrorKind', () => {
+  it('garde le nom et le code, rien du message', () => {
+    const error = Object.assign(new Error('insert into "InventoryItem" values (p-1)'), {
+      code: 'P1001',
+    });
+    error.name = 'PrismaClientKnownRequestError';
+
+    expect(describeErrorKind(error)).toBe('PrismaClientKnownRequestError [P1001]');
+  });
+
+  it('se contente du nom sans code', () => {
+    expect(describeErrorKind(new TypeError('p-1 est indefini'))).toBe('TypeError');
+  });
+
+  it('ne recopie rien de ce qui n est pas une erreur', () => {
+    expect(describeErrorKind({ token: 'secret' })).toBe('cause inconnue');
+  });
+
+  /* Un code maison peut, lui aussi, etre ecrit a partir des donnees. */
+  it('ignore un code qui n est pas une constante courte', () => {
+    const error = Object.assign(new Error('x'), { code: 'player p-1 introuvable' });
+    expect(describeErrorKind(error)).toBe('Error');
   });
 });

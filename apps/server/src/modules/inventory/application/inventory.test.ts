@@ -2,7 +2,12 @@ import { animationIdsFor, defaultAnimationFor } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import { InventoryError, InventoryService } from './inventory.js';
 import type { CatalogueEntry } from '../domain/purchase.js';
-import type { InventoryRepository, InventorySnapshot, PlayerInventory } from '../domain/ports.js';
+import {
+  PurchaseConflictError,
+  type InventoryRepository,
+  type InventorySnapshot,
+  type PlayerInventory,
+} from '../domain/ports.js';
 
 const CATALOGUE: readonly CatalogueEntry[] = [
   {
@@ -47,6 +52,8 @@ function repository(start: Partial<PlayerInventory> = {}) {
   const reads = { count: 0 };
   /** Achats qu'on force a perdre la course, une fois chacun. */
   let collideOnce = false;
+  /** Erreur que le prochain accord leve, une fois. */
+  let failure: Error | null = null;
 
   const port: InventoryRepository = {
     catalogue: () => Promise.resolve(CATALOGUE),
@@ -57,11 +64,18 @@ function repository(start: Partial<PlayerInventory> = {}) {
       return Promise.resolve({ ...state, owned: [...state.owned] });
     },
     grant: (_playerId, itemId, spend) => {
+      if (failure !== null) {
+        const next = failure;
+        failure = null;
+        return Promise.reject(next);
+      }
       if (collideOnce) {
         collideOnce = false;
-        return Promise.reject(new Error('ALREADY_GRANTED'));
+        return Promise.reject(new PurchaseConflictError('ALREADY_OWNED'));
       }
-      if (state.owned.includes(itemId)) return Promise.reject(new Error('ALREADY_GRANTED'));
+      if (state.owned.includes(itemId)) {
+        return Promise.reject(new PurchaseConflictError('ALREADY_OWNED'));
+      }
       debits.push(spend);
       (state.owned as string[]).push(itemId);
       (state as { wallet: { soft: number; hard: number } }).wallet = {
@@ -84,16 +98,23 @@ function repository(start: Partial<PlayerInventory> = {}) {
     collideNext: () => {
       collideOnce = true;
     },
+    failNext: (error: Error) => {
+      failure = error;
+    },
   };
 }
 
 const service = (
   repo: ReturnType<typeof repository>,
   changed?: (playerId: string, snapshot: InventorySnapshot) => void,
+  warnings?: string[],
 ) =>
   new InventoryService({
     inventory: repo.port,
     clock: { now: () => new Date('2026-09-21') },
+    ...(warnings === undefined
+      ? {}
+      : { log: { warn: (message: string) => void warnings.push(message) } }),
     ...(changed === undefined
       ? {}
       : {
@@ -153,6 +174,54 @@ describe('buy', () => {
     });
     expect(repo.debits).toHaveLength(0);
     expect(repo.state.wallet.soft).toBe(1_000);
+  });
+
+  /*
+    La garde de debit de la base : deux objets DIFFERENTS, payables chacun mais
+    pas ensemble. Le perdant manque de pieces — pas « tu le possedes deja ».
+  */
+  it('traduit la garde de debit en bourse insuffisante', async () => {
+    const repo = repository();
+    repo.failNext(new PurchaseConflictError('INSUFFICIENT_FUNDS'));
+
+    await expect(service(repo).buy('p-1', 'color.violet')).rejects.toMatchObject({
+      reason: 'INSUFFICIENT_FUNDS',
+    });
+    expect(repo.debits).toHaveLength(0);
+  });
+
+  /*
+    Toute autre erreur est une PANNE, pas un refus : la deguiser en « deja
+    possede » la rendait invisible. Relancee, elle devient un 500 et se voit.
+    Le journal ne garde que son nom et son code : le message d'une erreur
+    Prisma recopie les arguments refuses.
+  */
+  it('relance une panne de la base, sans prevenir le match', async () => {
+    const repo = repository();
+    const down = Object.assign(new Error('insert into "InventoryItem" values (secret)'), {
+      code: 'P1001',
+    });
+    down.name = 'PrismaClientKnownRequestError';
+    repo.failNext(down);
+    const warnings: string[] = [];
+    const seen: string[] = [];
+
+    const failed = service(repo, (id) => seen.push(id), warnings).buy('p-1', 'color.violet');
+    await expect(failed).rejects.toBe(down);
+    expect(seen).toEqual([]);
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain('PrismaClientKnownRequestError');
+    expect(warnings[0]).toContain('P1001');
+    expect(warnings[0]).not.toContain('secret');
+  });
+
+  it('se tait sur un refus attendu', async () => {
+    const repo = repository();
+    repo.collideNext();
+    const warnings: string[] = [];
+
+    await expect(service(repo, undefined, warnings).buy('p-1', 'color.violet')).rejects.toThrow();
+    expect(warnings).toEqual([]);
   });
 
   it('refuse un second achat du meme objet', async () => {

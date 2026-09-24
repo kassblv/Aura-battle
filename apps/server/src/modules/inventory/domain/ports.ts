@@ -29,15 +29,37 @@ export interface PlayerInventory {
 /** Ce qu'un joueur possede (offerts compris) et porte, sans sa bourse. */
 export type InventorySnapshot = Pick<PlayerInventory, 'owned' | 'loadout'>;
 
+/** Les deux refus d'un accord que seule la base peut trancher. */
+export type GrantRefusal = 'ALREADY_OWNED' | 'INSUFFICIENT_FUNDS';
+
+/**
+ * Leve par `grant` quand la base refuse l'achat, avec SA raison.
+ *
+ * Un refus, pas une panne : l'appelant le traduit en reponse au joueur. Toute
+ * autre erreur de `grant` est une panne, et doit remonter telle quelle.
+ */
+export class PurchaseConflictError extends Error {
+  constructor(
+    readonly reason: GrantRefusal,
+    cause?: unknown,
+  ) {
+    super('PURCHASE_CONFLICT', { cause });
+    this.name = 'PurchaseConflictError';
+  }
+}
+
 export interface InventoryRepository {
   catalogue(): Promise<readonly CatalogueEntry[]>;
   read(playerId: string): Promise<PlayerInventory>;
   /**
    * Accorde l'objet et debite, **en une transaction**.
    *
-   * Rejette si le joueur possede deja l'objet : c'est la cle primaire
-   * `(playerId, itemId)` qui tranche, et elle seule peut le faire — entre la
-   * lecture de la regle et l'ecriture, un autre onglet a pu passer.
+   * Rejette avec `PurchaseConflictError('ALREADY_OWNED')` si le joueur
+   * possede deja l'objet : c'est la cle primaire `(playerId, itemId)` qui
+   * tranche, et elle seule peut le faire — entre la lecture de la regle et
+   * l'ecriture, un autre onglet a pu passer. Avec
+   * `PurchaseConflictError('INSUFFICIENT_FUNDS')` si la bourse ne couvre plus
+   * le prix. Toute autre erreur est une panne, relancee telle quelle.
    *
    * Rend la bourse APRES le debit, lue dans la meme transaction : l'appelant
    * repond avec, sans relire tout l'inventaire.

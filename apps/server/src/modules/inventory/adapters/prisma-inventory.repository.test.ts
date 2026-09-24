@@ -1,4 +1,6 @@
+import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
+import { PurchaseConflictError } from '../domain/ports.js';
 import { PrismaInventoryRepository } from './prisma-inventory.repository.js';
 
 /**
@@ -62,5 +64,70 @@ describe('PrismaInventoryRepository.catalogue', () => {
     fail = false;
     expect(await repository.catalogue()).toEqual([ROW]);
     expect(calls()).toBe(2);
+  });
+});
+
+/** Erreur Prisma authentique : c'est la vraie classe que l'adaptateur reconnait. */
+function prismaError(code: string): Prisma.PrismaClientKnownRequestError {
+  return new Prisma.PrismaClientKnownRequestError(`echec simule ${code}`, {
+    code,
+    clientVersion: '7.10.0',
+  });
+}
+
+/**
+ * Double de la transaction de `grant` : le debit touche `debited` lignes, puis
+ * la creation de la possession echoue avec `createFails`, s'il est donne.
+ */
+function grantingWith(debited: number, createFails?: unknown): PrismaInventoryRepository {
+  const tx = {
+    player: {
+      updateMany: () => Promise.resolve({ count: debited }),
+      findUniqueOrThrow: () => Promise.resolve({ softCurrency: 20, hardCurrency: 0 }),
+    },
+    inventoryItem: {
+      create: () =>
+        createFails === undefined ? Promise.resolve({}) : Promise.reject(createFails as Error),
+    },
+  };
+  const prisma = { $transaction: (run: (client: typeof tx) => Promise<unknown>) => run(tx) };
+  return new PrismaInventoryRepository(prisma as never);
+}
+
+/*
+  Chaque refus de la base dit SA raison. Tout traduire en « deja possede »
+  cachait une bourse a sec derriere un faux message, et une panne derriere un
+  refus poli.
+*/
+describe('PrismaInventoryRepository.grant', () => {
+  const spend = { soft: 80, hard: 0 };
+
+  it('rend la bourse apres debit', async () => {
+    expect(await grantingWith(1).grant('p-1', 'color.violet', spend)).toEqual({
+      soft: 20,
+      hard: 0,
+    });
+  });
+
+  it('traduit la garde de debit en bourse insuffisante', async () => {
+    const refused = grantingWith(0).grant('p-1', 'color.violet', spend);
+    await expect(refused).rejects.toBeInstanceOf(PurchaseConflictError);
+    await expect(refused).rejects.toMatchObject({ reason: 'INSUFFICIENT_FUNDS' });
+  });
+
+  it('traduit la violation d unicite (P2002) en objet deja possede', async () => {
+    const refused = grantingWith(1, prismaError('P2002')).grant('p-1', 'color.violet', spend);
+    await expect(refused).rejects.toBeInstanceOf(PurchaseConflictError);
+    await expect(refused).rejects.toMatchObject({ reason: 'ALREADY_OWNED' });
+  });
+
+  it('laisse passer toute autre erreur, telle quelle', async () => {
+    const foreignKey = prismaError('P2003');
+    await expect(grantingWith(1, foreignKey).grant('p-1', 'color.violet', spend)).rejects.toBe(
+      foreignKey,
+    );
+
+    const down = new Error('connexion perdue');
+    await expect(grantingWith(1, down).grant('p-1', 'color.violet', spend)).rejects.toBe(down);
   });
 });

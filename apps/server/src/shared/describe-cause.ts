@@ -29,3 +29,23 @@ export function describeCause(error: unknown): string {
   const firstLine = error.message.split('\n', 1)[0] ?? '';
   return `${error.name}${code}: ${firstLine.slice(0, MAX_CAUSE_CHARS)}`;
 }
+
+/** Un code d'erreur qu'on accepte de recopier : une constante, pas une phrase. */
+const ERROR_CODE = /^[A-Z0-9_]{1,32}$/;
+
+/**
+ * Le nom et le code d'une erreur, sans rien de son message.
+ *
+ * Pour les chemins ou le message n'apprendrait rien de plus que le code et
+ * pourrait tout recopier : une erreur Prisma levee pendant un achat porterait
+ * l'identifiant du joueur et de l'objet. `P2002`, `P1001`, `ECONNREFUSED`
+ * nomment la panne ; un « code » maison fait de phrases n'est pas repris.
+ */
+export function describeErrorKind(error: unknown): string {
+  if (!(error instanceof Error)) return 'cause inconnue';
+  const code =
+    'code' in error && typeof error.code === 'string' && ERROR_CODE.test(error.code)
+      ? ` [${error.code}]`
+      : '';
+  return `${error.name}${code}`;
+}
