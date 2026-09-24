@@ -23,6 +23,7 @@ import {
 import { readBearer } from '../../auth/application/bearer.js';
 import type { AccessTokenVerifier } from '../../auth/application/socket-auth.js';
 import { SystemClock } from '../../../shared/clock.js';
+import { KeyedSerializerFullError } from '../../../shared/keyed-serializer.js';
 import type { Clock, LoadoutData, PlayerInventory } from '../domain/ports.js';
 import {
   InventoryError,
@@ -47,7 +48,8 @@ import { InventoryRateLimit, type InventoryRoute } from '../application/inventor
  * apres l'authentification et avant tout le reste : un corps invalide ou un
  * achat refuse coute un jeton comme les autres, sinon la boucle passerait par
  * la. Le refus est un 429 `RATE_LIMITED`, le code que la socket de match
- * emploie deja.
+ * emploie deja. Meme refus quand la file d'ecritures du joueur est pleine
+ * (`INVENTORY_WRITE_QUEUE`) : le debit borne le rythme, pas la file.
  */
 
 /** Ce que chaque refus du domaine vaut en HTTP. */
@@ -77,6 +79,14 @@ function toLoadout(payload: LoadoutPayload): LoadoutData {
     if (value !== undefined) (out as Record<string, unknown>)[slot] = value;
   }
   return out;
+}
+
+/** Le refus « ralentis » : un seau vide, ou une file d'ecritures pleine. */
+function rateLimited(): HttpException {
+  return new HttpException(
+    { code: 'RATE_LIMITED', message: 'RATE_LIMITED' },
+    HttpStatus.TOO_MANY_REQUESTS,
+  );
 }
 
 /** Ce que lit le client : l'inventaire complet, jamais un simple accuse. */
@@ -154,10 +164,7 @@ export class InventoryController {
    */
   private throttle(route: InventoryRoute, playerId: string): void {
     if (this.rateLimit.allow(route, playerId, this.clock.now().getTime())) return;
-    throw new HttpException(
-      { code: 'RATE_LIMITED', message: 'RATE_LIMITED' },
-      HttpStatus.TOO_MANY_REQUESTS,
-    );
+    throw rateLimited();
   }
 
   private async requirePlayer(authorization: string | undefined): Promise<string> {
@@ -184,6 +191,9 @@ export class InventoryController {
     try {
       return await action();
     } catch (cause) {
+      // File d'ecritures du joueur pleine : meme refus qu'un seau vide. Pour
+      // le client, c'est la meme consigne — ralentir et reessayer.
+      if (cause instanceof KeyedSerializerFullError) throw rateLimited();
       if (!(cause instanceof InventoryError)) throw cause;
       const payload = { code: cause.reason, message: cause.reason };
       switch (STATUS[cause.reason]) {

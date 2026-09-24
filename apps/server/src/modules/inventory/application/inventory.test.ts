@@ -1,6 +1,8 @@
 import { animationIdsFor, defaultAnimationFor } from '@aura/content';
-import { describe, expect, it } from 'vitest';
-import { InventoryError, InventoryService } from './inventory.js';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PURCHASE_TRANSACTION, WORST_QUERY_MS } from '../../../shared/database-timeouts.js';
+import { KeyedSerializerFullError } from '../../../shared/keyed-serializer.js';
+import { INVENTORY_WRITE_QUEUE, InventoryError, InventoryService } from './inventory.js';
 import type { CatalogueEntry } from '../domain/purchase.js';
 import {
   PurchaseConflictError,
@@ -532,6 +534,85 @@ describe('ecritures concurrentes d un meme joueur', () => {
     await expect(inventory.equip('p-2', { auraColor: 'color.gold' })).resolves.toBeDefined();
     release();
     await blocked;
+  });
+});
+
+/*
+  Une ecriture qui ne se termine jamais — une requete partie vers une base
+  devenue muette — bloquait toutes les suivantes du joueur, pour toujours, et sa
+  file grossissait a chaque nouvel essai.
+*/
+describe('file des ecritures d un joueur', () => {
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  /** Un depot dont chaque accord d'achat pend, sans jamais aboutir. */
+  function stalledPurchases() {
+    const repo = repository();
+    repo.port.grant = () => new Promise<never>(() => undefined);
+    return repo;
+  }
+
+  it('reprend apres le delai, meme si l ecriture en cours n aboutit jamais', async () => {
+    vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout'] });
+    const warnings: string[] = [];
+    const inventory = service(stalledPurchases(), undefined, warnings);
+
+    void inventory.buy('p-1', 'fx.galaxy');
+    const equipped = inventory.equip('p-1', { auraColor: 'color.gold' });
+    let done = false;
+    void equipped.then(() => (done = true));
+
+    await vi.advanceTimersByTimeAsync(INVENTORY_WRITE_QUEUE.releaseAfterMs - 1);
+    expect(done).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await expect(equipped).resolves.toMatchObject({ loadout: { auraColor: 'color.gold' } });
+    // Relacher l'ordre n'est pas anodin : ca se dit, sans rien du joueur.
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).not.toContain('p-1');
+  });
+
+  it('refuse l ecriture de trop, sans la faire', async () => {
+    const repo = stalledPurchases();
+    const inventory = service(repo);
+
+    for (let i = 0; i < INVENTORY_WRITE_QUEUE.maxDepth; i += 1) {
+      void inventory.buy('p-1', 'fx.galaxy');
+    }
+    await expect(inventory.equip('p-1', { auraColor: 'color.gold' })).rejects.toBeInstanceOf(
+      KeyedSerializerFullError,
+    );
+    expect(repo.state.loadout).toBeNull();
+  });
+
+  it('ne retarde jamais un autre joueur', async () => {
+    const inventory = service(stalledPurchases());
+
+    for (let i = 0; i < INVENTORY_WRITE_QUEUE.maxDepth; i += 1) {
+      void inventory.buy('p-1', 'fx.galaxy');
+    }
+    await expect(inventory.equip('p-2', { auraColor: 'color.gold' })).resolves.toMatchObject({
+      loadout: { auraColor: 'color.gold' },
+    });
+  });
+
+  /*
+    Le delai ne doit relacher l'ordre que derriere une ecriture qui ne peut
+    PLUS aboutir. Chaque requete est bornee par les delais du bassin
+    (`WORST_QUERY_MS`), la transaction d'achat par les siens : au-dela de leur
+    somme, l'ecriture a forcement echoue ou reussi.
+  */
+  it('attend plus longtemps que la plus longue ecriture qui peut encore aboutir', () => {
+    const { maxWait, timeout } = PURCHASE_TRANSACTION;
+    // Achat : lecture, transaction, signal au match (catalogue relu au pire).
+    const buy = WORST_QUERY_MS + maxWait + timeout + WORST_QUERY_MS;
+    // Equipement : lecture, ecriture, signal au match (catalogue relu au pire).
+    const equip = 3 * WORST_QUERY_MS;
+
+    expect(INVENTORY_WRITE_QUEUE.releaseAfterMs).toBeGreaterThan(timeout);
+    expect(INVENTORY_WRITE_QUEUE.releaseAfterMs).toBeGreaterThan(buy);
+    expect(INVENTORY_WRITE_QUEUE.releaseAfterMs).toBeGreaterThan(equip);
   });
 });
 

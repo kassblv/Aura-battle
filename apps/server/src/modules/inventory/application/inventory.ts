@@ -45,8 +45,41 @@ export interface InventoryDependencies {
   readonly log?: AppLog;
 }
 
+/**
+ * Les bornes de la file des ecritures d'un joueur (`KeyedSerializer`).
+ *
+ * - **Profondeur : 4.** Achat et equipement partagent la file. Un joueur qui
+ *   passe ses couleurs en revue au vestiaire touche jusqu'a quatre fois par
+ *   seconde, et chaque ecriture se vide en quelques millisecondes : la file
+ *   depasse rarement une ou deux entrees. Quatre en attente, c'est donc deja
+ *   une base qui ne suit plus — et le joueur qui insiste (environ trois
+ *   essais par seconde) ne fait plus que l'allonger. La cinquieme est
+ *   refusee aussitot, en 429 `RATE_LIMITED`, que le client connait deja.
+ * - **Delai : 60 s.** Passe ce delai depuis son debut, une ecriture cede la
+ *   file meme si elle n'a pas abouti. Il doit depasser la plus longue
+ *   ecriture qui peut ENCORE reussir, sans quoi on relacherait l'ordre
+ *   derriere un achat sur le point d'aboutir : un achat, c'est au pire une
+ *   lecture, la transaction (`PURCHASE_TRANSACTION`, 2 s + 5 s) et le signal
+ *   au match ; un equipement, trois requetes. Chaque requete tient dans
+ *   `WORST_QUERY_MS` (17 s) : 41 s pour l'achat, 51 s pour l'equipement.
+ *   Au-dela, l'ecriture a forcement echoue ou reussi. Ce delai n'est qu'un
+ *   filet : les delais du bassin (`DATABASE_TIMEOUTS`) font deja echouer une
+ *   requete pendante bien avant lui.
+ */
+export const INVENTORY_WRITE_QUEUE = Object.freeze({ maxDepth: 4, releaseAfterMs: 60_000 });
+
 export class InventoryService {
-  constructor(private readonly deps: InventoryDependencies) {}
+  constructor(private readonly deps: InventoryDependencies) {
+    this.writes = new KeyedSerializer({
+      ...INVENTORY_WRITE_QUEUE,
+      // Le joueur n'est pas nomme : le signal dit que la base ne suit plus,
+      // pas qui attendait.
+      onOverdue: () =>
+        this.deps.log?.warn(
+          `ecriture d inventaire sans reponse apres ${String(INVENTORY_WRITE_QUEUE.releaseAfterMs)} ms : file relachee`,
+        ),
+    });
+  }
 
   /**
    * Les ecritures d'un meme joueur, l'une apres l'autre.
@@ -59,10 +92,13 @@ export class InventoryService {
    * avant l'achat. En file, chaque ecriture lit ce que la precedente a ecrit,
    * et le dernier signal recu par le match est celui de la derniere ecriture.
    *
+   * Une file pleine rejette par `KeyedSerializerFullError` ; c'est au
+   * controleur d'en faire un 429.
+   *
    * Un exemplaire par service, donc par processus (ADR 0012). Les lectures
    * n'y passent pas : elles ne previennent personne.
    */
-  private readonly writes = new KeyedSerializer();
+  private readonly writes: KeyedSerializer;
 
   /**
    * Ce que le joueur possede, les objets offerts compris.

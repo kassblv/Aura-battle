@@ -2,7 +2,7 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { SystemClock } from '../../../shared/clock.js';
-import { InventoryService } from '../application/inventory.js';
+import { INVENTORY_WRITE_QUEUE, InventoryService } from '../application/inventory.js';
 import { INVENTORY_RATE_LIMITS, InventoryRateLimit } from '../application/inventory-rate-limit.js';
 import type { CatalogueEntry } from '../domain/purchase.js';
 import type { InventoryRepository, LoadoutData, PlayerInventory } from '../domain/ports.js';
@@ -37,6 +37,9 @@ const CATALOGUE: readonly CatalogueEntry[] = [
   },
 ];
 
+/** Le joueur dont les ecritures de loadout ne reviennent jamais. */
+const STALLED = 'p-stalled';
+
 /** Un depot en memoire par joueur, qui compte ses lectures. */
 const stores = new Map<string, PlayerInventory>();
 let reads = 0;
@@ -59,6 +62,8 @@ const repository: InventoryRepository = {
     return Promise.resolve(wallet);
   },
   setLoadout: (playerId, data: LoadoutData) => {
+    // Une base muette pour ce seul joueur : l'ecriture ne revient jamais.
+    if (playerId === STALLED) return new Promise<never>(() => undefined);
     const before = stores.get(playerId) ?? {
       wallet: { soft: 1_000, hard: 0 },
       owned: [],
@@ -244,5 +249,24 @@ describe('POST /inventory/buy', () => {
     const refused = await buy('p-buyloop', 'color.violet');
     expect(refused.statusCode).toBe(429);
     expect(refused.json<{ code: string }>().code).toBe('RATE_LIMITED');
+  });
+});
+
+/*
+  La limite de debit borne le RYTHME des ecritures, pas leur file : derriere
+  une base muette, un debit legal suffisait a l'allonger sans fin.
+*/
+describe('file d ecritures pleine', () => {
+  it('refuse en 429 RATE_LIMITED, sans gener les autres joueurs', async () => {
+    // Laissees pendantes : c'est a la base de les conclure, pas au test.
+    for (let i = 0; i < INVENTORY_WRITE_QUEUE.maxDepth; i += 1) void equip(STALLED);
+    // Le temps que les requetes traversent l'authentification jusqu'a la file.
+    await new Promise((done) => setTimeout(done, 50));
+
+    const refused = await equip(STALLED);
+    expect(refused.statusCode).toBe(429);
+    expect(refused.json()).toEqual({ code: 'RATE_LIMITED', message: 'RATE_LIMITED' });
+
+    expect((await equip('p-beside-stalled')).statusCode).toBe(200);
   });
 });
