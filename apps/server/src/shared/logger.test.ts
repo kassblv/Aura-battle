@@ -57,7 +57,6 @@ describe('createLogger — les secrets ne partent jamais dans les journaux', () 
           currentPassword: 'mot-de-passe-2',
           newPassword: 'mot-de-passe-3',
           recoveryCode: 'AURA-SECRET-1',
-          code: 'AURA-SECRET-2',
           secretHash: '$argon2id$secret',
           deviceSecret: 'secret-appareil',
         },
@@ -71,12 +70,51 @@ describe('createLogger — les secrets ne partent jamais dans les journaux', () 
       'mot-de-passe-2',
       'mot-de-passe-3',
       'AURA-SECRET-1',
-      'AURA-SECRET-2',
       '$argon2id$secret',
       'secret-appareil',
     ]) {
       expect(sortie).not.toContain(secret);
     }
+  });
+
+  /* Les jokers de pino ne descendent que d'un niveau : `req.body.x` est nomme. */
+  it('masque les secrets du corps d une requete journalisee', () => {
+    const { lines, stream } = capture();
+    createLogger(config, stream).info(
+      {
+        req: {
+          body: {
+            password: 'corps-1',
+            currentPassword: 'corps-2',
+            newPassword: 'corps-3',
+            recoveryCode: 'corps-4',
+            code: 'corps-5',
+            email: 'corps@exemple.fr',
+            deviceSecret: 'corps-6',
+          },
+        },
+      },
+      'requete',
+    );
+    const sortie = lines.join('');
+    for (const secret of [
+      'corps-1',
+      'corps-2',
+      'corps-3',
+      'corps-4',
+      'corps-5',
+      'corps@exemple.fr',
+      'corps-6',
+    ]) {
+      expect(sortie).not.toContain(secret);
+    }
+  });
+
+  /* `err.code` est le premier indice d'un incident : il doit rester lisible. */
+  it('laisse lisible le code d une erreur', () => {
+    const { lines, stream } = capture();
+    createLogger(config, stream).info({ err: { code: 'P2002' } }, 'conflit');
+    expect(lines.join('')).toContain('P2002');
   });
 
   it('masque l empreinte d un appareil, sous ses deux noms', () => {
