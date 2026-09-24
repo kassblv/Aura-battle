@@ -45,7 +45,25 @@ export type AudioCue =
    * le protocole se refuse a envoyer (regle d or n°4). Un accent ne dit que ce
    * que le corps fait, et un corps qu on ne voit pas ne fait rien.
    */
-  | { readonly type: 'gesture'; readonly accent: SoundAccent };
+  | { readonly type: 'gesture'; readonly accent: SoundAccent }
+  /**
+   * Un geste sur la main de cartes (chantier n°2), fait par CE joueur :
+   * distribuer, choisir, retourner, refuser une carte trop chere, ou voir sa
+   * carte brillante arriver. Rien de l'adversaire ne passe ici.
+   */
+  | { readonly type: 'card'; readonly action: CardAction };
+
+/** Les gestes de la main de cartes. */
+export type CardAction = 'deal' | 'pick' | 'flip' | 'denied' | 'shiny';
+
+/** Le son de chaque geste de carte : des sons existants, reconnaissables. */
+const CARD_SOUNDS: Readonly<Record<CardAction, SoundName>> = {
+  deal: 'whoosh',
+  pick: 'click',
+  flip: 'select',
+  denied: 'tapMiss',
+  shiny: 'tapGold',
+};
 
 export interface SoundRequest {
   readonly name: SoundName;
@@ -100,6 +118,9 @@ export function soundForCue(cue: AudioCue): SoundRequest | null {
 
     case 'gesture':
       return accentSound(cue.accent);
+
+    case 'card':
+      return { name: CARD_SOUNDS[cue.action], combo: 0 };
 
     // `matchEnd` reste en dernier : son aiguillage interne rend dans chaque
     // branche sans `break`, et un `case` pose apres lui se lit comme une

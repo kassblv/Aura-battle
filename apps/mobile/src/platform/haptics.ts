@@ -54,6 +54,12 @@ export function hapticFor(cue: AudioCue): HapticStyle | null {
       return cue.local && cue.ultimate ? 'heavy' : null;
     case 'matchEnd':
       return cue.outcome === 'win' ? 'heavy' : 'medium';
+    case 'card':
+      // Le doigt sent ce qu'il vient de decider : choisir, retourner, et la
+      // brillante qui arrive. La distribution et le refus passent par le son.
+      return cue.action === 'pick' || cue.action === 'flip' || cue.action === 'shiny'
+        ? 'light'
+        : null;
     default:
       // Combos, fin de recharge, accents de geste : le son les porte deja, et
       // ils arrivent trop souvent pour meriter le moteur.

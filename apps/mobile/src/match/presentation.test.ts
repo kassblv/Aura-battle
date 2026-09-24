@@ -233,3 +233,14 @@ describe('danse equipee', () => {
     expect(scene.fighters.a.animationId).toBe(animationFor(move).id);
   });
 });
+
+describe('phase de choix', () => {
+  it('dit a l arene qu on choisit, pour qu elle cadre au-dessus de la main', () => {
+    const match = createSoloMatch({ seed: 'cadre', opponent: 'calm', startedAtMs: 0 });
+    expect(present(match.state, looks).choosing).toBe(false);
+    for (let i = 0; i < 10 && match.state.phase !== 'choice'; i += 1) {
+      match.advanceTo(match.state.phaseEndsAtMs);
+    }
+    expect(present(match.state, looks).choosing).toBe(true);
+  });
+});

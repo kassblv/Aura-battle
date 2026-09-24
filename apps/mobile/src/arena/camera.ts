@@ -50,6 +50,20 @@ export function wideFraming(): CameraFraming {
   return { lookX: 0, lookY: 0.85, distance: REST_DISTANCE, orbit: 0 };
 }
 
+/**
+ * Phase de choix : la main de cartes occupe le centre-bas (chantier n°2).
+ *
+ * On vise un peu plus bas pour faire remonter les combattants a l'ecran : la
+ * moitie haute de leur silhouette — tete, torse, bras, l'aura — reste au-dessus
+ * des cartes soulevees. Mesure dans `hud.test.ts` sur six formats.
+ */
+export function choiceFraming(): CameraFraming {
+  return { lookX: 0, lookY: CHOICE_LOOK_Y, distance: REST_DISTANCE, orbit: 0 };
+}
+
+/** Hauteur visee pendant le choix, sous celle du cadrage large (0,85). */
+export const CHOICE_LOOK_Y = 0.62;
+
 /** Hors match, un seul personnage a l ecran : on se rapproche. */
 export function soloFraming(worldX: number): CameraFraming {
   return { lookX: worldX, lookY: 0.8, distance: 3.7, orbit: 0 };

@@ -15,7 +15,13 @@ import {
   type QualityTier,
 } from '../platform/quality.js';
 import { watchReducedMotion } from '../platform/reducedMotion.js';
-import { focusFraming, previewFraming, wideFraming, type CameraFraming } from './camera.js';
+import {
+  choiceFraming,
+  focusFraming,
+  previewFraming,
+  wideFraming,
+  type CameraFraming,
+} from './camera.js';
 import { auraIntensity } from './aura.js';
 import { CHEST_HEIGHT, type ClashColors, type ClashEnds } from './clash.js';
 import { createArenaDirector } from './director.js';
@@ -458,6 +464,9 @@ export function useArena(
           facing: arena.fighters[focus.seat].placement.facing,
           zoom: focus.zoom,
         });
+      } else if (scene?.choosing === true) {
+        // La main de cartes est a l'ecran : on cadre au-dessus d'elle.
+        framing = choiceFraming();
       } else {
         framing = wideFraming();
       }

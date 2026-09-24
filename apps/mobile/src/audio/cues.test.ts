@@ -163,3 +163,13 @@ describe('cueForArenaEvent', () => {
     });
   });
 });
+
+describe('soundForCue — gestes de carte (chantier n°2)', () => {
+  it('donne un son a chaque geste de la main', () => {
+    expect(soundForCue({ type: 'card', action: 'deal' })?.name).toBe('whoosh');
+    expect(soundForCue({ type: 'card', action: 'pick' })?.name).toBe('click');
+    expect(soundForCue({ type: 'card', action: 'flip' })?.name).toBe('select');
+    expect(soundForCue({ type: 'card', action: 'denied' })?.name).toBe('tapMiss');
+    expect(soundForCue({ type: 'card', action: 'shiny' })?.name).toBe('tapGold');
+  });
+});

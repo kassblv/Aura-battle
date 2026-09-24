@@ -42,6 +42,11 @@ export interface Presentation {
   readonly fighters: Readonly<Record<Seat, FighterPresentation>>;
   /** Ferveur du public, entre 0 et 1. */
   readonly hype: number;
+  /**
+   * Phase de choix : la main de cartes est a l'ecran, la camera cadre
+   * au-dessus d'elle (`choiceFraming`). Absent hors match.
+   */
+  readonly choosing?: boolean;
 }
 
 export interface PresentOptions {
@@ -129,5 +134,6 @@ export function present(
   return {
     fighters: { a: present1('a', looks.a), b: present1('b', looks.b) },
     hype: HYPE_BY_PHASE[state.phase],
+    choosing: state.phase === 'choice',
   };
 }

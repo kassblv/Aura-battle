@@ -1,21 +1,23 @@
-import {
-  AMPLIFIER_LEVELS,
-  amplifierName,
-  defaultAnimationFor,
-  styleIcon,
-  styleName,
-  tierName,
-  TIERS,
-} from '@aura/content';
+import { AMPLIFIER_LEVELS, amplifierName, defaultAnimationFor, tierName } from '@aura/content';
 import {
   BALANCE,
   type AmplifierLevel,
   type Choice,
+  type Move,
   type RechargeTap,
   type Style,
   type Tier,
 } from '@aura/rules';
-import { memo, useCallback, useEffect, useRef, useState, type JSX, type RefObject } from 'react';
+import {
+  memo,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type JSX,
+  type RefObject,
+} from 'react';
 import { verdictPanelShown } from '../arena/round.js';
 import type { MatchView } from '../match/view.js';
 import { leagueLabel } from './leagues.js';
@@ -28,11 +30,13 @@ import {
   type MeterZones,
 } from '../ui/gauge.js';
 import { countdownLabel, orbPaint, ORB_SLOTS, phaseClock, progressTransform } from '../ui/frame.js';
+import type { AudioCue } from '../audio/cues.js';
 import { renderKey, type MeterZonesView } from '../ui/renderKey.js';
 import { betFor, levelFill, type Bet } from '../ui/bet.js';
-import { chunkEvenly, pickNameClass, STYLE_COLUMNS } from '../ui/layout.js';
 import type { ChoicePreview } from '../match/choicePreview.js';
-import { danceOptions, type Wardrobe } from './wardrobe.js';
+import { handFor, nextVariant, tabsFor, type FamilyTab, type HandCard } from './hand.js';
+import { PoseHand } from './PoseHand.js';
+import { danceOptions, defaultLook, type Wardrobe } from './wardrobe.js';
 
 /**
  * L ecran de match.
@@ -61,15 +65,15 @@ import { danceOptions, type Wardrobe } from './wardrobe.js';
  * proprietes.
  */
 
-/**
- * Les familles, en rangees.
- *
- * La **liste** des familles et leurs contres viennent de `BALANCE`, et leurs
- * pictogrammes de `@aura/content` : les recopier ici, c etait promettre que le
- * jeu en compte trois pour toujours — il en compte cinq — et prendre le risque
- * qu un contre affiche contredise celui que le serveur applique.
- */
-const STYLE_ROWS: readonly (readonly Style[])[] = chunkEvenly(BALANCE.styles, STYLE_COLUMNS);
+/** Garde-robe d'un ecran sans vestiaire : les poses offertes seulement. */
+const BARE_WARDROBE: Wardrobe = Object.freeze({ look: defaultLook(), owned: new Set<string>() });
+
+/** La case brillante, relue depuis sa cle texte (`famille.palier`). */
+function parseShinyKey(key: string): Move | null {
+  if (key === '') return null;
+  const [style, tier] = key.split('.');
+  return { style: style as Style, tier: Number(tier) as Tier };
+}
 
 /** Delai minimal entre l armement de la jauge et l appui (docs/03). */
 /** Jauge pleine : en deca, le serveur refuse l activation (`docs/01` §6). */
@@ -174,6 +178,11 @@ export interface MatchScreenProps {
   readonly onPreview?: (preview: ChoicePreview | null) => void;
   /** Absent : pas de choix de danse (inventaire injoignable, par exemple). */
   readonly dances?: DanceChoice;
+  /**
+   * Son et vibration des gestes de la main de cartes. Stable d'un rendu a
+   * l'autre, comme les autres rappels : `sameFrame` le compare par identite.
+   */
+  readonly onCue?: (cue: AudioCue) => void;
 }
 
 function MatchScreenBody({
@@ -189,6 +198,7 @@ function MatchScreenBody({
   questsDone = [],
   onPreview,
   dances,
+  onCue,
 }: MatchScreenProps): JSX.Element {
   const [style, setStyle] = useState<Style | null>(null);
   const [tier, setTier] = useState<Tier>(0);
@@ -203,6 +213,10 @@ function MatchScreenBody({
    */
   const [peek, setPeek] = useState<AmplifierLevel | null>(null);
   const [locked, setLocked] = useState(false);
+  /** La famille dont la main est ouverte. */
+  const [family, setFamily] = useState<Style>('calme');
+  /** Carte trop chere qu'on vient de toucher : elle tremble un instant. */
+  const [deniedTier, setDeniedTier] = useState<Tier | null>(null);
   /**
    * L Ultime, arme pour cette manche.
    *
@@ -264,6 +278,7 @@ function MatchScreenBody({
     setTier(0);
     setAmplifier(0);
     setPeek(null);
+    setDeniedTier(null);
     setLocked(false);
     // L Ultime se rearme a chaque manche : l activation vide la jauge, et le
     // garder arme ferait croire qu on le relance avec une jauge vide.
@@ -374,13 +389,70 @@ function MatchScreenBody({
   const move = style === null ? null : { style, tier };
   const danceView =
     dances === undefined || move === null ? null : danceOptions(dances.wardrobe, move);
-  const danceNext = danceView?.next;
   const equipDance = dances?.onEquip;
-  const nextDance = useCallback((): void => {
-    if (danceNext !== undefined) equipDance?.(danceNext);
-  }, [danceNext, equipDance]);
-  const danceName =
-    danceView?.choices.find((card) => card.animationId === danceView.current)?.name ?? null;
+  const wardrobe = dances?.wardrobe ?? BARE_WARDROBE;
+
+  /*
+    La main de cartes : ce que chaque carte montre est decide par `hand.ts`,
+    ici on ne fait que lui passer ce qu'il faut. La case brillante entre par
+    sa cle texte : l'objet change d'identite d'une vue a l'autre, pas sa case.
+  */
+  const shiny = view.me.shiny;
+  const shinyKey = shiny === null ? '' : `${shiny.style}.${String(shiny.tier)}`;
+  const shinyMove = useMemo(() => parseShinyKey(shinyKey), [shinyKey]);
+  const tabs = useMemo(() => tabsFor(shinyMove), [shinyMove]);
+  const cards = useMemo(
+    () => handFor({ family, wardrobe, budget: cap, amplifierCost: amplifier, shiny: shinyMove }),
+    [family, wardrobe, cap, amplifier, shinyMove],
+  );
+
+  // La brillante arrive : la main s'ouvre sur sa famille, qu'on la voie briller.
+  useEffect(() => {
+    if (shinyMove !== null) setFamily(shinyMove.style);
+  }, [shinyMove]);
+
+  /*
+    La distribution : a l'ouverture du choix, les cartes volent de la pile
+    vers l'eventail (CSS), avec leur son. La brillante tinte juste apres, le
+    temps que la main se pose.
+  */
+  const choosing = view.phase === 'choice';
+  // Lus par reference : l'effet ne depend que de l'ouverture du choix. Une
+  // brillante qui arrive dans la meme manche ne redistribue pas la main.
+  const cueRef = useRef(onCue);
+  cueRef.current = onCue;
+  const shinyRef = useRef(shinyMove);
+  shinyRef.current = shinyMove;
+  useEffect(() => {
+    if (!choosing) return undefined;
+    cueRef.current?.({ type: 'card', action: 'deal' });
+    if (shinyRef.current === null) return undefined;
+    const timer = setTimeout(() => {
+      cueRef.current?.({ type: 'card', action: 'shiny' });
+    }, 320);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [choosing, view.round]);
+
+  const openFamily = useCallback(
+    (next: Style): void => {
+      setFamily(next);
+      onCue?.({ type: 'card', action: 'deal' });
+    },
+    [onCue],
+  );
+
+  // Une carte refusee tremble, puis se calme.
+  useEffect(() => {
+    if (deniedTier === null) return undefined;
+    const timer = setTimeout(() => {
+      setDeniedTier(null);
+    }, 900);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [deniedTier]);
 
   /** Ce que la partie a rapporte, ou `null` en solo — il n y a rien a crediter. */
   const spoils = view.ended?.spoils ?? null;
@@ -398,6 +470,35 @@ function MatchScreenBody({
       chargeAt.current ??= inPhaseNow();
     },
     [inPhaseNow],
+  );
+
+  /**
+   * Toucher une carte.
+   *
+   * - trop chere : elle tremble, l'en-tete dit ce qui manque ;
+   * - deja choisie et riche de variantes : elle se retourne sur la suivante,
+   *   qui devient la presélection de la case — meme mouvement, donc ni
+   *   rearmement ni nouvel instant de charge ;
+   * - sinon : elle est choisie, et la jauge s'arme au premier choix.
+   */
+  const pickCard = useCallback(
+    (card: HandCard): void => {
+      if (!card.affordable) {
+        setDeniedTier(card.tier);
+        onCue?.({ type: 'card', action: 'denied' });
+        return;
+      }
+      setDeniedTier(null);
+      if (style === family && tier === card.tier && card.variants.owned > 1) {
+        equipDance?.(nextVariant(wardrobe, { style: family, tier: card.tier }));
+        onCue?.({ type: 'card', action: 'flip' });
+        return;
+      }
+      chooseStyle(family);
+      setTier(card.tier);
+      onCue?.({ type: 'card', action: 'pick' });
+    },
+    [style, family, tier, equipDance, wardrobe, chooseStyle, onCue],
   );
 
   const tapSlot = (slot: number): void => {
@@ -534,7 +635,6 @@ function MatchScreenBody({
         inert={view.phase !== 'choice'}
       >
         <ControlBand
-          style={style}
           tier={tier}
           amplifier={amplifier}
           locked={locked}
@@ -543,18 +643,21 @@ function MatchScreenBody({
           meterZoneWidth={view.meterZoneWidth}
           meterPerfectWidth={view.meterPerfectWidth}
           needleRef={needleRef}
+          armed={armed}
           ultimate={ultimate}
           ultimateReady={(view.me.ultimate ?? 0) >= ULTIMATE_FULL}
           onUltimate={toggleUltimate}
-          onStyle={chooseStyle}
-          onTier={setTier}
           onAmplifier={chooseAmplifier}
           peek={peek}
           onPeek={setPeek}
-          danceName={danceName}
-          danceCount={danceView?.choices.length ?? 0}
-          danceForSale={danceView?.forSale ?? 0}
-          onDance={nextDance}
+          tabs={tabs}
+          family={family}
+          cards={cards}
+          selectedTier={style === family ? tier : null}
+          dealKey={view.round}
+          deniedTier={deniedTier}
+          onTab={openFamily}
+          onCard={pickCard}
         />
       </div>
 
@@ -730,7 +833,8 @@ function sameFrame(previous: MatchScreenProps, next: MatchScreenProps): boolean 
     previous.onRematch === next.onRematch &&
     previous.onPreview === next.onPreview &&
     previous.dances?.wardrobe === next.dances?.wardrobe &&
-    previous.dances?.onEquip === next.dances?.onEquip
+    previous.dances?.onEquip === next.dances?.onEquip &&
+    previous.onCue === next.onCue
   );
 }
 
@@ -752,7 +856,6 @@ export const MatchScreen = memo(MatchScreenBody, sameFrame);
  * rendu annulerait la memoisation sans rien changer a l ecran.
  */
 const ControlBand = memo(function ControlBand({
-  style,
   tier,
   amplifier,
   locked,
@@ -761,20 +864,22 @@ const ControlBand = memo(function ControlBand({
   meterZoneWidth,
   meterPerfectWidth,
   needleRef,
+  armed,
   ultimate,
   ultimateReady,
   onUltimate,
-  onStyle,
-  onTier,
   onAmplifier,
   peek,
   onPeek,
-  danceName,
-  danceCount,
-  danceForSale,
-  onDance,
+  tabs,
+  family,
+  cards,
+  selectedTier,
+  dealKey,
+  deniedTier,
+  onTab,
+  onCard,
 }: {
-  readonly style: Style | null;
   readonly tier: Tier;
   readonly amplifier: AmplifierLevel;
   readonly locked: boolean;
@@ -783,119 +888,64 @@ const ControlBand = memo(function ControlBand({
   readonly meterZoneWidth: number | undefined;
   readonly meterPerfectWidth: number | undefined;
   readonly needleRef: RefObject<HTMLElement | null>;
+  /** Une carte est choisie : la jauge est armee. */
+  readonly armed: boolean;
   /** L Ultime est arme pour cette manche. */
   readonly ultimate: boolean;
   /** La jauge est pleine : sans cela le serveur refuserait le choix. */
   readonly ultimateReady: boolean;
   readonly onUltimate: () => void;
-  readonly onStyle: (next: Style) => void;
-  readonly onTier: (next: Tier) => void;
   readonly onAmplifier: (next: AmplifierLevel) => void;
   /** L amplificateur regarde sans pouvoir etre joue, ou `null`. */
   readonly peek: AmplifierLevel | null;
   readonly onPeek: (next: AmplifierLevel) => void;
-  /** La danse du mouvement selectionne, ou `null` tant qu aucun style n est choisi. */
-  readonly danceName: string | null;
-  /** Danses portables pour ce mouvement : a une seule, rien a changer. */
-  readonly danceCount: number;
-  readonly danceForSale: number;
-  readonly onDance: () => void;
+  readonly tabs: readonly FamilyTab[];
+  readonly family: Style;
+  readonly cards: readonly HandCard[];
+  readonly selectedTier: Tier | null;
+  readonly dealKey: number;
+  readonly deniedTier: Tier | null;
+  readonly onTab: (family: Style) => void;
+  readonly onCard: (card: HandCard) => void;
 }): JSX.Element {
-  const armed = style !== null;
   const bet = betFor(tier, amplifier, cap);
   /** Energie qui manque pour jouer l amplificateur regarde. */
   const missing = peek === null ? null : Math.max(1, peek + tier - cap);
+  const deniedCard = deniedTier === null ? undefined : cards[deniedTier];
+  const hint =
+    deniedCard !== undefined
+      ? `${deniedCard.name} : il te manque ${String(Math.max(1, deniedCard.cost + amplifier - cap))} énergie`
+      : peek === null || missing === null
+        ? null
+        : `${amplifierName(peek).fr} : il te manque ${String(missing)} énergie`;
   return (
     <>
-      <div className="cluster">
-        <p className="cluster__label">Style</p>
-        {STYLE_ROWS.map((row) => (
-          <div className="row" key={row.join('-')}>
-            {row.map((id) => (
-              <button
-                key={id}
-                type="button"
-                className="pick"
-                aria-pressed={style === id}
-                aria-label={`${styleName(id).fr}, bat ${BALANCE.styleBeats[id].map((beaten) => styleName(beaten).fr).join(' et ')}`}
-                disabled={locked}
-                onClick={() => {
-                  onStyle(id);
-                }}
-              >
-                <span className="pick__icon">{styleIcon(id)}</span>
-                <span className={pickNameClass(styleName(id).fr)}>{styleName(id).fr}</span>
-                {/* Le contre en pictogramme : « bat Provoc » double la largeur du
-                    bouton pour une information que l icone donne d un coup d oeil. */}
-                <small>bat {BALANCE.styleBeats[id].map(styleIcon).join('')}</small>
-              </button>
-            ))}
-          </div>
-        ))}
-      </div>
-
       {/*
-        La colonne du milieu : l'Ultime, puis la place de la jauge.
-
-        L'Ultime etait pose en `position: absolute` au-dessus de la bande, a
-        `left: 50%`. Deux defauts d'un coup : la zone morte entre les deux
-        pouces que l'ADR 0008 nomme lui-meme, et un chevauchement de 35x47
-        pixels sur la grappe palier des que l'ecran raccourcit — a 667x320 son
-        libelle passait sous le panneau voisin. Dans le flux, le chevauchement
-        n'est plus evite, il est impossible.
-
-        Et la fente garde sa place vide : faire apparaitre la jauge en poussant
-        les deux grappes ferait bouger dix boutons sous le pouce du joueur, a
-        l'instant precis ou il vient d'en toucher un.
+        A gauche : la mise, l Ultime et la jauge, sur une largeur fixe. La
+        jauge arrive dans sa fente sans deplacer une seule carte de la main.
       */}
-      <div className="band__middle">
-        <div className="band__row">
-          <button
-            type="button"
-            className="ultimate"
-            disabled={!ultimateReady || locked}
-            aria-pressed={ultimate}
-            onClick={onUltimate}
-            aria-label={
-              ultimateReady
-                ? 'Ultime : ×1,5 et impossible à contrer'
-                : 'Ultime : jauge pas encore pleine'
-            }
-          >
-            <b>Ultime</b>
-            <small>{ultimateReady ? '×1,5 · incontrable' : 'jauge à remplir'}</small>
-          </button>
-          {/*
-            La danse du mouvement choisi, changeable sans quitter le choix.
-
-            Un seul geste — la suivante, en boucle — plutot qu une liste : en
-            paysage et en plein compte a rebours, rien ne doit s ouvrir ni
-            defiler. Un mouvement n a que deux ou trois danses.
-          */}
-          {danceName !== null && (
-            <button
-              type="button"
-              className="dance-pick"
-              disabled={locked || danceCount < 2}
-              onClick={onDance}
-              aria-label={
-                danceCount < 2
-                  ? `Danse : ${danceName}${danceForSale > 0 ? `, ${String(danceForSale)} autre(s) en boutique` : ''}`
-                  : `Danse : ${danceName}, toucher pour la suivante`
-              }
-            >
-              <small>
-                {danceCount < 2
-                  ? danceForSale > 0
-                    ? `+${String(danceForSale)} en boutique`
-                    : 'Danse'
-                  : `Danse · ${String(danceCount)}`}
-              </small>
-              <b>{danceName}</b>
-            </button>
-          )}
-        </div>
-
+      <div className="cluster band__left">
+        <BetHeader
+          bet={bet}
+          cap={cap}
+          names={`${tierName(tier).fr} · ${amplifierName(amplifier).fr}`}
+          hint={hint}
+        />
+        <button
+          type="button"
+          className="ultimate"
+          disabled={!ultimateReady || locked}
+          aria-pressed={ultimate}
+          onClick={onUltimate}
+          aria-label={
+            ultimateReady
+              ? 'Ultime : ×1,5 et impossible à contrer'
+              : 'Ultime : jauge pas encore pleine'
+          }
+        >
+          <b>Ultime</b>
+          <small>{ultimateReady ? '×1,5 · incontrable' : 'jauge à remplir'}</small>
+        </button>
         <div className={armed ? 'gauge-slot' : 'gauge-slot gauge-slot--empty'}>
           {armed && (
             <Gauge
@@ -910,45 +960,22 @@ const ControlBand = memo(function ControlBand({
         </div>
       </div>
 
-      <div className="cluster">
-        <BetHeader
-          bet={bet}
-          cap={cap}
-          names={`${tierName(tier).fr} · ${amplifierName(amplifier).fr}`}
-          hint={
-            peek === null || missing === null
-              ? null
-              : `${amplifierName(peek).fr} : il te manque ${String(missing)} énergie`
-          }
-        />
-        <div className="row">
-          {TIERS.map((t) => {
-            const name = tierName(t).fr;
-            const affordable = t + amplifier <= cap;
-            return (
-              <button
-                key={t}
-                type="button"
-                className="pick pick--tight"
-                aria-pressed={tier === t}
-                aria-label={`${name}, puissance ${String(BALANCE.tierPower[t])}, ${
-                  t === 0 ? 'gratuit' : `coûte ${String(t)} d’énergie`
-                }`}
-                data-afford={String(affordable)}
-                disabled={locked || !affordable}
-                onClick={() => {
-                  onTier(t);
-                }}
-              >
-                <Rung fill={levelFill(t, TIERS.length)} tone="tier" />
-                <span className={pickNameClass(name)}>{name}</span>
-                <span className="pick__value">{BALANCE.tierPower[t]}</span>
-                <small>{t === 0 ? 'libre' : `−${String(t)}`}</small>
-              </button>
-            );
-          })}
-        </div>
-        <div className="row">
+      <PoseHand
+        tabs={tabs}
+        family={family}
+        cards={cards}
+        selectedTier={selectedTier}
+        locked={locked}
+        dealKey={dealKey}
+        deniedTier={deniedTier}
+        onTab={onTab}
+        onCard={onCard}
+      />
+
+      {/* A droite : l amplificateur, en grille de trois colonnes sur deux rangees. */}
+      <div className="cluster band__right">
+        <p className="cluster__label">Aura</p>
+        <div className="band__amps">
           {AMPLIFIER_LEVELS.map((a) => {
             const name = amplifierName(a).fr;
             const multiplier = BALANCE.amplifierMultiplier[a].toFixed(2).replace('.', ',');
@@ -962,7 +989,7 @@ const ControlBand = memo(function ControlBand({
               <button
                 key={a}
                 type="button"
-                className="pick pick--tight"
+                className="pick pick--amp"
                 aria-pressed={amplifier === a}
                 aria-label={`${name}, multiplicateur ${multiplier}, ${
                   a === 0 ? 'gratuit' : `coûte ${String(a)} d’énergie`
@@ -976,7 +1003,6 @@ const ControlBand = memo(function ControlBand({
                 }}
               >
                 <Rung fill={levelFill(a, AMPLIFIER_LEVELS.length)} tone="amplifier" />
-                <span className={pickNameClass(name)}>{name}</span>
                 <span className="pick__value">×{multiplier}</span>
                 <small>{a === 0 ? 'libre' : `−${String(a)}`}</small>
               </button>

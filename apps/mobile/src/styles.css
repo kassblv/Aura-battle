@@ -74,6 +74,13 @@
   /* Hauteur du bouton d'Ultime : miroir de `ULTIMATE_HEIGHT`, verifie par test. */
   --ultimate-h: 48px;
   --bet-h: 24px;
+  /* Main de cartes (chantier n°2) : miroir de `src/ui/layout.ts`, verifie par test. */
+  --hand-card-w: 70px;
+  --hand-card-h: 92px;
+  --hand-lift: 12px;
+  --hand-arc: 8px;
+  --amp-w: 48px;
+  --band-left-w: 200px;
 
   --d-tap: 90ms;
   --d-chip: 160ms;
@@ -2726,15 +2733,6 @@ body {
 
   Dans le flux, le chevauchement n'est plus evite, il est impossible.
 */
-.band__middle {
-  flex: 1 1 0;
-  min-width: 0;
-  max-width: var(--gauge-max, 420px);
-  display: flex;
-  flex-direction: column;
-  align-items: stretch;
-  gap: var(--band-gap);
-}
 
 /*
   L'Ultime et la danse du mouvement, cote a cote.
@@ -2742,15 +2740,6 @@ body {
   Une rangee plutot qu'un empilement : en paysage la hauteur est la ressource
   rare, et la jauge doit garder sa place juste en dessous.
 */
-.band__row {
-  display: flex;
-  gap: var(--band-gap);
-  min-width: 0;
-}
-.band__row > * {
-  flex: 1 1 0;
-  min-width: 0;
-}
 
 .ultimate {
   display: grid;
@@ -2791,41 +2780,6 @@ body {
   Meme gabarit que l'Ultime, a cote de lui : deux boutons de meme hauteur se
   lisent comme une rangee, et la cible reste au-dessus des 46 px de l'ADR 0008.
 */
-.dance-pick {
-  display: grid;
-  gap: 1px;
-  min-height: var(--touch);
-  height: var(--ultimate-h);
-  padding: 4px 10px;
-  border-radius: 14px;
-  border: 1px solid var(--line);
-  background: var(--chip);
-  color: var(--ink);
-  font: inherit;
-  text-align: center;
-  cursor: pointer;
-  transition: transform var(--d-tap) var(--e-out);
-}
-.dance-pick b {
-  font-weight: 700;
-  font-size: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-.dance-pick small {
-  font-size: 9px;
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  color: var(--muted);
-}
-.dance-pick:disabled {
-  cursor: default;
-  opacity: 0.7;
-}
-.dance-pick:not(:disabled):active {
-  transform: translateY(2px);
-}
 
 /* Pret : la jauge est pleine, le bouton s'allume. */
 .ultimate:not(:disabled) {
@@ -3528,11 +3482,337 @@ body {
   outline-offset: 2px;
 }
 
+/* ------------------------------------------------------------------ *
+ * Bande de choix, chantier n°2 : colonne gauche, main, grille d'aura
+ * ------------------------------------------------------------------ */
+
+/*
+  A gauche : la mise, l'Ultime et la jauge, sur une largeur FIXE. La jauge
+  arrive dans sa fente sans deplacer une seule carte de la main.
+*/
+.band__left {
+  width: var(--band-left-w);
+}
+.band__left .ultimate {
+  width: 100%;
+}
+
+/* A droite : l'amplificateur en grille de trois colonnes sur deux rangees. */
+.band__amps {
+  display: grid;
+  grid-template-columns: repeat(3, var(--amp-w));
+  gap: 5px;
+}
+.pick--amp {
+  width: var(--amp-w);
+  height: var(--touch);
+  padding: 2px;
+}
+
+/*
+  La main : cinq onglets de famille, puis cinq cartes en eventail.
+
+  La bande laisse passer l'appui (`.controls` est transparente aux
+  evenements) : seuls les onglets et les cartes le prennent. Un appui entre
+  deux cartes tombe donc sur `.gauge-hit`, et verrouille — le geste actuel.
+*/
+.hand {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  container-type: inline-size;
+  /* Le pas de l'eventail suit la largeur de la main, entre 46 et 62 px. */
+  --step: clamp(46px, calc((100cqw - var(--hand-card-w)) / 4), 62px);
+}
+
+.hand__tabs {
+  display: flex;
+  gap: 5px;
+}
+.hand__tab {
+  pointer-events: auto;
+  font: inherit;
+  width: var(--touch);
+  height: var(--touch);
+  border-radius: 12px 12px 6px 6px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  position: relative;
+  cursor: pointer;
+  transition:
+    background var(--d-tap) var(--e-out),
+    scale var(--d-tap) var(--e-over);
+}
+.hand__tab-icon {
+  font-size: 18px;
+  line-height: 1;
+}
+.hand__tab-beats {
+  font-size: 8.5px;
+  line-height: 1;
+  opacity: 0.85;
+  letter-spacing: -1px;
+}
+.hand__tab[aria-selected='true'] {
+  background: var(--accent);
+  border-color: color-mix(in srgb, var(--ink) 55%, var(--accent));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 40%, transparent);
+  scale: 1.06;
+}
+/* La brillante attend dans cette famille : une etincelle qui pulse. */
+.hand__tab[data-shiny='true']::after {
+  content: '✨';
+  position: absolute;
+  top: -8px;
+  right: -6px;
+  font-size: 12px;
+  animation: hand-pulse 1.1s var(--e-out) infinite;
+}
+.hand__tab:active {
+  scale: 0.94;
+}
+.hand__tab:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+
+.hand__fan {
+  position: relative;
+  width: 100%;
+  height: calc(var(--hand-card-h) + var(--hand-lift) + var(--hand-arc));
+}
+
+.hand__card {
+  pointer-events: auto;
+  font: inherit;
+  color: var(--ink);
+  position: absolute;
+  left: 50%;
+  bottom: var(--hand-arc);
+  width: var(--hand-card-w);
+  height: var(--hand-card-h);
+  margin-left: calc(var(--hand-card-w) / -2);
+  padding: 5px 3px 4px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: linear-gradient(#34245e, #221743);
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  text-align: center;
+  overflow: visible;
+  cursor: pointer;
+  /* La place dans l'eventail : decalage, arc et inclinaison. */
+  transform: translateX(calc(var(--o) * var(--step))) translateY(calc(var(--a) * 3px))
+    rotate(calc(var(--o) * 4deg));
+  transform-origin: 50% 110%;
+  z-index: calc(10 - var(--a));
+  transition:
+    translate 220ms var(--e-over),
+    scale 220ms var(--e-over),
+    rotate 220ms var(--e-over),
+    box-shadow var(--d-chip) var(--e-out),
+    opacity var(--d-chip) var(--e-out);
+  /* La distribution : chaque carte part de la pile, decalee de 45 ms. */
+  animation: hand-deal 420ms var(--e-over) backwards;
+  animation-delay: calc(var(--i) * 45ms);
+}
+.hand__card[data-selected='true'] {
+  z-index: 20;
+  translate: 0 calc(-1 * var(--hand-lift));
+  scale: 1.1;
+  /* Redressee : l'inclinaison de l'eventail est annulee, la carte se lit. */
+  rotate: calc(var(--o) * -4deg);
+  background: linear-gradient(#9d74ff, #6a3fe0);
+  border-color: #e2d4ff;
+  box-shadow:
+    0 0 0 2px #e2d4ff,
+    0 12px 28px rgba(140, 92, 255, 0.65);
+}
+.hand__card:active {
+  scale: 0.96;
+}
+.hand__card[data-selected='true']:active {
+  scale: 1.04;
+}
+/* Trop chere : grisee, mais touchable — elle tremble et dit ce qui manque. */
+.hand__card[data-poor='true'] {
+  opacity: 0.5;
+  filter: grayscale(0.6);
+}
+.hand__card[data-denied='true'] {
+  animation: hand-deny 320ms var(--e-out);
+}
+/* La brillante : bord dore et reflet holographique qui balaie la carte. */
+.hand__card[data-shiny='true'] {
+  border-color: var(--gold-ink);
+  box-shadow:
+    0 0 0 1px var(--gold-ink),
+    0 0 18px color-mix(in srgb, var(--gold-ink) 55%, transparent),
+    0 8px 18px rgba(0, 0, 0, 0.45);
+}
+.hand__card[data-shiny='true'][data-selected='true'] {
+  box-shadow:
+    0 0 0 2px var(--gold-ink),
+    0 0 26px color-mix(in srgb, var(--gold-ink) 75%, transparent),
+    0 12px 28px rgba(140, 92, 255, 0.65);
+}
+.hand__sheen {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  overflow: hidden;
+  pointer-events: none;
+}
+.hand__sheen::before {
+  content: '';
+  position: absolute;
+  top: -20%;
+  bottom: -20%;
+  width: 45%;
+  left: -60%;
+  background: linear-gradient(
+    100deg,
+    transparent,
+    rgba(255, 255, 255, 0.55),
+    rgba(255, 213, 79, 0.45),
+    transparent
+  );
+  animation: hand-sheen 2.2s ease-in-out infinite;
+}
+.hand__sheen::after {
+  content: '✨';
+  position: absolute;
+  top: 2px;
+  left: 3px;
+  font-size: 11px;
+}
+
+.hand__badge {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  min-width: 20px;
+  padding: 2px 5px;
+  border-radius: 9px;
+  background: var(--gold-ink);
+  color: #2a1600;
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1.1;
+  z-index: 1;
+}
+.hand__tier {
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.hand__icon {
+  font-size: 30px;
+  line-height: 1;
+  /* Retournement quand la variante change : la cle React remonte l'icone. */
+  animation: hand-flip 260ms var(--e-out);
+}
+.hand__card[data-selected='true'] .hand__icon {
+  font-size: 36px;
+}
+.hand__name {
+  font-weight: 800;
+  font-size: 10px;
+  line-height: 1.05;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.hand__stats {
+  font-size: 9.5px;
+}
+.hand__stats b {
+  font-size: 13px;
+  color: var(--gold-ink);
+}
+
+/* Verrouillage : la carte choisie s'ecrase, les autres s'effacent. */
+.hand[data-locked='true'] .hand__card {
+  opacity: 0.3;
+}
+.hand[data-locked='true'] .hand__card[data-selected='true'] {
+  opacity: 1;
+  animation: hand-slam 380ms var(--e-over);
+}
+
+@keyframes hand-deal {
+  from {
+    opacity: 0;
+    translate: 0 70px;
+    scale: 0.6;
+  }
+}
+@keyframes hand-deny {
+  20% {
+    translate: -6px 0;
+  }
+  45% {
+    translate: 5px 0;
+  }
+  70% {
+    translate: -3px 0;
+  }
+}
+@keyframes hand-flip {
+  from {
+    rotate: y 90deg;
+    opacity: 0.2;
+  }
+}
+@keyframes hand-slam {
+  35% {
+    scale: 1.3;
+  }
+  65% {
+    scale: 0.92;
+  }
+}
+@keyframes hand-sheen {
+  0%,
+  35% {
+    left: -60%;
+  }
+  75%,
+  100% {
+    left: 120%;
+  }
+}
+@keyframes hand-pulse {
+  50% {
+    scale: 1.35;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
     transition-duration: 0.01ms !important;
+  }
+  /* Une boucle infinie a 0,01 ms clignoterait : on l'arrete tout a fait. */
+  .hand__sheen::before,
+  .hand__tab[data-shiny='true']::after {
+    animation: none !important;
   }
 }

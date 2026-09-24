@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import type { AudioCue } from '../audio/cues.js';
 import { useArena, type ArenaControls } from '../arena/useArena.js';
 import { useAudio, type AudioControls } from './useAudio.js';
 import {
@@ -118,17 +119,22 @@ export function App(): JSX.Element {
   /** Relue a chaque changement de taille : `panelLayout` en depend. */
   const viewportWidth = useViewportWidth();
 
+  /**
+   * Son et vibration d'un repere : ceux de l'arene comme ceux des gestes de la
+   * main de cartes. Le toucher double le son — meme fait, deux sens ;
+   * `hapticFor` decide lesquels meritent le moteur (`platform/haptics.ts`).
+   */
+  const playCue = useCallback(
+    (cue: AudioCue) => {
+      audio.engine.cue(cue);
+      haptics.current.cue(cue);
+    },
+    [audio],
+  );
+
   const arena = useArena(
     canvasRef,
-    useCallback(
-      (cue) => {
-        audio.engine.cue(cue);
-        // Le toucher double le son : meme fait, deux sens. `hapticFor` decide
-        // lesquels meritent le moteur — voir `platform/haptics.ts`.
-        haptics.current.cue(cue);
-      },
-      [audio],
-    ),
+    playCue,
     quality.current,
     useCallback((tier: QualityTier) => {
       setQualityTier(tier);
@@ -897,6 +903,7 @@ export function App(): JSX.Element {
             questsDone={questsDone}
             onPreview={online.preview}
             dances={danceChoice}
+            onCue={playCue}
           />
         )}
 
@@ -927,6 +934,7 @@ export function App(): JSX.Element {
             questsDone={questsDone}
             onPreview={online.preview}
             dances={danceChoice}
+            onCue={playCue}
           />
         )}
 
@@ -940,6 +948,7 @@ export function App(): JSX.Element {
             questsDone={questsDone}
             onQuestsSeen={dismissCompleted}
             dances={danceChoice}
+            onCue={playCue}
           />
         )}
       </div>
@@ -962,6 +971,7 @@ function SoloMatchScreen({
   questsDone,
   onQuestsSeen,
   dances,
+  onCue,
 }: {
   readonly looks: Readonly<Record<'a' | 'b', Look>>;
   readonly arena: ArenaControls;
@@ -978,6 +988,7 @@ function SoloMatchScreen({
   /** Efface l annonce : elle appartient au match qu on vient de finir. */
   readonly onQuestsSeen: () => void;
   readonly dances: DanceChoice;
+  readonly onCue: (cue: AudioCue) => void;
 }): JSX.Element {
   const session = useSoloMatch(looks, arena, audio, ownedEffects);
   const { restart } = session;
@@ -998,6 +1009,7 @@ function SoloMatchScreen({
       questsDone={questsDone}
       onPreview={session.preview}
       dances={dances}
+      onCue={onCue}
     />
   );
 }

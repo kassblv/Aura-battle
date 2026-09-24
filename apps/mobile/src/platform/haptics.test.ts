@@ -152,3 +152,13 @@ describe('createHaptics', () => {
     }).not.toThrow();
   });
 });
+
+describe('hapticFor — gestes de carte', () => {
+  it('fait sentir le choix, le retournement et la brillante, pas la distribution', () => {
+    expect(hapticFor({ type: 'card', action: 'pick' })).toBe('light');
+    expect(hapticFor({ type: 'card', action: 'flip' })).toBe('light');
+    expect(hapticFor({ type: 'card', action: 'shiny' })).toBe('light');
+    expect(hapticFor({ type: 'card', action: 'deal' })).toBeNull();
+    expect(hapticFor({ type: 'card', action: 'denied' })).toBeNull();
+  });
+});

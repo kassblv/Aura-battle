@@ -97,20 +97,6 @@ export interface PickSize {
   readonly height: number;
 }
 
-/**
- * Taille des boutons, fixe et non deduite du contenu.
- *
- * Un bouton dimensionne par son texte rend la bande imprevisible : « Apogee »
- * et « Etincelles » ne font pas la meme largeur, et le jour ou un nom
- * s'allonge, c'est la jauge qui retrecit en silence. On fixe donc la boite, le
- * texte s'y adapte (`text-overflow` en dernier recours), et la mise en page
- * devient calculable — ce que ce module fait ci-dessous.
- *
- * Les deux restent au-dessus de la cible tactile de 46 px de l'ADR 0008 : la
- * largeur resserree des dix boutons de palier est un rembourrage plus court,
- * jamais une cible plus petite.
- */
-export const PICK_STYLE: PickSize = Object.freeze({ width: 52, height: 50 });
 export const PICK_TIGHT: PickSize = Object.freeze({ width: 52, height: TOUCH });
 
 /**
@@ -130,43 +116,6 @@ export function pickNameClass(name: string): string {
   return name.length > NAME_LONG ? 'pick__name pick__name--long' : 'pick__name';
 }
 
-/**
- * Colonnes du bloc de styles.
- *
- * Trois, et le bloc grandit en **rangees**. Une colonne de plus se prendrait
- * sur la jauge, qui n'a deja que 163 px sur le plus etroit des ecrans vises ;
- * une rangee de plus se prend sur du vide, tant qu'on reste sous la hauteur de
- * la grappe voisine.
- */
-export const STYLE_COLUMNS = 3;
-
-/**
- * Nombre de styles que la bande sait loger.
- *
- * Six, soit deux rangees pleines. Ce n'est pas une limite du jeu mais une
- * limite **mesuree** de cette mise en page : au-dela, il faut trancher entre
- * une troisieme rangee (qui monte sur les jambes des combattants) et une
- * quatrieme colonne (qui descend la jauge sous sa largeur utile). Le test qui
- * compare cette capacite au catalogue reel tombera le jour ou un septieme
- * style arrive — c'est le but : la decision doit etre prise, pas subie.
- */
-export const STYLE_CAPACITY = 6;
-
-/** Le bloc palier / amplificateur : cinq puissances, cinq amplificateurs. */
-export const TIER_COLUMNS = 5;
-export const TIER_ROWS = 2;
-
-/**
- * Part haute du combattant qui doit rester degagee.
- *
- * La tete, le torse et les bras portent l'expression, l'aura et la pose : ce
- * sont eux qu'on lit. Les grappes de commandes vivent dans les arcs de pouce,
- * donc dans les coins bas, et y effleurent les jambes — c'est structurel, ADR
- * 0008 ne laisse pas d'autre place. Cette moitie haute, elle, ne se negocie
- * pas.
- */
-export const CLEAR_FRACTION = 0.5;
-
 /** Largeur d'une grappe de `columns` colonnes. */
 export function clusterWidth(columns: number, pick: PickSize): number {
   return columns * pick.width + (columns - 1) * GAP + 2 * (CLUSTER_PADDING + CLUSTER_BORDER);
@@ -175,11 +124,6 @@ export function clusterWidth(columns: number, pick: PickSize): number {
 /** Hauteur d'une grappe de `rows` rangees, en-tete compris. */
 export function clusterHeight(rows: number, pick: PickSize, head = CLUSTER_LABEL): number {
   return head + rows * pick.height + (rows - 1) * GAP + 2 * (CLUSTER_PADDING + CLUSTER_BORDER);
-}
-
-/** Rangees qu'occupe un catalogue de `count` styles. */
-export function styleRows(count: number): number {
-  return Math.ceil(Math.max(0, count) / STYLE_COLUMNS);
 }
 
 /**
@@ -197,43 +141,6 @@ export function chunkEvenly<T>(items: readonly T[], columns: number): readonly (
     out.push([...items.slice(index, index + perRow)]);
   }
   return out;
-}
-
-export interface BandFit {
-  readonly styleWidth: number;
-  readonly styleHeight: number;
-  readonly tierWidth: number;
-  readonly tierHeight: number;
-  /** Largeur restante pour la jauge, une fois les deux grappes posees. */
-  readonly gaugeWidth: number;
-}
-
-/** Repartition de la bande de commandes pour une largeur d'ecran donnee. */
-export function bandFit(viewportWidth: number, styleCount: number): BandFit {
-  const styleWidth = clusterWidth(STYLE_COLUMNS, PICK_STYLE);
-  const tierWidth = clusterWidth(TIER_COLUMNS, PICK_TIGHT);
-  const free = viewportWidth - 2 * SAFE_SIDE - 2 * BAND_GAP - styleWidth - tierWidth;
-  return {
-    styleWidth,
-    styleHeight: clusterHeight(styleRows(styleCount), PICK_STYLE),
-    tierWidth,
-    tierHeight: clusterHeight(TIER_ROWS, PICK_TIGHT, BET_HEADER),
-    gaugeWidth: Math.max(0, Math.min(GAUGE_MAX_WIDTH, free)),
-  };
-}
-
-/**
- * Hauteur de la bande : celle de sa plus haute colonne.
- *
- * Trois colonnes, pas deux. La colonne du milieu porte l'Ultime au-dessus de
- * la jauge, et elle comptait pour zero tant que l'Ultime flottait en absolu —
- * l'invariant « la bande tient sous les combattants » etait donc verifie sur
- * une bande qui n'etait pas celle qu'on affichait.
- */
-export function bandHeight(styleCount: number): number {
-  const fit = bandFit(0, styleCount);
-  const middle = ULTIMATE_HEIGHT + BAND_GAP + GAUGE_HEIGHT;
-  return Math.max(fit.styleHeight, fit.tierHeight, middle);
 }
 
 /**
@@ -304,4 +211,65 @@ export function homeClusters(viewportWidth: number): HomeClusters {
     left: Math.max(1, Math.floor(left * share)),
     right: Math.max(1, Math.floor(right * share)),
   };
+}
+
+/*
+  La bande de la phase de choix (chantier n°2) : trois blocs cote a cote.
+
+  - a gauche, la mise, l'Ultime et la jauge, sur une largeur fixe : la jauge
+    arrive sans deplacer une seule carte ;
+  - au centre, la main — cinq onglets de famille, puis cinq cartes en
+    eventail ;
+  - a droite, l'amplificateur en grille de trois colonnes sur deux rangees :
+    en une seule colonne de cinq, il montait jusqu'au torse des combattants
+    sur les ecrans de 375 px (mesure dans `arena/hud.test.ts`).
+*/
+
+/** Largeur de la colonne de gauche (mise, Ultime, jauge). */
+export const BAND_LEFT_WIDTH = 200;
+/** Largeur d'un bouton d'amplificateur dans sa grille de 3 × 2. */
+export const AMP_WIDTH = 48;
+/** Colonnes de la grille d'amplificateur. */
+export const AMP_COLUMNS = 3;
+/** Carte de pose, au repos. */
+export const CARD_WIDTH = 70;
+export const CARD_HEIGHT = 92;
+/** Hauteur dont se souleve la carte choisie : la main la reserve. */
+export const CARD_LIFT = 12;
+/**
+ * Marge sous l'eventail : les cartes du bord, inclinees et plus basses, y
+ * descendent. Sans elle, le bas de leur texte passait sous le bord de l'ecran.
+ */
+export const CARD_ARC = 8;
+/** Pas maximal entre deux cartes : au-dela, l'eventail se disloque. */
+export const CARD_STEP_MAX = 62;
+/** Les cinq onglets de famille, cibles tactiles pleines. */
+export const HAND_TABS_WIDTH = 5 * TOUCH + 4 * GAP;
+
+export interface HandBand {
+  readonly leftWidth: number;
+  readonly handWidth: number;
+  readonly rightWidth: number;
+  /** Ecart entre deux cartes : la part visible, donc touchable, de chacune. */
+  readonly cardStep: number;
+}
+
+export function handBand(viewportWidth: number): HandBand {
+  const rightWidth = clusterWidth(AMP_COLUMNS, { width: AMP_WIDTH, height: TOUCH });
+  const handWidth = viewportWidth - 2 * SAFE_SIDE - 2 * BAND_GAP - BAND_LEFT_WIDTH - rightWidth;
+  return {
+    leftWidth: BAND_LEFT_WIDTH,
+    handWidth,
+    rightWidth,
+    cardStep: Math.floor(Math.min(CARD_STEP_MAX, (handWidth - CARD_WIDTH) / 4)),
+  };
+}
+
+/** Hauteur de la bande : le plus haut des trois blocs. */
+export function bandHeight(): number {
+  const padding = 2 * (CLUSTER_PADDING + CLUSTER_BORDER);
+  const left = BET_HEADER + GAP + ULTIMATE_HEIGHT + GAP + GAUGE_HEIGHT + padding;
+  const hand = TOUCH + GAP + CARD_HEIGHT + CARD_LIFT + CARD_ARC;
+  const right = clusterHeight(2, { width: AMP_WIDTH, height: TOUCH }, 0);
+  return Math.max(left, hand, right);
 }

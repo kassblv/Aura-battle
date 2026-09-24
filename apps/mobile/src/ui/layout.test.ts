@@ -4,9 +4,15 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import {
+  AMP_WIDTH,
   BAND_GAP,
-  bandFit,
   bandHeight,
+  BAND_LEFT_WIDTH,
+  CARD_ARC,
+  CARD_HEIGHT,
+  CARD_LIFT,
+  CARD_STEP_MAX,
+  CARD_WIDTH,
   GAP,
   chunkEvenly,
   clusterHeight,
@@ -16,20 +22,17 @@ import {
   GAUGE_MIN_WIDTH,
   BET_HEADER,
   GAUGE_TRACK,
+  handBand,
+  HAND_TABS_WIDTH,
   homeClusters,
   NAME_LONG,
   NAME_MAX,
-  PICK_STYLE,
   PICK_TIGHT,
   pickNameClass,
   SAFE_SIDE,
-  STYLE_CAPACITY,
-  STYLE_COLUMNS,
   SUBJECT_FROM,
   ULTIMATE_HEIGHT,
   SUBJECT_TO,
-  styleRows,
-  TIER_COLUMNS,
   TOUCH,
 } from './layout.js';
 
@@ -48,9 +51,6 @@ const DEVICES = [
   { name: 'Pixel 7', width: 915, height: 412, safeBottom: 21 },
 ] as const;
 
-/** Tailles de catalogue a couvrir : trois aujourd'hui, jusqu'a la capacite de la bande. */
-const COUNTS = Array.from({ length: STYLE_CAPACITY }, (_, index) => index + 1);
-
 describe('chunkEvenly', () => {
   it('equilibre les rangees plutot que de les remplir', () => {
     expect(chunkEvenly([1, 2, 3, 4], 3)).toEqual([
@@ -65,12 +65,12 @@ describe('chunkEvenly', () => {
   });
 
   it('ne perd ni ne duplique un element, et ne deborde jamais', () => {
-    for (const count of COUNTS) {
+    for (let count = 1; count <= 6; count += 1) {
       const items = Array.from({ length: count }, (_, index) => index);
-      const rows = chunkEvenly(items, STYLE_COLUMNS);
-      expect(rows.flat(), `${String(count)} styles`).toEqual(items);
+      const rows = chunkEvenly(items, 3);
+      expect(rows.flat(), `${String(count)} elements`).toEqual(items);
       for (const row of rows) {
-        expect(row.length, `${String(count)} styles`).toBeLessThanOrEqual(STYLE_COLUMNS);
+        expect(row.length, `${String(count)} elements`).toBeLessThanOrEqual(3);
       }
       const sizes = rows.map((row) => row.length);
       expect(
@@ -86,40 +86,6 @@ describe('chunkEvenly', () => {
   });
 });
 
-describe('le bloc de styles grandit en hauteur', () => {
-  /**
-   * Une colonne de plus se prend sur la jauge, qui n'a que 163 px sur le plus
-   * etroit des ecrans vises ; une rangee de plus se prend sur du vide.
-   */
-  it('garde sa largeur quel que soit le catalogue', () => {
-    const widths = COUNTS.map((count) => bandFit(844, count).styleWidth);
-    expect(new Set(widths).size).toBe(1);
-  });
-
-  it('tient deux rangees jusqu a la capacite de la bande', () => {
-    for (const count of COUNTS) {
-      expect(styleRows(count), `${String(count)} styles`).toBeLessThanOrEqual(2);
-      expect(chunkEvenly(Array.from({ length: count }), STYLE_COLUMNS).length).toBe(
-        styleRows(count),
-      );
-    }
-  });
-
-  /**
-   * Le garde-fou du catalogue.
-   *
-   * Sept styles ne tiennent plus : il faudrait soit une troisieme rangee, qui
-   * monte sur les jambes des combattants, soit une quatrieme colonne, qui
-   * descend la jauge sous sa largeur utile. Ce test tombe ce jour-la, et c'est
-   * exactement ce qu'on veut : la decision doit etre prise, pas subie.
-   */
-  it('signale le jour ou le catalogue depasse la bande', () => {
-    expect(BALANCE.styles.length).toBeLessThanOrEqual(STYLE_CAPACITY);
-    expect(styleRows(STYLE_CAPACITY)).toBe(2);
-    expect(styleRows(STYLE_CAPACITY + 1)).toBe(3);
-  });
-});
-
 /**
  * Le test que la mise en page doit a l'utilisateur.
  *
@@ -128,47 +94,42 @@ describe('le bloc de styles grandit en hauteur', () => {
  * les personnages, et le quatrieme style aurait chevauche la jauge. Ici on
  * mesure au lieu de supposer.
  */
-describe('la bande tient dans l ecran, quel que soit le catalogue', () => {
-  it('laisse a la jauge une largeur exploitable', () => {
-    for (const device of DEVICES) {
-      for (const count of COUNTS) {
-        const fit = bandFit(device.width, count);
-        expect(fit.gaugeWidth, `${device.name}, ${String(count)} styles`).toBeGreaterThanOrEqual(
-          GAUGE_MIN_WIDTH,
-        );
-      }
-    }
-  });
-
+describe('la main tient dans l ecran (chantier n°2)', () => {
   it('ne fait jamais deborder les trois blocs', () => {
     for (const device of DEVICES) {
-      for (const count of COUNTS) {
-        const fit = bandFit(device.width, count);
-        const total =
-          2 * SAFE_SIDE + 2 * BAND_GAP + fit.styleWidth + fit.gaugeWidth + fit.tierWidth;
-        expect(total, `${device.name}, ${String(count)} styles`).toBeLessThanOrEqual(device.width);
-      }
+      const fit = handBand(device.width);
+      const total = 2 * SAFE_SIDE + 2 * BAND_GAP + fit.leftWidth + fit.handWidth + fit.rightWidth;
+      expect(total, device.name).toBeLessThanOrEqual(device.width);
     }
   });
 
-  /**
-   * Le bloc de styles ne doit jamais depasser celui du palier : c'est lui qui
-   * fixe la largeur maximale d'une grappe, et il ne bougera pas (cinq paliers,
-   * cinq amplificateurs, decides par les regles).
-   */
-  it('ne laisse pas le bloc de styles depasser celui du palier', () => {
-    for (const count of COUNTS) {
-      expect(bandFit(844, count).styleWidth).toBeLessThanOrEqual(
-        clusterWidth(TIER_COLUMNS, PICK_TIGHT),
-      );
+  /*
+    Les cartes se chevauchent en eventail : ce qu'on touche d'une carte, c'est
+    sa part visible, soit un pas. Il reste une cible de l'ADR 0008 partout.
+  */
+  it('laisse a chaque carte une part visible d au moins une cible tactile', () => {
+    for (const device of DEVICES) {
+      const fit = handBand(device.width);
+      expect(fit.cardStep, device.name).toBeGreaterThanOrEqual(TOUCH);
+      expect(fit.cardStep, device.name).toBeLessThanOrEqual(CARD_STEP_MAX);
+      expect(CARD_WIDTH + 4 * fit.cardStep, device.name).toBeLessThanOrEqual(fit.handWidth);
     }
   });
 
-  it('couvre le catalogue reel', () => {
-    expect(BALANCE.styles.length).toBeGreaterThan(0);
-    const fit = bandFit(667, BALANCE.styles.length);
-    expect(fit.gaugeWidth).toBeGreaterThanOrEqual(GAUGE_MIN_WIDTH);
-    expect(fit.styleHeight).toBeLessThanOrEqual(fit.tierHeight);
+  it('pose les cinq onglets de famille au-dessus de la main', () => {
+    for (const device of DEVICES) {
+      expect(HAND_TABS_WIDTH, device.name).toBeLessThanOrEqual(handBand(device.width).handWidth);
+    }
+  });
+
+  it('laisse a la jauge une largeur exploitable dans sa colonne', () => {
+    expect(BAND_LEFT_WIDTH - 2 * 7).toBeGreaterThanOrEqual(GAUGE_MIN_WIDTH);
+  });
+
+  it('tient en hauteur sous le bandeau du haut, sur le plus petit ecran vise', () => {
+    for (const device of DEVICES) {
+      expect(bandHeight() + device.safeBottom + 30, device.name).toBeLessThanOrEqual(device.height);
+    }
   });
 });
 
@@ -213,10 +174,11 @@ describe('cibles tactiles', () => {
     expect(TOUCH).toBeGreaterThanOrEqual(46);
   });
 
-  it('garde les deux tailles de bouton au-dessus de la cible', () => {
+  it('garde les boutons et les cartes au-dessus de la cible', () => {
     for (const [name, pick] of [
-      ['style', PICK_STYLE],
-      ['palier', PICK_TIGHT],
+      ['amplificateur', PICK_TIGHT],
+      ['carte', { width: CARD_WIDTH, height: CARD_HEIGHT }],
+      ['amplificateur en colonne', { width: AMP_WIDTH, height: TOUCH }],
     ] as const) {
       expect(pick.width, `${name} : largeur`).toBeGreaterThanOrEqual(TOUCH);
       expect(pick.height, `${name} : hauteur`).toBeGreaterThanOrEqual(TOUCH);
@@ -247,8 +209,12 @@ describe('styles.css', () => {
     expect(css).toContain(`--gauge-track: ${String(GAUGE_TRACK)}px;`);
     expect(css).toContain(`--gauge-legend: ${String(GAUGE_LEGEND)}px;`);
     expect(css).toContain(`--gauge-h: ${String(GAUGE_HEIGHT)}px;`);
-    expect(css).toContain(`--pick-w: ${String(PICK_STYLE.width)}px;`);
-    expect(css).toContain(`--pick-h: ${String(PICK_STYLE.height)}px;`);
+    expect(css).toContain(`--hand-card-w: ${String(CARD_WIDTH)}px;`);
+    expect(css).toContain(`--hand-card-h: ${String(CARD_HEIGHT)}px;`);
+    expect(css).toContain(`--hand-lift: ${String(CARD_LIFT)}px;`);
+    expect(css).toContain(`--hand-arc: ${String(CARD_ARC)}px;`);
+    expect(css).toContain(`--amp-w: ${String(AMP_WIDTH)}px;`);
+    expect(css).toContain(`--band-left-w: ${String(BAND_LEFT_WIDTH)}px;`);
     expect(css).toContain(`--pick-tight-w: ${String(PICK_TIGHT.width)}px;`);
     expect(css).toContain(`--pick-tight-h: ${String(PICK_TIGHT.height)}px;`);
     expect(css).toContain(`--bet-h: ${String(BET_HEADER)}px;`);
@@ -282,11 +248,10 @@ describe('styles.css', () => {
     const slot = css.slice(css.indexOf('.gauge-slot {'), css.indexOf('.gauge-slot--empty'));
     expect(slot).toContain('height: var(--gauge-h)');
 
-    // La LARGEUR est absorbee par la colonne du milieu, pas par la fente : la
-    // fente ne retient que la hauteur, qui est ce qui empeche les grappes de
-    // bouger quand la jauge arrive.
-    const middle = css.slice(css.indexOf('.band__middle {'));
-    expect(middle.slice(0, middle.indexOf('}'))).toContain('flex: 1 1 0');
+    // La LARGEUR est celle de la colonne de gauche, fixe : la jauge arrive
+    // sans deplacer une seule carte de la main.
+    const left = css.slice(css.indexOf('.band__left {'));
+    expect(left.slice(0, left.indexOf('}'))).toContain('width: var(--band-left-w)');
   });
 
   it('deplie la jauge au lieu de l afficher', () => {
@@ -354,10 +319,10 @@ describe('hauteur de la bande', () => {
     absent du calcul : l'invariant « la bande tient sous les combattants » etait
     donc verifie sur une bande qui n'etait pas celle qu'on affichait.
   */
-  it('compte la colonne du milieu, Ultime compris', () => {
-    expect(bandHeight(STYLE_CAPACITY)).toBeGreaterThanOrEqual(
-      ULTIMATE_HEIGHT + BAND_GAP + GAUGE_HEIGHT,
-    );
+  it('compte les trois blocs : jauge et Ultime, main, amplificateur', () => {
+    expect(bandHeight()).toBeGreaterThanOrEqual(ULTIMATE_HEIGHT + GAP + GAUGE_HEIGHT);
+    expect(bandHeight()).toBeGreaterThanOrEqual(TOUCH + GAP + CARD_HEIGHT + CARD_LIFT + CARD_ARC);
+    expect(bandHeight()).toBeGreaterThanOrEqual(clusterHeight(2, PICK_TIGHT, 0));
   });
 });
 

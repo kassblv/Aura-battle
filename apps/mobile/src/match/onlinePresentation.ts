@@ -108,5 +108,6 @@ export function presentOnline(
   return {
     fighters: { a: present('a', looks.a), b: present('b', looks.b) },
     hype: HYPE_BY_PHASE[state.phase],
+    choosing: state.phase === 'choice',
   };
 }

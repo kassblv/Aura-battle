@@ -5,15 +5,33 @@ import { Box3, Vector3 } from 'three';
 import { describe, expect, it } from 'vitest';
 import { samplePose } from '../animation/sample.js';
 import {
-  bandFit,
+  BAND_LEFT_WIDTH,
   bandHeight,
-  CLEAR_FRACTION,
+  CARD_ARC,
+  CARD_HEIGHT,
+  CARD_LIFT,
+  GAP,
   GAUGE_HEIGHT,
   GAUGE_MIN_WIDTH,
-  STYLE_CAPACITY,
-  type BandFit,
+  TOUCH,
 } from '../ui/layout.js';
-import { ArenaCameraRig, createArenaCamera, wideFraming } from './camera.js';
+
+/**
+ * Part haute du combattant qui doit rester degagee.
+ *
+ * La tete, le torse et les bras portent l'expression, l'aura et la pose : ce
+ * sont eux qu'on lit. La bande vit dans les arcs de pouce et au centre-bas, et
+ * y effleure les jambes — ADR 0008 ne laisse pas d'autre place. Cette moitie
+ * haute, elle, ne se negocie pas.
+ */
+const CLEAR_FRACTION = 0.5;
+import {
+  ArenaCameraRig,
+  choiceFraming,
+  createArenaCamera,
+  wideFraming,
+  type CameraFraming,
+} from './camera.js';
 import { createFighterRig } from './rig.js';
 import { createToonGradientMap } from './toonGradient.js';
 
@@ -84,10 +102,14 @@ interface ScreenBand {
  * La camera respire (`sin(elapsed * 0.13)`, periode ~48 s) : une mesure prise
  * a un instant donne raterait les extremes.
  */
-function fightersBand(box: Box3, width: number, height: number): ScreenBand {
+function fightersBand(
+  box: Box3,
+  width: number,
+  height: number,
+  framing: CameraFraming = wideFraming(),
+): ScreenBand {
   const camera = createArenaCamera(width / height);
   const rig = new ArenaCameraRig(camera);
-  const framing = wideFraming();
   for (let frame = 0; frame < 600; frame += 1) {
     rig.update({ framing, elapsed: frame / 60, delta: 1 / 60, shake: 0, reducedMotion: true });
   }
@@ -169,21 +191,46 @@ describe('la bande de commandes ne couvre pas les combattants', () => {
    * torse et les bras, qui portent l'expression et l'aura, restent degages.
    */
   it('laisse degagee la moitie haute des combattants', () => {
-    // Le pire cas est le catalogue plein : c'est lui qui donne la bande la plus haute.
-    const tallest = bandHeight(STYLE_CAPACITY);
+    // La bande n'est visible qu'a la phase de choix : c'est son cadrage qui compte.
+    const tallest = bandHeight();
     for (const device of DEVICES) {
-      const band = fightersBand(envelope, device.width, device.height);
+      const band = fightersBand(envelope, device.width, device.height, choiceFraming());
       const clear = band.top + (band.bottom - band.top) * CLEAR_FRACTION;
       const controlsTop = device.height - device.safeBottom - tallest;
       expect(controlsTop, `${device.name} : haut des grappes`).toBeGreaterThan(clear);
     }
   });
 
-  /** La largeur suit la meme logique : rien ne doit mordre sur ce qui reste. */
-  it('accorde la largeur de la bande et le catalogue de styles', () => {
+  /*
+    La main de cartes (chantier n°2) vit au centre-bas, ENTRE les combattants :
+    c'est elle qui monte le plus pres de leur silhouette. Elle ne doit pas
+    depasser la ligne de la moitie haute, cartes soulevees et onglets compris.
+  */
+  it('laisse degagee la moitie haute des combattants, main de cartes comprise', () => {
+    const hand = TOUCH + GAP + CARD_HEIGHT + CARD_LIFT + CARD_ARC;
     for (const device of DEVICES) {
-      const fit: BandFit = bandFit(device.width, STYLE_CAPACITY);
-      expect(fit.gaugeWidth, device.name).toBeGreaterThanOrEqual(GAUGE_MIN_WIDTH);
+      const band = fightersBand(envelope, device.width, device.height, choiceFraming());
+      const clear = band.top + (band.bottom - band.top) * CLEAR_FRACTION;
+      const handTop = device.height - device.safeBottom - hand;
+      // Une vraie marge, pas un pixel : un combattant qui se penche en avant
+      // ne doit pas plonger la tete dans les cartes.
+      expect(handTop - clear, `${device.name} : marge au-dessus de la main`).toBeGreaterThan(8);
+    }
+  });
+
+  it('laisse a la jauge une largeur exploitable dans sa colonne', () => {
+    expect(BAND_LEFT_WIDTH - 14).toBeGreaterThanOrEqual(GAUGE_MIN_WIDTH);
+  });
+});
+
+describe('cadrage de la phase de choix', () => {
+  it('remonte les combattants sans couper leurs tetes', () => {
+    for (const device of DEVICES) {
+      const wide = fightersBand(envelope, device.width, device.height);
+      const choice = fightersBand(envelope, device.width, device.height, choiceFraming());
+      expect(choice.bottom, device.name).toBeLessThan(wide.bottom);
+      // Le sommet reste sous le bandeau du haut (30 px).
+      expect(choice.top, device.name).toBeGreaterThan(30);
     }
   });
 });
