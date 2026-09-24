@@ -25,6 +25,15 @@ const config: CapacitorConfig = {
    */
   server: {
     androidScheme: 'https',
+    /*
+      Developpement seulement : `CAP_DEV_URL=http://localhost:5173 npx cap sync ios`
+      fait charger la page par le serveur Vite. Le client y retrouve alors le
+      serveur de jeu tout seul (`resolveServerUrl`, port de dev), et une
+      modification s'affiche dans le simulateur sans reconstruire. Sans cette
+      variable, rien ne change : le client reste embarque, comme ci-dessus.
+      Le fichier genere cote iOS est ignore par git.
+    */
+    ...(process.env.CAP_DEV_URL ? { url: process.env.CAP_DEV_URL, cleartext: true } : {}),
   },
 
   plugins: {
