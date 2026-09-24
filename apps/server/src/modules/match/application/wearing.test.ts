@@ -142,6 +142,27 @@ describe('WearingRefresh', () => {
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('p1');
   });
+
+  /*
+    Le nom et le code de la panne, jamais son message : une erreur Prisma levee
+    ici recopierait l'instantane qu'on tentait de traduire.
+  */
+  it('ne recopie que le genre de la panne, pas son message', async () => {
+    const warnings: string[] = [];
+    const cause = Object.assign(new Error('argument refuse : anim.hype.t2.floss'), {
+      code: 'P2025',
+    });
+    const refresh = new WearingRefresh(
+      { wearingFor: () => Promise.reject(cause) },
+      { setWearing: () => undefined },
+      { refreshDances: () => undefined },
+      { warn: (message) => warnings.push(message) },
+    );
+
+    await refresh.changed('p1', { owned: [], loadout: null });
+    expect(warnings[0]).toContain('Error [P2025]');
+    expect(warnings[0]).not.toContain('anim.hype.t2.floss');
+  });
 });
 
 describe('wardrobeFromInventory', () => {

@@ -13,7 +13,7 @@ import {
   lookEntries,
 } from '../../inventory/domain/slots.js';
 import type { AppLog } from '../../../shared/log-port.js';
-import { describeCause } from '../../../shared/describe-cause.js';
+import { describeErrorKind } from '../../../shared/describe-cause.js';
 import type { PlayerWardrobe } from '../domain/wardrobe.js';
 import type { SeatWearing } from './match-runtime.js';
 
@@ -131,7 +131,7 @@ export class WearingRefresh implements InventoryChanges {
       this.presence.setWearing(playerId, wearing);
       this.runtime.refreshDances(playerId, wearing.dances);
     } catch (cause) {
-      this.log?.warn(`apparence non rafraichie pour ${playerId} : ${describeCause(cause)}`);
+      this.log?.warn(`apparence non rafraichie pour ${playerId} : ${describeErrorKind(cause)}`);
     }
   }
 }
