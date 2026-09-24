@@ -1,5 +1,6 @@
 import { Prisma } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
+import { PURCHASE_TRANSACTION } from '../../../shared/database-timeouts.js';
 import { PurchaseConflictError } from '../domain/ports.js';
 import { PrismaInventoryRepository } from './prisma-inventory.repository.js';
 
@@ -128,5 +129,29 @@ describe('PrismaInventoryRepository.grant', () => {
 
     const down = new Error('connexion perdue');
     await expect(grantingWith(1, down).grant('p-1', 'color.violet', spend)).rejects.toBe(down);
+  });
+
+  /*
+    Le delai de la file d'inventaire se calcule a partir de ces bornes : elles
+    doivent etre celles que la transaction recoit vraiment, pas un defaut.
+  */
+  it('borne la transaction par PURCHASE_TRANSACTION', async () => {
+    const given: unknown[] = [];
+    const tx = {
+      player: {
+        updateMany: () => Promise.resolve({ count: 1 }),
+        findUniqueOrThrow: () => Promise.resolve({ softCurrency: 20, hardCurrency: 0 }),
+      },
+      inventoryItem: { create: () => Promise.resolve({}) },
+    };
+    const prisma = {
+      $transaction: (run: (client: typeof tx) => Promise<unknown>, options: unknown) => {
+        given.push(options);
+        return run(tx);
+      },
+    };
+
+    await new PrismaInventoryRepository(prisma as never).grant('p-1', 'color.violet', spend);
+    expect(given).toEqual([PURCHASE_TRANSACTION]);
   });
 });

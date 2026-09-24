@@ -2,11 +2,16 @@ import { Writable } from 'node:stream';
 import { Prisma } from '@prisma/client';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
+import { DATABASE_TIMEOUTS } from '../../../shared/database-timeouts.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
 import { MessageMetrics } from '../../../shared/metrics.js';
 import type { PrismaService } from '../../../shared/prisma.service.js';
 import type { MatchRecord } from '../domain/ports.js';
-import { matchEventsColumnSchema, PrismaMatchRepository } from './prisma-match.repository.js';
+import {
+  matchEventsColumnSchema,
+  PrismaMatchRepository,
+  TRANSACTION_OPTIONS,
+} from './prisma-match.repository.js';
 
 /**
  * L'adaptateur se teste sans base de donnees : ce qui compte ici n'est pas que
@@ -723,5 +728,19 @@ describe('PrismaMatchRepository', () => {
     await expect(repository.save(aRecord())).rejects.toThrow();
 
     expect(lines.join('')).not.toContain('x'.repeat(500));
+  });
+});
+
+/*
+  Les delais du bassin (`shared/database-timeouts.ts`) sont communs a tous les
+  modules : la transaction qui enregistre un match doit y tenir.
+*/
+describe('TRANSACTION_OPTIONS', () => {
+  it('tient dans les delais de la base', () => {
+    // Une transaction encore dans ses delais n'est jamais fermee par Postgres.
+    expect(DATABASE_TIMEOUTS.idleInTransactionMs).toBeGreaterThan(TRANSACTION_OPTIONS.timeout);
+    // Postgres ne coupe pas une instruction (l'attente du verrou FOR KEY SHARE
+    // comprise) avant que sa transaction n'ait elle-meme expire.
+    expect(DATABASE_TIMEOUTS.statementMs).toBeGreaterThanOrEqual(TRANSACTION_OPTIONS.timeout);
   });
 });

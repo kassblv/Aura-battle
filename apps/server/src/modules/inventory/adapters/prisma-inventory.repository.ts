@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
+import { PURCHASE_TRANSACTION } from '../../../shared/database-timeouts.js';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import {
   PurchaseConflictError,
@@ -126,7 +127,7 @@ export class PrismaInventoryRepository implements InventoryRepository {
         select: { softCurrency: true, hardCurrency: true },
       });
       return { soft: after.softCurrency, hard: after.hardCurrency };
-    });
+    }, PURCHASE_TRANSACTION);
   }
 
   async setLoadout(playerId: string, data: LoadoutData): Promise<void> {

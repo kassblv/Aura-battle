@@ -85,7 +85,7 @@ const toJson = (value: unknown): Prisma.InputJsonValue => value as Prisma.InputJ
  * assez pour ne jamais expirer sans raison, assez court pour qu'une connexion
  * bloquee soit rendue avant de gener les matchs suivants.
  */
-const TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 10_000 } as const;
+export const TRANSACTION_OPTIONS = { maxWait: 5_000, timeout: 10_000 } as const;
 
 /**
  * Taille maximale de la colonne `events`, en octets de JSON.
