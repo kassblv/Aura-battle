@@ -47,6 +47,38 @@ describe('createLogger — les secrets ne partent jamais dans les journaux', () 
    * ce qui distingue le telephone d'un joueur de tous les autres ; le `subject`
    * est ce meme hash, vu depuis la table des identites.
    */
+  it('masque les identifiants et les preuves d authentification', () => {
+    const { lines, stream } = capture();
+    createLogger(config, stream).info(
+      {
+        email: 'kassim@gmail.com',
+        body: {
+          password: 'mot-de-passe-1',
+          currentPassword: 'mot-de-passe-2',
+          newPassword: 'mot-de-passe-3',
+          recoveryCode: 'AURA-SECRET-1',
+          code: 'AURA-SECRET-2',
+          secretHash: '$argon2id$secret',
+          deviceSecret: 'secret-appareil',
+        },
+      },
+      'requete',
+    );
+    const sortie = lines.join('');
+    for (const secret of [
+      'kassim@gmail.com',
+      'mot-de-passe-1',
+      'mot-de-passe-2',
+      'mot-de-passe-3',
+      'AURA-SECRET-1',
+      'AURA-SECRET-2',
+      '$argon2id$secret',
+      'secret-appareil',
+    ]) {
+      expect(sortie).not.toContain(secret);
+    }
+  });
+
   it('masque l empreinte d un appareil, sous ses deux noms', () => {
     const { lines, stream } = capture();
     createLogger(config, stream).info(
