@@ -1274,6 +1274,51 @@ describe('effet d aura a la revelation', () => {
 });
 
 /**
+ * La danse du mouvement joue, choisie en cours de match.
+ *
+ * Le joueur peut changer la danse d'un mouvement depuis le panneau de choix.
+ * Le serveur l'apprend par l'inventaire (`refreshDances`) et l'annonce a la
+ * revelation suivante. Le reste de l'apparence est fige a l'ouverture : c'est
+ * ce qui a ete annonce a l'adversaire dans `match:found`.
+ */
+describe('danse changee en cours de match', () => {
+  const FLOSS = 'anim.hype.t2.floss';
+  const animationOf = (seat: Seat): string => {
+    const results = notifier.to(SEATS[seat], 'round:result') as ServerMessage<'round:result'>[];
+    return results.at(-1)!.sides[seat].cosmetic.animationId;
+  };
+
+  it('annonce la danse choisie pendant la manche a sa revelation', () => {
+    runtime.setWearing(MATCH_ID, 'a', { ownedEffects: [], dances: {} });
+    advanceTo('choice');
+    runtime.refreshDances(SEATS.a, { 'hype.t2': FLOSS });
+    runtime.lockChoice(MATCH_ID, 'a', { ...choice(2), move: { style: 'hype', tier: 2 } }, null);
+    runtime.lockChoice(MATCH_ID, 'b', choice(1), null);
+    expect(animationOf('a')).toBe(FLOSS);
+  });
+
+  it('garde l apparence publique annoncee a l ouverture', () => {
+    runtime.setWearing(MATCH_ID, 'a', {
+      ownedEffects: [],
+      dances: {},
+      look: { signature: 'anim.calme.t3.moonwalk' },
+    });
+    runtime.refreshDances(SEATS.a, { 'hype.t2': FLOSS });
+    expect(runtime.publicLookOf(MATCH_ID, 'a')).toEqual({ signature: 'anim.calme.t3.moonwalk' });
+  });
+
+  it('ignore un joueur qui n est dans aucun match', () => {
+    expect(() => {
+      runtime.refreshDances('personne', { 'hype.t2': FLOSS });
+    }).not.toThrow();
+  });
+
+  it('ne rend aucune apparence pour un match inconnu', () => {
+    expect(runtime.publicLookOf('m_inconnu', 'a')).toBeNull();
+  });
+});
+
+/**
  * Ce que le match remonte aux defis quotidiens.
  *
  * Le branchement est court, et il a deux facons discretes de se tromper : le

@@ -193,19 +193,6 @@ export class MatchOpener {
     const seed = randomUUID();
     const ghost = request.ghost;
 
-    /*
-      Ce que chaque siege porte, fige pour la duree du match.
-
-      Resolu ici plutot que dans `createMatch` : deux de ses trois appelants
-      n'ont que faire de l'apparence, et un match sans cette information reste
-      un match qui marche. C'est le SERVEUR qui la detient — elle arrivait
-      avant par `choice:lock`, declaree par le client et relayee sans controle
-      de possession.
-    */
-    for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
-      this.runtime.setWearing(matchId, seat, this.presence.wearingOf(seats[seat]));
-    }
-
     for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
       // Rien a annoncer a un fantome : il n'y a personne au bout, et
       // `GhostDirector` n'a pas besoin de savoir contre qui il joue — il ne
@@ -223,7 +210,10 @@ export class MatchOpener {
         opponent: {
           displayName: facingGhost ? ghost.displayName : this.presence.displayNameOf(opponentId),
           league: facingGhost ? ghost.league : this.presence.leagueOf(opponentId),
-          cosmetics: {},
+          // L'apparence PUBLIQUE de l'adversaire, figee pour le match. Ni ses
+          // danses par mouvement ni ses effets : ceux-la ne se montrent
+          // qu'avec le coup joue, dans `round:result`.
+          cosmetics: facingGhost ? {} : { ...this.presence.wearingOf(opponentId).look },
         },
         protocolVersion: PROTOCOL_VERSION,
         rulesVersion: RULES_VERSION,
@@ -265,6 +255,23 @@ export class MatchOpener {
       // du serveur et il doit se voir.
       this.log?.warn(`ouverture refusee pour ${matchId} apres annonce aux joueurs`);
       return null;
+    }
+
+    /*
+      Ce que chaque siege porte, fige pour la duree du match.
+
+      Resolu ici plutot que dans `createMatch` : deux de ses trois appelants
+      n'ont que faire de l'apparence, et un match sans cette information reste
+      un match qui marche. C'est le SERVEUR qui la detient — elle arrivait
+      avant par `choice:lock`, declaree par le client et relayee sans controle
+      de possession.
+
+      APRES `createMatch`, jamais avant : le runtime ignore un match qu'il ne
+      connait pas. Pose trop tot, aucun skin n'atteignait la revelation.
+      Rien n'est perdu a attendre : l'apparence ne sert qu'a `round:result`.
+    */
+    for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
+      this.runtime.setWearing(matchId, seat, this.presence.wearingOf(seats[seat]));
     }
 
     /**

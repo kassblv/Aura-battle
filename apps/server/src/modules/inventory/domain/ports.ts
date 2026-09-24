@@ -16,6 +16,8 @@ export interface LoadoutData {
   readonly auraEffect?: string;
   /** Danse par mouvement, indexee `<style>.t<palier>`. */
   readonly dances?: Readonly<Record<string, string>>;
+  /** Danse signature, jouee a la victoire et vue par l'adversaire. */
+  readonly signature?: string;
 }
 
 export interface PlayerInventory {
@@ -37,6 +39,24 @@ export interface InventoryRepository {
   grant(playerId: string, itemId: string, spend: Wallet): Promise<void>;
   setLoadout(playerId: string, data: LoadoutData): Promise<void>;
 }
+
+/**
+ * Qui doit apprendre qu'un inventaire a change.
+ *
+ * Le module `match` lit ce que porte un joueur a sa connexion ; sans ce
+ * signal, une danse equipee au vestiaire n'etait vue par l'adversaire qu'apres
+ * une reconnexion, et une danse choisie en plein duel, jamais.
+ *
+ * Attendu avant de repondre : quand le client recoit sa reponse, le match sait
+ * deja. L'implementation ne doit pas echouer — l'equipement est enregistre, et
+ * un signal perdu ne doit pas le faire passer pour refuse.
+ */
+export interface InventoryChanges {
+  changed(playerId: string): Promise<void>;
+}
+
+/** Jeton d'injection du signal. */
+export const INVENTORY_CHANGES = 'INVENTORY_CHANGES';
 
 /** L'horloge est un port : le temps est une entree, pas une globale. */
 export interface Clock {

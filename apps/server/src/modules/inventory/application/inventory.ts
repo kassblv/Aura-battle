@@ -1,6 +1,12 @@
-import { dayIndexOf } from '@aura/content';
+import { animationIdsFor, danceKey, dayIndexOf, STYLES, TIERS } from '@aura/content';
 import { purchaseOutcome, type PurchaseRefusal } from '../domain/purchase.js';
-import type { Clock, InventoryRepository, LoadoutData, PlayerInventory } from '../domain/ports.js';
+import type {
+  Clock,
+  InventoryChanges,
+  InventoryRepository,
+  LoadoutData,
+  PlayerInventory,
+} from '../domain/ports.js';
 
 /**
  * L'inventaire du joueur : ce qu'il possede, ce qu'il achete, ce qu'il porte.
@@ -11,7 +17,22 @@ import type { Clock, InventoryRepository, LoadoutData, PlayerInventory } from '.
  * compte sans garder ses achats n'avait plus de sens.
  */
 
-export type InventoryFailure = PurchaseRefusal | 'UNKNOWN_ITEM' | 'NOT_OWNED';
+export type InventoryFailure = PurchaseRefusal | 'UNKNOWN_ITEM' | 'NOT_OWNED' | 'WRONG_SLOT';
+
+/**
+ * Le mouvement de chaque danse, par identifiant.
+ *
+ * Tire du catalogue de `@aura/content`, jamais d'un identifiant decoupe a la
+ * main : c'est la meme table que le client lit pour jouer une danse, et la
+ * meme cle (`danceKey`) que le runtime lit pour l'annoncer.
+ */
+const MOVE_OF_DANCE: ReadonlyMap<string, string> = new Map(
+  STYLES.flatMap((style) =>
+    TIERS.flatMap((tier) =>
+      animationIdsFor({ style, tier }).map((id) => [id, danceKey({ style, tier })] as const),
+    ),
+  ),
+);
 
 export class InventoryError extends Error {
   constructor(readonly reason: InventoryFailure) {
@@ -23,6 +44,8 @@ export class InventoryError extends Error {
 export interface InventoryDependencies {
   readonly inventory: InventoryRepository;
   readonly clock: Clock;
+  /** Qui doit apprendre qu'un inventaire a change. Absent : personne. */
+  readonly changes?: InventoryChanges;
 }
 
 export class InventoryService {
@@ -89,6 +112,9 @@ export class InventoryService {
       */
       throw new InventoryError('ALREADY_OWNED');
     }
+    // Posseder un effet d'aura, c'est le porter a son niveau : le match doit
+    // l'apprendre avant la prochaine revelation, pas a la prochaine connexion.
+    await this.deps.changes?.changed(playerId);
   }
 
   /**
@@ -108,10 +134,26 @@ export class InventoryService {
       data.auraEffect,
       ...Object.values(data.dances ?? {}),
     ];
-    for (const id of worn) {
+    for (const id of [...worn, data.signature]) {
       if (id !== undefined && !owned.has(id)) throw new InventoryError('NOT_OWNED');
     }
 
+    /*
+      Une danse se range sous SON mouvement.
+
+      Le client refusait deja de jouer une danse rangee ailleurs ; le runtime,
+      lui, l'annoncait telle quelle a la revelation. L'adversaire aurait vu un
+      palier 4 danse sur un palier 0 — un coup qui n'a pas ete joue.
+    */
+    for (const [key, id] of Object.entries(data.dances ?? {})) {
+      if (MOVE_OF_DANCE.get(id) !== key) throw new InventoryError('WRONG_SLOT');
+    }
+    // La signature se joue : ce doit etre une danse de mouvement, pas une couleur.
+    if (data.signature !== undefined && !MOVE_OF_DANCE.has(data.signature)) {
+      throw new InventoryError('WRONG_SLOT');
+    }
+
     await this.deps.inventory.setLoadout(playerId, data);
+    await this.deps.changes?.changed(playerId);
   }
 }

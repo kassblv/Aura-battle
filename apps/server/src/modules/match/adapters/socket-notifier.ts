@@ -45,14 +45,15 @@ interface Session {
   readonly displayName: string;
   league: string;
   /**
-   * Ce que le joueur porte, lu a la connexion.
+   * Ce que le joueur porte, lu a la connexion puis a chaque changement
+   * d'inventaire (`setWearing`).
    *
-   * `readonly` comme le nom : un changement de tenue en pleine partie ferait
-   * changer d'aura entre la revelation et le choc. Le vestiaire prend effet
-   * au duel suivant, ce que personne ne remarque et qui evite une incoherence
-   * que tout le monde verrait.
+   * C'est ce que le PROCHAIN match copiera a son ouverture. Le match en cours,
+   * lui, garde son apparence : un changement de tenue en pleine partie ferait
+   * changer d'aura entre la revelation et le choc — seules les danses par
+   * mouvement le suivent, voir `MatchRuntime.refreshDances`.
    */
-  readonly wearing: SeatWearing;
+  wearing: SeatWearing;
 }
 
 /** Ce que porte quelqu'un dont on ne sait rien : rien de particulier. */
@@ -191,6 +192,20 @@ export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
     const session = this.sessions.get(playerId);
     if (session === undefined) return;
     session.league = league;
+  }
+
+  /**
+   * Met a jour ce que porte un joueur connecte, apres un changement d'inventaire.
+   *
+   * Sans elle, une danse equipee au vestiaire n'etait vue qu'apres une
+   * reconnexion : la socket vit d'un duel a l'autre, et la lecture n'avait lieu
+   * qu'a son ouverture. Un joueur sans session n'a rien a mettre a jour — il
+   * sera relu a sa prochaine connexion.
+   */
+  setWearing(playerId: string, wearing: SeatWearing): void {
+    const session = this.sessions.get(playerId);
+    if (session === undefined) return;
+    session.wearing = wearing;
   }
 
   send<N extends ServerMessageName>(playerId: string, name: N, payload: ServerMessage<N>): void {

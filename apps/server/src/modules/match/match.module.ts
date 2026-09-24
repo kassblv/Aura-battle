@@ -39,6 +39,8 @@ import { PrismaPlayerDirectory } from './adapters/prisma-directory.js';
 import { ChallengeService } from '../challenges/application/challenges.js';
 import { ChallengesModule } from '../challenges/challenges.module.js';
 import { PrismaInventoryRepository } from '../inventory/adapters/prisma-inventory.repository.js';
+import { INVENTORY_CHANGES } from '../inventory/domain/ports.js';
+import { WearingRefresh, wearingFrom } from './application/wearing.js';
 import { PLAYER_DIRECTORY } from './domain/directory.js';
 import { PLAYER_WARDROBE, type PlayerWardrobe } from './domain/wardrobe.js';
 import { PrismaMatchRepository } from './adapters/prisma-match.repository.js';
@@ -243,9 +245,32 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
       useFactory: (inventory: PrismaInventoryRepository): PlayerWardrobe => ({
         async wearingOf(playerId: string) {
           const { owned, loadout } = await inventory.read(playerId);
-          return { ownedEffects: owned, dances: loadout?.dances ?? {} };
+          return wearingFrom(owned, loadout);
         },
       }),
+    },
+    /**
+     * L'ecoute des changements d'inventaire.
+     *
+     * L'apparence etait lue a la connexion et nulle part ailleurs : une danse
+     * equipee au vestiaire n'etait vue qu'apres une reconnexion. L'inventaire
+     * previent par son port ; le match relit, met a jour la session, et les
+     * danses par mouvement d'un match en cours.
+     */
+    {
+      provide: INVENTORY_CHANGES,
+      inject: [PLAYER_WARDROBE, SocketNotifier, MatchRuntime, PinoLoggerService],
+      useFactory: (
+        wardrobe: PlayerWardrobe,
+        notifier: SocketNotifier,
+        runtime: MatchRuntime,
+        logger: PinoLoggerService,
+      ) =>
+        new WearingRefresh(wardrobe, notifier, runtime, {
+          warn: (message: string) => {
+            logger.warn(message, 'WearingRefresh');
+          },
+        }),
     },
 
     PrismaPlayerDirectory,
@@ -411,6 +436,6 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
       },
     },
   ],
-  exports: [MatchGateway, MatchRuntime, MatchmakingQueue],
+  exports: [MatchGateway, MatchRuntime, MatchmakingQueue, INVENTORY_CHANGES],
 })
 export class MatchModule {}

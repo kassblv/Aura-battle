@@ -51,7 +51,13 @@ class FakeRuntime implements MatchStarter {
   }[] = [];
   readonly abandonArmed: string[] = [];
   /** Ce que l'ouverture a pose sur chaque siege, pour pouvoir le relire. */
-  readonly worn: { matchId: string; seat: 'a' | 'b'; wearing: SeatWearing }[] = [];
+  readonly worn: {
+    matchId: string;
+    seat: 'a' | 'b';
+    wearing: SeatWearing;
+    /** Le match existait-il deja ? Le vrai runtime ignore un match inconnu. */
+    existed: boolean;
+  }[] = [];
   busy = new Set<string>();
   refuse = false;
 
@@ -62,7 +68,12 @@ class FakeRuntime implements MatchStarter {
   }
 
   setWearing(matchId: string, seat: 'a' | 'b', wearing: SeatWearing): void {
-    this.worn.push({ matchId, seat, wearing });
+    this.worn.push({
+      matchId,
+      seat,
+      wearing,
+      existed: this.opened.some((opened) => opened.matchId === matchId),
+    });
   }
 
   createMatch(input: {
@@ -180,6 +191,70 @@ describe('MatchOpener', () => {
 
     expect(notifier.foundBy('p1')?.opponent.league).toBe('legendaire');
     expect(notifier.foundBy('p2')?.opponent.league).toBe('stable');
+  });
+
+  /*
+    L'apparence de l'adversaire partait vide : chacun voyait en face une tenue
+    ecrite en dur dans le client, et la danse signature de l'autre n'avait
+    aucun chemin pour arriver. Elle est publique — une tenue ne dit rien du
+    coup qui sera joue — mais c'est celle de l'AUTRE, jamais la sienne.
+  */
+  it('annonce a chaque joueur l apparence de son ADVERSAIRE, jamais la sienne', () => {
+    presence.wearing.set('p1', {
+      ownedEffects: ['fx.shock'],
+      dances: { 'hype.t2': 'anim.hype.t2.floss' },
+      look: { outfit: 'outfit.kimono', auraColor: 'color.violet', signature: 'anim.hype.t2.floss' },
+    });
+    presence.wearing.set('p2', {
+      ownedEffects: [],
+      dances: {},
+      look: { hair: 'hair.long', signature: 'anim.calme.t3.moonwalk' },
+    });
+
+    open();
+
+    expect(notifier.foundBy('p2')?.opponent.cosmetics).toEqual({
+      outfit: 'outfit.kimono',
+      auraColor: 'color.violet',
+      signature: 'anim.hype.t2.floss',
+    });
+    expect(notifier.foundBy('p1')?.opponent.cosmetics).toEqual({
+      hair: 'hair.long',
+      signature: 'anim.calme.t3.moonwalk',
+    });
+  });
+
+  /*
+    Les danses par mouvement et les effets possedes ne partent JAMAIS a
+    l'ouverture : la danse du mouvement joue n'est publique qu'avec lui, dans
+    `round:result` (regle d'or n°4).
+  */
+  it('n annonce ni les danses par mouvement ni les effets possedes', () => {
+    presence.wearing.set('p1', {
+      ownedEffects: ['fx.shock'],
+      dances: { 'hype.t2': 'anim.hype.t2.floss' },
+    });
+
+    open();
+
+    const sent = JSON.stringify(notifier.foundBy('p2'));
+    expect(sent).not.toContain('floss');
+    expect(sent).not.toContain('fx.shock');
+  });
+
+  /*
+    L'apparence etait posee AVANT la creation du match, et le runtime ignore
+    un match qu'il ne connait pas : aucun skin — danse ou effet — n'arrivait
+    jamais a la revelation d'un vrai duel. Les tests du runtime posaient,
+    eux, l'apparence apres la creation : ils ne pouvaient pas le voir.
+  */
+  it('pose l apparence de chaque siege sur un match deja cree', () => {
+    presence.wearing.set('p1', { ownedEffects: ['fx.shock'], dances: {} });
+
+    open();
+
+    expect(runtime.worn).toHaveLength(2);
+    expect(runtime.worn.every((worn) => worn.existed)).toBe(true);
   });
 
   /** Un nom manquant ne vaut pas un duel annule. */
@@ -342,6 +417,12 @@ describe('MatchOpener — face a un fantome', () => {
   it('dit au joueur que son adversaire est un rejeu', () => {
     openGhost();
     expect(notifier.foundBy('p1')?.ghost).toBe(true);
+  });
+
+  /* Un rejeu n'a pas de session : il porte les defauts, sans rien inventer. */
+  it('annonce un fantome sans apparence particuliere', () => {
+    openGhost();
+    expect(notifier.foundBy('p1')?.opponent.cosmetics).toEqual({});
   });
 
   it('n annonce rien au siege du fantome', () => {

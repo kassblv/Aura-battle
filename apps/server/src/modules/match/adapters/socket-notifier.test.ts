@@ -78,6 +78,22 @@ describe('register', () => {
   });
 });
 
+describe('setWearing', () => {
+  it('remplace ce que porte un joueur connecte', () => {
+    notifier.register('p1', new FakeSocket().asSocket(), 'Aura Rouge');
+    const worn = { ownedEffects: ['fx.shock'], dances: {}, look: { signature: 'anim.x' } };
+
+    notifier.setWearing('p1', worn);
+
+    expect(notifier.wearingOf('p1')).toEqual(worn);
+  });
+
+  it('ignore un joueur sans session', () => {
+    notifier.setWearing('absent', { ownedEffects: [], dances: {} });
+    expect(notifier.wearingOf('absent')).toEqual({ ownedEffects: [], dances: {} });
+  });
+});
+
 describe('unregister', () => {
   it('confirme le retrait de la socket courante', () => {
     const socket = new FakeSocket();

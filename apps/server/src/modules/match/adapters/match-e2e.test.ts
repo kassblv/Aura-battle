@@ -164,10 +164,18 @@ beforeAll(async () => {
        * passerelle annonce le nom de l'ADVERSAIRE et non celui du destinataire.
        */
       {
-        // Personne ne porte rien de particulier : chacun aura l'effet offert
-        // de son palier, comme tout le monde avant la boutique.
+        // Aucun effet ni danse par mouvement : chacun aura l'effet offert de
+        // son palier. Une apparence publique, en revanche, pour verifier
+        // qu'elle traverse l'ouverture ET la reprise.
         provide: PLAYER_WARDROBE,
-        useValue: { wearingOf: () => Promise.resolve({ ownedEffects: [], dances: {} }) },
+        useValue: {
+          wearingOf: () =>
+            Promise.resolve({
+              ownedEffects: [],
+              dances: {},
+              look: { hair: 'hair.long', signature: 'anim.calme.t3.moonwalk' },
+            }),
+        },
       },
       {
         provide: PLAYER_DIRECTORY,
@@ -516,6 +524,10 @@ describe('securite du match', () => {
     const annonce = host.all<ServerMessage<'match:found'>>('match:found')[0];
     expect(annonce).toBeDefined();
     expect(snapshot.opponent?.displayName).toBe(annonce!.opponent.displayName);
+    // L'apparence aussi : sans elle, l'adversaire revenait en tenue par defaut
+    // et sa danse signature disparaissait de la fin de match.
+    expect(annonce!.opponent.cosmetics.signature).toBe('anim.calme.t3.moonwalk');
+    expect(snapshot.opponent?.cosmetics).toEqual(annonce!.opponent.cosmetics);
 
     close(host, guest);
   });

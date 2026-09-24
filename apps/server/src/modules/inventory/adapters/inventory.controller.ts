@@ -49,6 +49,7 @@ const STATUS: Readonly<Record<InventoryFailure, 'not-found' | 'conflict' | 'forb
     UNAVAILABLE: 'forbidden',
     INSUFFICIENT_FUNDS: 'forbidden',
     NOT_OWNED: 'forbidden',
+    WRONG_SLOT: 'bad',
   });
 
 /**
@@ -156,6 +157,8 @@ export class InventoryController {
           throw new NotFoundException(payload);
         case 'conflict':
           throw new ConflictException(payload);
+        case 'bad':
+          throw new BadRequestException(payload);
         default:
           throw new ForbiddenException(payload);
       }

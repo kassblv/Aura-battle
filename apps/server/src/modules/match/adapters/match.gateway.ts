@@ -14,7 +14,7 @@ import {
   type ServerMessage,
   type ServerMessageName,
 } from '@aura/protocol';
-import type { Seat } from '@aura/rules';
+import { opponentOf, type Seat } from '@aura/rules';
 import type { Socket } from 'socket.io';
 import { describeCause } from '../../../shared/describe-cause.js';
 import { PinoLoggerService } from '../../../shared/logger.js';
@@ -679,7 +679,10 @@ export class MatchGateway implements OnGatewayConnection {
         // La vraie ligue de l'adversaire, comme dans `match:found` : « bronze »
         // etait ecrit en dur ici, et n'est meme pas une ligue du jeu (docs/05).
         league: ghost?.league ?? this.notifier.leagueOf(opponentId),
-        cosmetics: {},
+        // L'apparence annoncee a l'ouverture, pas celle du vestiaire d'aujourd'hui :
+        // la reprise rappelle `match:found`, elle ne le recrit pas.
+        cosmetics:
+          ghost === null ? { ...this.runtime.publicLookOf(matchId, opponentOf(seat)) } : {},
       },
     };
   }

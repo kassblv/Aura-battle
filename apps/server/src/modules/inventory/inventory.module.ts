@@ -4,6 +4,8 @@ import { SystemClock } from '../../shared/clock.js';
 import { InventoryService } from './application/inventory.js';
 import { InventoryController } from './adapters/inventory.controller.js';
 import { PrismaInventoryRepository } from './adapters/prisma-inventory.repository.js';
+import { INVENTORY_CHANGES, type InventoryChanges } from './domain/ports.js';
+import { MatchModule } from '../match/match.module.js';
 
 /**
  * L'inventaire (jalon M8) : ce qu'on possede, ce qu'on achete, ce qu'on porte.
@@ -15,15 +17,20 @@ import { PrismaInventoryRepository } from './adapters/prisma-inventory.repositor
  * fois quelqu'un connecte avec un jeton qu'un autre module refuse.
  */
 @Module({
-  imports: [AuthModule],
+  // `MatchModule` pour une seule chose : l'ecoute des changements, qu'il
+  // realise. L'inventaire ne connait que le port — il previent, sans savoir qui.
+  imports: [AuthModule, MatchModule],
   controllers: [InventoryController],
   providers: [
     PrismaInventoryRepository,
     {
       provide: InventoryService,
-      inject: [PrismaInventoryRepository, SystemClock],
-      useFactory: (inventory: PrismaInventoryRepository, clock: SystemClock) =>
-        new InventoryService({ inventory, clock }),
+      inject: [PrismaInventoryRepository, SystemClock, INVENTORY_CHANGES],
+      useFactory: (
+        inventory: PrismaInventoryRepository,
+        clock: SystemClock,
+        changes: InventoryChanges,
+      ) => new InventoryService({ inventory, clock, changes }),
     },
     SystemClock,
   ],

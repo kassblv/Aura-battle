@@ -96,6 +96,23 @@ export interface SeatWearing {
   readonly ownedEffects: readonly string[];
   /** Danse equipee par mouvement, indexee `<style>.t<palier>`. */
   readonly dances: Readonly<Record<string, string>>;
+  /**
+   * Ce que l'adversaire a le droit de voir des l'ouverture : tenue, coiffure,
+   * couleur d'aura, danse signature.
+   *
+   * Rien ici ne depend d'un choix de manche, et c'est ce qui le rend public.
+   * Absent : les defauts, comme un fantome ou un joueur dont l'inventaire n'a
+   * pas repondu.
+   */
+  readonly look?: PublicLook;
+}
+
+/** L'apparence publique d'un siege, telle que `opponentCosmeticsSchema` la borne. */
+export interface PublicLook {
+  readonly outfit?: string;
+  readonly hair?: string;
+  readonly auraColor?: string;
+  readonly signature?: string;
 }
 
 const NOTHING_WORN: SeatWearing = Object.freeze({
@@ -344,6 +361,40 @@ export class MatchRuntime {
     const match = this.matches.get(matchId);
     if (match === undefined) return;
     match.wearing[seat] = wearing;
+  }
+
+  /**
+   * Remplace les danses par mouvement d'un joueur assis, pour la suite du match.
+   *
+   * Le joueur peut changer la danse d'un mouvement depuis le panneau de choix :
+   * l'inventaire l'enregistre, puis previent ici. Elle vaut des la prochaine
+   * revelation — `cosmeticOf` la lit a cet instant-la, pas avant.
+   *
+   * SEULES les danses bougent. La tenue, la coiffure, la couleur et la
+   * signature ont ete annoncees a l'adversaire dans `match:found` : les changer
+   * en route ferait mentir cette annonce. Les effets possedes restent aussi
+   * ceux de l'ouverture — la boutique n'est pas joignable pendant un duel.
+   *
+   * Rien ne part : une danse n'est publique qu'avec le mouvement qu'elle
+   * habille, dans `round:result` (regle d'or n°4).
+   */
+  refreshDances(playerId: string, dances: Readonly<Record<string, string>>): void {
+    const found = this.locate(playerId);
+    if (found === null) return;
+    const { match, seat } = found;
+    match.wearing[seat] = { ...match.wearing[seat], dances };
+  }
+
+  /**
+   * L'apparence publique d'un siege, telle qu'annoncee a l'ouverture.
+   *
+   * La reprise (`match:state`) la rappelle a l'adversaire : un client tue en
+   * arriere-plan revenait sinon face a une silhouette par defaut.
+   */
+  publicLookOf(matchId: string, seat: Seat): PublicLook | null {
+    const match = this.matches.get(matchId);
+    if (match === undefined) return null;
+    return match.wearing[seat].look ?? {};
   }
 
   /**

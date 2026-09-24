@@ -1,3 +1,4 @@
+import { animationIdsFor, defaultAnimationFor } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import { InventoryError, InventoryService } from './inventory.js';
 import type { CatalogueEntry } from '../domain/purchase.js';
@@ -75,8 +76,25 @@ function repository(start: Partial<PlayerInventory> = {}) {
   };
 }
 
-const service = (repo: ReturnType<typeof repository>) =>
-  new InventoryService({ inventory: repo.port, clock: { now: () => new Date('2026-09-21') } });
+const service = (repo: ReturnType<typeof repository>, changed?: (playerId: string) => void) =>
+  new InventoryService({
+    inventory: repo.port,
+    clock: { now: () => new Date('2026-09-21') },
+    ...(changed === undefined
+      ? {}
+      : {
+          changes: {
+            changed: (playerId: string) => {
+              changed(playerId);
+              return Promise.resolve();
+            },
+          },
+        }),
+  });
+
+/** Une danse payante d'un mouvement, et l'offerte d'un autre. */
+const FLOSS = animationIdsFor({ style: 'hype', tier: 2 })[1]!;
+const CALME_T0 = defaultAnimationFor({ style: 'calme', tier: 0 });
 
 describe('buy', () => {
   it('accorde l objet et debite une fois', async () => {
@@ -187,6 +205,82 @@ describe('equip', () => {
     const repo = repository();
     await service(repo).equip('p-1', {});
     expect(repo.state.loadout).toEqual({});
+  });
+
+  /*
+    Une danse s'equipe POUR SON mouvement. Le client refusait deja de jouer
+    une danse rangee sous le mauvais mouvement ; le serveur, lui, l'annoncait
+    a la revelation — un calme palier 0 danse comme un hype palier 2 chez
+    l'adversaire, qui lirait un coup qui n'a pas ete joue.
+  */
+  it('refuse une danse rangee sous un autre mouvement', async () => {
+    const repo = repository({ owned: [FLOSS] });
+    await expect(
+      service(repo).equip('p-1', { dances: { 'calme.t0': FLOSS } }),
+    ).rejects.toMatchObject({ reason: 'WRONG_SLOT' });
+    expect(repo.state.loadout).toBeNull();
+  });
+
+  it('accepte une danse possedee sous son mouvement', async () => {
+    const repo = repository({ owned: [FLOSS] });
+    await service(repo).equip('p-1', { dances: { 'hype.t2': FLOSS } });
+    expect(repo.state.loadout).toEqual({ dances: { 'hype.t2': FLOSS } });
+  });
+
+  it('accepte une signature possedee', async () => {
+    const repo = repository({ owned: [FLOSS] });
+    await service(repo).equip('p-1', { signature: FLOSS });
+    expect(repo.state.loadout).toEqual({ signature: FLOSS });
+  });
+
+  it('refuse une signature qu on ne possede pas', async () => {
+    const repo = repository();
+    await expect(service(repo).equip('p-1', { signature: FLOSS })).rejects.toMatchObject({
+      reason: 'NOT_OWNED',
+    });
+  });
+
+  /* Une couleur possedee n'est pas une danse : la signature se joue, elle ne se peint pas. */
+  it('refuse une signature qui n est pas une danse de mouvement', async () => {
+    const repo = repository({ owned: ['color.violet'] });
+    await expect(service(repo).equip('p-1', { signature: 'color.violet' })).rejects.toMatchObject({
+      reason: 'WRONG_SLOT',
+    });
+  });
+
+  it('accepte l offerte d un mouvement en signature', async () => {
+    const repo = repository({ owned: [CALME_T0] });
+    await service(repo).equip('p-1', { signature: CALME_T0 });
+    expect(repo.state.loadout).toEqual({ signature: CALME_T0 });
+  });
+});
+
+/*
+  Le module match lit ce que porte un joueur a sa connexion. Sans ce signal,
+  une danse equipee au vestiaire n'etait vue par l'adversaire qu'apres une
+  reconnexion — et une danse choisie en plein duel, jamais.
+*/
+describe('signal de changement', () => {
+  it('previent apres un equipement enregistre', async () => {
+    const seen: string[] = [];
+    await service(repository({ owned: [FLOSS] }), (id) => seen.push(id)).equip('p-1', {
+      dances: { 'hype.t2': FLOSS },
+    });
+    expect(seen).toEqual(['p-1']);
+  });
+
+  it('previent apres un achat : posseder un effet, c est le porter', async () => {
+    const seen: string[] = [];
+    await service(repository(), (id) => seen.push(id)).buy('p-1', 'color.violet');
+    expect(seen).toEqual(['p-1']);
+  });
+
+  it('se tait quand l equipement est refuse', async () => {
+    const seen: string[] = [];
+    await expect(
+      service(repository(), (id) => seen.push(id)).equip('p-1', { signature: FLOSS }),
+    ).rejects.toBeInstanceOf(InventoryError);
+    expect(seen).toEqual([]);
   });
 });
 
