@@ -8,6 +8,7 @@ const CATALOGUE: readonly CatalogueEntry[] = [
   {
     id: 'color.violet',
     kind: 'AURA_COLOR',
+    rarity: 'common',
     priceSoft: 80,
     priceHard: null,
     availableFrom: null,
@@ -16,6 +17,7 @@ const CATALOGUE: readonly CatalogueEntry[] = [
   {
     id: 'color.gold',
     kind: 'AURA_COLOR',
+    rarity: 'default',
     priceSoft: 0,
     priceHard: null,
     availableFrom: null,
@@ -24,6 +26,7 @@ const CATALOGUE: readonly CatalogueEntry[] = [
   {
     id: 'fx.galaxy',
     kind: 'AURA_EFFECT',
+    rarity: 'epic',
     priceSoft: 850,
     priceHard: null,
     availableFrom: null,

@@ -8,6 +8,8 @@ import {
   OUTFITS,
 } from '@aura/content';
 import {
+  isOffered,
+  ownedWithFree,
   PURCHASABLE_KINDS,
   purchaseOutcome,
   type CatalogueEntry,
@@ -22,6 +24,7 @@ const PAID_IDS = [...AURA_EFFECTS, ...AURA_COLORS, ...HAIRSTYLES, ...OUTFITS]
 const item = (over: Partial<CatalogueEntry> = {}): CatalogueEntry => ({
   id: 'color.violet',
   kind: 'AURA_COLOR',
+  rarity: 'common',
   priceSoft: 80,
   priceHard: null,
   availableFrom: null,
@@ -266,5 +269,52 @@ describe('vitrine du jour', () => {
       now: NOW,
     });
     expect(outcome.ok && outcome.spend.soft).toBe(100);
+  });
+});
+
+describe('ownedWithFree', () => {
+  /** Ce qui est offert pour de bon : rarete par defaut, zero, sans condition. */
+  const offered = (over: Partial<CatalogueEntry> = {}): CatalogueEntry =>
+    item({ id: 'color.gold', rarity: 'default', priceSoft: 0, ...over });
+
+  it('ajoute ce qui est offert, sans doublon', () => {
+    expect(ownedWithFree(['color.gold', 'color.violet'], [offered(), item()])).toEqual([
+      'color.gold',
+      'color.violet',
+    ]);
+    expect(ownedWithFree([], [offered(), item()])).toEqual(['color.gold']);
+  });
+
+  /*
+    Les deux chemins disaient le contraire l'un de l'autre.
+
+    `purchaseOutcome` refusait un objet hors de sa fenetre (`UNAVAILABLE`), ou
+    d'un kind qu'on ne vend pas ; `ownedWithFree` le donnait quand meme a tout
+    le monde des que son prix doux valait zero. Un objet d'evenement a zero
+    piece, reserve a une semaine, etait donc possede par tous, pour toujours.
+  */
+  it.each([
+    ['vendu en monnaie forte', { priceHard: 50 }],
+    ['pas encore disponible', { availableFrom: new Date('2027-01-01T00:00:00Z') }],
+    ['plus disponible', { availableTo: new Date('2026-01-01T00:00:00Z') }],
+    // Une fenetre ouverte AUJOURD'HUI ne suffit pas : l'offert n'expire pas.
+    ['limite dans le temps', { availableFrom: new Date(0), availableTo: new Date('2099-01-01') }],
+    ['d une rarete payante', { rarity: 'legendary' }],
+    ['d un kind qu on ne vend pas', { kind: 'BOOST' as never }],
+    ['sans prix', { priceSoft: null }],
+  ])('n offre pas un objet %s', (_why, over: Partial<CatalogueEntry>) => {
+    expect(isOffered(offered(over))).toBe(false);
+    expect(ownedWithFree([], [offered(over)])).toEqual([]);
+  });
+
+  it('offre un objet par defaut, a zero, sans condition', () => {
+    expect(isOffered(offered())).toBe(true);
+  });
+
+  /* Ce qui a ete ACHETE reste possede, quelles que soient ses conditions. */
+  it('garde ce qui est en base meme hors des conditions de l offert', () => {
+    expect(ownedWithFree(['fx.event'], [offered({ id: 'fx.event', priceHard: 50 })])).toEqual([
+      'fx.event',
+    ]);
   });
 });

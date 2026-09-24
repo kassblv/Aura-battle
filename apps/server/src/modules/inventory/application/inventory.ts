@@ -54,8 +54,8 @@ export class InventoryService {
   /**
    * Ce que le joueur possede, les objets offerts compris.
    *
-   * **Tout ce qui est a zero appartient a tout le monde**, et n'est jamais
-   * ecrit. Les accorder un par un demanderait au joueur de « payer » zero pour
+   * **Ce qui est offert appartient a tout le monde** (`isOffered` : rarete
+   * par defaut, prix nul, sans condition), et n'est jamais ecrit. Les accorder un par un demanderait au joueur de « payer » zero pour
    * chaque couleur offerte, et remplirait la table d'autant de lignes qui ne
    * disent rien.
    */

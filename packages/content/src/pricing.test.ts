@@ -1,5 +1,8 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { allAnimationIds, defaultAnimationFor, STYLES, TIERS } from './catalogue.js';
+import type { Rarity } from './cosmetics.js';
 import { allCosmetics, animationPrice, priceForRarity, RARITY_ORDER } from './pricing.js';
 
 describe('bareme de rarete', () => {
@@ -91,5 +94,48 @@ describe('prix d une animation — une seule regle, pour le client ET le serveur
     );
     expect(paid.length).toBeGreaterThan(0);
     for (const id of paid) expect(animationPrice(id, 'epic')).toBe(priceForRarity('epic'));
+  });
+});
+
+describe('offert = rarete par defaut', () => {
+  /*
+    Le serveur n'offre a tout le monde que ce qui porte la rarete `default`
+    (`ownedWithFree`). Un objet a zero sous une autre rarete serait affiche
+    « offert » par le client et pourtant jamais possede cote serveur — ou, si
+    la regle serveur se relachait, donne a tous alors que la boutique le vend.
+    La donnee livree doit donc tenir les deux ensemble.
+  */
+  const animationsRoot = fileURLToPath(new URL('../animations/', import.meta.url));
+
+  /** Chaque animation livree, avec la rarete lue dans son fichier. */
+  const shipped = readdirSync(animationsRoot, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .flatMap((folder) =>
+      readdirSync(`${animationsRoot}${folder.name}`)
+        .filter((file) => file.endsWith('.json'))
+        .map((file) => {
+          const document = JSON.parse(
+            readFileSync(`${animationsRoot}${folder.name}/${file}`, 'utf8'),
+          ) as { id: string; rarity?: Rarity };
+          // Meme repli que le seed : sans rarete, c'est `default`.
+          const rarity = document.rarity ?? 'default';
+          return { id: document.id, rarity, price: animationPrice(document.id, rarity) };
+        }),
+    );
+
+  const priced = [...allCosmetics(), ...shipped];
+
+  it('lit toutes les animations du catalogue', () => {
+    expect(shipped.map((item) => item.id).sort()).toEqual([...allAnimationIds()].sort());
+  });
+
+  it('refuse un prix de zero hors de la rarete par defaut', () => {
+    const offenders = priced.filter((item) => item.price === 0 && item.rarity !== 'default');
+    expect(offenders).toEqual([]);
+  });
+
+  it('ne vend rien de ce qui porte la rarete par defaut', () => {
+    const offenders = priced.filter((item) => item.rarity === 'default' && item.price !== 0);
+    expect(offenders).toEqual([]);
   });
 });

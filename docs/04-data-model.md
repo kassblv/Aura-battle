@@ -224,6 +224,17 @@ model SuspicionFlag {
 }
 ```
 
+## Inventaire : ce qui est offert
+
+Les objets offerts ne sont **jamais écrits** dans `InventoryItem` : ils sont ajoutés à la lecture (`ownedWithFree`, module `inventory`), pour l'inventaire comme pour l'apparence annoncée en match. Un objet n'est offert que s'il remplit **toutes** ces conditions (`isOffered`) :
+
+- `rarity = 'default'` — critère explicite, réservé par le contenu à ce qu'il offre ;
+- `priceSoft = 0` et `priceHard` nul ;
+- ni `availableFrom` ni `availableTo` : un objet limité dans le temps n'est jamais offert pour toujours ;
+- un `kind` vendable (`PURCHASABLE_KINDS`).
+
+Un prix de zéro sous une autre rareté est refusé par un test de `@aura/content` (`pricing.test.ts`). Ce qui a été acheté reste possédé quelles que soient ces conditions.
+
 ## Redis
 
 | Clé | Contenu | Durée de vie |

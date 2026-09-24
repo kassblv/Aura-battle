@@ -98,9 +98,15 @@ describe('wardrobeFromInventory', () => {
         }),
       catalogue: () =>
         Promise.resolve(
-          ['outfit.blanc', 'anim.calme.t2.lookaway'].map((id) => ({
+          (
+            [
+              ['outfit.blanc', 'OUTFIT'],
+              ['anim.calme.t2.lookaway', 'ANIMATION'],
+            ] as const
+          ).map(([id, kind]) => ({
             id,
-            kind: 'OUTFIT' as const,
+            kind,
+            rarity: 'default',
             priceSoft: 0,
             priceHard: null,
             availableFrom: null,

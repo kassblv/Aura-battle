@@ -30,6 +30,8 @@ export const PURCHASABLE_KINDS = [
 export interface CatalogueEntry {
   readonly id: string;
   readonly kind: CosmeticKind;
+  /** `default` pour ce qui est offert a tous (`isOffered`), sinon la rarete vendue. */
+  readonly rarity: string;
   /** `null` ne veut pas dire gratuit : il veut dire **pas a vendre**. */
   readonly priceSoft: number | null;
   readonly priceHard: number | null;
@@ -133,12 +135,38 @@ export function purchaseOutcome(request: PurchaseRequest): PurchaseOutcome {
 }
 
 /**
+ * Un objet offert a tout le monde, sans achat.
+ *
+ * **Toutes les conditions, pas seulement le prix.** La regle ne regardait que
+ * `priceSoft === 0` et contredisait `purchaseOutcome` : un objet d'evenement a
+ * zero piece mais borne a une semaine, ou vendu en monnaie forte, etait refuse
+ * a l'achat et pourtant possede par tous, pour toujours.
+ *
+ * La rarete `default` est le critere EXPLICITE — celle que le contenu reserve
+ * a ce qu'il offre (un test de `@aura/content` refuse un prix de zero sous
+ * toute autre rarete). Le prix nul, l'absence de prix fort et de fenetre, et
+ * un kind vendable sont exiges en plus : un seul champ mal saisi au catalogue
+ * ne doit jamais suffire a tout donner.
+ */
+export function isOffered(item: CatalogueEntry): boolean {
+  return (
+    item.rarity === 'default' &&
+    item.priceSoft === 0 &&
+    item.priceHard === null &&
+    item.availableFrom === null &&
+    item.availableTo === null &&
+    purchasable(item.kind)
+  );
+}
+
+/**
  * Ce que possede un joueur, les objets offerts compris.
  *
- * **Tout ce qui est a zero appartient a tout le monde**, et n'est jamais ecrit
- * en base. Deux lecteurs en ont besoin — l'inventaire et le match — et le
- * match l'avait oublie : il tenait pour non possedes la tenue, les couleurs et
- * les danses offertes, et les retirait de l'apparence annoncee a l'adversaire.
+ * **Ce qui est offert (`isOffered`) appartient a tout le monde**, et n'est
+ * jamais ecrit en base. Deux lecteurs en ont besoin — l'inventaire et le
+ * match — et le match l'avait oublie : il tenait pour non possedes la tenue,
+ * les couleurs et les danses offertes, et les retirait de l'apparence
+ * annoncee a l'adversaire.
  */
 export function ownedWithFree(
   stored: readonly string[],
@@ -146,7 +174,7 @@ export function ownedWithFree(
 ): readonly string[] {
   const owned = new Set(stored);
   for (const item of catalogue) {
-    if (item.priceSoft === 0) owned.add(item.id);
+    if (isOffered(item)) owned.add(item.id);
   }
   return [...owned];
 }

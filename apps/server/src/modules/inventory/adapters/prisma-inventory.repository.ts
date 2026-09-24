@@ -21,6 +21,7 @@ export class PrismaInventoryRepository implements InventoryRepository {
       select: {
         id: true,
         kind: true,
+        rarity: true,
         priceSoft: true,
         priceHard: true,
         availableFrom: true,
