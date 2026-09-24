@@ -10,14 +10,25 @@ import { AuthError, type AuthOptions, type Fetcher } from './auth.js';
  * serveur serait un deuxieme endroit ou ecrire la meme chose.
  */
 
-/** Les refus que le serveur sait nommer, plus ceux du transport. */
-export type InventoryFailure =
-  | 'ALREADY_OWNED'
-  | 'INSUFFICIENT_FUNDS'
-  | 'NOT_OWNED'
-  | 'NOT_PURCHASABLE'
-  | 'UNAVAILABLE'
-  | 'UNKNOWN_ITEM';
+/**
+ * Les refus que le serveur sait nommer.
+ *
+ * `RATE_LIMITED` : le serveur borne les ecritures d'inventaire par joueur
+ * (429). Il suffit d'attendre un instant — le dire autrement laisserait
+ * croire a un achat impossible.
+ */
+export const INVENTORY_FAILURES = [
+  'ALREADY_OWNED',
+  'INSUFFICIENT_FUNDS',
+  'NOT_OWNED',
+  'NOT_PURCHASABLE',
+  'UNAVAILABLE',
+  'UNKNOWN_ITEM',
+  'WRONG_SLOT',
+  'RATE_LIMITED',
+] as const;
+
+export type InventoryFailure = (typeof INVENTORY_FAILURES)[number];
 
 export class InventoryRequestError extends Error {
   constructor(readonly reason: InventoryFailure | 'REJECTED') {
@@ -28,14 +39,7 @@ export class InventoryRequestError extends Error {
 
 const endpoint = (baseUrl: string, path: string): string => `${baseUrl.replace(/\/+$/, '')}${path}`;
 
-const CODES = new Set<string>([
-  'ALREADY_OWNED',
-  'INSUFFICIENT_FUNDS',
-  'NOT_OWNED',
-  'NOT_PURCHASABLE',
-  'UNAVAILABLE',
-  'UNKNOWN_ITEM',
-]);
+const CODES: ReadonlySet<string> = new Set<string>(INVENTORY_FAILURES);
 
 async function call(url: string, init: RequestInit, fetcher: Fetcher): Promise<InventoryState> {
   let response: Response;

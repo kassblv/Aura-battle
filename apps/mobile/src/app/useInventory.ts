@@ -19,7 +19,7 @@ import { defaultLook, type Look } from './wardrobe.js';
  * seule partie qui n a jamais eu besoin du serveur.
  */
 
-const MESSAGES: Readonly<Record<string, string>> = {
+export const INVENTORY_MESSAGES: Readonly<Record<string, string>> = {
   ALREADY_OWNED: 'Tu possèdes déjà cet objet.',
   INSUFFICIENT_FUNDS: 'Il te manque des pièces.',
   NOT_OWNED: 'Tu ne possèdes pas cet objet.',
@@ -27,6 +27,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   NOT_PURCHASABLE: 'Cet objet n’est pas en vente.',
   UNAVAILABLE: 'Cet objet n’est plus disponible.',
   UNKNOWN_ITEM: 'Cet objet n’existe plus.',
+  RATE_LIMITED: 'Doucement ! Réessaie dans un instant.',
   REJECTED: 'Le serveur a refusé.',
   UNREACHABLE: 'Pas de réseau. Réessaie dans un instant.',
   UNAUTHORIZED: 'Ta session a expiré. Relance le jeu.',
@@ -113,7 +114,7 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
         cause instanceof InventoryRequestError || cause instanceof AuthError
           ? cause.reason
           : undefined;
-      setError(MESSAGES[reason ?? ''] ?? 'Impossible pour le moment.');
+      setError(INVENTORY_MESSAGES[reason ?? ''] ?? 'Impossible pour le moment.');
       return false;
     } finally {
       setBusy(false);
@@ -141,7 +142,7 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
   const buy = useCallback(
     async (itemId: string) => {
       if (accessToken === null) {
-        setError(MESSAGES.UNREACHABLE ?? null);
+        setError(INVENTORY_MESSAGES.UNREACHABLE ?? null);
         return false;
       }
       return run(() => buyItem(baseUrl(), accessToken, itemId));
@@ -152,7 +153,7 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
   const equip = useCallback(
     async (next: Look) => {
       if (accessToken === null) {
-        setError(MESSAGES.UNREACHABLE ?? null);
+        setError(INVENTORY_MESSAGES.UNREACHABLE ?? null);
         return false;
       }
       return run(() => equipLoadout(baseUrl(), accessToken, loadoutFromLook(next)));

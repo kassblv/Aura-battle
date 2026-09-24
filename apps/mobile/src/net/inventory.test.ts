@@ -72,6 +72,20 @@ describe('buyItem', () => {
     ).rejects.toMatchObject({ reason: 'ALREADY_OWNED' });
   });
 
+  /*
+    Le serveur borne les ecritures d'inventaire par joueur. Son refus doit
+    arriver avec son nom : « Le serveur a refuse » laisserait croire a un
+    achat impossible, alors qu'il suffit d'attendre une seconde.
+  */
+  it('remonte une limite de debit comme telle, a l achat comme a l equipement', async () => {
+    await expect(
+      buyItem('http://srv', 'jeton', 'x', { fetcher: fails(429, { code: 'RATE_LIMITED' }) }),
+    ).rejects.toMatchObject({ reason: 'RATE_LIMITED' });
+    await expect(
+      equipLoadout('http://srv', 'jeton', {}, { fetcher: fails(429, { code: 'RATE_LIMITED' }) }),
+    ).rejects.toMatchObject({ reason: 'RATE_LIMITED' });
+  });
+
   it('retombe sur REJECTED quand le serveur ne dit pas pourquoi', async () => {
     await expect(
       buyItem('http://srv', 'jeton', 'x', { fetcher: fails(500) }),
