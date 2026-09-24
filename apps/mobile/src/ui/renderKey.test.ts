@@ -7,8 +7,8 @@ const base: MatchView = {
   round: 1,
   phaseEndsAtMs: 15_000,
   phaseDurationMs: 15_000,
-  me: { energy: 8, ultimate: 0, roundsWon: 0 },
-  opponent: { energy: null, ultimate: null, roundsWon: 0 },
+  me: { energy: 8, ultimate: 0, roundsWon: 0, shiny: null },
+  opponent: { energy: null, ultimate: null, roundsWon: 0, shiny: null },
   orbs: [],
   taps: [],
   meterPeriodMs: 1_700,
@@ -20,6 +20,10 @@ const base: MatchView = {
 const key = (patch: Partial<KeyedView> = {}): string => renderKey({ ...base, ...patch });
 
 describe('renderKey', () => {
+  it('change quand ma case brillante arrive', () => {
+    expect(key({ me: { ...base.me, shiny: { style: 'hype', tier: 2 } } })).not.toBe(key());
+  });
+
   /**
    * Le coeur de la separation des rythmes : l heure avance sans que l arbre
    * change. Si cette assertion tombe, l ecran de match redessine trente
@@ -37,9 +41,11 @@ describe('renderKey', () => {
   });
 
   it('change quand l ecran a quelque chose de neuf a afficher', () => {
-    expect(key({ me: { energy: 7, ultimate: 0, roundsWon: 0 } })).not.toBe(key());
-    expect(key({ me: { energy: 8, ultimate: 0, roundsWon: 1 } })).not.toBe(key());
-    expect(key({ opponent: { energy: null, ultimate: null, roundsWon: 1 } })).not.toBe(key());
+    expect(key({ me: { energy: 7, ultimate: 0, roundsWon: 0, shiny: null } })).not.toBe(key());
+    expect(key({ me: { energy: 8, ultimate: 0, roundsWon: 1, shiny: null } })).not.toBe(key());
+    expect(key({ opponent: { energy: null, ultimate: null, roundsWon: 1, shiny: null } })).not.toBe(
+      key(),
+    );
     expect(key({ opponentLocked: true })).not.toBe(key());
     expect(key({ meterPeriodMs: 1_500 })).not.toBe(key());
   });
@@ -56,14 +62,14 @@ describe('renderKey', () => {
    * qu il vient de se remplir.
    */
   it('redessine quand la jauge d Ultime bouge', () => {
-    expect(key({ me: { energy: 8, ultimate: 60, roundsWon: 0 } })).not.toBe(
-      key({ me: { energy: 8, ultimate: 100, roundsWon: 0 } }),
+    expect(key({ me: { energy: 8, ultimate: 60, roundsWon: 0, shiny: null } })).not.toBe(
+      key({ me: { energy: 8, ultimate: 100, roundsWon: 0, shiny: null } }),
     );
   });
 
   it('distingue une energie nulle d une energie absente', () => {
-    expect(key({ me: { energy: 0, ultimate: 0, roundsWon: 0 } })).not.toBe(
-      key({ me: { energy: null, ultimate: 0, roundsWon: 0 } }),
+    expect(key({ me: { energy: 0, ultimate: 0, roundsWon: 0, shiny: null } })).not.toBe(
+      key({ me: { energy: null, ultimate: 0, roundsWon: 0, shiny: null } }),
     );
   });
 
@@ -91,6 +97,8 @@ describe('renderKey', () => {
       myQuality: 'perfect' as const,
       myUltimate: false,
       countered: false,
+      myShiny: false,
+      opponentShiny: false,
     };
     expect(key({ lastRound: won })).not.toBe(key());
     expect(key({ lastRound: { ...won, round: 2 } })).not.toBe(key({ lastRound: won }));
@@ -111,6 +119,8 @@ describe('renderKey', () => {
       myQuality: 'perfect' as const,
       myUltimate: false,
       countered: false,
+      myShiny: false,
+      opponentShiny: false,
     };
     expect(
       key({ lastRound: { ...one, myQuality: 'miss', myUltimate: true, countered: true } }),

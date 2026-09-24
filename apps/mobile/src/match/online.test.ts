@@ -182,6 +182,22 @@ describe('createOnlineMatch', () => {
     expect(match.state.meter?.period).toBe(1300);
   });
 
+  it('retient ma case brillante, et l oublie si le serveur n en envoie pas', () => {
+    const { match, emit } = harness();
+    const start = {
+      matchId: MATCH,
+      round: 1,
+      endsAt: 523_000,
+      meter: { period: 1300, zone: 0.4, perfect: 0.09, center: 0.5 },
+      energy: 14,
+      ult: 0,
+    };
+    emit('choice:start', { ...start, shiny: { style: 'prouesse', tier: 3 } });
+    expect(match.state.shiny).toEqual({ style: 'prouesse', tier: 3 });
+    emit('choice:start', { ...start, round: 2 });
+    expect(match.state.shiny).toBeNull();
+  });
+
   /**
    * Le seul fait public pendant le choix : l adversaire a verrouille. Ni son
    * mouvement, ni son timing, ni son cout — et l interface n a donc rien de

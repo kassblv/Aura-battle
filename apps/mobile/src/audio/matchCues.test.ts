@@ -12,6 +12,8 @@ function round(over: Partial<RoundView> = {}): RoundView {
     myQuality: 'perfect',
     myUltimate: false,
     countered: false,
+    myShiny: false,
+    opponentShiny: false,
     ...over,
   };
 }
@@ -22,8 +24,8 @@ function view(phase: MatchView['phase'], over: Partial<MatchView> = {}): MatchVi
     round: 1,
     phaseEndsAtMs: 0,
     phaseDurationMs: 1,
-    me: { energy: 8, ultimate: 0, roundsWon: 0 },
-    opponent: { energy: null, ultimate: null, roundsWon: 0 },
+    me: { energy: 8, ultimate: 0, roundsWon: 0, shiny: null },
+    opponent: { energy: null, ultimate: null, roundsWon: 0, shiny: null },
     orbs: [],
     taps: [],
     meterPeriodMs: 0,

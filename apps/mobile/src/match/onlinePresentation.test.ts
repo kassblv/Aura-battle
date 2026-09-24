@@ -67,6 +67,7 @@ function state(phase: OnlinePhase, over: Partial<OnlineState> = {}): OnlineState
     orbs: [],
     sentTaps: [],
     meter: null,
+    shiny: null,
     lastRound: null,
     result: null,
     ...over,

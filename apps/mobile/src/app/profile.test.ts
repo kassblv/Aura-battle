@@ -66,7 +66,13 @@ describe('leagueProgress', () => {
 describe('styleShares', () => {
   it('rend une part par style, qui somme a un', () => {
     const shares = styleShares(profile());
-    expect(shares.map((s) => s.style)).toEqual(['calme', 'hype', 'provoc', 'acrobatie', 'prouesse']);
+    expect(shares.map((s) => s.style)).toEqual([
+      'calme',
+      'hype',
+      'provoc',
+      'acrobatie',
+      'prouesse',
+    ]);
     expect(shares.reduce((sum, s) => sum + s.share, 0)).toBeCloseTo(1, 10);
   });
 
@@ -77,7 +83,13 @@ describe('styleShares', () => {
    */
   it('garde toujours le meme ordre, quel que soit le nombre de manches', () => {
     const shares = styleShares(profile());
-    expect(shares.map((s) => s.style)).toEqual(['calme', 'hype', 'provoc', 'acrobatie', 'prouesse']);
+    expect(shares.map((s) => s.style)).toEqual([
+      'calme',
+      'hype',
+      'provoc',
+      'acrobatie',
+      'prouesse',
+    ]);
     expect(shares.map((s) => s.rounds)).toEqual([120, 170, 98, 0, 0]);
 
     const other = styleShares(profile({ roundsByStyle: { calme: 1, hype: 400, provoc: 20 } }));
@@ -87,9 +99,19 @@ describe('styleShares', () => {
   it('lit un profil enregistre avant les cinq familles', () => {
     // Un profil local ecrit avec trois styles n a pas les deux nouvelles cles.
     const shares = styleShares(profile({ roundsByStyle: { calme: 4, hype: 2, provoc: 2 } }));
-    expect(shares.map((s) => s.style)).toEqual(['calme', 'hype', 'provoc', 'acrobatie', 'prouesse']);
+    expect(shares.map((s) => s.style)).toEqual([
+      'calme',
+      'hype',
+      'provoc',
+      'acrobatie',
+      'prouesse',
+    ]);
     expect(shares.every((s) => Number.isFinite(s.share))).toBe(true);
-    expect(shares.find((s) => s.style === 'acrobatie')).toEqual({ style: 'acrobatie', rounds: 0, share: 0 });
+    expect(shares.find((s) => s.style === 'acrobatie')).toEqual({
+      style: 'acrobatie',
+      rounds: 0,
+      share: 0,
+    });
     expect(shares.find((s) => s.style === 'calme')?.share).toBe(0.5);
   });
 
@@ -136,7 +158,13 @@ describe('newProfile', () => {
     expect(fresh.currentStreak).toBe(0);
     expect(fresh.bestStreak).toBe(0);
     expect(fresh.wallet).toEqual({ soft: 0, hard: 0 });
-    expect(fresh.roundsByStyle).toEqual({ calme: 0, hype: 0, provoc: 0, acrobatie: 0, prouesse: 0 });
+    expect(fresh.roundsByStyle).toEqual({
+      calme: 0,
+      hype: 0,
+      provoc: 0,
+      acrobatie: 0,
+      prouesse: 0,
+    });
   });
 
   it('ne divise pas par zero pour ce profil-la', () => {

@@ -113,6 +113,7 @@ export function createSoloMatch(options: SoloOptions): SoloMatch {
           previousMoves: state.seats.b.moves,
           opponentStyles: revealedStyles(),
           round: state.round,
+          shiny: context.shiny.b,
         },
         config,
       );

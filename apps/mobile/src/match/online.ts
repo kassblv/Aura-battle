@@ -1,4 +1,4 @@
-import { BALANCE, type Choice, type Seat } from '@aura/rules';
+import { BALANCE, type Choice, type Move, type Seat } from '@aura/rules';
 import type { RechargeTap } from '@aura/rules';
 import type { ServerMessage } from '@aura/protocol';
 import type { GameClient } from '../net/client.js';
@@ -76,6 +76,8 @@ export interface OnlineState {
    */
   readonly sentTaps: readonly RechargeTap[];
   readonly meter: OnlineMeter | null;
+  /** Ma case brillante pour la manche en cours (2.1.0), ou `null`. */
+  readonly shiny: Move | null;
   readonly lastRound: ServerMessage<'round:result'> | null;
   readonly result: ServerMessage<'match:end'> | null;
 }
@@ -134,6 +136,7 @@ export const EMPTY_ONLINE_STATE: OnlineState = {
   orbs: [],
   sentTaps: [],
   meter: null,
+  shiny: null,
   lastRound: null,
   result: null,
 };
@@ -219,6 +222,8 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       meter: data.meter,
       energy: data.energy,
       ultimate: data.ult,
+      // Ma case brillante ; un serveur 2.0 n'en envoie pas.
+      shiny: data.shiny ?? null,
     };
   });
 

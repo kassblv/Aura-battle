@@ -60,6 +60,8 @@ export function renderKey(view: KeyedView): string {
     // La jauge d Ultime decide d un bouton : sans elle dans la cle, le joueur
     // verrait son Ultime rester inerte alors qu il est pret.
     tag(view.me.ultimate),
+    // La carte brillante illumine une carte de la main : elle doit redessiner.
+    view.me.shiny === null ? '-' : `${view.me.shiny.style}${String(view.me.shiny.tier)}`,
     view.me.roundsWon,
     view.opponent.roundsWon,
     view.opponentLocked,
@@ -71,7 +73,14 @@ export function renderKey(view: KeyedView): string {
     tag(view.meterPerfectWidth),
     last === null
       ? '-'
-      : [last.round, tag(last.winner), last.myScore, last.opponentScore].join(':'),
+      : [
+          last.round,
+          tag(last.winner),
+          last.myScore,
+          last.opponentScore,
+          last.myShiny,
+          last.opponentShiny,
+        ].join(':'),
     view.ended === null ? '-' : tag(view.ended.winner),
   ].join('|');
 }

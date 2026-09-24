@@ -125,3 +125,31 @@ describe('jauge d Ultime', () => {
     expect(viewOfSolo(match).opponent.ultimate).toBeNull();
   });
 });
+
+describe('carte brillante dans la vue', () => {
+  it('montre ma case brillante en solo, et jamais celle de l adversaire', () => {
+    const match = solo();
+    runTo(match, 'choice');
+    const view = viewOfSolo(match);
+    expect(view.me.shiny).toEqual(match.state.roundContext?.shiny.a);
+    expect(view.opponent.shiny).toBeNull();
+  });
+
+  it('n en montre aucune hors d une manche', () => {
+    expect(viewOfSolo(solo()).me.shiny).toBeNull();
+  });
+
+  it('dit apres la manche qui a joue sa brillante', () => {
+    const match = solo();
+    runTo(match, 'choice');
+    const shiny = match.state.roundContext!.shiny.a;
+    match.lock(
+      { move: shiny, amplifier: 0, useUltimate: false },
+      null,
+      match.state.phaseEndsAtMs - 1,
+    );
+    runTo(match, 'reveal');
+    expect(viewOfSolo(match).lastRound?.myShiny).toBe(true);
+    expect(typeof viewOfSolo(match).lastRound?.opponentShiny).toBe('boolean');
+  });
+});

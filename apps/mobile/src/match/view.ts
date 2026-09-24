@@ -1,4 +1,4 @@
-import { BALANCE, type Orb, type RechargeTap, type TimingQuality } from '@aura/rules';
+import { BALANCE, type Move, type Orb, type RechargeTap, type TimingQuality } from '@aura/rules';
 import type { OnlineMatch } from './online.js';
 import type { SoloMatch } from './solo.js';
 import { matchSpoils, type MatchSpoils } from './spoils.js';
@@ -33,6 +33,11 @@ export interface SideView {
    */
   readonly ultimate: number | null;
   readonly roundsWon: number;
+  /**
+   * Ma case brillante pour la manche, ou `null`. Toujours `null` pour
+   * l'adversaire : sa brillante est secrete jusqu'a `round:result`.
+   */
+  readonly shiny: Move | null;
 }
 
 export interface RoundView {
@@ -53,6 +58,10 @@ export interface RoundView {
   readonly myUltimate: boolean;
   /** L un des deux a contre l autre : la manche s est jouee sur les styles. */
   readonly countered: boolean;
+  /** J'ai joue ma case brillante (×1,2). */
+  readonly myShiny: boolean;
+  /** L'adversaire a joue la sienne : revele avec la manche. */
+  readonly opponentShiny: boolean;
 }
 
 export interface MatchView {
@@ -108,9 +117,10 @@ export function viewOfSolo(match: SoloMatch): MatchView {
       energy: state.seats.a.energy,
       ultimate: state.seats.a.ultimateGauge,
       roundsWon: state.seats.a.roundsWon,
+      shiny: context?.shiny.a ?? null,
     },
     // Volontairement `null` : voir `SideView.energy`.
-    opponent: { energy: null, ultimate: null, roundsWon: state.seats.b.roundsWon },
+    opponent: { energy: null, ultimate: null, roundsWon: state.seats.b.roundsWon, shiny: null },
     orbs: context?.orbs ?? [],
     taps: state.pending.a.taps,
     meterPeriodMs: context?.gauge.periodMs ?? 0,
@@ -128,6 +138,8 @@ export function viewOfSolo(match: SoloMatch): MatchView {
             myQuality: last.seats.a.timing.quality,
             myUltimate: last.seats.a.usedUltimate,
             countered: last.seats.a.countered || last.seats.b.countered,
+            myShiny: last.seats.a.shiny,
+            opponentShiny: last.seats.b.shiny,
           },
     ended:
       state.result === null
@@ -155,8 +167,13 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
     round: state.round,
     phaseEndsAtMs: state.phaseEndsAtMs,
     phaseDurationMs: DURATIONS[state.phase],
-    me: { energy: state.energy, ultimate: state.ultimate, roundsWon: state.roundsWon[seat] },
-    opponent: { energy: null, ultimate: null, roundsWon: state.roundsWon[other] },
+    me: {
+      energy: state.energy,
+      ultimate: state.ultimate,
+      roundsWon: state.roundsWon[seat],
+      shiny: state.shiny,
+    },
+    opponent: { energy: null, ultimate: null, roundsWon: state.roundsWon[other], shiny: null },
     orbs: state.orbs,
     taps: state.sentTaps,
     meterPeriodMs: state.meter?.period ?? 0,
@@ -172,6 +189,8 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
             myQuality: last.sides[seat].timing.quality,
             myUltimate: last.sides[seat].ult,
             countered: last.sides.a.counter || last.sides.b.counter,
+            myShiny: last.sides[seat].shiny ?? false,
+            opponentShiny: last.sides[other].shiny ?? false,
           },
     ended:
       state.result === null
