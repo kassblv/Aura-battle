@@ -47,6 +47,7 @@ import { tryOn } from './tryOn.js';
 import { leagueLabel } from './leagues.js';
 import { inviteFromUrl } from './deepLink.js';
 import { emptyRecord, recordMatch } from './record.js';
+import { settlementOf } from './settlement.js';
 import {
   createQualityGovernor,
   type QualitySetting,
@@ -357,6 +358,7 @@ export function App(): JSX.Element {
    * recompense qui reste posee dans l'etat serait creditee a chaque rendu, et
    * le joueur s'enrichirait en regardant son ecran de resultat.
    */
+  const { refresh: refreshInventory } = inventory;
   useEffect(() => {
     const settled = online.settled;
     if (settled === null) return;
@@ -367,23 +369,12 @@ export function App(): JSX.Element {
       L'ajouter aussi de ce cote-ci la compterait deux fois a l'ecran, jusqu'a
       la prochaine lecture qui la ferait mysterieusement diminuer.
     */
-    setLeague(settled.rating.leagueAfter);
-    setRecord((current) =>
-      recordMatch(current, {
-        // `view.ended` porte deja l issue traduite en « moi »/« adversaire » :
-        // la vue ne parle jamais de sieges, et la retraduire ici rouvrirait la
-        // question de savoir lequel on occupe.
-        // Une egalite reste `null` : la traiter comme une defaite casserait
-        // une serie que le joueur n a pas perdue.
-        won:
-          (online.view.ended?.winner ?? null) === null ? null : online.view.ended?.winner === 'moi',
-        lp: settled.rating.after,
-        // Le TOTAL, pas le gain : recopié, jamais cumulé, comme les LP.
-        xp: settled.rewards.xpTotal,
-      }),
-    );
+    const settlement = settlementOf(settled, online.view.ended?.winner ?? null);
+    setLeague(settlement.league);
+    setRecord((current) => recordMatch(current, settlement.outcome));
+    if (settlement.rereadWallet) refreshInventory();
     online.clearSettled();
-  }, [online]);
+  }, [online, refreshInventory]);
 
   /**
    * L inscription est facultative et **ne se represente pas**.

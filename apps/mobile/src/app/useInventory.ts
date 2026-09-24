@@ -48,7 +48,7 @@ export interface InventoryView {
    * cette relecture, l ecran garderait l ancien total jusqu au prochain achat,
    * et le joueur verrait sa recompense disparaitre.
    */
-  refresh(): void;
+  readonly refresh: () => void;
   buy(itemId: string): Promise<boolean>;
   equip(look: Look): Promise<boolean>;
   clearError(): void;
