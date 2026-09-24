@@ -144,12 +144,38 @@ images clés.
 
 Repères sur les 12 animations ajoutées après le portage (rapport pic/moyenne) :
 « Coup de pied lent » 2,52, « Marche assurée » 2,94, « Épaules qui roulent »
-3,31, « Roue » 3,96, « Saut applaudi » 3,53, « Doigt vers le ciel » 5,78. Un
+3,05 (3,31 avant sa reprise à huit images), « Roue » 3,96, « Saut applaudi » 3,53, « Doigt vers le ciel » 5,78. Un
 mouvement lent n'est pas un mouvement plat : le coup de pied lent passe parce
 qu'il **s'arrête** en extension, pas parce qu'il va vite.
 
 Les poses système d'une seule image (`charge`, `land`, `stagger`) en sont
 exemptées, et elles seules : leur travail est précisément de ne pas bouger.
+
+## Mouvement secondaire : ce que le client ajoute au JSON
+
+La pose affichée n'est pas exactement la pose écrite. Le client
+(`apps/mobile/src/animation/secondary.ts`) ajoute à **toutes** les danses,
+sans rien lire d'autre que le document :
+
+- la respiration ;
+- un transfert de poids latéral lent (bassin ±1,4 cm, buste à 80 %, pieds
+  plantés) ;
+- sur les danses `hype`, un rebond des genoux calé sur un nombre entier de
+  temps par boucle, de 1,2 cm à 2,8 cm selon la ferveur de la salle ;
+- la tête et les mains qui traînent derrière le buste et le coude
+  (70 ms de retard, 2,5 cm au plus), et le regard qui rattrape en retard un
+  corps qui tourne (0,35 rad au plus).
+
+Ce qui en découle pour l'écriture :
+
+- **N'écrivez pas la respiration ni le rebond de fond** : ils sont déjà là.
+  Écrivez le geste — et un rebond seulement s'il fait partie du mème.
+- Un corps qui flotte (`float`), saute (`lift`), fait un salto ou dont le
+  bassin est sous −55 n'a ni transfert de poids ni rebond : la T-pose, la
+  lévitation et la méditation restent immobiles là où elles doivent l'être.
+- Aucune articulation ne s'écarte de plus de **3,5 cm** de la pose écrite ; le
+  cadrage de la vitrine ajoute cette marge à sa mesure.
+- `prefers-reduced-motion` ne garde que la respiration.
 
 ## Pièges de rédaction (mesurés en écrivant les 12 dernières danses)
 
