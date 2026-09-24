@@ -76,6 +76,11 @@ const roundSideSchema = z.strictObject({
   counter: z.boolean(),
   countered: z.boolean(),
   counterBlocked: z.boolean(),
+  /**
+   * Le siege a joue sa case brillante (×1,2). Facultatif : un serveur 2.0 ne
+   * l'envoie pas, et son absence vaut « non » (2.1.0, ajout compatible).
+   */
+  shiny: z.boolean().optional(),
   base: z.number(),
   final: z.number(),
   energyAfter: z.number().int().min(0),
@@ -154,6 +159,12 @@ export const SERVER_MESSAGES = {
     }),
     energy: z.number().int().min(0),
     ult: z.number().min(0),
+    /**
+     * La case brillante du DESTINATAIRE, et d'aucun autre (regle d'or n°4) :
+     * l'adversaire ne la decouvre qu'a `round:result`. Facultative pour rester
+     * compatible avec un serveur 2.0.
+     */
+    shiny: moveSchema.optional(),
   }),
 
   // Le seul fait public pendant la phase de choix : l'adversaire a verrouille.

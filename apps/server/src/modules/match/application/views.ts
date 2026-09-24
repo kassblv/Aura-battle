@@ -91,6 +91,8 @@ export function choiceStartFor(
     },
     energy: state.seats[seat].energy,
     ult: state.seats[seat].ultimateGauge,
+    // SA case brillante, et seulement la sienne (regle d'or n°4).
+    ...(state.roundContext === null ? {} : { shiny: state.roundContext.shiny[seat] }),
   };
 }
 

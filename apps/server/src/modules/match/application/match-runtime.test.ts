@@ -1,6 +1,7 @@
 import { defaultAnimationFor } from '@aura/content';
 import {
   BALANCE,
+  buildRoundContext,
   createRng,
   deriveSeed,
   type Choice,
@@ -1400,6 +1401,26 @@ describe('pose verrouillee', () => {
     runtime.lockChoice(MATCH_ID, 'a', { ...choice(3), move: { style: 'calme', tier: 3 } }, null);
     runtime.lockPose(MATCH_ID, 'b', { poseId: FLEX, amplifier: 0, useUltimate: false }, null);
     expect(result().sides.a.cosmetic.animationId).toBe('anim.calme.t3.meditate');
+  });
+
+  /*
+    La brillante est appliquee par le moteur, pas par le client : meme un
+    siege qui n'a jamais vu son `choice:start` (reprise en pleine phase) en
+    profite s'il joue la bonne case. `round:result` le dit aux deux.
+  */
+  it('dit dans round:result qui a joue sa case brillante', () => {
+    advanceTo('choice');
+    // Le match de test a la graine 'graine' : on recalcule son tirage.
+    const { a: shinyA, b: shinyB } = buildRoundContext('graine', 1, BALANCE).shiny;
+    runtime.lockPose(
+      MATCH_ID,
+      'a',
+      { poseId: defaultAnimationFor(shinyA), amplifier: 0, useUltimate: false },
+      null,
+    );
+    runtime.lockPose(MATCH_ID, 'b', { poseId: FLEX, amplifier: 0, useUltimate: false }, null);
+    expect(result().sides.a.shiny).toBe(true);
+    expect(result().sides.b.shiny).toBe(shinyB.style === 'prouesse' && shinyB.tier === 0);
   });
 
   it('ne garde une pose que pour la manche ou elle a ete verrouillee', () => {

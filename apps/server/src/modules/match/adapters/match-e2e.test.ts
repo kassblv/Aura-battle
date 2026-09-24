@@ -463,9 +463,18 @@ describe('manche complete', () => {
     };
     lockPose(host, 'anim.acrobatie.t2.wheel');
     await guest.first('opponent:locked');
-    // Le verrouillage de l'hote est connu ; sa pose, non.
-    expect(JSON.stringify(guest.received)).not.toContain('wheel');
-    expect(JSON.stringify(guest.received)).not.toContain('acrobatie');
+    // Le verrouillage de l'hote est connu ; sa pose, non. La carte brillante
+    // de l'invite (son propre `choice:start`) est ecartee : elle peut tomber
+    // sur la meme famille sans rien reveler de l'hote.
+    const seen = JSON.stringify(
+      guest.received.map((m) =>
+        m.name === 'choice:start'
+          ? { ...m, payload: { ...(m.payload as object), shiny: null } }
+          : m,
+      ),
+    );
+    expect(seen).not.toContain('wheel');
+    expect(seen).not.toContain('acrobatie');
     lockPose(guest, 'anim.prouesse.t2.plank');
 
     const vuHote = await host.first<ServerMessage<'round:result'>>('round:result');

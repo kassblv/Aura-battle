@@ -973,6 +973,7 @@ export class MatchRuntime {
         counter: outcome.countered,
         countered: outcome.wasCountered,
         counterBlocked: outcome.counterBlocked,
+        shiny: outcome.shiny,
         base: outcome.base,
         final: outcome.score,
         energyAfter: match.state.seats[seat].energy,

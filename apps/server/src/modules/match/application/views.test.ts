@@ -58,6 +58,29 @@ describe('choiceStartFor — la jauge est commune, l energie ne l est pas', () =
     expect(choiceStartFor('b', state, MATCH_ID).energy).toBe(7);
   });
 
+  /*
+    La carte brillante est un secret de siege : chacun recoit la sienne, et
+    rien dans le message de l'un ne permet de deduire celle de l'autre
+    (regle d'or n°4). On cherche une graine ou les deux cases different.
+  */
+  it('envoie a chacun SA case brillante, jamais celle de l autre', () => {
+    let seed = 0;
+    let found = advanceTo('choice', 'brillante-0');
+    const differ = (st: MatchState): boolean => {
+      const shiny = st.roundContext!.shiny;
+      return shiny.a.style !== shiny.b.style || shiny.a.tier !== shiny.b.tier;
+    };
+    while (!differ(found)) {
+      seed += 1;
+      found = advanceTo('choice', `brillante-${String(seed)}`);
+    }
+    const forA = choiceStartFor('a', found, MATCH_ID);
+    const forB = choiceStartFor('b', found, MATCH_ID);
+    expect(forA.shiny).toEqual(found.roundContext!.shiny.a);
+    expect(forB.shiny).toEqual(found.roundContext!.shiny.b);
+    expect(JSON.stringify(forA)).not.toContain(JSON.stringify(found.roundContext!.shiny.b));
+  });
+
   it('envoie aux deux la meme jauge de timing', () => {
     // La jauge est tiree une fois par manche : les deux joueurs affrontent
     // exactement la meme, sinon la manche n'est pas equitable.

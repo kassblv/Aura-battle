@@ -37,7 +37,15 @@
   connexion (`CLIENT_OUTDATED`) plutot que de perdre chaque verrouillage en
   silence.
 */
-export const PROTOCOL_VERSION = '2.0.0';
+/*
+  2.1.0 — la carte brillante.
+
+  `choice:start.shiny` (la case du destinataire seulement) et
+  `round:result.sides.*.shiny` sont AJOUTES et facultatifs : un client 2.0 les
+  ignore, un serveur 2.0 ne les envoie pas et le client lit « pas de
+  brillante ». Pas de rupture majeure.
+*/
+export const PROTOCOL_VERSION = '2.1.0';
 
 const MAJOR = /^(\d+)\./;
 

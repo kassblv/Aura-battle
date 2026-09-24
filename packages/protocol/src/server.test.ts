@@ -101,6 +101,46 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
     );
   });
 
+  it('porte la case brillante du destinataire dans choice:start (2.1.0)', () => {
+    const base = {
+      matchId: 'm_01',
+      round: 1,
+      endsAt: 1_700_000_023_400,
+      meter: { period: 1_720, zone: 0.22, perfect: 0.08, center: 0.41 },
+      energy: 14,
+      ult: 32,
+    };
+    expect(
+      parseServerMessage('choice:start', { ...base, shiny: { style: 'prouesse', tier: 3 } })
+        .success,
+    ).toBe(true);
+    // Facultative : un serveur 2.0 ne l'envoie pas, et le message reste valide.
+    expect(parseServerMessage('choice:start', base).success).toBe(true);
+    expect(
+      parseServerMessage('choice:start', { ...base, shiny: { style: 'danse', tier: 3 } }).success,
+    ).toBe(false);
+    expect(
+      parseServerMessage('choice:start', { ...base, shiny: { style: 'hype', tier: 7 } }).success,
+    ).toBe(false);
+  });
+
+  it('dit dans round:result qui a joue sa case brillante (2.1.0)', () => {
+    const withShiny = {
+      ...roundResult,
+      sides: {
+        a: { ...roundResult.sides.a, shiny: true },
+        b: { ...roundResult.sides.b, shiny: false },
+      },
+    };
+    expect(parseServerMessage('round:result', withShiny).success).toBe(true);
+    expect(
+      parseServerMessage('round:result', {
+        ...roundResult,
+        sides: { ...roundResult.sides, a: { ...roundResult.sides.a, shiny: 'oui' } },
+      }).success,
+    ).toBe(false);
+  });
+
   it('refuse un round:intro qui contiendrait la jauge adverse', () => {
     const valide = {
       matchId: 'm_01',
