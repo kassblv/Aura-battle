@@ -188,11 +188,28 @@ export const authEmailPasswordRequestSchema = z
     currentPassword: presentedPasswordSchema.optional(),
     recoveryCode: recoveryCodeInputSchema.optional(),
     newPassword: newPasswordSchema,
+    /**
+     * Le secret de l'appareil qui fait la demande. Changer de mot de passe
+     * detache tous les appareils du compte — c'est ce qui chasse un intrus —
+     * sauf celui-ci, qui prouve ainsi qu'il est le sien.
+     */
+    deviceSecret: deviceSecretSchema.optional(),
   })
   .refine(
     (body) => (body.currentPassword === undefined) !== (body.recoveryCode === undefined),
     'une preuve et une seule : ancien mot de passe ou code de recuperation',
   );
+
+/**
+ * Demander un nouveau code de recuperation.
+ *
+ * Des qu'une adresse est rattachee, l'ancien mot de passe est exige : sinon une
+ * session volee suffirait a remplacer le code du joueur, puis a s'en servir
+ * pour changer son mot de passe. Sans adresse, le corps reste vide.
+ */
+export const authRecoveryIssueRequestSchema = z.strictObject({
+  currentPassword: presentedPasswordSchema.optional(),
+});
 
 /**
  * Ce que le client sait de l'adresse rattachee : si elle existe, et sa forme
@@ -219,7 +236,14 @@ export const AUTH_ERROR_CODES = [
   'EMAIL_NOT_LINKED',
   'PASSWORD_TOO_COMMON',
   'PASSWORD_MATCHES_EMAIL',
+  'PASSWORD_TOO_SHORT',
+  /** Un code de recuperation trop recent ne prouve pas qu'on est le joueur. */
+  'RECOVERY_CODE_TOO_RECENT',
+  /** L'ancien mot de passe est exige pour ce geste. */
+  'PASSWORD_REQUIRED',
   'TOO_MANY_ATTEMPTS',
+  /** Trop de hachages en cours : reessayer dans un instant. */
+  'BUSY',
 ] as const;
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
@@ -235,6 +259,7 @@ export type AuthEmailLinkRequest = z.infer<typeof authEmailLinkRequestSchema>;
 export type AuthEmailLoginRequest = z.infer<typeof authEmailLoginRequestSchema>;
 export type AuthEmailPasswordRequest = z.infer<typeof authEmailPasswordRequestSchema>;
 export type EmailStatusResponse = z.infer<typeof emailStatusResponseSchema>;
+export type AuthRecoveryIssueRequest = z.infer<typeof authRecoveryIssueRequestSchema>;
 
 export function parseAuthDeviceRequest(payload: unknown): ParseResult<AuthDeviceRequest> {
   const parsed = authDeviceRequestSchema.safeParse(payload);
@@ -277,5 +302,12 @@ export function parseAuthEmailPasswordRequest(
   payload: unknown,
 ): ParseResult<AuthEmailPasswordRequest> {
   const parsed = authEmailPasswordRequestSchema.safeParse(payload);
+  return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
+}
+
+export function parseAuthRecoveryIssueRequest(
+  payload: unknown,
+): ParseResult<AuthRecoveryIssueRequest> {
+  const parsed = authRecoveryIssueRequestSchema.safeParse(payload);
   return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
 }

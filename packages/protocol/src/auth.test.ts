@@ -17,6 +17,7 @@ import {
   parseAuthEmailLinkRequest,
   parseAuthEmailLoginRequest,
   parseAuthEmailPasswordRequest,
+  parseAuthRecoveryIssueRequest,
 } from './auth.js';
 
 const secret = 'a'.repeat(64);
@@ -310,6 +311,43 @@ describe('email et mot de passe', () => {
         'PASSWORD_TOO_COMMON',
         'PASSWORD_MATCHES_EMAIL',
         'TOO_MANY_ATTEMPTS',
+      ]),
+    );
+  });
+});
+
+describe('durcissement des preuves', () => {
+  it('accepte le secret de l appareil appelant avec un changement de mot de passe', () => {
+    expect(
+      parseAuthEmailPasswordRequest({
+        currentPassword: 'ancien',
+        newPassword: 'une phrase de passe',
+        deviceSecret: 'a'.repeat(64),
+      }).success,
+    ).toBe(true);
+    expect(
+      parseAuthEmailPasswordRequest({
+        currentPassword: 'ancien',
+        newPassword: 'une phrase de passe',
+        deviceSecret: 'pas-un-secret',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('demande de code : corps vide, ou ancien mot de passe', () => {
+    expect(parseAuthRecoveryIssueRequest({}).success).toBe(true);
+    expect(parseAuthRecoveryIssueRequest({ currentPassword: 'ancien' }).success).toBe(true);
+    expect(parseAuthRecoveryIssueRequest({ currentPassword: '' }).success).toBe(false);
+    expect(parseAuthRecoveryIssueRequest({ playerId: 'p' }).success).toBe(false);
+  });
+
+  it('nomme les nouveaux refus', () => {
+    expect(AUTH_ERROR_CODES).toEqual(
+      expect.arrayContaining([
+        'PASSWORD_TOO_SHORT',
+        'RECOVERY_CODE_TOO_RECENT',
+        'PASSWORD_REQUIRED',
+        'BUSY',
       ]),
     );
   });
