@@ -130,6 +130,9 @@ export function distanceForHeight(height: number, fill: number, margin = 0): num
  * l encombrement reel de l animation. Le salto arriere recule la camera tout
  * seul, « Mewing » se rapproche parce que son fichier declare `bust`.
  */
+/** Etendue horizontale d un sujet couche, rapportee a son rayon au sol. */
+const LYING_SPAN = 1.6;
+
 export function previewFraming(input: PreviewFramingInput): CameraFraming {
   const { bounds } = input;
   const bust = input.shot === 'bust';
@@ -140,11 +143,19 @@ export function previewFraming(input: PreviewFramingInput): CameraFraming {
   // camera dans le crane du personnage.
   const height = Math.max(0.3, top - bottom);
   const lookY = (top + bottom) / 2;
+  /*
+    Un sujet couche — planche, pompes, drapeau humain — est plus LARGE que
+    haut : cadre sur sa seule hauteur, la camera s'approchait de quarante
+    centimetres de gainage et coupait la tete et les pieds. On cadre sur la
+    plus grande des deux dimensions ; debout, la hauteur l'emporte toujours
+    et rien ne change.
+  */
+  const span = Math.max(height, bounds.radius * LYING_SPAN);
 
   return {
     lookX: input.worldX,
     lookY,
-    distance: distanceForHeight(height, bust ? BUST_FILL : BODY_FILL, bounds.radius),
+    distance: distanceForHeight(span, bust ? BUST_FILL : BODY_FILL, bounds.radius),
     orbit: SHOWCASE_ORBIT + (input.orbit ?? 0),
     // A hauteur du milieu du sujet : on inspecte un geste, on ne le domine pas.
     eyeY: clamp(lookY + (input.tilt ?? 0), MIN_EYE_Y, top + MAX_EYE_ABOVE_SUBJECT),
