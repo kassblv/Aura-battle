@@ -4,6 +4,7 @@
   "name": {
     "fr": "Main dans la poche"
   },
+  "icon": "👖",
   "move": {
     "style": "calme",
     "tier": 1

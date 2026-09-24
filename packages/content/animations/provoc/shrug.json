@@ -4,6 +4,7 @@
   "name": {
     "fr": "Haussement d'épaules"
   },
+  "icon": "🤷",
   "move": {
     "style": "provoc",
     "tier": 2

@@ -1,6 +1,6 @@
 import { allAnimationIds, systemAnimationId, SYSTEM_ANIMATIONS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
-import { ANIMATIONS, animationFor, systemAnimation } from './animations.js';
+import { ANIMATIONS, animationFor, poseIcon, systemAnimation } from './animations.js';
 
 describe('ANIMATIONS', () => {
   it('embarque toutes les animations du catalogue', () => {
@@ -54,7 +54,9 @@ describe('animationFor', () => {
     // Porter l animation d un palier 4 sur un palier 0 serait un mensonge
     // visuel sur ce que l adversaire vient de depenser.
     const offered = animationFor({ style: 'calme', tier: 0 });
-    expect(animationFor({ style: 'calme', tier: 0 }, 'anim.acrobatie.t4.backflip').id).toBe(offered.id);
+    expect(animationFor({ style: 'calme', tier: 0 }, 'anim.acrobatie.t4.backflip').id).toBe(
+      offered.id,
+    );
   });
 });
 
@@ -64,5 +66,19 @@ describe('systemAnimation', () => {
     for (const slug of SYSTEM_ANIMATIONS) {
       expect(systemAnimation(slug).id).toBe(systemAnimationId(slug));
     }
+  });
+});
+
+describe('poseIcon', () => {
+  it('rend le pictogramme de la pose', () => {
+    expect(poseIcon('anim.provoc.t2.mewing')).toBe('🗿');
+    expect(poseIcon('anim.acrobatie.t2.wheel')).toBe('🤸');
+  });
+
+  // Une carte ne doit jamais etre blanche : un identifiant inconnu (contenu
+  // plus recent que le client) prend l'icone de sa famille, sinon une etincelle.
+  it('retombe sur l icone de la famille, puis sur une etincelle', () => {
+    expect(poseIcon('anim.hype.t2.inconnue')).toBe('🔥');
+    expect(poseIcon('pas-une-pose')).toBe('✨');
   });
 });

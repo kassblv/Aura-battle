@@ -78,6 +78,27 @@ describe('animations portees', () => {
   });
 });
 
+describe('pictogrammes des poses', () => {
+  it('donne a chaque pose de mouvement un pictogramme, unique dans sa famille', () => {
+    for (const style of STYLES) {
+      const icons = TIERS.flatMap((tier) =>
+        animationsFor({ style, tier }).map((slug) => animations.get(slug)?.icon),
+      );
+      expect(
+        icons.every((icon) => typeof icon === 'string' && icon.length > 0),
+        style,
+      ).toBe(true);
+      expect(new Set(icons).size, style).toBe(icons.length);
+    }
+  });
+
+  it('reprend la table validee de la spec', () => {
+    expect(animations.get('mewing')?.icon).toBe('🗿');
+    expect(animations.get('floss')?.icon).toBe('🧵');
+    expect(animations.get('humanflag')?.icon).toBe('🚩');
+  });
+});
+
 describe('non-regression : les valeurs correspondent au prototype', () => {
   let prototype: PrototypeData;
 

@@ -4,6 +4,7 @@
   "name": {
     "fr": "Biceps contractés"
   },
+  "icon": "💪",
   "move": {
     "style": "prouesse",
     "tier": 0

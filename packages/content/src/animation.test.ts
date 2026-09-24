@@ -25,6 +25,7 @@ describe('loadAnimation', () => {
     id: 'anim.hype.t3.griddy',
     version: 1,
     name: { fr: 'Griddy' },
+    icon: '🐾',
     move: { style: 'hype', tier: 3 },
     loop: { duration: 0.62 },
     hands: [
@@ -62,6 +63,26 @@ describe('loadAnimation', () => {
     expect(() => loadAnimation({ ...griddy, name: {} })).toThrow(/nom/i);
     expect(() => loadAnimation({ ...griddy, name: { en: 'Griddy' } })).toThrow(/nom/i);
     expect(() => loadAnimation({ ...griddy, name: { fr: '   ' } })).toThrow(/nom/i);
+  });
+
+  /*
+    Le pictogramme est ce que la carte de pose montre en duel (chantier n°2).
+    Une pose sans pictogramme arriverait en main comme une carte blanche.
+  */
+  it('refuse une pose de mouvement sans pictogramme', () => {
+    const { icon: _icon, ...sansIcone } = griddy;
+    expect(() => loadAnimation(sansIcone)).toThrow(/pictogramme/i);
+    expect(() => loadAnimation({ ...griddy, icon: '  ' })).toThrow(/pictogramme/i);
+  });
+
+  it('n exige pas de pictogramme pour une animation systeme', () => {
+    const { icon: _icon, ...sansIcone } = griddy;
+    const victoire = {
+      ...sansIcone,
+      id: 'anim.system.none.victory',
+      move: { style: 'system', tier: null },
+    };
+    expect(loadAnimation(victoire).icon).toBeUndefined();
   });
 
   it('refuse une image a laquelle il manque une articulation', () => {

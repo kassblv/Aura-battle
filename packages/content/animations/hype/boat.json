@@ -4,6 +4,7 @@
   "name": {
     "fr": "Danse du bateau"
   },
+  "icon": "🚣",
   "move": {
     "style": "hype",
     "tier": 4

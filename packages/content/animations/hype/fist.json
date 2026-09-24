@@ -4,6 +4,7 @@
   "name": {
     "fr": "Poing levé"
   },
+  "icon": "✊",
   "move": {
     "style": "hype",
     "tier": 2

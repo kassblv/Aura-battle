@@ -2,7 +2,10 @@ import {
   animationIdsFor,
   defaultAnimationFor,
   loadAnimation,
+  STYLES,
+  styleIcon,
   systemAnimationId,
+  type Style,
   type Animation,
   type Move,
 } from '@aura/content';
@@ -67,6 +70,20 @@ export function animationFor(move: Move, skinId?: string): Animation {
  * Prend le slug du catalogue (`charge`, `victory`…), pas l identifiant complet :
  * c est sous cette forme que `SYSTEM_ANIMATIONS` les nomme.
  */
+/**
+ * Le pictogramme d'une pose, pour sa carte en duel.
+ *
+ * Jamais vide : un identifiant que ce client ne connait pas (contenu plus
+ * recent) prend l'icone de sa famille, et a defaut une etincelle. Une carte
+ * blanche en pleine main se lirait comme un bug.
+ */
+export function poseIcon(poseId: string): string {
+  const icon = ANIMATIONS.get(poseId)?.icon;
+  if (icon !== undefined) return icon;
+  const family = poseId.split('.')[1];
+  return STYLES.includes(family as Style) ? styleIcon(family as Style) : '✨';
+}
+
 export function systemAnimation(slug: string): Animation {
   return require(systemAnimationId(slug));
 }

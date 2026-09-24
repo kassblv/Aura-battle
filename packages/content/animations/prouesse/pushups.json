@@ -4,6 +4,7 @@
   "name": {
     "fr": "Pompes"
   },
+  "icon": "🏋️",
   "move": {
     "style": "prouesse",
     "tier": 1

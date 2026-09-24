@@ -43,6 +43,7 @@ function document(sound?: unknown): Record<string, unknown> {
     id: 'anim.hype.t0.test',
     version: 1,
     name: { fr: 'Essai' },
+    icon: '✨',
     move: { style: 'hype', tier: 0 },
     loop: { duration: 1 },
     hands: [

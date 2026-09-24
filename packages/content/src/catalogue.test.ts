@@ -38,7 +38,10 @@ describe('MOVE_ANIMATIONS', () => {
    */
   it('compte les poses de chaque famille', () => {
     const perFamily = Object.fromEntries(
-      STYLES.map((style) => [style, TIERS.flatMap((tier) => animationsFor({ style, tier })).length]),
+      STYLES.map((style) => [
+        style,
+        TIERS.flatMap((tier) => animationsFor({ style, tier })).length,
+      ]),
     );
     expect(perFamily).toEqual({ calme: 10, hype: 8, provoc: 11, acrobatie: 5, prouesse: 5 });
   });
@@ -65,7 +68,8 @@ describe('MOVE_ANIMATIONS', () => {
 
 describe('identifiants', () => {
   it('suit la convention de nommage du schema', () => {
-    const pattern = /^anim\.(calme|hype|provoc|acrobatie|prouesse|system)\.(t[0-4]|none)\.[a-z0-9-]+$/;
+    const pattern =
+      /^anim\.(calme|hype|provoc|acrobatie|prouesse|system)\.(t[0-4]|none)\.[a-z0-9-]+$/;
     for (const id of allAnimationIds()) {
       expect(id).toMatch(pattern);
     }

@@ -4,6 +4,7 @@
   "name": {
     "fr": "Lévitation"
   },
+  "icon": "☁️",
   "move": {
     "style": "calme",
     "tier": 4

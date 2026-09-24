@@ -4,6 +4,7 @@
   "name": {
     "fr": "Chut"
   },
+  "icon": "🤫",
   "move": {
     "style": "provoc",
     "tier": 0

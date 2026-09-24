@@ -4,6 +4,7 @@
   "name": {
     "fr": "Épaules époussetées"
   },
+  "icon": "🧹",
   "move": {
     "style": "provoc",
     "tier": 3

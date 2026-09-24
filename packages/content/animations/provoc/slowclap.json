@@ -4,6 +4,7 @@
   "name": {
     "fr": "Applaudissement lent"
   },
+  "icon": "🙄",
   "move": {
     "style": "provoc",
     "tier": 2

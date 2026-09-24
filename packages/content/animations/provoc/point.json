@@ -4,6 +4,7 @@
   "name": {
     "fr": "Doigt pointé"
   },
+  "icon": "👉",
   "move": {
     "style": "provoc",
     "tier": 1

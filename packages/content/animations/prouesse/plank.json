@@ -4,6 +4,7 @@
   "name": {
     "fr": "Planche"
   },
+  "icon": "🪵",
   "move": {
     "style": "prouesse",
     "tier": 2

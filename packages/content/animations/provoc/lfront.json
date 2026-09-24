@@ -4,6 +4,7 @@
   "name": {
     "fr": "L sur le front"
   },
+  "icon": "😜",
   "move": {
     "style": "provoc",
     "tier": 3

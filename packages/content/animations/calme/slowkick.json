@@ -4,6 +4,7 @@
   "name": {
     "fr": "Coup de pied lent"
   },
+  "icon": "🦵",
   "move": {
     "style": "calme",
     "tier": 3

@@ -4,6 +4,7 @@
   "name": {
     "fr": "Mains dans le dos"
   },
+  "icon": "🤵",
   "move": {
     "style": "calme",
     "tier": 0

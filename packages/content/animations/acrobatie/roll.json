@@ -4,6 +4,7 @@
   "name": {
     "fr": "Roulade"
   },
+  "icon": "🌀",
   "move": {
     "style": "acrobatie",
     "tier": 1

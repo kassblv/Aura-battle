@@ -4,6 +4,7 @@
   "name": {
     "fr": "Dos tourné"
   },
+  "icon": "🔙",
   "move": {
     "style": "provoc",
     "tier": 4

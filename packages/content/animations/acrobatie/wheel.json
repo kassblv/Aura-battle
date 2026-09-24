@@ -4,6 +4,7 @@
   "name": {
     "fr": "Roue"
   },
+  "icon": "🤸",
   "move": {
     "style": "acrobatie",
     "tier": 2

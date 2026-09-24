@@ -325,6 +325,12 @@
       "items": {
         "$ref": "#/$defs/frame"
       }
+    },
+    "icon": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16,
+      "description": "Pictogramme de la pose sur sa carte en duel. Obligatoire pour une pose de mouvement."
     }
   }
 }

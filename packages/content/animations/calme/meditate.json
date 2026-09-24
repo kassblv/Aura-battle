@@ -4,6 +4,7 @@
   "name": {
     "fr": "Méditation"
   },
+  "icon": "🧘",
   "move": {
     "style": "calme",
     "tier": 3

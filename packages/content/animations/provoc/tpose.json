@@ -4,6 +4,7 @@
   "name": {
     "fr": "T-pose"
   },
+  "icon": "🛩️",
   "move": {
     "style": "provoc",
     "tier": 1

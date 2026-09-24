@@ -4,6 +4,7 @@
   "name": {
     "fr": "Célébration de but"
   },
+  "icon": "⚽",
   "move": {
     "style": "hype",
     "tier": 2

@@ -125,6 +125,11 @@ export interface Animation {
   readonly loop: AnimationLoop;
   /** Cadrage de previsualisation. Absent vaut `{ shot: 'body' }`. */
   readonly framing?: AnimationFraming;
+  /**
+   * Le pictogramme de la pose, sur sa carte en duel (chantier n°2).
+   * Obligatoire pour une pose de mouvement, absent pour une animation systeme.
+   */
+  readonly icon?: string;
   readonly flags?: {
     readonly armsFront?: boolean;
     readonly armsBack?: boolean;
@@ -195,6 +200,16 @@ export function loadAnimation(document: unknown): Animation {
         fail(`image ${String(index)} : articulation ${name} manquante ou mal formee`);
       }
     }
+  }
+
+  /*
+    Le pictogramme est ce que la carte de pose montre en duel : une pose sans
+    lui arriverait en main comme une carte blanche. Une animation systeme ne se
+    choisit pas, elle n'en a pas besoin.
+  */
+  const isMovePose = !isRecord(document.move) || document.move.style !== 'system';
+  if (isMovePose && (typeof document.icon !== 'string' || document.icon.trim() === '')) {
+    fail('pictogramme manquant');
   }
 
   const framing = document.framing;

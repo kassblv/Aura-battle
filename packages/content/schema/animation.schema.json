@@ -3,7 +3,15 @@
   "$id": "https://aura-battle.dev/schema/animation.json",
   "title": "Aura Battle animation",
   "type": "object",
-  "required": ["id", "version", "name", "move", "loop", "hands", "frames"],
+  "required": [
+    "id",
+    "version",
+    "name",
+    "move",
+    "loop",
+    "hands",
+    "frames"
+  ],
   "additionalProperties": false,
   "$defs": {
     "joint": {
@@ -15,7 +23,19 @@
       "maxItems": 2
     },
     "jointName": {
-      "enum": ["head", "neck", "hip", "le", "lh", "re", "rh", "lk", "lf", "rk", "rf"]
+      "enum": [
+        "head",
+        "neck",
+        "hip",
+        "le",
+        "lh",
+        "re",
+        "rh",
+        "lk",
+        "lf",
+        "rk",
+        "rf"
+      ]
     },
     "hand": {
       "type": "array",
@@ -23,22 +43,49 @@
       "maxItems": 2,
       "prefixItems": [
         {
-          "enum": ["relax", "fist", "open", "point", "L", "peace"]
+          "enum": [
+            "relax",
+            "fist",
+            "open",
+            "point",
+            "L",
+            "peace"
+          ]
         },
         {
-          "enum": ["in", "up", "down", "fwd", "back"]
+          "enum": [
+            "in",
+            "up",
+            "down",
+            "fwd",
+            "back"
+          ]
         }
       ]
     },
     "frame": {
       "type": "object",
-      "required": ["joints"],
+      "required": [
+        "joints"
+      ],
       "additionalProperties": false,
       "properties": {
         "joints": {
           "type": "object",
           "additionalProperties": false,
-          "required": ["head", "neck", "hip", "le", "lh", "re", "rh", "lk", "lf", "rk", "rf"],
+          "required": [
+            "head",
+            "neck",
+            "hip",
+            "le",
+            "lh",
+            "re",
+            "rh",
+            "lk",
+            "lf",
+            "rk",
+            "rf"
+          ],
           "properties": {
             "head": {
               "$ref": "#/$defs/joint"
@@ -113,7 +160,9 @@
     },
     "name": {
       "type": "object",
-      "required": ["fr"],
+      "required": [
+        "fr"
+      ],
       "additionalProperties": {
         "type": "string",
         "minLength": 1
@@ -121,35 +170,61 @@
     },
     "move": {
       "type": "object",
-      "required": ["style", "tier"],
+      "required": [
+        "style",
+        "tier"
+      ],
       "additionalProperties": false,
       "properties": {
         "style": {
-          "enum": ["calme", "hype", "provoc", "acrobatie", "prouesse", "system"]
+          "enum": [
+            "calme",
+            "hype",
+            "provoc",
+            "acrobatie",
+            "prouesse",
+            "system"
+          ]
         },
         "tier": {
-          "type": ["integer", "null"],
+          "type": [
+            "integer",
+            "null"
+          ],
           "minimum": 0,
           "maximum": 4
         }
       }
     },
     "rarity": {
-      "enum": ["default", "common", "rare", "epic", "legendary"]
+      "enum": [
+        "default",
+        "common",
+        "rare",
+        "epic",
+        "legendary"
+      ]
     },
     "framing": {
       "type": "object",
-      "required": ["shot"],
+      "required": [
+        "shot"
+      ],
       "additionalProperties": false,
       "properties": {
         "shot": {
-          "enum": ["body", "bust"]
+          "enum": [
+            "body",
+            "bust"
+          ]
         }
       }
     },
     "loop": {
       "type": "object",
-      "required": ["duration"],
+      "required": [
+        "duration"
+      ],
       "additionalProperties": false,
       "properties": {
         "duration": {
@@ -158,7 +233,10 @@
           "maximum": 12
         },
         "weights": {
-          "type": ["array", "null"],
+          "type": [
+            "array",
+            "null"
+          ],
           "items": {
             "type": "number",
             "exclusiveMinimum": 0
@@ -187,7 +265,14 @@
           "maximum": 0
         },
         "expression": {
-          "enum": ["neutral", "smug", "sad", "angry", "hurt", "joy"]
+          "enum": [
+            "neutral",
+            "smug",
+            "sad",
+            "angry",
+            "hurt",
+            "joy"
+          ]
         }
       }
     },
@@ -204,7 +289,10 @@
       "maxItems": 6,
       "items": {
         "type": "object",
-        "required": ["at", "accent"],
+        "required": [
+          "at",
+          "accent"
+        ],
         "additionalProperties": false,
         "properties": {
           "at": {
@@ -213,7 +301,11 @@
             "exclusiveMaximum": 1
           },
           "accent": {
-            "enum": ["whoosh", "impact", "hold"]
+            "enum": [
+              "whoosh",
+              "impact",
+              "hold"
+            ]
           }
         }
       }
@@ -233,6 +325,12 @@
       "items": {
         "$ref": "#/$defs/frame"
       }
+    },
+    "icon": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 16,
+      "description": "Pictogramme de la pose sur sa carte en duel. Obligatoire pour une pose de mouvement."
     }
   }
 }

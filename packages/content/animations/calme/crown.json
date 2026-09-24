@@ -4,6 +4,7 @@
   "name": {
     "fr": "Mains en couronne"
   },
+  "icon": "👑",
   "move": {
     "style": "calme",
     "tier": 2

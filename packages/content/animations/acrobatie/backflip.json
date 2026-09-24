@@ -4,6 +4,7 @@
   "name": {
     "fr": "Salto arrière"
   },
+  "icon": "🔄",
   "move": {
     "style": "acrobatie",
     "tier": 4

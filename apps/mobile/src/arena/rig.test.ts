@@ -169,6 +169,7 @@ const animation = (rot: number, pitch = 0): Animation =>
     id: 'anim.test',
     version: 1,
     name: { fr: 'Test' },
+    icon: '✨',
     move: { style: 'calme', tier: 0 },
     loop: { duration: 1 },
     hands: [
@@ -497,8 +498,14 @@ describe('bras et epaules', () => {
         for (const [bone, from] of bones) {
           // Les extremites d'un os : son milieu, plus ou moins la moitie de sa
           // longueur le long de son axe local y.
-          tip.set(0, bone.scale.y / 2, 0).applyQuaternion(bone.quaternion).add(bone.position);
-          base.set(0, -bone.scale.y / 2, 0).applyQuaternion(bone.quaternion).add(bone.position);
+          tip
+            .set(0, bone.scale.y / 2, 0)
+            .applyQuaternion(bone.quaternion)
+            .add(bone.position);
+          base
+            .set(0, -bone.scale.y / 2, 0)
+            .applyQuaternion(bone.quaternion)
+            .add(bone.position);
           for (let k = 0; k <= 10; k++) {
             const f = from + ((1 - from) * k) / 10;
             point.lerpVectors(base, tip, f).applyMatrix4(inverse);
