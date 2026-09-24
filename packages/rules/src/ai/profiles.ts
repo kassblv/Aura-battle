@@ -34,6 +34,11 @@ export interface AiProfile {
   readonly aggression: number;
   /** Le debutant ne sait pas encore se servir de l'Ultime. */
   readonly usesUltimate: boolean;
+  /**
+   * Probabilite de viser sa carte brillante quand elle est abordable.
+   * Absent : 0,35, une manche sur trois environ.
+   */
+  readonly shinyAppetite?: number;
 }
 
 export const AI_PROFILES: Readonly<Record<AiProfileId, AiProfile>> = Object.freeze({
@@ -194,7 +199,12 @@ export interface AiChoiceContext {
   /** Styles joues par l'adversaire, du plus ancien au plus recent. */
   readonly opponentStyles: readonly Style[];
   readonly round: number;
+  /** La case brillante de l'IA pour cette manche, si le moteur l'a tiree. */
+  readonly shiny?: Move;
 }
+
+/** Appetit par defaut pour la carte brillante. */
+const DEFAULT_SHINY_APPETITE = 0.35;
 
 const TIERS: readonly Tier[] = [0, 1, 2, 3, 4];
 
@@ -314,6 +324,20 @@ export function affordableChoice(
 
 export function decideChoice(context: AiChoiceContext, config: BalanceConfig = BALANCE): Choice {
   const { profile, rng, energy, previousMoves, opponentStyles } = context;
+  const useUltimate = profile.usesUltimate && context.ultimateGauge >= config.ultimate.gaugeMax;
+
+  // La carte brillante : viser sa case une manche sur trois, si elle est
+  // abordable. Le reste du budget va a l'amplificateur.
+  const shiny = context.shiny;
+  if (
+    shiny !== undefined &&
+    config.tierCost[shiny.tier] <= energy &&
+    rng.chance(profile.shinyAppetite ?? DEFAULT_SHINY_APPETITE)
+  ) {
+    const budget = Math.min(energy, Math.round(config.maxRoundCost * profile.aggression));
+    const extra = Math.max(0, Math.min(4, budget - config.tierCost[shiny.tier])) as AmplifierLevel;
+    return { move: shiny, amplifier: extra, useUltimate };
+  }
 
   const lastOpponentStyle = opponentStyles.at(-1);
   const style: Style =
@@ -329,9 +353,5 @@ export function decideChoice(context: AiChoiceContext, config: BalanceConfig = B
 
   const { move, amplifier } = fitChoice(style, desiredTier, spend, previousMoves, config);
 
-  return {
-    move,
-    amplifier,
-    useUltimate: profile.usesUltimate && context.ultimateGauge >= config.ultimate.gaugeMax,
-  };
+  return { move, amplifier, useUltimate };
 }

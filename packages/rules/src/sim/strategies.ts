@@ -12,7 +12,7 @@ import type { AmplifierLevel, Choice, Move, Style, Tier } from '../types.js';
  * mesuree soit la politique de choix.
  */
 
-export type StrategyId = 'random' | 'greedy' | 'counter' | 'thrifty' | 'allin';
+export type StrategyId = 'random' | 'greedy' | 'counter' | 'thrifty' | 'allin' | 'shinyChaser';
 
 export const STRATEGY_IDS: readonly StrategyId[] = [
   'random',
@@ -20,6 +20,7 @@ export const STRATEGY_IDS: readonly StrategyId[] = [
   'counter',
   'thrifty',
   'allin',
+  'shinyChaser',
 ];
 
 export interface StrategyContext {
@@ -31,6 +32,8 @@ export interface StrategyContext {
   readonly round: number;
   readonly roundsWon: number;
   readonly opponentRoundsWon: number;
+  /** La case brillante du siege pour cette manche (docs/01). */
+  readonly shiny?: Move;
 }
 
 /**
@@ -118,6 +121,16 @@ export const STRATEGIES: Readonly<Record<StrategyId, Strategy>> = Object.freeze(
     style: context.rng.pick(config.styles),
     spend: context.round >= config.match.maxRounds ? context.energy : 2,
   })),
+
+  // Joue sa brillante des qu'il le peut : teste que la chance ne domine pas
+  // la lecture (elle doit rester sous le contre-picker).
+  shinyChaser: build('shinyChaser', 'Chasseur de brillantes', (context, config) => {
+    const shiny = context.shiny;
+    if (shiny !== undefined && config.tierCost[shiny.tier] <= context.energy) {
+      return { style: shiny.style, spend: shiny.tier };
+    }
+    return { style: context.rng.pick(config.styles), spend: 4 };
+  }),
 
   // Mise tout sur la premiere manche, puis subit : teste la variance extreme.
   allin: build('allin', 'Tout sur une manche', (context, config) => ({

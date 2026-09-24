@@ -8,9 +8,9 @@ import { STRATEGIES, STRATEGY_IDS, type StrategyId } from './strategies.js';
 import { runTournament, simulateMatch, simulateProfileMatch } from './simulate.js';
 
 describe('STRATEGIES', () => {
-  it('expose les cinq strategies de la roadmap', () => {
+  it('expose les strategies de la roadmap et le chasseur de brillantes', () => {
     expect([...STRATEGY_IDS].sort()).toEqual(
-      ['allin', 'counter', 'greedy', 'random', 'thrifty'].sort(),
+      ['allin', 'counter', 'greedy', 'random', 'thrifty', 'shinyChaser'].sort(),
     );
   });
 
@@ -233,5 +233,22 @@ describe('runTournament', () => {
     expect(runTournament({ matches: 40, seed: 'stable' })).toEqual(
       runTournament({ matches: 40, seed: 'stable' }),
     );
+  });
+});
+
+describe('STRATEGIES — carte brillante', () => {
+  it('fait jouer sa brillante au chasseur de brillantes quand il en a les moyens', () => {
+    const choice = STRATEGIES.shinyChaser.decideChoice({
+      rng: createRng('chasseur'),
+      energy: BALANCE.match.startingEnergy,
+      ultimateGauge: 0,
+      previousMoves: [],
+      opponentStyles: [],
+      round: 1,
+      roundsWon: 0,
+      opponentRoundsWon: 0,
+      shiny: { style: 'prouesse', tier: 3 },
+    });
+    expect(choice.move).toEqual({ style: 'prouesse', tier: 3 });
   });
 });

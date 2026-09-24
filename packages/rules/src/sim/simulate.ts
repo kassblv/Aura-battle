@@ -172,6 +172,7 @@ export function simulateMatch(
               round: current.round,
               roundsWon: current.seats[seat].roundsWon,
               opponentRoundsWon: current.seats[opponent].roundsWon,
+              ...(current.roundContext === null ? {} : { shiny: current.roundContext.shiny[seat] }),
             },
             config,
           );

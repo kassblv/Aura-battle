@@ -364,3 +364,35 @@ describe('affordableChoice — rabattre un choix impayable', () => {
     expect(rabattu.move).not.toEqual({ style: 'calme', tier: 2 });
   });
 });
+
+describe('decideChoice — carte brillante', () => {
+  const shiny = { style: 'acrobatie', tier: 2 } as const;
+  const play = (appetite: number, energy: number): number => {
+    const rng = createRng(`brillante-${String(appetite)}-${String(energy)}`);
+    let hits = 0;
+    for (let i = 0; i < 300; i += 1) {
+      const choice = decideChoice({
+        ...baseContext,
+        energy,
+        profile: { ...AI_PROFILES.calm, shinyAppetite: appetite },
+        rng,
+        shiny,
+      });
+      if (choice.move.style === shiny.style && choice.move.tier === shiny.tier) hits += 1;
+    }
+    return hits;
+  };
+
+  it('vise sa brillante selon son appetit, quand il en a les moyens', () => {
+    expect(play(1, 14)).toBe(300);
+    expect(play(0, 14)).toBeLessThan(300 * 0.1);
+  });
+
+  it('ne la vise pas quand elle est trop chere', () => {
+    expect(play(1, 1)).toBe(0);
+  });
+
+  it('a un appetit par defaut de 0,35', () => {
+    expect(AI_PROFILES.calm.shinyAppetite ?? 0.35).toBe(0.35);
+  });
+});

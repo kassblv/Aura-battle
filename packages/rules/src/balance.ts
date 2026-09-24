@@ -34,6 +34,12 @@ export interface BalanceConfig {
   readonly styles: readonly Style[];
   /** Pour chaque famille, les deux qu'elle bat. */
   readonly styleBeats: Readonly<Record<Style, readonly Style[]>>;
+  /**
+   * La carte brillante (docs/01) : une case tiree par siege et par manche.
+   * La jouer multiplie le score de la manche. Plus faible qu'un contre, pour
+   * que la chance ne domine jamais la lecture.
+   */
+  readonly shiny: { readonly multiplier: number };
   readonly counter: {
     readonly winnerMultiplier: number;
     readonly loserMultiplier: number;
@@ -136,6 +142,7 @@ export const BALANCE: BalanceConfig = deepFreeze({
     acrobatie: ['prouesse', 'hype'],
     prouesse: ['calme', 'provoc'],
   },
+  shiny: { multiplier: 1.2 },
   counter: {
     winnerMultiplier: 1.35,
     loserMultiplier: 0.85,

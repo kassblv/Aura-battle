@@ -22,7 +22,11 @@ import {
   type Move,
   type Seat,
   type Style,
+  type Tier,
 } from './types.js';
+
+/** Les cinq paliers, pour tirer une case brillante. */
+const TIERS: readonly Tier[] = [0, 1, 2, 3, 4];
 
 /**
  * Machine d'etat d'un match (docs/01-game-design.md §1, §8, §9 ; ADR 0005).
@@ -94,6 +98,11 @@ export interface RoundContext {
   readonly gauge: GaugeParams;
   /** Style joue d'office par qui ne verrouille pas a temps (§9). */
   readonly defaultStyle: Style;
+  /**
+   * La case brillante de chaque siege (docs/01). Secrete jusqu'a la
+   * revelation : chaque siege n'apprend que la sienne.
+   */
+  readonly shiny: Readonly<Record<Seat, Move>>;
 }
 
 export interface MatchResult {
@@ -187,9 +196,20 @@ const initialSeat = (config: BalanceConfig): SeatState => ({
   idleRounds: 0,
 });
 
+/** Une case tiree au sort, famille puis palier, dans un flux propre au siege. */
+function drawShiny(seed: string, round: number, seat: Seat, config: BalanceConfig): Move {
+  const rng = createRng(deriveSeed(seed, 'shiny', round, seat));
+  return { style: rng.pick(config.styles), tier: rng.pick(TIERS) };
+}
+
 /** Prepare les tirages d'une manche. Chaque usage a son propre flux (voir deriveSeed). */
-function buildRoundContext(seed: string, round: number, config: BalanceConfig): RoundContext {
+export function buildRoundContext(
+  seed: string,
+  round: number,
+  config: BalanceConfig,
+): RoundContext {
   return {
+    shiny: { a: drawShiny(seed, round, 'a', config), b: drawShiny(seed, round, 'b', config) },
     orbs: generateOrbSequence(createRng(deriveSeed(seed, 'orbs', round)), config),
     gauge: generateGaugeParams(createRng(deriveSeed(seed, 'gauge', round)), config),
     defaultStyle: createRng(deriveSeed(seed, 'default', round)).pick(config.styles),
@@ -306,6 +326,7 @@ function resolveCurrentRound(state: MatchState, atMs: number, config: BalanceCon
       timing: evaluateTiming(locked?.timingTapAtMs ?? null, context.gauge, config),
       boostPercent: state.pending[seat].boostPercent,
       previousMoves: state.seats[seat].moves,
+      shiny: context.shiny[seat],
     };
   };
 

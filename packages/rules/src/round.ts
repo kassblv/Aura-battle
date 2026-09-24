@@ -18,6 +18,8 @@ export interface RoundSeatInput {
   readonly boostPercent: number;
   /** Mouvements deja joues par ce siege dans le match, pour detecter la repetition. */
   readonly previousMoves: readonly Move[];
+  /** La case brillante de ce siege pour la manche, ou `null` (docs/01). */
+  readonly shiny: Move | null;
 }
 
 export interface RoundSeatOutcome {
@@ -40,6 +42,8 @@ export interface RoundSeatOutcome {
   readonly wasCountered: boolean;
   /** Avait le style gagnant, mais l'Ultime adverse a annule son contre. */
   readonly counterBlocked: boolean;
+  /** Le siege a joue sa case brillante : son score a ete multiplie. */
+  readonly shiny: boolean;
   /**
    * A depense son Ultime dans cette manche.
    *
@@ -115,12 +119,17 @@ export function resolveRound(
     counterBlocked: boolean,
   ): Omit<RoundSeatOutcome, 'ultimateGain'> => {
     const repeated = isRepeat(seat.choice.move, seat.previousMoves);
+    const shiny =
+      seat.shiny !== null &&
+      seat.shiny.style === seat.choice.move.style &&
+      seat.shiny.tier === seat.choice.move.tier;
     const base =
       config.tierPower[seat.choice.move.tier] *
       config.amplifierMultiplier[seat.choice.amplifier] *
       seat.timing.multiplier *
       (repeated ? config.repeatMultiplier : 1) *
       (seat.choice.useUltimate ? config.ultimate.multiplier : 1) *
+      (shiny ? config.shiny.multiplier : 1) *
       (1 + seat.boostPercent / 100);
     const final =
       base *
@@ -136,6 +145,7 @@ export function resolveRound(
       wasCountered: isCountered,
       counterBlocked,
       usedUltimate: seat.choice.useUltimate,
+      shiny,
       energySpent: choiceCost(seat.choice, config),
     };
   };

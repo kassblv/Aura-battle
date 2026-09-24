@@ -1,6 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from './balance.js';
+import { buildRoundContext } from './match.js';
 import { createMatch, reduce, type MatchEvent, type MatchState, type MatchStep } from './match.js';
 import type { Choice, Seat } from './types.js';
 
@@ -750,5 +751,41 @@ describe('amplificateurs joues', () => {
     expect(step.state.seats.a.amplifiers).toEqual([2]);
     expect(step.state.seats.b.amplifiers).toHaveLength(1);
     expect(step.state.seats.b.amplifiers.length).toBe(step.state.seats.b.moves.length);
+  });
+});
+
+describe('carte brillante — tirage', () => {
+  it('est deterministe par graine et par manche', () => {
+    fc.assert(
+      fc.property(fc.string(), fc.integer({ min: 1, max: 3 }), (seed, round) => {
+        expect(buildRoundContext(seed, round, BALANCE).shiny).toEqual(
+          buildRoundContext(seed, round, BALANCE).shiny,
+        );
+      }),
+    );
+  });
+
+  it('couvre les 25 cases, a peu pres uniformement', () => {
+    const counts = new Map<string, number>();
+    for (let i = 0; i < 5_000; i += 1) {
+      const { a } = buildRoundContext(`graine-${String(i)}`, 1, BALANCE).shiny;
+      const key = `${a.style}.${String(a.tier)}`;
+      counts.set(key, (counts.get(key) ?? 0) + 1);
+    }
+    expect(counts.size).toBe(25);
+    for (const [key, count] of counts) {
+      expect(count / 5_000, key).toBeGreaterThan(0.02);
+      expect(count / 5_000, key).toBeLessThan(0.06);
+    }
+  });
+
+  it('tire les deux sieges independamment', () => {
+    let same = 0;
+    for (let i = 0; i < 2_000; i += 1) {
+      const { a, b } = buildRoundContext(`g-${String(i)}`, 2, BALANCE).shiny;
+      if (a.style === b.style && a.tier === b.tier) same += 1;
+    }
+    // Independants : environ 1 fois sur 25.
+    expect(same / 2_000).toBeLessThan(0.08);
   });
 });

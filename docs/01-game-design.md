@@ -80,6 +80,26 @@ En gras : la pose offerte. 39 poses au total, 25 offertes et 14 variantes. Voir
 Chaque famille garde sa voix : `calme` est posé et maîtrisé, `hype` explose,
 `provoc` nargue, `acrobatie` vole, `prouesse` montre sa force.
 
+### Carte brillante ✨
+
+À chaque manche, le serveur tire au sort **une case** (famille × palier) pour
+**chaque joueur**, séparément et uniformément parmi les 25 cases (graine du
+match, flux `shiny`).
+
+- Jouer une pose de sa case brillante multiplie le score de la manche par
+  **×1,2** (`BALANCE.shiny.multiplier`). Le facteur s'ajoute aux autres, avant
+  les contres.
+- Chaque joueur n'apprend que **sa** case, dans son `choice:start`. L'adversaire
+  sait seulement qu'une brillante existe quelque part. Les deux sont révélées
+  dans `round:result`.
+- **Égalité** : même tirage pour tous, rien à acheter, et chaque case a une pose
+  offerte (règle d'or n°3).
+- ×1,2 reste en dessous d'un contre (×1,35 / ×0,85). En simulation, jouer
+  systématiquement sa brillante gagne 40 % des matchs, contre 67 % pour lire
+  l'adversaire (`docs/balance/2026-09-24-carte-brillante.md`).
+- L'IA vise sa brillante une manche sur trois quand elle est abordable
+  (`shinyAppetite`).
+
 ## 3. Amplificateurs d'aura
 
 L'amplificateur s'affiche sous le nom de son effet offert — il n'a pas de nom

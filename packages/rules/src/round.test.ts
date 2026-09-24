@@ -20,6 +20,7 @@ const seat = (options: {
   useUltimate?: boolean;
   boostPercent?: number;
   previousMoves?: readonly Move[];
+  shiny?: Move | null;
 }): RoundSeatInput => ({
   choice: {
     move: { style: options.style, tier: options.tier },
@@ -29,6 +30,7 @@ const seat = (options: {
   timing: timing(options.quality ?? 'perfect', options.delta ?? 0),
   boostPercent: options.boostPercent ?? 0,
   previousMoves: options.previousMoves ?? [],
+  shiny: options.shiny ?? null,
 });
 
 describe('choiceCost (§3)', () => {
@@ -506,6 +508,41 @@ describe('resolveRound — cinq familles', () => {
         });
         expect(result.seats.a.countered || result.seats.b.countered, `${a} contre ${b}`).toBe(true);
       }
+    }
+  });
+});
+
+describe('resolveRound — carte brillante', () => {
+  it('multiplie par 1,2 le score de qui joue exactement sa case brillante', () => {
+    const plain = resolveRound({
+      a: seat({ style: 'hype', tier: 2 }),
+      b: seat({ style: 'hype', tier: 0 }),
+    });
+    const shiny = resolveRound({
+      a: seat({ style: 'hype', tier: 2, shiny: { style: 'hype', tier: 2 } }),
+      b: seat({ style: 'hype', tier: 0 }),
+    });
+    expect(BALANCE.shiny.multiplier).toBe(1.2);
+    expect(shiny.seats.a.score).toBe(Math.round(plain.seats.a.score * 1.2));
+    expect(shiny.seats.a.shiny).toBe(true);
+    expect(shiny.seats.b.shiny).toBe(false);
+  });
+
+  it('ne change rien pour une autre case, meme famille ou meme palier', () => {
+    const plain = resolveRound({
+      a: seat({ style: 'hype', tier: 2 }),
+      b: seat({ style: 'calme', tier: 0 }),
+    });
+    for (const shiny of [
+      { style: 'hype', tier: 3 },
+      { style: 'provoc', tier: 2 },
+    ] as const) {
+      const result = resolveRound({
+        a: seat({ style: 'hype', tier: 2, shiny }),
+        b: seat({ style: 'calme', tier: 0 }),
+      });
+      expect(result.seats.a.score).toBe(plain.seats.a.score);
+      expect(result.seats.a.shiny).toBe(false);
     }
   });
 });
