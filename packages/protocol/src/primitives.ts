@@ -73,6 +73,13 @@ export const opponentCosmeticsSchema = z.strictObject({
   auraEffect: contentIdSchema.optional(),
   outfit: contentIdSchema.optional(),
   hair: contentIdSchema.optional(),
+  /**
+   * La danse signature : jouee a la victoire, d une manche comme du match.
+   *
+   * Publique au meme titre qu une tenue — elle ne depend d aucun choix de
+   * manche, donc l annoncer a l ouverture ne dit rien de ce qui sera joue.
+   */
+  signature: contentIdSchema.optional(),
 });
 
 export const timingQualitySchema = z.enum(['perfect', 'good', 'miss']);

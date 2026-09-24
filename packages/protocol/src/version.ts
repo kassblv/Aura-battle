@@ -21,7 +21,15 @@
   Un champ AJOUTE : un client qui l'ignore continue de fonctionner, donc pas
   de rupture majeure.
 */
-export const PROTOCOL_VERSION = '1.2.0';
+/*
+  1.3.0 — la danse signature.
+
+  `loadout.signature` et `opponent.cosmetics.signature` sont AJOUTES, et
+  facultatifs : un client 1.2 les ignore et joue la victoire du systeme, un
+  serveur 1.2 ne les envoie pas et le client retombe sur la meme. Pas de
+  rupture majeure.
+*/
+export const PROTOCOL_VERSION = '1.3.0';
 
 const MAJOR = /^(\d+)\./;
 

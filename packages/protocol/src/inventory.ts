@@ -39,6 +39,13 @@ export const loadoutSchema = z.strictObject({
     .record(z.string().min(1).max(32), itemIdSchema)
     .refine((table) => Object.keys(table).length <= 64, 'trop de danses equipees')
     .optional(),
+  /**
+   * La danse signature, jouee a la victoire et vue par l adversaire.
+   *
+   * Un emplacement a part, pas une entree de `dances` : elle ne depend d aucun
+   * mouvement — on la rejoue quand on gagne, quel que soit le coup qui a gagne.
+   */
+  signature: itemIdSchema.optional(),
 });
 
 export const inventoryStateSchema = z.strictObject({

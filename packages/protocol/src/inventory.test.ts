@@ -50,6 +50,20 @@ describe('equipement', () => {
     ).toBe(true);
   });
 
+  /*
+    La danse signature : celle que le joueur rejoue quand il gagne, et que
+    l'adversaire voit. Un identifiant de contenu, rien de plus — la possession
+    se verifie cote serveur.
+  */
+  it('accepte une danse signature', () => {
+    expect(parseInventoryEquipRequest({ signature: 'anim.hype.t2.floss' }).success).toBe(true);
+  });
+
+  it('refuse une signature qui n est pas un identifiant borne', () => {
+    expect(parseInventoryEquipRequest({ signature: '' }).success).toBe(false);
+    expect(parseInventoryEquipRequest({ signature: 'x'.repeat(65) }).success).toBe(false);
+  });
+
   it('refuse un emplacement inconnu', () => {
     expect(parseInventoryEquipRequest({ arme: 'epee.legendaire' }).success).toBe(false);
   });

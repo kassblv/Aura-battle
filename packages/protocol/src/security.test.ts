@@ -105,6 +105,19 @@ describe('cosmetiques — le registre sortant n a plus de conteneur ouvert', () 
     ).toBe(true);
   });
 
+  it('accepte la danse signature de l adversaire', () => {
+    expect(
+      parseServerMessage('match:found', found({ signature: 'anim.hype.t3.griddy' })).success,
+    ).toBe(true);
+  });
+
+  it('refuse une signature qui n est pas un identifiant de contenu', () => {
+    expect(
+      parseServerMessage('match:found', found({ signature: 'anim.hype.t3.griddy\n{"mmr":1}' }))
+        .success,
+    ).toBe(false);
+  });
+
   it('refuse qu on y deverse le profil complet de l adversaire', () => {
     // Le scenario exact que le garde-fou doit attraper : un bug qui etale
     // `{ ...opponentProfile }` dans un champ ouvert.
