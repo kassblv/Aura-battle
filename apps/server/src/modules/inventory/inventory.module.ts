@@ -6,6 +6,7 @@ import { InventoryService } from './application/inventory.js';
 import { InventoryRateLimit } from './application/inventory-rate-limit.js';
 import { InventoryController } from './adapters/inventory.controller.js';
 import { PrismaInventoryRepository } from './adapters/prisma-inventory.repository.js';
+import { InventoryStoreModule } from './inventory-store.module.js';
 import { INVENTORY_CHANGES, type InventoryChanges } from './domain/ports.js';
 import { MatchModule } from '../match/match.module.js';
 
@@ -21,10 +22,11 @@ import { MatchModule } from '../match/match.module.js';
 @Module({
   // `MatchModule` pour une seule chose : l'ecoute des changements, qu'il
   // realise. L'inventaire ne connait que le port — il previent, sans savoir qui.
-  imports: [AuthModule, MatchModule],
+  // `InventoryStoreModule` : le depot, partage avec `MatchModule` plutot que
+  // construit une seconde fois (et son catalogue garde une seconde fois).
+  imports: [AuthModule, MatchModule, InventoryStoreModule],
   controllers: [InventoryController],
   providers: [
-    PrismaInventoryRepository,
     {
       provide: InventoryService,
       inject: [PrismaInventoryRepository, SystemClock, INVENTORY_CHANGES, PinoLoggerService],

@@ -39,6 +39,7 @@ import { PrismaPlayerDirectory } from './adapters/prisma-directory.js';
 import { ChallengeService } from '../challenges/application/challenges.js';
 import { ChallengesModule } from '../challenges/challenges.module.js';
 import { PrismaInventoryRepository } from '../inventory/adapters/prisma-inventory.repository.js';
+import { InventoryStoreModule } from '../inventory/inventory-store.module.js';
 import { INVENTORY_CHANGES } from '../inventory/domain/ports.js';
 import { wardrobeFromInventory, WearingRefresh } from './application/wearing.js';
 import { PLAYER_DIRECTORY } from './domain/directory.js';
@@ -71,7 +72,9 @@ import { MatchRuntime } from './application/match-runtime.js';
 const MATCH_GAUGES = Symbol('MATCH_GAUGES');
 
 @Module({
-  imports: [AuthModule, RedisModule, ChallengesModule],
+  // `InventoryStoreModule` : le depot d'inventaire, en un seul exemplaire
+  // partage avec `InventoryModule` — donc un seul cache du catalogue.
+  imports: [AuthModule, RedisModule, ChallengesModule, InventoryStoreModule],
   controllers: [LeaderboardController],
   providers: [
     {
@@ -229,7 +232,6 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
           challenges,
         ),
     },
-    PrismaInventoryRepository,
     /**
      * Ce que porte un joueur, lu a sa connexion.
      *
