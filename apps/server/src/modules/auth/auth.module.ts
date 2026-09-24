@@ -2,7 +2,11 @@ import { Module } from '@nestjs/common';
 import { JwtModule, JwtService } from '@nestjs/jwt';
 import { CONFIG, type ServerConfig } from '../../shared/config.js';
 import { SystemClock } from '../../shared/clock.js';
+import { PinoLoggerService } from '../../shared/logger.js';
 import { PrismaService } from '../../shared/prisma.service.js';
+import { RedisModule } from '../../shared/redis.module.js';
+import { RedisService } from '../../shared/redis.js';
+import { Argon2PasswordHasher } from './adapters/argon2-password-hasher.js';
 import { AuthController } from './adapters/auth.controller.js';
 import { JwtAccessTokenSigner } from './adapters/jwt-signer.js';
 import { JwtAccessTokenVerifier } from './adapters/jwt-verifier.js';
@@ -10,6 +14,8 @@ import {
   PrismaPlayerRepository,
   PrismaRefreshTokenRepository,
 } from './adapters/prisma-repositories.js';
+import { RedisAttemptLimiter } from './adapters/redis-attempt-limiter.js';
+import { EmailAuthService, LIMITS } from './application/email.js';
 import { ProfileService } from './application/profile.js';
 import { RecoveryService } from './application/recovery.js';
 import { SessionService } from './application/session.js';
@@ -25,6 +31,8 @@ import { SocketAuthenticator } from './application/socket-auth.js';
  */
 @Module({
   imports: [
+    // La limite de tentatives de connexion vit dans Redis (ADR 0013).
+    RedisModule,
     JwtModule.registerAsync({
       inject: [CONFIG],
       useFactory: (config: ServerConfig) => ({
@@ -58,6 +66,23 @@ import { SocketAuthenticator } from './application/socket-auth.js';
       provide: RecoveryService,
       inject: [PrismaPlayerRepository],
       useFactory: (players: PrismaPlayerRepository) => new RecoveryService({ players }),
+    },
+    {
+      provide: EmailAuthService,
+      inject: [PrismaPlayerRepository, RecoveryService, RedisService, PinoLoggerService],
+      useFactory: (
+        players: PrismaPlayerRepository,
+        recovery: RecoveryService,
+        redis: RedisService,
+        logger: PinoLoggerService,
+      ) =>
+        new EmailAuthService({
+          identities: players,
+          hasher: new Argon2PasswordHasher(),
+          limiter: new RedisAttemptLimiter(redis.client, LIMITS.windowMs),
+          recovery,
+          log: { warn: (message) => logger.warn(message, 'EmailAuthService') },
+        }),
     },
     // Jeton nomme : le controleur depend du **port**, pas de l'implementation
     // JWT. Remplacer la verification ne demanderait de toucher qu'ici.

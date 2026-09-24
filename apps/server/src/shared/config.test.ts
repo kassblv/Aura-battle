@@ -157,3 +157,17 @@ describe('administration', () => {
     expect(() => loadConfig({ ...validEnv, ADMIN_TOKEN: 'court' })).toThrow(ConfigError);
   });
 });
+
+describe('trustProxy', () => {
+  it('ne croit aucun mandataire par defaut', () => {
+    // Sans mandataire, `X-Forwarded-For` est ecrit par le client : le croire
+    // lui laisserait choisir son adresse, donc son compteur de tentatives.
+    expect(loadConfig({ ...validEnv }).trustProxy).toBe('');
+  });
+
+  it('lit la liste des mandataires, rognee', () => {
+    expect(loadConfig({ ...validEnv, TRUST_PROXY: ' uniquelocal ' }).trustProxy).toBe(
+      'uniquelocal',
+    );
+  });
+});

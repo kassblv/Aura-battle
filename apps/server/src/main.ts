@@ -102,7 +102,15 @@ async function bootstrap(): Promise<void> {
   loadDotEnv();
   const config = loadConfig(process.env);
 
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+  /*
+    Les mandataires de confiance (voir `trustProxy` dans la configuration).
+    C'est ce reglage qui donne a `request.ip` l'adresse du joueur plutot que
+    celle de Traefik, et la limite de tentatives de connexion en depend.
+  */
+  const adapter = new FastifyAdapter({
+    trustProxy: config.trustProxy === '' ? false : config.trustProxy,
+  });
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     bufferLogs: true,
   });
 

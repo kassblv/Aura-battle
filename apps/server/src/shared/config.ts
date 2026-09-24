@@ -146,6 +146,26 @@ const configSchema = z.object({
     .string()
     .default('')
     .transform((raw) => raw.trim()),
+  /**
+   * Adresses des mandataires de confiance devant ce serveur.
+   *
+   * La limite de tentatives de connexion compte **par adresse IP**. Derriere
+   * Traefik, l'adresse vue par la socket est celle de Traefik : sans ce
+   * reglage, tous les joueurs du monde partageraient un seul compteur, et vingt
+   * fautes de frappe fermeraient la connexion par email a tout le monde.
+   *
+   * Des adresses et non un nombre de sauts : Fastify 5 refuse desormais de
+   * croire un nombre de sauts (il ne verifie pas QUI parle), et `true`
+   * croirait `X-Forwarded-For` en entier, dont la partie gauche est ecrite par
+   * le client — un bot changerait d'adresse a chaque requete. On croit donc
+   * les mandataires **par leur adresse** (syntaxe `proxy-addr` : `loopback`,
+   * `uniquelocal`, des CIDR separes par des virgules), et seulement eux.
+   * Vide (defaut) : pas de mandataire, c'est la socket qui fait foi.
+   */
+  trustProxy: z
+    .string()
+    .default('')
+    .transform((raw) => raw.trim()),
   corsOrigins: z
     .string()
     .default('')
@@ -192,6 +212,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     adminToken: env.ADMIN_TOKEN,
     commit: env.SOURCE_COMMIT,
     clientDir: env.CLIENT_DIR,
+    trustProxy: env.TRUST_PROXY,
   });
 
   if (!parsed.success) {

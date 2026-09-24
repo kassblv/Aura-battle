@@ -22,6 +22,11 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - CLIENT_DIR=/repo/client
+      # Le Traefik de Coolify parle a l'app depuis le reseau Docker, donc depuis
+      # une adresse privee : on croit ces adresses-la, et seulement elles. Sans
+      # ce reglage tous les joueurs partageraient l'adresse IP de Traefik, donc
+      # un seul compteur de tentatives de connexion (ADR 0013).
+      - TRUST_PROXY=uniquelocal
       - DATABASE_URL=postgresql://aura:${SERVICE_PASSWORD_POSTGRES}@postgres:5432/aura
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${SERVICE_PASSWORD_JWT}

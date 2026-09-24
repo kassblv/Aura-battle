@@ -3,8 +3,13 @@ import {
   ConflictException,
   Body,
   Controller,
+  Get,
   Headers,
+  HttpCode,
+  HttpException,
+  HttpStatus,
   Inject,
+  Ip,
   Patch,
   Post,
   UnauthorizedException,
@@ -12,13 +17,18 @@ import {
 import {
   parseAuthDeviceLinkRequest,
   parseAuthDeviceRequest,
+  parseAuthEmailLinkRequest,
+  parseAuthEmailLoginRequest,
+  parseAuthEmailPasswordRequest,
   parseAuthRecoveryClaimRequest,
   parseAuthRefreshRequest,
   parseAuthRenameRequest,
+  type EmailStatusResponse,
   type RecoveryCodeResponse,
   type SessionResponse,
 } from '@aura/protocol';
 import { readBearer } from '../application/bearer.js';
+import { EmailAuthError, EmailAuthService } from '../application/email.js';
 import type { AccessTokenVerifier } from '../application/socket-auth.js';
 import { ProfileError, ProfileService } from '../application/profile.js';
 import { RecoveryError, RecoveryService } from '../application/recovery.js';
@@ -33,9 +43,10 @@ export interface ProfileResponse {
 /**
  * Routes d'authentification (docs/03, jalon M3).
  *
- * Deux routes, aucune inscription. Le corps des requetes est valide par les
- * schemas de `@aura/protocol` : la meme definition sert au client et au
- * serveur, donc les deux ne peuvent pas diverger.
+ * Aucune inscription obligatoire : on joue d'abord, on rattache ensuite une
+ * adresse ou un code si l'on veut retrouver son compte ailleurs. Le corps des
+ * requetes est valide par les schemas de `@aura/protocol` : la meme definition
+ * sert au client et au serveur, donc les deux ne peuvent pas diverger.
  */
 @Controller('auth')
 export class AuthController {
@@ -53,6 +64,7 @@ export class AuthController {
     @Inject(SessionService) private readonly sessions: SessionService,
     @Inject(ProfileService) private readonly profiles: ProfileService,
     @Inject(RecoveryService) private readonly recovery: RecoveryService,
+    @Inject(EmailAuthService) private readonly email: EmailAuthService,
     @Inject('ACCESS_TOKEN_VERIFIER') private readonly verifier: AccessTokenVerifier,
   ) {}
 
@@ -224,9 +236,130 @@ export class AuthController {
   }
 
   /**
+   * L'adresse rattachee au joueur connecte, masquee.
+   *
+   * Jamais en clair, jamais le hache : les Reglages n'ont besoin que de la
+   * reconnaitre, et un ecran se photographie.
+   */
+  @Get('email')
+  async emailStatus(
+    @Headers('authorization') authorization: string | undefined,
+  ): Promise<EmailStatusResponse> {
+    const playerId = await this.requirePlayer(authorization);
+    return this.email.status(playerId);
+  }
+
+  /**
+   * Rattache une adresse et un mot de passe au joueur connecte.
+   *
+   * Authentifiee : on ajoute une facon d'ouvrir CE compte, comme le code de
+   * recuperation. Une adresse deja prise rend `EMAIL_UNAVAILABLE`, sans dire
+   * par qui — et la route est bornee, puisque cette reponse est une
+   * information.
+   */
+  @Post('email/link')
+  async linkEmail(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: unknown,
+    @Ip() ip: string | undefined,
+  ): Promise<EmailStatusResponse> {
+    const playerId = await this.requirePlayer(authorization);
+    const parsed = parseAuthEmailLinkRequest(body);
+    if (!parsed.success) {
+      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
+    }
+    return this.emailCall(() =>
+      this.email.link(playerId, parsed.data.email, parsed.data.password, ip ?? ''),
+    );
+  }
+
+  /**
+   * Presente une adresse et un mot de passe, et ouvre la session du compte.
+   *
+   * **Non** authentifiee, comme `recovery/claim` : c'est la route de quelqu'un
+   * qui arrive sur un appareil neuf. La session est ouverte par le chemin
+   * habituel ; le client rattache ensuite son appareil par `device/link`,
+   * exactement comme apres un code de recuperation — sans quoi le
+   * rechargement suivant rouvrirait le compte invite local.
+   */
+  @Post('email/login')
+  @HttpCode(HttpStatus.OK)
+  async loginEmail(@Body() body: unknown, @Ip() ip: string | undefined): Promise<SessionResponse> {
+    const parsed = parseAuthEmailLoginRequest(body);
+    if (!parsed.success) {
+      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
+    }
+    const playerId = await this.emailCall(() =>
+      this.email.login(parsed.data.email, parsed.data.password, ip ?? ''),
+    );
+    return this.toResponse(() => this.sessions.openForPlayer(playerId));
+  }
+
+  /**
+   * Change le mot de passe, sur preuve de l'ancien ou du code de recuperation.
+   *
+   * Le code est le chemin du mot de passe oublie : aucun courrier ne part
+   * jamais. La session seule ne suffit pas — un telephone deverrouille pose sur
+   * une table ne doit pas suffire a changer un secret qui sert peut-etre
+   * ailleurs.
+   */
+  @Post('email/password')
+  @HttpCode(HttpStatus.OK)
+  async changePassword(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() body: unknown,
+  ): Promise<{ readonly changed: true }> {
+    const playerId = await this.requirePlayer(authorization);
+    const parsed = parseAuthEmailPasswordRequest(body);
+    if (!parsed.success) {
+      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
+    }
+    const { currentPassword, recoveryCode, newPassword } = parsed.data;
+    // Le schema garantit une preuve et une seule.
+    const proof =
+      currentPassword !== undefined ? { currentPassword } : { recoveryCode: recoveryCode ?? '' };
+    await this.emailCall(() => this.email.changePassword(playerId, proof, newPassword));
+    return { changed: true };
+  }
+
+  /**
+   * Traduit un refus du service email en reponse HTTP.
+   *
+   * Le `code` du corps est ce que le client lit pour choisir son message ;
+   * `INVALID_CREDENTIALS` y est le meme pour une adresse inconnue et un
+   * mauvais mot de passe.
+   */
+  private async emailCall<T>(run: () => Promise<T>): Promise<T> {
+    try {
+      return await run();
+    } catch (cause) {
+      if (!(cause instanceof EmailAuthError)) throw cause;
+      const code = cause.reason;
+      switch (code) {
+        case 'TOO_MANY_ATTEMPTS':
+          throw new HttpException(
+            { code, message: 'trop de tentatives, reessaie dans quinze minutes' },
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
+        case 'INVALID_CREDENTIALS':
+          throw new UnauthorizedException({ code, message: 'email ou mot de passe incorrect' });
+        case 'UNKNOWN_PLAYER':
+          throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'session invalide' });
+        case 'EMAIL_UNAVAILABLE':
+        case 'EMAIL_ALREADY_LINKED':
+        case 'EMAIL_NOT_LINKED':
+          throw new ConflictException({ code, message: code });
+        case 'PASSWORD_TOO_COMMON':
+        case 'PASSWORD_MATCHES_EMAIL':
+          throw new BadRequestException({ code, message: 'mot de passe refuse' });
+      }
+    }
+  }
+
+  /**
    * Lit le jeton d'une route authentifiee, ou refuse.
    *
-   * Extrait parce que deux routes en ont besoin. Signature, expiration, jeton
+   * Extrait parce que plusieurs routes en ont besoin. Signature, expiration, jeton
    * forge : la reponse est la meme — le client n'a pas a apprendre laquelle
    * des trois s'applique.
    */
