@@ -299,7 +299,12 @@ describe.skipIf(!reachable)('identite email, contre une vraie base', () => {
     await expect(repository.linkEmailIdentity(player.id, email, '$argon2id$un')).resolves.toBe(
       'LINKED',
     );
-    const expected = { playerId: player.id, email, secretHash: '$argon2id$un' };
+    const expected = {
+      playerId: player.id,
+      email,
+      secretHash: '$argon2id$un',
+      credentialsVersion: 0,
+    };
     await expect(repository.findByEmail(email)).resolves.toEqual(expected);
     await expect(repository.findEmailOf(player.id)).resolves.toEqual(expected);
     await expect(repository.findByEmail(newEmail())).resolves.toBeNull();
@@ -352,34 +357,54 @@ describe.skipIf(!reachable)('identite email, contre une vraie base', () => {
     ).toBe(1);
   });
 
-  it('change le hache sans toucher a l adresse ni aux autres identites', async () => {
+  it('change le hache, garde l adresse, et remplace le code de recuperation', async () => {
     const repository = buildRepository();
     const player = await newPlayer();
     const email = newEmail();
     await repository.linkEmailIdentity(player.id, email, '$argon2id$ancien');
-    await repository.setRecoveryIdentity(player.id, `hash_recovery_${randomUUID()}`);
+    const oldCode = `hash_recovery_${randomUUID()}`;
+    const newCode = `hash_recovery_${randomUUID()}`;
+    await repository.setRecoveryIdentity(player.id, oldCode);
 
     await expect(
-      repository.setPasswordHash(player.id, '$argon2id$nouveau', null, new Date()),
+      repository.setPasswordHash(player.id, '$argon2id$nouveau', null, new Date(), newCode),
     ).resolves.toBe(true);
     await expect(repository.findByEmail(email)).resolves.toEqual({
       playerId: player.id,
       email,
       secretHash: '$argon2id$nouveau',
+      credentialsVersion: 1,
     });
-    // Le code de recuperation garde un hache nul : la colonne n'appartient
-    // qu'aux identites email.
-    const recovery = await prisma!.authIdentity.findFirst({
+
+    /*
+      Quatrieme relecture (B2) : l'ancien code n'ouvre plus rien — un intrus
+      qui connaissait l'ancien mot de passe a pu se le faire delivrer. Le neuf,
+      pose dans la meme transaction, ouvre le compte ; il vient d'etre delivre,
+      donc il ne prouvera un changement de mot de passe qu'une heure plus tard.
+    */
+    await expect(repository.findRecoveryIdentity(oldCode)).resolves.toBeNull();
+    const fresh = await repository.findRecoveryIdentity(newCode);
+    expect(fresh?.player.id).toBe(player.id);
+    expect(Date.now() - fresh!.issuedAt.getTime()).toBeLessThan(60_000);
+    // Un seul code, et son hache de mot de passe reste nul : la colonne
+    // n'appartient qu'aux identites email.
+    const codes = await prisma!.authIdentity.findMany({
       where: { playerId: player.id, provider: 'RECOVERY' },
       select: { secretHash: true },
     });
-    expect(recovery?.secretHash).toBeNull();
+    expect(codes).toEqual([{ secretHash: null }]);
   });
 
   it('rend faux quand le joueur n a pas d adresse', async () => {
     const player = await newPlayer();
     await expect(
-      buildRepository().setPasswordHash(player.id, '$argon2id$x', null, new Date()),
+      buildRepository().setPasswordHash(
+        player.id,
+        '$argon2id$x',
+        null,
+        new Date(),
+        `hash_recovery_${randomUUID()}`,
+      ),
     ).resolves.toBe(false);
   });
 });
@@ -411,7 +436,13 @@ describe.skipIf(!reachable)('changer de mot de passe detache les appareils', () 
     await repository.setRecoveryIdentity(player.id, `hash_recovery_${randomUUID()}`);
 
     await expect(
-      repository.setPasswordHash(player.id, '$argon2id$b', hashSecret(mine), new Date()),
+      repository.setPasswordHash(
+        player.id,
+        '$argon2id$b',
+        hashSecret(mine),
+        new Date(),
+        `hash_recovery_${randomUUID()}`,
+      ),
     ).resolves.toBe(true);
 
     const sessions = realSessions(repository);
@@ -485,7 +516,13 @@ describe.skipIf(!reachable)('l intrus ne se reinstalle pas apres un changement',
     });
     expect(before.credentialsVersion).toBe(0);
 
-    await players.setPasswordHash(player.id, '$argon2id$b', hashSecret(secret), new Date());
+    await players.setPasswordHash(
+      player.id,
+      '$argon2id$b',
+      hashSecret(secret),
+      new Date(),
+      `hash_recovery_${randomUUID()}`,
+    );
     await expect(players.credentialsVersion(player.id)).resolves.toBe(1);
     expect((await tokens.findByHash(before.tokenHash))?.revokedAt).not.toBeNull();
   });
@@ -518,6 +555,7 @@ describe.skipIf(!reachable)('l intrus ne se reinstalle pas apres un changement',
       '$argon2id$b',
       hashSecret(secret),
       new Date(),
+      `hash_recovery_${randomUUID()}`,
     );
     const [refreshed] = await Promise.all([Promise.all(burst), change]);
 
@@ -582,7 +620,10 @@ describe.skipIf(!reachable)('la preuve d appareil ne se fabrique pas', () => {
       identities: players,
       hasher: fakePasswordHasher().hasher,
       limiter: new MemoryAttemptLimiter({ windowMs: 60_000, now: () => 0 }),
-      recovery: { prove: () => Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')) },
+      recovery: {
+        prove: () => Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
+        fresh: () => ({ code: 'AURA-NEUF', hash: `hash_recovery_${randomUUID()}` }),
+      },
       clock: { now: () => new Date() },
       events: { publish: () => undefined },
       traceKey: 'une-cle-de-test-assez-longue',
@@ -635,5 +676,128 @@ describe.skipIf(!reachable)('la preuve d appareil ne se fabrique pas', () => {
     ).toBe(MAX_DEVICES);
     await expect(players.findByDeviceHash(hashSecret(first))).resolves.toBeNull();
     await expect(players.findByDeviceHash(hashSecret(later.at(-1)!))).resolves.toEqual(player);
+  });
+});
+
+/*
+  Quatrieme relecture (B1), scenario d'attaque contre une vraie base : une
+  connexion dont la verification passe AVANT un changement de mot de passe ne
+  doit pas rattacher son appareil APRES.
+*/
+describe.skipIf(!reachable)('une connexion en vol pendant le changement de mot de passe', () => {
+  async function victimWithEmail() {
+    const players = buildRepository();
+    const owner = generateDeviceSecret();
+    created.add(hashSecret(owner));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(owner),
+      displayName: 'Victime',
+    });
+    const email = `test_${randomUUID()}@exemple.test`;
+    const { hasher } = fakePasswordHasher();
+    await players.linkEmailIdentity(player.id, email, await hasher.hash('ancien mot de passe'));
+    const service = new EmailAuthService({
+      identities: players,
+      hasher,
+      limiter: new MemoryAttemptLimiter({ windowMs: 60_000, now: () => 0 }),
+      recovery: {
+        prove: () => Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
+        fresh: () => ({ code: 'AURA-NEUF', hash: `hash_recovery_${randomUUID()}` }),
+      },
+      clock: { now: () => new Date() },
+      events: { publish: () => undefined },
+      traceKey: 'une-cle-de-test-assez-longue',
+      log: { warn: () => undefined },
+    });
+    return { players, player, owner, email, service };
+  }
+
+  it('echoue si le changement est committe entre la verification et le rattachement', async () => {
+    const { players, player, owner, email, service } = await victimWithEmail();
+    const sessions = realSessions(players);
+    const tokensBefore = await prisma!.refreshToken.count({ where: { playerId: player.id } });
+
+    // 1. La connexion de l'intrus verifie l'ANCIEN mot de passe : elle passe.
+    const proven = await service.login(email, 'ancien mot de passe', '203.0.113.7');
+    expect(proven).toEqual({ playerId: player.id, credentialsVersion: 0 });
+
+    // 2. Le joueur change son mot de passe, committe.
+    await players.setPasswordHash(
+      player.id,
+      '$argon2id$nouveau',
+      hashSecret(owner),
+      new Date(),
+      `hash_recovery_${randomUUID()}`,
+    );
+
+    // 3. Le rattachement de l'intrus arrive ensuite : refuse, rien d'ecrit.
+    const intruder = generateDeviceSecret();
+    created.add(hashSecret(intruder));
+    await expect(
+      sessions.joinWithDevice(player.id, proven.credentialsVersion, intruder),
+    ).rejects.toMatchObject({ reason: 'CREDENTIALS_CHANGED' });
+    await expect(players.findByDeviceHash(hashSecret(intruder))).resolves.toBeNull();
+    expect(await prisma!.refreshToken.count({ where: { playerId: player.id } })).toBe(tokensBefore);
+  });
+
+  /*
+    La meme course, lancee pour de vrai en parallele, plusieurs fois : quel que
+    soit l'ordre que Postgres choisit, l'appareil de l'intrus n'est jamais
+    rattache a la fin, et aucun jeton qu'il aurait recu n'est utilisable.
+  */
+  it('ne laisse jamais l appareil de l intrus rattache, quel que soit l ordre', async () => {
+    for (let round = 0; round < 8; round++) {
+      const { players, player, owner } = await victimWithEmail();
+      const sessions = realSessions(players);
+      const verifier = realVerifier(players);
+      const intruder = generateDeviceSecret();
+      created.add(hashSecret(intruder));
+      await Promise.all(Array.from({ length: 4 }, () => prisma!.$queryRaw`select 1 as x`));
+
+      const [joined] = await Promise.all([
+        sessions.joinWithDevice(player.id, 0, intruder).then(
+          (session) => session,
+          () => null,
+        ),
+        players.setPasswordHash(
+          player.id,
+          '$argon2id$nouveau',
+          hashSecret(owner),
+          new Date(),
+          `hash_recovery_${randomUUID()}`,
+        ),
+      ]);
+
+      await expect(players.findByDeviceHash(hashSecret(intruder))).resolves.toBeNull();
+      if (joined !== null) {
+        await expect(verifier.verify(joined.accessToken)).rejects.toThrow('CREDENTIALS_CHANGED');
+        await expect(sessions.refresh(joined.refreshToken)).rejects.toThrow();
+      }
+    }
+  });
+});
+
+/* Quatrieme relecture (M1) : deux rattachements concurrents ne depassent pas le plafond. */
+describe.skipIf(!reachable)('rattachements concurrents', () => {
+  it('ne depasse jamais dix appareils, meme en parallele', async () => {
+    const players = buildRepository();
+    const first = generateDeviceSecret();
+    created.add(hashSecret(first));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(first),
+      displayName: 'Nomade',
+    });
+    await Promise.all(Array.from({ length: 8 }, () => prisma!.$queryRaw`select 1 as x`));
+    const sessions = realSessions(players);
+    await Promise.all(
+      Array.from({ length: MAX_DEVICES + 5 }, () => {
+        const secret = generateDeviceSecret();
+        created.add(hashSecret(secret));
+        return sessions.joinWithDevice(player.id, 0, secret);
+      }),
+    );
+    expect(
+      await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'DEVICE' } }),
+    ).toBe(MAX_DEVICES);
   });
 });

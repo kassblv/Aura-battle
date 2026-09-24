@@ -71,13 +71,28 @@ export class RecoveryService {
   }
 
   /**
+   * Un code neuf, sous ses deux formes : affichable, et hache pour la base.
+   *
+   * Sert au changement de mot de passe, qui remplace le code dans sa propre
+   * transaction — le service de recuperation n'ecrit donc rien ici.
+   */
+  fresh(): { readonly code: string; readonly hash: string } {
+    const code = generateRecoveryCode();
+    return { code: formatRecoveryCode(code), hash: hashRecoveryCode(code) };
+  }
+
+  /**
    * Comme `claim`, avec l'instant ou le code a ete delivre.
    *
    * Sert a changer de mot de passe : un code tout juste delivre ne prouve rien
    * (une session volee suffisait a l'obtenir avant qu'un email soit rattache),
    * un code ancien si.
    */
-  async prove(input: string): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date }> {
+  async prove(input: string): Promise<{
+    readonly player: PlayerRecord;
+    readonly issuedAt: Date;
+    readonly credentialsVersion: number;
+  }> {
     const canonical = normalizeRecoveryCode(input);
     if (canonical === null) throw new RecoveryError('INVALID_RECOVERY_CODE');
 

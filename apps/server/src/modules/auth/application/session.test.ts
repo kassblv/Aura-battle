@@ -74,6 +74,30 @@ class FakePlayers implements PlayerRepository {
   }
 
   readonly linked: { playerId: string; deviceHash: string }[] = [];
+  /** `Player.credentialsVersion`, par joueur (0 si jamais change). */
+  readonly versions = new Map<string, number>();
+  /** Jetons crees par `joinDevice`, comme la vraie transaction les cree. */
+  readonly joinedTokens: string[] = [];
+
+  async joinDevice(input: {
+    playerId: string;
+    deviceHash: string;
+    expectedVersion: number;
+    refreshTokenHash: string;
+    expiresAt: Date;
+  }): Promise<
+    | { outcome: 'JOINED'; player: PlayerRecord; credentialsVersion: number; detached: number }
+    | { outcome: 'STALE' }
+    | { outcome: 'DEVICE_TAKEN' }
+  > {
+    const player = this.byId.get(input.playerId);
+    const version = this.versions.get(input.playerId) ?? 0;
+    if (player === undefined || version !== input.expectedVersion) return { outcome: 'STALE' };
+    if (this.byDeviceHash.has(input.deviceHash)) return { outcome: 'DEVICE_TAKEN' };
+    await this.linkDeviceIdentity(player.id, input.deviceHash);
+    this.joinedTokens.push(input.refreshTokenHash);
+    return { outcome: 'JOINED', player, credentialsVersion: version, detached: 0 };
+  }
 
   touchLastSeen(playerId: string): Promise<void> {
     this.touched.push(playerId);
@@ -337,59 +361,71 @@ describe('refresh — renouveler une session', () => {
   });
 });
 
-describe('linkDevice', () => {
+describe('joinWithDevice', () => {
   /*
-    Presenter un code de recuperation ouvre une session, mais le navigateur
-    garde SON secret d'appareil. Sans ce rattachement, le rechargement suivant
-    rouvrirait le compte invite local et la recuperation serait perdue — le
-    joueur aurait vu son compte revenir, puis disparaitre, sans rien
-    comprendre.
-
-    Le rattachement AJOUTE une identite au compte retrouve. Rien n'est
-    deplace : c'est ce que `docs/04` decrit, et c'est ce qui fait qu'un joueur
-    ne perd ni classement ni achats en chemin.
+    Presenter un code ou un mot de passe ouvre une session, et le navigateur
+    garde SON secret d'appareil : sans rattachement, le rechargement suivant
+    rouvrirait le compte invite local. Le rattachement se fait dans le meme
+    geste que l'ouverture — il AJOUTE une identite, rien n'est deplace.
   */
-  it('ajoute une identite d appareil au joueur', async () => {
+  it('rattache l appareil et ouvre la session du compte', async () => {
     const opened = await service.authenticateDevice(generateDeviceSecret());
     const secret = generateDeviceSecret();
 
-    await service.linkDevice(opened.player.id, secret);
+    const session = await service.joinWithDevice(opened.player.id, 0, secret);
 
+    expect(session.player.id).toBe(opened.player.id);
     expect(players.linked).toEqual([
       { playerId: opened.player.id, deviceHash: hashSecret(secret) },
     ]);
+    // Le jeton est cree PAR la transaction de rattachement, pas a cote.
+    expect(players.joinedTokens).toEqual([hashSecret(session.refreshToken)]);
     // Et le nouveau secret ouvre bien le MEME compte au prochain lancement.
     const again = await service.authenticateDevice(secret);
     expect(again.player.id).toBe(opened.player.id);
   });
 
+  /*
+    Quatrieme relecture (B1) : la preuve portait sur un secret qui a change
+    depuis. Rien n'est rattache, aucun jeton n'est emis.
+  */
+  it('refuse si la version des identifiants a change depuis la preuve', async () => {
+    const opened = await service.authenticateDevice(generateDeviceSecret());
+    players.versions.set(opened.player.id, 1);
+
+    await expect(
+      service.joinWithDevice(opened.player.id, 0, generateDeviceSecret()),
+    ).rejects.toMatchObject({ reason: 'CREDENTIALS_CHANGED' });
+    expect(players.linked).toHaveLength(0);
+    expect(players.joinedTokens).toHaveLength(0);
+  });
+
   it('refuse un secret qui n a pas la bonne forme', async () => {
     const opened = await service.authenticateDevice(generateDeviceSecret());
-    await expect(service.linkDevice(opened.player.id, 'trop-court')).rejects.toMatchObject({
+    await expect(service.joinWithDevice(opened.player.id, 0, 'trop-court')).rejects.toMatchObject({
       reason: 'INVALID_DEVICE_SECRET',
     });
     expect(players.linked).toHaveLength(0);
   });
 
   /*
-    Ce secret peut deja appartenir a quelqu'un — au compte invite que ce meme
-    navigateur vient d'abandonner, justement. Le client en tire donc un neuf
-    avant d'appeler ; si la collision arrive quand meme, elle remonte plutot
-    que de rattacher l'appareil d'un autre joueur.
+    Ce secret peut deja appartenir a quelqu'un. Le client en tire un neuf a
+    chaque essai ; si la collision arrive quand meme, elle remonte plutot que
+    de rattacher l'appareil d'un autre joueur.
   */
   it('remonte une collision plutot que de voler une identite', async () => {
     const pris = generateDeviceSecret();
     await service.authenticateDevice(pris);
     const autre = await service.authenticateDevice(generateDeviceSecret());
 
-    await expect(service.linkDevice(autre.player.id, pris)).rejects.toMatchObject({
+    await expect(service.joinWithDevice(autre.player.id, 0, pris)).rejects.toMatchObject({
       reason: 'DEVICE_ALREADY_LINKED',
     });
   });
 
   it('refuse de rattacher a un joueur qui n existe pas', async () => {
-    await expect(service.linkDevice('p_inconnu', generateDeviceSecret())).rejects.toBeInstanceOf(
-      SessionError,
-    );
+    await expect(
+      service.joinWithDevice('p_inconnu', 0, generateDeviceSecret()),
+    ).rejects.toBeInstanceOf(SessionError);
   });
 });

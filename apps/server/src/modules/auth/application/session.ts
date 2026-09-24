@@ -4,6 +4,7 @@ import {
   generateRefreshToken,
   hashSecret,
 } from '../domain/credentials.js';
+import type { AppLog } from '../../../shared/log-port.js';
 import { DeviceIdentityConflictError } from '../domain/ports.js';
 import type {
   AccessTokenSigner,
@@ -30,6 +31,8 @@ export interface Session {
 
 export type SessionFailure =
   | 'DEVICE_ALREADY_LINKED'
+  /** La version des identifiants a change entre la preuve et le rattachement. */
+  | 'CREDENTIALS_CHANGED'
   | 'INVALID_DEVICE_SECRET'
   | 'INVALID_REFRESH_TOKEN'
   | 'REFRESH_TOKEN_EXPIRED'
@@ -49,6 +52,7 @@ export interface SessionDependencies {
   readonly clock: Clock;
   readonly accessTtlSeconds: number;
   readonly refreshTtlSeconds: number;
+  readonly log?: AppLog;
 }
 
 export class SessionService {
@@ -170,32 +174,44 @@ export class SessionService {
   }
 
   /**
-   * Rattache l'appareil courant a un joueur deja identifie.
+   * Rattache l'appareil qui vient de faire sa preuve et ouvre sa session, en
+   * un seul geste atomique (ADR 0013).
    *
-   * Appele juste apres qu'un code de recuperation a ete presente. Sans lui, le
-   * navigateur garderait son propre secret d'appareil et rouvrirait le compte
-   * invite local au rechargement suivant : le joueur verrait son compte
-   * revenir, puis disparaitre.
+   * `provenVersion` est la version des identifiants lue AVEC la preuve (code
+   * ou mot de passe). Si un changement de mot de passe s'est glisse entre la
+   * preuve et ce rattachement, la preuve portait sur l'ancien secret : on
+   * refuse, et rien n'est ecrit — ni appareil, ni jeton.
    */
-  async linkDevice(playerId: string, deviceSecret: string): Promise<void> {
+  async joinWithDevice(
+    playerId: string,
+    provenVersion: number,
+    deviceSecret: string,
+  ): Promise<Session> {
     if (!DEVICE_SECRET_PATTERN.test(deviceSecret)) {
       throw new SessionError('INVALID_DEVICE_SECRET');
     }
-    const player = await this.deps.players.findById(playerId);
-    if (player === null) throw new SessionError('INVALID_DEVICE_SECRET');
-
-    try {
-      await this.deps.players.linkDeviceIdentity(player.id, hashSecret(deviceSecret));
-    } catch (cause) {
-      if (cause instanceof DeviceIdentityConflictError) {
-        // Ce secret appartient deja a quelqu'un — au compte invite que ce
-        // navigateur vient d'abandonner, le plus souvent. Le client en tire un
-        // neuf avant d'appeler ; si la collision arrive quand meme, on refuse
-        // plutot que de rattacher l'appareil d'un autre joueur.
-        throw new SessionError('DEVICE_ALREADY_LINKED');
-      }
-      throw cause;
+    const refreshToken = generateRefreshToken();
+    const joined = await this.deps.players.joinDevice({
+      playerId,
+      deviceHash: hashSecret(deviceSecret),
+      expectedVersion: provenVersion,
+      refreshTokenHash: hashSecret(refreshToken),
+      expiresAt: this.refreshExpiry(this.deps.clock.now()),
+    });
+    if (joined.outcome === 'STALE') throw new SessionError('CREDENTIALS_CHANGED');
+    if (joined.outcome === 'DEVICE_TAKEN') {
+      // Ce secret appartient deja a quelqu'un. Le client en tire un neuf a
+      // chaque essai ; plutot refuser que rattacher l'appareil d'un autre.
+      throw new SessionError('DEVICE_ALREADY_LINKED');
     }
+    if (joined.detached > 0) {
+      // Un appareil detache rouvrira un compte invite a son prochain
+      // lancement : on veut pouvoir l'expliquer si un joueur s'en etonne.
+      this.deps.log?.warn(
+        `plafond d appareils atteint : ${String(joined.detached)} appareil(s) detache(s)`,
+      );
+    }
+    return this.sessionFor(joined.player, refreshToken, joined.credentialsVersion);
   }
 
   /**

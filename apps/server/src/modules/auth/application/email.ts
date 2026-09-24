@@ -64,6 +64,9 @@ export class EmailAuthError extends Error {
  * - **20 par adresse IP** : assez pour une famille ou un reseau d'operateur
  *   qui partage une adresse, trop peu pour essayer un dictionnaire sur des
  *   milliers d'adresses. Une connexion reussie rend sa tentative.
+ * - **30 connexions par adresse IP, reussies comprises**, jamais rendues : une
+ *   reussite coute aussi un hachage, et une rafale de reussites saturerait le
+ *   plafond global d'argon2.
  * - **10 rattachements par joueur, 20 par IP** : « cette adresse est deja
  *   prise » est une information, et un compte invite se cree en un appel.
  * - **5 echecs de preuve de mot de passe par joueur et par appareil, 20
@@ -83,6 +86,7 @@ export const LIMITS = Object.freeze({
   linkPerIp: 20,
   passwordPerPlayer: 5,
   passwordPerIp: 20,
+  loginAllPerIp: 30,
 });
 
 /**
@@ -108,6 +112,8 @@ export interface EmailAuthDependencies {
   /** Le code de recuperation, preuve de secours du mot de passe oublie. */
   readonly recovery: {
     prove(code: string): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date }>;
+    /** Le code neuf delivre par un changement de mot de passe. */
+    fresh(): { readonly code: string; readonly hash: string };
   };
   readonly clock: Clock;
   /** Prevenu apres un changement de mot de passe : le module match ferme les sockets. */
@@ -217,15 +223,23 @@ export class EmailAuthService {
    * La limite passe **avant** le hachage : c'est la partie chere, et une
    * rafale bloquee ne doit rien couter au processeur.
    */
-  async login(rawEmail: string, password: string, ip: string | undefined): Promise<string> {
+  async login(
+    rawEmail: string,
+    password: string,
+    ip: string | undefined,
+  ): Promise<{ readonly playerId: string; readonly credentialsVersion: number }> {
     const email = normalizeEmail(rawEmail);
     const byEmail: AttemptKey = {
       key: emailAttemptKey(email, this.deps.traceKey),
       limit: LIMITS.loginPerEmail,
     };
     const byIp: AttemptKey = { key: ipKey('login', ip), limit: LIMITS.loginPerIp };
+    // Reussites comprises, et jamais rendu : chaque connexion coute un
+    // hachage argon2, et des connexions REUSSIES en rafale (un compte a soi,
+    // mille fois) sature le plafond global et rend 503 a tout le monde.
+    const everyLogin: AttemptKey = { key: ipKey('login-all', ip), limit: LIMITS.loginAllPerIp };
 
-    if (!(await this.deps.limiter.attempt([byEmail, byIp]))) {
+    if (!(await this.deps.limiter.attempt([byEmail, byIp, everyLogin]))) {
       this.deps.log.warn(`connexion par email bloquee : trop de tentatives (${trace(byEmail)})`);
       throw new EmailAuthError('TOO_MANY_ATTEMPTS');
     }
@@ -244,7 +258,9 @@ export class EmailAuthService {
     // comptent plus, et sa reussite ne pese pas sur ceux qui partagent son IP.
     await this.deps.limiter.reset(byEmail.key);
     await this.deps.limiter.refund(byIp.key);
-    return identity.playerId;
+    // La version lue AVEC le hache verifie : le rattachement de l'appareil
+    // l'exigera encore, sous verrou (ADR 0013).
+    return { playerId: identity.playerId, credentialsVersion: identity.credentialsVersion };
   }
 
   /**
@@ -266,7 +282,7 @@ export class EmailAuthService {
     newPassword: string,
     ip: string | undefined,
     deviceSecret?: string,
-  ): Promise<void> {
+  ): Promise<{ readonly recoveryCode: string }> {
     const identity = await this.deps.identities.findEmailOf(playerId);
     if (identity === null) throw new EmailAuthError('EMAIL_NOT_LINKED');
     this.enforcePolicy(newPassword, identity.email);
@@ -275,12 +291,16 @@ export class EmailAuthService {
     await this.proveWithLimits(playerId, device, ip, identity.secretHash, proof, 'mot de passe');
 
     const secretHash = await this.deps.hasher.hash(preparePassword(newPassword));
+    // Un code NEUF remplace l'ancien dans la meme transaction : un intrus qui
+    // connaissait l'ancien mot de passe a pu s'en faire delivrer un.
+    const recovery = this.deps.recovery.fresh();
     if (
       !(await this.deps.identities.setPasswordHash(
         playerId,
         secretHash,
         device,
         this.deps.clock.now(),
+        recovery.hash,
       ))
     ) {
       throw new EmailAuthError('EMAIL_NOT_LINKED');
@@ -289,6 +309,7 @@ export class EmailAuthService {
     // celle de l'intrus comme celle du joueur, qui se reconnecte avec sa
     // session fraiche.
     this.deps.events.publish(playerId);
+    return { recoveryCode: recovery.code };
   }
 
   /**
@@ -358,21 +379,18 @@ export class EmailAuthService {
     what: string,
   ): Promise<void> {
     const failures = `password:player:${playerId}:${device ?? 'sans-appareil'}`;
-    const byIp = await this.deps.limiter.attempt([
+    // Compter PUIS verifier, comme a la connexion : lire le compteur puis
+    // l'incrementer apres un echec laissait passer cent essais lances ensemble.
+    // Une reussite remet le compteur a zero, donc seuls les echecs y restent.
+    const allowed = await this.deps.limiter.attempt([
       { key: ipKey('password', ip), limit: LIMITS.passwordPerIp },
+      { key: failures, limit: LIMITS.passwordPerPlayer },
     ]);
-    if (!byIp || (await this.deps.limiter.peek(failures)) >= LIMITS.passwordPerPlayer) {
+    if (!allowed) {
       this.deps.log.warn(`${what} bloque : trop de tentatives`);
       throw new EmailAuthError('TOO_MANY_ATTEMPTS');
     }
-    try {
-      await this.checkProof(playerId, secretHash, proof);
-    } catch (cause) {
-      if (cause instanceof EmailAuthError) {
-        await this.deps.limiter.attempt([{ key: failures, limit: LIMITS.passwordPerPlayer }]);
-      }
-      throw cause;
-    }
+    await this.checkProof(playerId, secretHash, proof);
     await this.deps.limiter.reset(failures);
   }
 

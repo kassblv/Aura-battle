@@ -26,6 +26,7 @@ import {
   parseAuthRefreshRequest,
   parseAuthRenameRequest,
   type EmailStatusResponse,
+  type PasswordChangeResponse,
   type RecoveryCodeResponse,
   type SessionResponse,
 } from '@aura/protocol';
@@ -213,9 +214,11 @@ export class AuthController {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
 
-    let player;
+    let proven;
     try {
-      player = await this.recovery.claim(parsed.data.code);
+      // `prove` et non `claim` : la version des identifiants lue avec le code,
+      // que le rattachement exigera encore sous verrou.
+      proven = await this.recovery.prove(parsed.data.code);
     } catch (cause) {
       if (cause instanceof RecoveryError) {
         // Saisie mal formee et code inconnu rendent la meme reponse : qui
@@ -229,7 +232,11 @@ export class AuthController {
       throw cause;
     }
 
-    return this.joinWithDevice(player.id, parsed.data.deviceSecret);
+    return this.joinWithDevice(
+      proven.player.id,
+      proven.credentialsVersion,
+      parsed.data.deviceSecret,
+    );
   }
 
   /**
@@ -292,10 +299,14 @@ export class AuthController {
     if (!parsed.success) {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
-    const playerId = await this.emailCall(() =>
+    const proven = await this.emailCall(() =>
       this.email.login(parsed.data.email, parsed.data.password, ip),
     );
-    return this.joinWithDevice(playerId, parsed.data.deviceSecret);
+    return this.joinWithDevice(
+      proven.playerId,
+      proven.credentialsVersion,
+      parsed.data.deviceSecret,
+    );
   }
 
   /**
@@ -312,7 +323,7 @@ export class AuthController {
     @Headers('authorization') authorization: string | undefined,
     @Body() body: unknown,
     @Ip() ip: string | undefined,
-  ): Promise<SessionResponse> {
+  ): Promise<PasswordChangeResponse> {
     const playerId = await this.requirePlayer(authorization);
     const parsed = parseAuthEmailPasswordRequest(body);
     if (!parsed.success) {
@@ -322,7 +333,7 @@ export class AuthController {
     // Le schema garantit une preuve et une seule.
     const proof =
       currentPassword !== undefined ? { currentPassword } : { recoveryCode: recoveryCode ?? '' };
-    await this.emailCall(() =>
+    const { recoveryCode: freshCode } = await this.emailCall(() =>
       this.email.changePassword(playerId, proof, newPassword, ip, deviceSecret),
     );
     /*
@@ -330,8 +341,12 @@ export class AuthController {
       revoquer tous les jetons de rafraichissement et d'invalider tout jeton
       d'acces anterieur — y compris ceux de l'appareil qui l'a demande. Sans
       celle-ci, il serait deconnecte a l'instant ou il reprend son compte.
+
+      Et le code de recuperation NEUF, qui remplace l'ancien : il ne sera plus
+      jamais reaffiche, comme a la delivrance.
     */
-    return this.toResponse(() => this.sessions.openForPlayer(playerId));
+    const session = await this.toResponse(() => this.sessions.openForPlayer(playerId));
+    return { ...session, recoveryCode: freshCode };
   }
 
   /**
@@ -340,10 +355,22 @@ export class AuthController {
    * Le seul chemin qui rattache un appareil a un compte existant : il suit
    * toujours une preuve (code ou mot de passe), jamais un simple jeton.
    */
-  private async joinWithDevice(playerId: string, deviceSecret: string): Promise<SessionResponse> {
+  private async joinWithDevice(
+    playerId: string,
+    provenVersion: number,
+    deviceSecret: string,
+  ): Promise<SessionResponse> {
     try {
-      await this.sessions.linkDevice(playerId, deviceSecret);
+      return await this.sessions.joinWithDevice(playerId, provenVersion, deviceSecret);
     } catch (cause) {
+      if (cause instanceof SessionError && cause.reason === 'CREDENTIALS_CHANGED') {
+        // La preuve portait sur un secret qui vient d'etre change : elle ne
+        // vaut plus rien, et la reponse est celle d'une preuve fausse.
+        throw new UnauthorizedException({
+          code: 'INVALID_CREDENTIALS',
+          message: 'email ou mot de passe incorrect',
+        });
+      }
       if (cause instanceof SessionError && cause.reason === 'DEVICE_ALREADY_LINKED') {
         throw new ConflictException({
           code: 'DEVICE_ALREADY_LINKED',
@@ -355,7 +382,6 @@ export class AuthController {
       }
       throw cause;
     }
-    return this.toResponse(() => this.sessions.openForPlayer(playerId));
   }
 
   /** Limite de debit par IP des routes publiques (ADR 0013). */

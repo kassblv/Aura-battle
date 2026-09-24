@@ -59,29 +59,73 @@ export class PrismaPlayerRepository
   async linkDeviceIdentity(playerId: string, deviceHash: string): Promise<void> {
     try {
       await this.prisma.$transaction(async (tx) => {
-        await tx.authIdentity.create({
-          data: { playerId, provider: 'DEVICE', subject: deviceHash },
-        });
-        /*
-          Plafond d'appareils (ADR 0013) : on garde les MAX_DEVICES plus
-          recents et on detache les autres. Refuser au-dela bloquerait le
-          joueur sur ordinateur, dont chaque navigateur vide laisse un
-          appareil mort ; remplacer le plus ancien borne ce qu'un compte peut
-          accumuler sans fermer la porte a personne.
-        */
-        const stale = await tx.authIdentity.findMany({
-          where: { playerId, provider: 'DEVICE' },
-          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-          skip: MAX_DEVICES,
-          select: { id: true },
-        });
-        if (stale.length > 0) {
-          await tx.authIdentity.deleteMany({ where: { id: { in: stale.map((row) => row.id) } } });
-        }
+        await tx.$queryRaw`SELECT id FROM "Player" WHERE id = ${playerId} FOR UPDATE`;
+        await attachDevice(tx, playerId, deviceHash);
       });
     } catch (cause) {
       if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
         throw new DeviceIdentityConflictError(cause);
+      }
+      throw cause;
+    }
+  }
+
+  /**
+   * Rattache l'appareil et cree le jeton, sous verrou EXCLUSIF de la ligne du
+   * joueur et a condition que la version des identifiants n'ait pas bouge
+   * depuis la preuve (ADR 0013).
+   *
+   * Le changement de mot de passe modifie cette meme ligne : les deux gestes
+   * se sequencent. S'il passe avant, la version differe et rien n'est ecrit ;
+   * s'il passe apres, il detache cet appareil et revoque ce jeton comme les
+   * autres. Le verrou exclusif sequence aussi deux rattachements concurrents,
+   * sans quoi le plafond d'appareils se depasserait.
+   */
+  async joinDevice(input: {
+    readonly playerId: string;
+    readonly deviceHash: string;
+    readonly expectedVersion: number;
+    readonly refreshTokenHash: string;
+    readonly expiresAt: Date;
+  }): Promise<
+    | {
+        readonly outcome: 'JOINED';
+        readonly player: PlayerRecord;
+        readonly credentialsVersion: number;
+        readonly detached: number;
+      }
+    | { readonly outcome: 'STALE' }
+    | { readonly outcome: 'DEVICE_TAKEN' }
+  > {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        const rows = await tx.$queryRaw<
+          { id: string; displayName: string; credentialsVersion: number }[]
+        >`SELECT id, "displayName", "credentialsVersion" FROM "Player" WHERE id = ${input.playerId} FOR UPDATE`;
+        const player = rows[0];
+        if (player?.credentialsVersion !== input.expectedVersion) {
+          return { outcome: 'STALE' as const };
+        }
+        const detached = await attachDevice(tx, player.id, input.deviceHash);
+        await tx.refreshToken.create({
+          data: {
+            playerId: player.id,
+            tokenHash: input.refreshTokenHash,
+            expiresAt: input.expiresAt,
+            credentialsVersion: player.credentialsVersion,
+          },
+        });
+        await tx.player.update({ where: { id: player.id }, data: { lastSeenAt: new Date() } });
+        return {
+          outcome: 'JOINED' as const,
+          player: { id: player.id, displayName: player.displayName },
+          credentialsVersion: player.credentialsVersion,
+          detached,
+        };
+      });
+    } catch (cause) {
+      if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
+        return { outcome: 'DEVICE_TAKEN' };
       }
       throw cause;
     }
@@ -95,14 +139,21 @@ export class PrismaPlayerRepository
     return identity?.player ?? null;
   }
 
-  async findRecoveryIdentity(
-    codeHash: string,
-  ): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date } | null> {
+  async findRecoveryIdentity(codeHash: string): Promise<{
+    readonly player: PlayerRecord;
+    readonly issuedAt: Date;
+    readonly credentialsVersion: number;
+  } | null> {
     const identity = await this.prisma.authIdentity.findUnique({
       where: { provider_subject: { provider: 'RECOVERY', subject: codeHash } },
-      select: { createdAt: true, player: { select: { id: true, displayName: true } } },
+      select: {
+        createdAt: true,
+        player: { select: { id: true, displayName: true, credentialsVersion: true } },
+      },
     });
-    return identity === null ? null : { player: identity.player, issuedAt: identity.createdAt };
+    if (identity === null) return null;
+    const { credentialsVersion, ...player } = identity.player;
+    return { player, issuedAt: identity.createdAt, credentialsVersion };
   }
 
   /**
@@ -126,7 +177,7 @@ export class PrismaPlayerRepository
   async findByEmail(email: string): Promise<EmailIdentityRecord | null> {
     const identity = await this.prisma.authIdentity.findUnique({
       where: { provider_subject: { provider: 'EMAIL', subject: email } },
-      select: { playerId: true, subject: true, secretHash: true },
+      select: EMAIL_FIELDS,
     });
     return toEmailRecord(identity);
   }
@@ -134,7 +185,7 @@ export class PrismaPlayerRepository
   async findEmailOf(playerId: string): Promise<EmailIdentityRecord | null> {
     const identity = await this.prisma.authIdentity.findFirst({
       where: { playerId, provider: 'EMAIL' },
-      select: { playerId: true, subject: true, secretHash: true },
+      select: EMAIL_FIELDS,
     });
     return toEmailRecord(identity);
   }
@@ -192,8 +243,16 @@ export class PrismaPlayerRepository
     secretHash: string,
     keepDeviceHash: string | null,
     at: Date,
+    recoveryCodeHash: string,
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
+      /*
+        Le verrou de la ligne du joueur D'ABORD. Pris seulement a la mise a
+        jour de la version, en fin de transaction, il laissait un rattachement
+        concurrent inserer son appareil apres la suppression des appareils et
+        avant l'increment : l'appareil de l'intrus survivait au changement.
+      */
+      await tx.$queryRaw`SELECT id FROM "Player" WHERE id = ${playerId} FOR UPDATE`;
       const { count } = await tx.authIdentity.updateMany({
         where: { playerId, provider: 'EMAIL' },
         data: { secretHash },
@@ -215,6 +274,12 @@ export class PrismaPlayerRepository
       await tx.refreshToken.updateMany({
         where: { playerId, revokedAt: null },
         data: { revokedAt: at },
+      });
+      // L'ancien code de recuperation tombe avec le reste : un intrus qui
+      // connaissait l'ancien mot de passe a pu s'en faire delivrer un.
+      await tx.authIdentity.deleteMany({ where: { playerId, provider: 'RECOVERY' } });
+      await tx.authIdentity.create({
+        data: { playerId, provider: 'RECOVERY', subject: recoveryCodeHash },
       });
       return true;
     });
@@ -299,10 +364,56 @@ export class PrismaPlayerRepository
  * mot de passe a une chaine vide.
  */
 function toEmailRecord(
-  identity: { playerId: string; subject: string; secretHash: string | null } | null,
+  identity: {
+    playerId: string;
+    subject: string;
+    secretHash: string | null;
+    player: { credentialsVersion: number };
+  } | null,
 ): EmailIdentityRecord | null {
   if (!identity?.secretHash) return null;
-  return { playerId: identity.playerId, email: identity.subject, secretHash: identity.secretHash };
+  return {
+    playerId: identity.playerId,
+    email: identity.subject,
+    secretHash: identity.secretHash,
+    credentialsVersion: identity.player.credentialsVersion,
+  };
+}
+
+/** Ce qu'on lit d'une identite email : la version vient AVEC le hache, dans la meme requete. */
+const EMAIL_FIELDS = {
+  playerId: true,
+  subject: true,
+  secretHash: true,
+  player: { select: { credentialsVersion: true } },
+} as const;
+
+/**
+ * Cree l'identite d'appareil, puis detache les plus anciennes au-dela de
+ * `MAX_DEVICES`. A appeler sous verrou exclusif de la ligne du joueur : sans
+ * lui, deux rattachements concurrents compteraient chacun neuf appareils et
+ * en laisseraient onze. Rend le nombre d'appareils detaches.
+ *
+ * Plafond (ADR 0013) : refuser au-dela bloquerait le joueur sur ordinateur,
+ * dont chaque navigateur vide laisse un appareil mort ; remplacer le plus
+ * ancien borne ce qu'un compte accumule sans fermer la porte a personne.
+ */
+async function attachDevice(
+  tx: Prisma.TransactionClient,
+  playerId: string,
+  deviceHash: string,
+): Promise<number> {
+  await tx.authIdentity.create({ data: { playerId, provider: 'DEVICE', subject: deviceHash } });
+  const stale = await tx.authIdentity.findMany({
+    where: { playerId, provider: 'DEVICE' },
+    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+    skip: MAX_DEVICES,
+    select: { id: true },
+  });
+  if (stale.length > 0) {
+    await tx.authIdentity.deleteMany({ where: { id: { in: stale.map((row) => row.id) } } });
+  }
+  return stale.length;
 }
 
 const TOKEN_FIELDS = {

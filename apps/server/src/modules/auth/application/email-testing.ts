@@ -42,6 +42,8 @@ export function memoryEmailIdentities(players: readonly PlayerRecord[]) {
   const devices = new Map<string, string>();
   /** `Player.credentialsVersion` : incrementee par un changement de mot de passe. */
   const credentialsVersion = new Map<string, number>();
+  /** Le hache du code de recuperation pose par le dernier changement de mot de passe. */
+  const recoveryHashes = new Map<string, string>();
   const port: EmailIdentityRepository = {
     findById: (id) => Promise.resolve(players.find((p) => p.id === id) ?? null),
     findByEmail: (email) => Promise.resolve(rows.find((r) => r.email === email) ?? null),
@@ -51,17 +53,19 @@ export function memoryEmailIdentities(players: readonly PlayerRecord[]) {
       if (rows.some((r) => r.email === email)) {
         return Promise.reject(new EmailIdentityConflictError());
       }
-      rows.push({ playerId, email, secretHash });
+      rows.push({ playerId, email, secretHash, credentialsVersion: 0 });
       return Promise.resolve('LINKED');
     },
-    setPasswordHash: (playerId, secretHash, keepDeviceHash) => {
+    setPasswordHash: (playerId, secretHash, keepDeviceHash, _at, recoveryCodeHash) => {
       const index = rows.findIndex((r) => r.playerId === playerId);
       if (index < 0) return Promise.resolve(false);
-      rows[index] = { ...rows[index]!, secretHash };
+      const version = (credentialsVersion.get(playerId) ?? 0) + 1;
+      rows[index] = { ...rows[index]!, secretHash, credentialsVersion: version };
+      recoveryHashes.set(playerId, recoveryCodeHash);
       for (const [hash, owner] of devices) {
         if (owner === playerId && hash !== keepDeviceHash) devices.delete(hash);
       }
-      credentialsVersion.set(playerId, (credentialsVersion.get(playerId) ?? 0) + 1);
+      credentialsVersion.set(playerId, version);
       return Promise.resolve(true);
     },
     findByDeviceHash: (hash) => {
@@ -69,5 +73,5 @@ export function memoryEmailIdentities(players: readonly PlayerRecord[]) {
       return Promise.resolve(players.find((p) => p.id === owner) ?? null);
     },
   };
-  return { rows, devices, credentialsVersion, port };
+  return { rows, devices, credentialsVersion, recoveryHashes, port };
 }

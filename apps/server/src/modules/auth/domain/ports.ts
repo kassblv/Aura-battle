@@ -62,6 +62,38 @@ export interface PlayerRepository {
    * quelqu'un.
    */
   linkDeviceIdentity(playerId: string, deviceHash: string): Promise<void>;
+  /**
+   * Rattache un appareil ET cree un jeton de rafraichissement, dans UNE
+   * transaction qui verrouille la ligne du joueur (`FOR UPDATE`) et exige que
+   * la version des identifiants soit encore `expectedVersion` — celle lue avec
+   * la preuve (code ou mot de passe).
+   *
+   * Sans cela, une connexion dont la verification passe AVANT un changement de
+   * mot de passe rattachait son appareil APRES le nettoyage, et recevait un
+   * jeton a la nouvelle version : l'intrus revenait par la fenetre.
+   *
+   * - `STALE` : la version a change depuis la preuve ; rien n'est ecrit.
+   * - `DEVICE_TAKEN` : ce secret appartient deja a quelqu'un.
+   * - `JOINED` : l'appareil est rattache (au plus `MAX_DEVICES`, les plus
+   *   anciens detaches : `detached` les compte), le jeton cree, et
+   *   `credentialsVersion` est celle a signer dans le jeton d'acces.
+   */
+  joinDevice(input: {
+    readonly playerId: string;
+    readonly deviceHash: string;
+    readonly expectedVersion: number;
+    readonly refreshTokenHash: string;
+    readonly expiresAt: Date;
+  }): Promise<
+    | {
+        readonly outcome: 'JOINED';
+        readonly player: PlayerRecord;
+        readonly credentialsVersion: number;
+        readonly detached: number;
+      }
+    | { readonly outcome: 'STALE' }
+    | { readonly outcome: 'DEVICE_TAKEN' }
+  >;
   /** Change le nom affiche. Rend `null` si le joueur n existe plus. */
   rename(playerId: string, displayName: string): Promise<PlayerRecord | null>;
   touchLastSeen(playerId: string): Promise<void>;
@@ -84,9 +116,12 @@ export interface RecoveryIdentityRepository {
    * L'age compte : un code tout juste delivre peut l'avoir ete par un intrus
    * muni d'une session volee. Seul un code ancien prouve qu'on est le joueur.
    */
-  findRecoveryIdentity(
-    codeHash: string,
-  ): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date } | null>;
+  findRecoveryIdentity(codeHash: string): Promise<{
+    readonly player: PlayerRecord;
+    readonly issuedAt: Date;
+    /** Version des identifiants lue avec le code : le rattachement l'exigera encore. */
+    readonly credentialsVersion: number;
+  } | null>;
   /**
    * Pose le code de recuperation de ce joueur, en **remplacant** le precedent.
    *
@@ -116,6 +151,8 @@ export interface EmailIdentityRecord {
   readonly email: string;
   /** Hache argon2id, au format PHC (`$argon2id$v=19$...`). */
   readonly secretHash: string;
+  /** `Player.credentialsVersion`, lue avec le hache : la preuve vaut pour elle seule. */
+  readonly credentialsVersion: number;
 }
 
 /**
@@ -161,6 +198,12 @@ export interface EmailIdentityRepository {
     secretHash: string,
     keepDeviceHash: string | null,
     at: Date,
+    /**
+     * Hache du code de recuperation NEUF. L'ancien est revoque dans la meme
+     * transaction : un intrus qui connaissait l'ancien mot de passe a pu se
+     * faire delivrer un code, qui lui aurait rouvert le compte apres coup.
+     */
+    recoveryCodeHash: string,
   ): Promise<boolean>;
   /**
    * Le joueur de cet appareil, ou `null`. Sert de preuve de possession : un

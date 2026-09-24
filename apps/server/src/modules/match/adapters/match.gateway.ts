@@ -268,17 +268,13 @@ export class MatchGateway implements OnGatewayConnection {
      * APRES un `await` laisse une fenetre ou un paquet atteindrait un
      * gestionnaire sans identite, sans limite de debit et sans schema.
      *
-     * Aujourd'hui cette fenetre est vide par accident : `authenticate` ne fait
-     * aucune entree-sortie — `verifyAsync` travaille sur un secret HMAC — donc
-     * elle se referme dans les microtaches du meme tour, avant qu'aucun paquet
-     * d'une lecture reseau suivante n'arrive. Mesure a l'appui, un client qui
-     * colle ses trames voit meme Socket.IO fermer sa connexion.
-     *
-     * Mais c'est un accident d'ordonnancement, pas une defense. Le jour ou la
-     * verification consultera une liste de revocation dans Redis ou une base,
-     * l'attente traversera plusieurs tours de boucle et la fenetre s'ouvrira,
-     * sans que rien dans ce fichier n'ait change. L'ordre ci-dessous est donc
-     * la garantie, et le refus explicite en tete du filtre en est la preuve.
+     * Cette fenetre n'est plus theorique : `authenticate` lit desormais la
+     * version des identifiants du joueur en base (ADR 0013, un jeton d'une
+     * version perimee est refuse). L'attente traverse donc plusieurs tours de
+     * boucle, et des paquets d'une lecture reseau suivante peuvent arriver
+     * pendant ce temps. C'est l'ordre ci-dessous qui les tient a distance —
+     * le refus explicite en tete du filtre en est la preuve —, pas la rapidite
+     * de la verification.
      */
     socket.use((packet, next) => {
       /**

@@ -54,6 +54,7 @@ beforeAll(async () => {
     hasher,
     limiter: new MemoryAttemptLimiter({ windowMs: LIMITS.windowMs, now: () => 0 }),
     recovery: {
+      fresh: () => ({ code: 'AURA-NEUF-NEUF-NEUF-NEUF', hash: 'hache-du-code-neuf' }),
       // Delivre a l'epoque : assez ancien pour servir de preuve.
       prove: (code) =>
         code === 'AURA-P3'
@@ -74,9 +75,15 @@ beforeAll(async () => {
         provide: SessionService,
         // Le chemin d'emission habituel, reduit a ce que ces routes appellent.
         useValue: {
-          linkDevice: (playerId: string, deviceSecret: string) => {
+          joinWithDevice: (playerId: string, _version: number, deviceSecret: string) => {
             linkedDevices.push({ playerId, deviceSecret });
-            return Promise.resolve();
+            opened.push(playerId);
+            return Promise.resolve({
+              accessToken: `jwt.${playerId}`,
+              refreshToken: `refresh.${playerId}`,
+              expiresIn: 900,
+              player: { id: playerId, displayName: 'x', guest: true },
+            });
           },
           refresh: () => Promise.reject(new Error('non utilise')),
           openForPlayer: (playerId: string) => {
@@ -95,9 +102,13 @@ beforeAll(async () => {
         provide: RecoveryService,
         useValue: {
           issue: () => Promise.resolve('AURA-0000-0000-0000-0000'),
-          claim: (code: string) =>
+          prove: (code: string) =>
             code === 'AURA-P7'
-              ? Promise.resolve(players[7]!)
+              ? Promise.resolve({
+                  player: players[7]!,
+                  issuedAt: new Date(0),
+                  credentialsVersion: 0,
+                })
               : Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
         },
       },
@@ -310,6 +321,8 @@ describe('POST /auth/email/password', () => {
     // Une session fraiche : l'ancienne vient d'etre invalidee avec le reste.
     expect(reply.statusCode).toBe(200);
     expect(reply.json<Record<string, unknown>>().accessToken).toBe('jwt.p4');
+    // Et le code de recuperation NEUF : l'ancien vient d'etre revoque.
+    expect(reply.json<Record<string, unknown>>().recoveryCode).toBe('AURA-NEUF-NEUF-NEUF-NEUF');
   });
 
   it('refuse une preuve fausse', async () => {

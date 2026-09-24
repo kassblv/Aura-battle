@@ -16,6 +16,9 @@ function repository(players: PlayerRecord[] = []): PlayerRepository & { readonly
     },
     // Ce cas d usage ne rattache aucun appareil : le double le dit plutot que
     // de faire semblant d en etre capable.
+    joinDevice: () => {
+      throw new Error('non utilise');
+    },
     linkDeviceIdentity: () => {
       throw new Error('inattendu');
     },

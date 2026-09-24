@@ -153,6 +153,7 @@ import { SocketAuthenticator } from './application/socket-auth.js';
         JwtAccessTokenSigner,
         SystemClock,
         CONFIG,
+        PinoLoggerService,
       ],
       useFactory: (
         players: PrismaPlayerRepository,
@@ -160,6 +161,7 @@ import { SocketAuthenticator } from './application/socket-auth.js';
         signer: JwtAccessTokenSigner,
         clock: SystemClock,
         config: ServerConfig,
+        logger: PinoLoggerService,
       ) =>
         new SessionService({
           players,
@@ -168,6 +170,7 @@ import { SocketAuthenticator } from './application/socket-auth.js';
           clock,
           accessTtlSeconds: config.jwtAccessTtl,
           refreshTtlSeconds: config.jwtRefreshTtl,
+          log: { warn: (message) => logger.warn(message, 'SessionService') },
         }),
     },
   ],

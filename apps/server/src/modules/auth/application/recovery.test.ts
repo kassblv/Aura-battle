@@ -29,7 +29,11 @@ function repository(players: PlayerRecord[] = []) {
         for (const [playerId, stored] of recoveryByPlayer) {
           const player = players.find((p) => p.id === playerId);
           if (stored === hash && player !== undefined) {
-            return Promise.resolve({ player, issuedAt: issuedAt.get(playerId)! });
+            return Promise.resolve({
+              player,
+              issuedAt: issuedAt.get(playerId)!,
+              credentialsVersion: 0,
+            });
           }
         }
         return Promise.resolve(null);
@@ -156,11 +160,26 @@ describe('prove', () => {
   it('rend le joueur et l instant ou son code a ete delivre', async () => {
     const { service: sut } = service();
     const code = await sut.issue(ALICE.id);
-    await expect(sut.prove(code)).resolves.toEqual({ player: ALICE, issuedAt: new Date(1_000) });
+    await expect(sut.prove(code)).resolves.toEqual({
+      player: ALICE,
+      issuedAt: new Date(1_000),
+      credentialsVersion: 0,
+    });
   });
 
   it('refuse un code inconnu comme claim', async () => {
     const { service: sut } = service();
     await expect(sut.prove('AURA-0000-0000-0000-0000')).rejects.toThrow(RecoveryError);
+  });
+});
+
+describe('fresh', () => {
+  /* Le code neuf d'un changement de mot de passe : affichable, et son hache. */
+  it('rend un code affichable et son hache, sans rien ecrire', () => {
+    const { repo, service: sut } = service();
+    const fresh = sut.fresh();
+    expect(fresh.code).toMatch(/^AURA(-[0-9A-Z]{4}){4}$/);
+    expect(fresh.hash).toBe(hashRecoveryCode(fresh.code));
+    expect(repo.calls.set).toBe(0);
   });
 });

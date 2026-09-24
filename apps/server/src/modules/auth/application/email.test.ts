@@ -33,6 +33,7 @@ function setup() {
     hasher,
     limiter,
     recovery: {
+      fresh: () => ({ code: 'AURA-NEUF-NEUF-NEUF-NEUF', hash: 'hache-du-code-neuf' }),
       prove: (code) => {
         const found = recoveryCodes.get(code);
         return found === undefined
@@ -79,7 +80,12 @@ describe('link', () => {
 
     expect(status).toEqual({ linked: true, maskedEmail: 'a•••@gmail.com' });
     expect(repo.rows).toEqual([
-      { playerId: ALICE.id, email: 'alice@gmail.com', secretHash: `h(${GOOD})` },
+      {
+        playerId: ALICE.id,
+        email: 'alice@gmail.com',
+        secretHash: `h(${GOOD})`,
+        credentialsVersion: 0,
+      },
     ]);
   });
 
@@ -149,7 +155,9 @@ describe('login', () => {
 
   it('retrouve le joueur, quelle que soit la casse de l adresse', async () => {
     const { service } = await linked();
-    await expect(service.login('ALICE@gmail.com ', GOOD, IP)).resolves.toBe(ALICE.id);
+    await expect(service.login('ALICE@gmail.com ', GOOD, IP)).resolves.toMatchObject({
+      playerId: ALICE.id,
+    });
   });
 
   it('rend la meme erreur pour une adresse inconnue et un mauvais mot de passe', async () => {
@@ -213,7 +221,9 @@ describe('login', () => {
       await reasonOf(service.login('alice@gmail.com', 'faux', IP));
     }
     advance(15 * 60_000 + 1);
-    await expect(service.login('alice@gmail.com', GOOD, IP)).resolves.toBe(ALICE.id);
+    await expect(service.login('alice@gmail.com', GOOD, IP)).resolves.toMatchObject({
+      playerId: ALICE.id,
+    });
   });
 
   it('efface les echecs de l adresse apres une connexion reussie', async () => {
@@ -224,7 +234,9 @@ describe('login', () => {
     await service.login('alice@gmail.com', GOOD, IP);
     // Une faute de frappe le lendemain ne doit pas la bloquer.
     await reasonOf(service.login('alice@gmail.com', 'faux', IP));
-    await expect(service.login('alice@gmail.com', GOOD, IP)).resolves.toBe(ALICE.id);
+    await expect(service.login('alice@gmail.com', GOOD, IP)).resolves.toMatchObject({
+      playerId: ALICE.id,
+    });
   });
 
   it('journalise les echecs sans adresse ni mot de passe', async () => {
@@ -252,7 +264,9 @@ describe('changePassword', () => {
   it('change le mot de passe sur preuve de l ancien', async () => {
     const { service } = await linked();
     await service.changePassword(ALICE.id, { currentPassword: GOOD }, 'nouvelle phrase', IP);
-    await expect(service.login('alice@gmail.com', 'nouvelle phrase', IP)).resolves.toBe(ALICE.id);
+    await expect(service.login('alice@gmail.com', 'nouvelle phrase', IP)).resolves.toMatchObject({
+      playerId: ALICE.id,
+    });
     expect(await reasonOf(service.login('alice@gmail.com', GOOD, IP))).toBe('INVALID_CREDENTIALS');
   });
 
@@ -273,7 +287,9 @@ describe('changePassword', () => {
   it('accepte le code de recuperation du joueur, pas celui d un autre', async () => {
     const { service } = await linked();
     await service.changePassword(BOB.id, { recoveryCode: 'AURA-BOB' }, 'nouvelle phrase', IP);
-    await expect(service.login('bob@gmail.com', 'nouvelle phrase', IP)).resolves.toBe(BOB.id);
+    await expect(service.login('bob@gmail.com', 'nouvelle phrase', IP)).resolves.toMatchObject({
+      playerId: BOB.id,
+    });
 
     expect(
       await reasonOf(
@@ -373,7 +389,9 @@ describe('une session seule ne prend pas le compte', () => {
       'phrase retrouvee',
       IP,
     );
-    await expect(service.login('alice@gmail.com', 'phrase retrouvee', IP)).resolves.toBe(ALICE.id);
+    await expect(service.login('alice@gmail.com', 'phrase retrouvee', IP)).resolves.toMatchObject({
+      playerId: ALICE.id,
+    });
   });
 
   it('exige le mot de passe pour delivrer un code des qu une adresse est rattachee', async () => {
@@ -442,9 +460,9 @@ describe('une session seule ne prend pas le compte', () => {
       IP,
       ALICE_DEVICE,
     );
-    await expect(service.login('alice@gmail.com', 'phrase du proprietaire', IP)).resolves.toBe(
-      ALICE.id,
-    );
+    await expect(
+      service.login('alice@gmail.com', 'phrase du proprietaire', IP),
+    ).resolves.toMatchObject({ playerId: ALICE.id });
   });
 
   it('ne compte pas les preuves reussies', async () => {
@@ -537,5 +555,62 @@ describe('longueur apres normalisation', () => {
     expect(
       await reasonOf(service.link(ALICE.id, 'alice@gmail.com', '😀😀😀😀', IP, ALICE_DEVICE)),
     ).toBe('PASSWORD_TOO_SHORT');
+  });
+});
+
+/* Quatrieme relecture (B2) : le code de recuperation ne survit pas au changement. */
+describe('changer de mot de passe remplace le code de recuperation', () => {
+  it('rend un code neuf et en pose le hache dans la meme ecriture', async () => {
+    const { service, repo } = setup();
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
+    const { recoveryCode } = await service.changePassword(
+      ALICE.id,
+      { currentPassword: GOOD },
+      'nouvelle phrase',
+      IP,
+      ALICE_DEVICE,
+    );
+    expect(recoveryCode).toBe('AURA-NEUF-NEUF-NEUF-NEUF');
+    expect(repo.recoveryHashes.get(ALICE.id)).toBe('hache-du-code-neuf');
+  });
+});
+
+/* Quatrieme relecture (I1) : les connexions REUSSIES sont bornees aussi. */
+describe('connexions reussies en rafale', () => {
+  it('borne les connexions par IP, reussies comprises', async () => {
+    const { service, calls } = setup();
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
+    for (let i = 0; i < LIMITS.loginAllPerIp; i++) {
+      await service.login('alice@gmail.com', GOOD, '203.0.113.50');
+    }
+    const before = calls.verify;
+    expect(await reasonOf(service.login('alice@gmail.com', GOOD, '203.0.113.50'))).toBe(
+      'TOO_MANY_ATTEMPTS',
+    );
+    // Refusee avant le hachage : c'est le processeur qu'on protege.
+    expect(calls.verify).toBe(before);
+  });
+});
+
+/* Quatrieme relecture (M3) : compter PUIS verifier, meme en rafale. */
+describe('preuves de mot de passe en rafale', () => {
+  it('ne laisse pas passer plus d essais que la limite, lances ensemble', async () => {
+    const { service, calls } = setup();
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
+    const before = calls.verify;
+    await Promise.all(
+      Array.from({ length: 20 }, () =>
+        service
+          .changePassword(
+            ALICE.id,
+            { currentPassword: 'faux' },
+            'nouvelle phrase',
+            IP,
+            ALICE_DEVICE,
+          )
+          .catch(() => undefined),
+      ),
+    );
+    expect(calls.verify - before).toBe(LIMITS.passwordPerPlayer);
   });
 });
