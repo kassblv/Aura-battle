@@ -1,4 +1,5 @@
 import { BALANCE, type BalanceConfig } from './balance.js';
+import { beats } from './counters.js';
 import type { TimingResult } from './timing.js';
 import type { Choice, Move, Seat } from './types.js';
 
@@ -99,8 +100,8 @@ export function resolveRound(
 ): RoundResult {
   const { a, b } = inputs;
 
-  const aBeatsB = config.styleBeats[a.choice.move.style] === b.choice.move.style;
-  const bBeatsA = config.styleBeats[b.choice.move.style] === a.choice.move.style;
+  const aBeatsB = beats(a.choice.move.style, b.choice.move.style, config);
+  const bBeatsA = beats(b.choice.move.style, a.choice.move.style, config);
 
   // L'Ultime rend son porteur impossible a contrer : le contre adverse est
   // annule, et celui qui le perd ne subit pas de malus pour autant (§6).

@@ -1,4 +1,4 @@
-import { AMPLIFIER_LEVELS, amplifierName, styleName, tierName, TIERS } from '@aura/content';
+import { AMPLIFIER_LEVELS, amplifierName, styleIcon, styleName, tierName, TIERS } from '@aura/content';
 import {
   BALANCE,
   type AmplifierLevel,
@@ -54,22 +54,13 @@ import { danceOptions, type Wardrobe } from './wardrobe.js';
  */
 
 /**
- * Pictogramme par style.
+ * Les familles, en rangees.
  *
- * La **liste** des styles et leurs contres viennent de `BALANCE` : les
- * recopier ici, c etait promettre que le catalogue en compte trois pour
- * toujours, et prendre le risque qu un contre affiche contredise celui que le
- * serveur applique. Un style sans pictogramme reste jouable — il prend le
- * repli plutot que de disparaitre de l ecran.
+ * La **liste** des familles et leurs contres viennent de `BALANCE`, et leurs
+ * pictogrammes de `@aura/content` : les recopier ici, c etait promettre que le
+ * jeu en compte trois pour toujours — il en compte cinq — et prendre le risque
+ * qu un contre affiche contredise celui que le serveur applique.
  */
-const STYLE_ICONS: Partial<Record<Style, string>> = {
-  calme: '🧊',
-  hype: '🔥',
-  provoc: '😏',
-};
-
-const FALLBACK_ICON = '✨';
-
 const STYLE_ROWS: readonly (readonly Style[])[] = chunkEvenly(BALANCE.styles, STYLE_COLUMNS);
 
 /** Delai minimal entre l armement de la jauge et l appui (docs/03). */
@@ -809,17 +800,17 @@ const ControlBand = memo(function ControlBand({
                 type="button"
                 className="pick"
                 aria-pressed={style === id}
-                aria-label={`${styleName(id).fr}, bat ${styleName(BALANCE.styleBeats[id]).fr}`}
+                aria-label={`${styleName(id).fr}, bat ${BALANCE.styleBeats[id].map((beaten) => styleName(beaten).fr).join(' et ')}`}
                 disabled={locked}
                 onClick={() => {
                   onStyle(id);
                 }}
               >
-                <span className="pick__icon">{STYLE_ICONS[id] ?? FALLBACK_ICON}</span>
+                <span className="pick__icon">{styleIcon(id)}</span>
                 <span className={pickNameClass(styleName(id).fr)}>{styleName(id).fr}</span>
                 {/* Le contre en pictogramme : « bat Provoc » double la largeur du
                     bouton pour une information que l icone donne d un coup d oeil. */}
-                <small>bat {STYLE_ICONS[BALANCE.styleBeats[id]] ?? FALLBACK_ICON}</small>
+                <small>bat {BALANCE.styleBeats[id].map(styleIcon).join('')}</small>
               </button>
             ))}
           </div>

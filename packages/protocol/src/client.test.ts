@@ -1,3 +1,4 @@
+import { BALANCE } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import {
   CLIENT_MESSAGES,
@@ -280,5 +281,19 @@ describe('tap dans le vide', () => {
 
   it('refuse un indice d orbe negatif', () => {
     expect(taps([{ orbIndex: -1, t: 120 }])).toBe(false);
+  });
+});
+
+describe('familles', () => {
+  it('intent:show accepte les cinq familles du moteur', () => {
+    for (const style of BALANCE.styles) {
+      const intent = { matchId: 'm_1', round: 1, seq: 2, style };
+      expect(CLIENT_MESSAGES['intent:show'].safeParse(intent).success, style).toBe(true);
+    }
+  });
+
+  it('intent:show refuse une famille inconnue', () => {
+    const intent = { matchId: 'm_1', round: 1, seq: 2, style: 'danse' };
+    expect(CLIENT_MESSAGES['intent:show'].safeParse(intent).success).toBe(false);
   });
 });

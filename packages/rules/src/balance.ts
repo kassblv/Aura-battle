@@ -32,8 +32,8 @@ export interface BalanceConfig {
     readonly revealMs: number;
   };
   readonly styles: readonly Style[];
-  /** Pour chaque style, celui qu'il bat. */
-  readonly styleBeats: Readonly<Record<Style, Style>>;
+  /** Pour chaque famille, les deux qu'elle bat. */
+  readonly styleBeats: Readonly<Record<Style, readonly Style[]>>;
   readonly counter: {
     readonly winnerMultiplier: number;
     readonly loserMultiplier: number;
@@ -121,11 +121,20 @@ export const BALANCE: BalanceConfig = deepFreeze({
     choiceMs: 15_000,
     revealMs: 4_500,
   },
-  styles: ['calme', 'hype', 'provoc'],
+  styles: ['calme', 'hype', 'provoc', 'acrobatie', 'prouesse'],
+  /*
+    Le cercle : chaque famille bat la suivante et celle a trois crans. C'est la
+    seule roue a cinq ou chacune a le meme profil — deux victoires, deux
+    defaites —, ce qui laisse les multiplicateurs valoir pour toutes les
+    paires. Les trois contres historiques (calme > hype > provoc > calme) y
+    sont conserves.
+  */
   styleBeats: {
-    calme: 'hype',
-    hype: 'provoc',
-    provoc: 'calme',
+    calme: ['hype', 'acrobatie'],
+    hype: ['provoc', 'prouesse'],
+    provoc: ['acrobatie', 'calme'],
+    acrobatie: ['prouesse', 'hype'],
+    prouesse: ['calme', 'provoc'],
   },
   counter: {
     winnerMultiplier: 1.35,

@@ -1,4 +1,5 @@
 import { BALANCE, type BalanceConfig } from '../balance.js';
+import { beatersOf } from '../counters.js';
 import type { Rng } from '../rng.js';
 import type { AmplifierLevel, Choice, Move, Style, Tier } from '../types.js';
 
@@ -60,9 +61,14 @@ function splitSpend(spend: number): { tier: Tier; amplifier: AmplifierLevel } {
   return { tier, amplifier };
 }
 
-/** Le style qui bat celui passe en parametre. */
-function beaterOf(style: Style, config: BalanceConfig): Style {
-  return config.styles.find((candidate) => config.styleBeats[candidate] === style) ?? style;
+/**
+ * Une famille qui bat celle passee en parametre.
+ *
+ * Il y en a deux dans la roue a cinq : on tire au sort avec le RNG seede, pour
+ * rester deterministe sans devenir previsible.
+ */
+function beaterOf(style: Style, rng: Rng, config: BalanceConfig): Style {
+  return rng.pick(beatersOf(style, config));
 }
 
 const build = (
@@ -101,7 +107,8 @@ export const STRATEGIES: Readonly<Record<StrategyId, Strategy>> = Object.freeze(
   counter: build('counter', 'Contre-picker', (context, config) => {
     const last = context.opponentStyles.at(-1);
     return {
-      style: last === undefined ? context.rng.pick(config.styles) : beaterOf(last, config),
+      style:
+        last === undefined ? context.rng.pick(config.styles) : beaterOf(last, context.rng, config),
       spend: 4,
     };
   }),

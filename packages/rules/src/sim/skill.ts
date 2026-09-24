@@ -1,5 +1,7 @@
 import type { TimingSkill } from '../ai/profiles.js';
 import { BALANCE, type BalanceConfig } from '../balance.js';
+import { beatersOf } from '../counters.js';
+import type { Rng } from '../rng.js';
 import type { AmplifierLevel, Choice, Seat, Style, Tier } from '../types.js';
 import { simulateMatch } from './simulate.js';
 import type { ChoicePolicy, StrategyContext } from './strategies.js';
@@ -57,9 +59,14 @@ function split(spend: number): { tier: Tier; amplifier: AmplifierLevel } {
   return { tier, amplifier: Math.max(0, Math.min(4, spend - tier)) as AmplifierLevel };
 }
 
-/** Le style qui bat celui passe en parametre. */
-function beaterOf(style: Style, config: BalanceConfig): Style {
-  return config.styles.find((candidate) => config.styleBeats[candidate] === style) ?? style;
+/**
+ * Une famille qui bat celle passee en parametre.
+ *
+ * Il y en a deux dans la roue a cinq : on tire au sort avec le RNG seede, pour
+ * rester deterministe sans devenir previsible.
+ */
+function beaterOf(style: Style, rng: Rng, config: BalanceConfig): Style {
+  return rng.pick(beatersOf(style, config));
 }
 
 /**
@@ -106,7 +113,9 @@ const readable = (spend: number, favourite: Style, bias = 0.75): ChoicePolicy =>
 const reader = (spend: number): ChoicePolicy =>
   probe(spend, (context, config) => {
     const last = context.opponentStyles.at(-1);
-    return last === undefined ? context.rng.pick(config.styles) : beaterOf(last, config);
+    return last === undefined
+      ? context.rng.pick(config.styles)
+      : beaterOf(last, context.rng, config);
   });
 
 interface Side {

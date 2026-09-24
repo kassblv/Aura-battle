@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../balance.js';
+import { beats } from '../counters.js';
 import { evaluateRecharge, generateOrbSequence } from '../recharge.js';
 import { createRng } from '../rng.js';
 import { choiceCost } from '../round.js';
@@ -211,7 +212,7 @@ describe('decideChoice — lecture de l adversaire (§2)', () => {
         rng,
         opponentStyles: [opponentStyle],
       });
-      if (BALANCE.styleBeats[choice.move.style] === opponentStyle) contres += 1;
+      if (beats(choice.move.style, opponentStyle)) contres += 1;
     }
     return contres;
   };
@@ -223,7 +224,7 @@ describe('decideChoice — lecture de l adversaire (§2)', () => {
   });
 
   it('ne fait jamais lire le debutant, qui joue au hasard', () => {
-    // read = 0 : il ne contre que par accident, environ une fois sur trois.
+    // read = 0 : il ne contre que par accident, deux fois sur cinq dans la roue.
     const contres = contreLeDernierStyle('rookie', 'hype');
     expect(contres).toBeLessThan(250);
   });
@@ -236,7 +237,7 @@ describe('decideChoice — lecture de l adversaire (§2)', () => {
         decideChoice({ ...baseContext, profile: AI_PROFILES.untouchable, rng }).move.style,
       );
     }
-    expect(styles.size).toBe(3);
+    expect(styles.size).toBe(BALANCE.styles.length);
   });
 });
 

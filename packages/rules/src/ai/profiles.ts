@@ -1,4 +1,5 @@
 import { BALANCE, type BalanceConfig } from '../balance.js';
+import { beatersOf } from '../counters.js';
 import type { Orb, RechargeTap } from '../recharge.js';
 import type { Rng } from '../rng.js';
 import { choiceCost, isChoiceAffordable } from '../round.js';
@@ -197,9 +198,14 @@ export interface AiChoiceContext {
 
 const TIERS: readonly Tier[] = [0, 1, 2, 3, 4];
 
-/** Le style qui bat celui passe en parametre. */
-function beaterOf(style: Style, config: BalanceConfig): Style {
-  return config.styles.find((candidate) => config.styleBeats[candidate] === style) ?? style;
+/**
+ * Une famille qui bat celle passee en parametre.
+ *
+ * Il y en a deux dans la roue a cinq : on tire au sort avec le RNG seede, pour
+ * rester deterministe sans devenir previsible.
+ */
+function beaterOf(style: Style, rng: Rng, config: BalanceConfig): Style {
+  return rng.pick(beatersOf(style, config));
 }
 
 const alreadyPlayed = (move: Move, previousMoves: readonly Move[]): boolean =>
@@ -312,7 +318,7 @@ export function decideChoice(context: AiChoiceContext, config: BalanceConfig = B
   const lastOpponentStyle = opponentStyles.at(-1);
   const style: Style =
     lastOpponentStyle !== undefined && rng.chance(profile.read)
-      ? beaterOf(lastOpponentStyle, config)
+      ? beaterOf(lastOpponentStyle, rng, config)
       : rng.pick(config.styles);
 
   // Budget de la manche : une IA agressive brule son energie tot, une prudente

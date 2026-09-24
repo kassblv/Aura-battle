@@ -6,8 +6,11 @@
 /** Les deux places d'un match. Le siege est stable pour toute sa duree. */
 export type Seat = 'a' | 'b';
 
-/** Style d'un mouvement. Chaque style en bat un autre (voir BALANCE.styleBeats). */
-export type Style = 'calme' | 'hype' | 'provoc';
+/**
+ * Famille d'un mouvement. Chaque famille en bat deux autres et perd contre les
+ * deux dernieres (voir BALANCE.styleBeats).
+ */
+export type Style = 'calme' | 'hype' | 'provoc' | 'acrobatie' | 'prouesse';
 
 /** Palier d'un mouvement : plus il est haut, plus il est puissant et cher. */
 export type Tier = 0 | 1 | 2 | 3 | 4;

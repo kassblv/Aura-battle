@@ -15,6 +15,7 @@ export const RULES_VERSION = '1.0.0';
 
 export * from './types.js';
 export * from './balance.js';
+export * from './counters.js';
 export * from './level.js';
 export * from './rng.js';
 export * from './timing.js';

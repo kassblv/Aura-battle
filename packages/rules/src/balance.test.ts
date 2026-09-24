@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
+import fc from 'fast-check';
 import { BALANCE } from './balance.js';
+import { beatersOf, beats } from './counters.js';
 
 /**
  * Ces tests recopient `docs/01-game-design.md`, qui fait foi. Toute valeur
@@ -23,11 +25,21 @@ describe('BALANCE — structure du match (§1)', () => {
   });
 });
 
-describe('BALANCE — styles et contres (§2)', () => {
-  it('fait tourner calme > hype > provoc > calme', () => {
-    expect(BALANCE.styleBeats.calme).toBe('hype');
-    expect(BALANCE.styleBeats.hype).toBe('provoc');
-    expect(BALANCE.styleBeats.provoc).toBe('calme');
+describe('BALANCE — la roue des cinq familles (§2)', () => {
+  it('garde les trois contres historiques', () => {
+    expect(beats('calme', 'hype')).toBe(true);
+    expect(beats('hype', 'provoc')).toBe(true);
+    expect(beats('provoc', 'calme')).toBe(true);
+  });
+
+  it('pose les contres des deux nouvelles familles', () => {
+    expect(BALANCE.styleBeats).toEqual({
+      calme: ['hype', 'acrobatie'],
+      hype: ['provoc', 'prouesse'],
+      provoc: ['acrobatie', 'calme'],
+      acrobatie: ['prouesse', 'hype'],
+      prouesse: ['calme', 'provoc'],
+    });
   });
 
   it('applique 1,35 au contre et 0,85 au contre subi', () => {
@@ -35,10 +47,28 @@ describe('BALANCE — styles et contres (§2)', () => {
     expect(BALANCE.counter.loserMultiplier).toBe(0.85);
   });
 
-  it('ne laisse aucun style se battre lui-meme', () => {
-    for (const style of BALANCE.styles) {
-      expect(BALANCE.styleBeats[style]).not.toBe(style);
-    }
+  const family = fc.constantFrom(...BALANCE.styles);
+
+  it('chaque famille en bat exactement deux et perd contre exactement deux', () => {
+    fc.assert(
+      fc.property(family, (style) => {
+        expect(BALANCE.styleBeats[style]).toHaveLength(2);
+        expect(beatersOf(style)).toHaveLength(2);
+      }),
+    );
+  });
+
+  it('aucune paire n est a la fois gagnante et perdante, et personne ne se bat', () => {
+    fc.assert(
+      fc.property(family, family, (a, b) => {
+        if (a === b) expect(beats(a, b)).toBe(false);
+        else expect(beats(a, b)).not.toBe(beats(b, a));
+      }),
+    );
+  });
+
+  it('gele les listes de contres', () => {
+    expect(Object.isFrozen(BALANCE.styleBeats.calme)).toBe(true);
   });
 });
 

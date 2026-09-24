@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../balance.js';
+import { beats } from '../counters.js';
 import { choiceCost } from '../round.js';
 import { createRng } from '../rng.js';
 import { AI_PROFILE_IDS, AI_PROFILES } from '../ai/profiles.js';
@@ -66,7 +67,7 @@ describe('STRATEGIES', () => {
       roundsWon: 0,
       opponentRoundsWon: 0,
     });
-    expect(BALANCE.styleBeats[choice.move.style]).toBe('hype');
+    expect(beats(choice.move.style, 'hype')).toBe(true);
   });
 });
 

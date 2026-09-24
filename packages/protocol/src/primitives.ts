@@ -1,4 +1,4 @@
-import { BALANCE } from '@aura/rules';
+import { BALANCE, type Style } from '@aura/rules';
 import { z } from 'zod';
 
 /**
@@ -10,7 +10,8 @@ import { z } from 'zod';
  */
 
 export const seatSchema = z.enum(['a', 'b']);
-export const styleSchema = z.enum(['calme', 'hype', 'provoc']);
+/** Les familles viennent du moteur : en ajouter une n'ouvre qu'un seul fichier. */
+export const styleSchema = z.enum(BALANCE.styles as readonly [Style, ...Style[]]);
 
 /** Palier d'un mouvement, 0 a 4. */
 export const tierSchema = z.union([

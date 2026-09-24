@@ -481,3 +481,31 @@ describe('usedUltimate', () => {
     expect(result.seats.b.usedUltimate).toBe(false);
   });
 });
+
+describe('resolveRound — cinq familles', () => {
+  it('applique le contre d une nouvelle famille', () => {
+    // prouesse bat calme : meme palier, meme amplificateur, meme timing
+    const result = resolveRound({
+      a: seat({ style: 'prouesse', tier: 2 }),
+      b: seat({ style: 'calme', tier: 2 }),
+    });
+    expect(result.seats.a.countered).toBe(true);
+    expect(result.seats.b.wasCountered).toBe(true);
+    expect(result.winner).toBe('a');
+  });
+
+  it('donne un contre a toute paire de familles differentes', () => {
+    // Dans une roue a cinq ou chacun en bat deux, toute paire distincte a un
+    // vainqueur : c est ce qui rend chaque lecture decisive.
+    for (const a of BALANCE.styles) {
+      for (const b of BALANCE.styles) {
+        if (a === b) continue;
+        const result = resolveRound({
+          a: seat({ style: a, tier: 1 }),
+          b: seat({ style: b, tier: 1 }),
+        });
+        expect(result.seats.a.countered || result.seats.b.countered, `${a} contre ${b}`).toBe(true);
+      }
+    }
+  });
+});
