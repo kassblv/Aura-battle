@@ -151,7 +151,7 @@ describe('code de recuperation', () => {
       return Promise.resolve(new Response(JSON.stringify(session), { status: 200 }));
     };
 
-    await claimRecoveryCode('http://srv', 'AURA-7K2M-94PX-QTJD-3HVN', { fetcher });
+    await claimRecoveryCode('http://srv', 'AURA-7K2M-94PX-QTJD-3HVN', secret, { fetcher });
     expect(calls[0]?.url).toBe('http://srv/auth/recovery/claim');
     expect(calls[0]?.url).not.toContain('7K2M');
     expect(calls[0]?.init?.body).toContain('7K2M');
@@ -161,13 +161,15 @@ describe('code de recuperation', () => {
     const fetcher: Fetcher = () =>
       Promise.resolve(new Response(JSON.stringify(session), { status: 200 }));
     await expect(
-      claimRecoveryCode('http://srv', 'AURA-7K2M-94PX-QTJD-3HVN', { fetcher }),
+      claimRecoveryCode('http://srv', 'AURA-7K2M-94PX-QTJD-3HVN', secret, { fetcher }),
     ).resolves.toEqual(session);
   });
 
   it('traduit un code refuse en UNAUTHORIZED', async () => {
     const fetcher: Fetcher = () => Promise.resolve(new Response('', { status: 401 }));
-    await expect(claimRecoveryCode('http://srv', 'AURA-0000', { fetcher })).rejects.toMatchObject({
+    await expect(
+      claimRecoveryCode('http://srv', 'AURA-0000', secret, { fetcher }),
+    ).rejects.toMatchObject({
       reason: 'UNAUTHORIZED',
     });
   });
@@ -188,7 +190,7 @@ describe('email et mot de passe', () => {
   it('se connecte en envoyant les identifiants dans le corps, jamais dans l URL', async () => {
     const fetcher = ok(session);
     await expect(
-      loginWithEmail('http://srv', ' Kassim@Gmail.com ', password, { fetcher }),
+      loginWithEmail('http://srv', ' Kassim@Gmail.com ', password, secret, { fetcher }),
     ).resolves.toMatchObject({ player: { id: 'p_1' } });
 
     const [url, init] = fetcher.mock.calls[0] ?? [];
@@ -196,7 +198,11 @@ describe('email et mot de passe', () => {
     expect(String(url)).not.toContain('kassim');
     expect(String(url)).not.toContain(password);
     // L'adresse part normalisee : c'est la meme chaine que le serveur range.
-    expect(JSON.parse(init?.body as string)).toEqual({ email: 'kassim@gmail.com', password });
+    expect(JSON.parse(init?.body as string)).toEqual({
+      email: 'kassim@gmail.com',
+      password,
+      deviceSecret: secret,
+    });
   });
 
   /*
@@ -207,14 +213,14 @@ describe('email et mot de passe', () => {
   it('distingue des identifiants refuses d une session expiree', async () => {
     expect(
       await reasonOf(
-        loginWithEmail('http://srv', 'k@gmail.com', password, {
+        loginWithEmail('http://srv', 'k@gmail.com', password, secret, {
           fetcher: fails(401, { code: 'INVALID_CREDENTIALS' }),
         }),
       ),
     ).toBe('INVALID_CREDENTIALS');
     expect(
       await reasonOf(
-        loginWithEmail('http://srv', 'k@gmail.com', password, {
+        loginWithEmail('http://srv', 'k@gmail.com', password, secret, {
           fetcher: fails(429, { code: 'TOO_MANY_ATTEMPTS' }),
         }),
       ),
@@ -224,7 +230,7 @@ describe('email et mot de passe', () => {
   it('ignore un code de refus qu il ne connait pas', async () => {
     expect(
       await reasonOf(
-        loginWithEmail('http://srv', 'k@gmail.com', password, {
+        loginWithEmail('http://srv', 'k@gmail.com', password, secret, {
           fetcher: fails(400, { code: 'AUTRE_CHOSE' }),
         }),
       ),
@@ -233,9 +239,9 @@ describe('email et mot de passe', () => {
 
   it('refuse une adresse mal formee sans appeler le serveur', async () => {
     const fetcher = ok(session);
-    expect(await reasonOf(loginWithEmail('http://srv', 'kassim', password, { fetcher }))).toBe(
-      'INVALID_EMAIL',
-    );
+    expect(
+      await reasonOf(loginWithEmail('http://srv', 'kassim', password, secret, { fetcher })),
+    ).toBe('INVALID_EMAIL');
     expect(fetcher).not.toHaveBeenCalled();
   });
 

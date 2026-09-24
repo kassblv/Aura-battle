@@ -95,8 +95,11 @@ export function deviceSecret(
 }
 
 /**
- * Rattache un secret d appareil NEUF au compte retrouve, et ne le range
- * qu une fois le rattachement confirme.
+ * Rejoint un compte avec un secret d appareil NEUF, et ne le range qu une fois
+ * que le serveur l a accepte.
+ *
+ * `join` presente la preuve (code ou mot de passe) ET le secret, en une
+ * requete : c est le serveur qui rattache l appareil dans le meme geste.
  *
  * Presenter un code ou un email **abandonne** le compte invite de ce
  * navigateur. Son ancien secret appartient encore a ce compte-la : le
@@ -107,18 +110,18 @@ export function deviceSecret(
  * alors un troisieme compte, vide, et le joueur perdait jusqu a son compte
  * invite. Tant que `link` n a pas reussi, l ancien secret reste en place.
  */
-export async function joinWithFreshSecret(
-  link: (secret: string) => Promise<void>,
+export async function joinWithFreshSecret<T>(
+  join: (secret: string) => Promise<T>,
   store: SecretStore = browserStore(),
   randomBytes: RandomBytes = cryptoBytes,
-): Promise<string> {
+): Promise<T> {
   const secret = toHex(randomBytes(32));
-  await link(secret);
+  const joined = await join(secret);
   try {
     store.write(DEVICE_SECRET_KEY, secret);
   } catch {
     // Meme absorption qu ailleurs : sans stockage, le secret ne vit que le
     // temps de la session, ce qui reste jouable.
   }
-  return secret;
+  return joined;
 }

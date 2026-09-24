@@ -7,7 +7,6 @@ import {
   claimRecoveryCode,
   fetchEmailStatus,
   issueRecoveryCode,
-  linkDevice,
   linkEmail as requestEmailLink,
   loginWithEmail,
   renameProfile,
@@ -197,19 +196,18 @@ export function useSession(): SessionState {
         window.location.hostname,
         currentPageLocation(),
       );
-      const session = await claimRecoveryCode(baseUrl, code);
-
       /*
-        Rattacher l appareil, et dans cet ordre.
+        Presenter le code et rattacher l appareil, en UN geste.
 
         Le navigateur garde son propre secret, qui appartient encore au compte
-        invite qu on vient d abandonner. On en tire un NEUF — reutiliser
-        l ancien se heurterait a la contrainte d unicite du serveur — puis on
-        le rattache au compte retrouve. Sans cette etape, le rechargement
-        suivant rouvrirait le compte local : le joueur verrait son compte
-        revenir, puis disparaitre.
+        invite qu on abandonne. On en tire un NEUF, que le serveur rattache au
+        compte retrouve dans la meme requete que le code — il n existe plus de
+        route de rattachement a part, qu un jeton vole suffisait a appeler. Le
+        neuf n est range qu une fois accepte : un echec laisse l ancien en place.
       */
-      await joinWithFreshSecret((secret) => linkDevice(baseUrl, session.accessToken, secret));
+      const session = await joinWithFreshSecret((secret) =>
+        claimRecoveryCode(baseUrl, code, secret),
+      );
 
       const next = { playerId: session.player.id, displayName: session.player.displayName };
       saveIdentity(next);
@@ -292,10 +290,11 @@ export function useSession(): SessionState {
       setError(null);
       try {
         const baseUrl = serverUrl();
-        const session = await loginWithEmail(baseUrl, address, password);
-        // Meme rattachement qu apres un code de recuperation, pour la meme
-        // raison : sans lui, le rechargement rouvrirait le compte invite local.
-        await joinWithFreshSecret((secret) => linkDevice(baseUrl, session.accessToken, secret));
+        // Meme geste qu avec un code : la preuve et le rattachement d un secret
+        // neuf ensemble, range seulement une fois accepte.
+        const session = await joinWithFreshSecret((secret) =>
+          loginWithEmail(baseUrl, address, password, secret),
+        );
         adopt(session);
         return true;
       } catch (cause) {

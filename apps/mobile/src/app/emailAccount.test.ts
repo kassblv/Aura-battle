@@ -73,6 +73,7 @@ describe('emailFailureMessage', () => {
       'PASSWORD_TOO_SHORT',
       'PASSWORD_REQUIRED',
       'DEVICE_PROOF_REQUIRED',
+      'DEVICE_ALREADY_LINKED',
       'RECOVERY_CODE_TOO_RECENT',
       'BUSY',
       'UNREACHABLE',

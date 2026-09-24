@@ -105,7 +105,7 @@ describe('joinWithFreshSecret', () => {
 
     const fresh = await joinWithFreshSecret((secret) => {
       linked.push(secret);
-      return Promise.resolve();
+      return Promise.resolve(secret);
     }, keychain);
 
     expect(fresh).not.toBe(first);
@@ -129,9 +129,15 @@ describe('joinWithFreshSecret', () => {
     expect(deviceSecret(keychain)).toBe(first);
   });
 
+  it('rend ce que la requete rend : la session du compte rejoint', async () => {
+    await expect(
+      joinWithFreshSecret(() => Promise.resolve({ session: 'ouverte' }), store()),
+    ).resolves.toEqual({ session: 'ouverte' });
+  });
+
   it('range le secret meme quand rien n etait range', async () => {
     const keychain = store();
-    const fresh = await joinWithFreshSecret(() => Promise.resolve(), keychain);
+    const fresh = await joinWithFreshSecret((secret) => Promise.resolve(secret), keychain);
     expect(keychain.map.get(DEVICE_SECRET_KEY)).toBe(fresh);
   });
 });

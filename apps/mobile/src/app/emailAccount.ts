@@ -64,6 +64,7 @@ const FAILURES: Readonly<Record<string, string>> = Object.freeze({
   PASSWORD_MATCHES_EMAIL: 'Ton mot de passe ne doit pas être ton adresse.',
   PASSWORD_TOO_SHORT: `Au moins ${String(PASSWORD_MIN)} caractères.`,
   PASSWORD_REQUIRED: 'Entre ton mot de passe actuel pour continuer.',
+  DEVICE_ALREADY_LINKED: 'Cet appareil est déjà rattaché à un autre compte. Réessaie.',
   DEVICE_PROOF_REQUIRED:
     'Cet appareil n’est plus rattaché à ton compte. Relance le jeu, ou reconnecte-toi.',
   RECOVERY_CODE_TOO_RECENT:

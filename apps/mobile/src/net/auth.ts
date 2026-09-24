@@ -202,14 +202,17 @@ export async function issueRecoveryCode(
 export async function claimRecoveryCode(
   baseUrl: string,
   code: string,
+  deviceSecret: string,
   options: AuthOptions = {},
 ): Promise<SessionResponse> {
+  // Le secret NEUF de cet appareil voyage avec le code : le serveur le
+  // rattache dans le meme geste que la preuve.
   const body = await send(
     endpoint(baseUrl, '/auth/recovery/claim'),
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ code }),
+      body: JSON.stringify({ code, deviceSecret }),
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
@@ -217,33 +220,6 @@ export async function claimRecoveryCode(
   const parsed = sessionResponseSchema.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
-}
-
-/**
- * Rattache le secret d appareil courant au compte de la session.
- *
- * Appele juste apres `claimRecoveryCode`. Sans lui, le navigateur garderait
- * son propre secret et rouvrirait le compte invite local au rechargement
- * suivant : le joueur verrait son compte revenir, puis disparaitre.
- */
-export async function linkDevice(
-  baseUrl: string,
-  accessToken: string,
-  deviceSecret: string,
-  options: AuthOptions = {},
-): Promise<void> {
-  await send(
-    endpoint(baseUrl, '/auth/device/link'),
-    {
-      method: 'POST',
-      headers: {
-        'content-type': 'application/json',
-        authorization: `Bearer ${accessToken}`,
-      },
-      body: JSON.stringify({ deviceSecret }),
-    },
-    options.fetcher ?? globalThis.fetch.bind(globalThis),
-  );
 }
 
 /**
@@ -317,14 +293,16 @@ export async function linkEmail(
 /**
  * Ouvre la session du compte de cette adresse.
  *
- * Identifiants dans le **corps**, jamais dans l URL. Comme apres un code de
- * recuperation, l appelant rattache ensuite l appareil (`linkDevice`) : sans
- * cela, le rechargement suivant rouvrirait le compte invite local.
+ * Identifiants dans le **corps**, jamais dans l URL. Comme avec un code de
+ * recuperation, le secret NEUF de cet appareil voyage avec eux : le serveur
+ * le rattache dans le meme geste, sans quoi le rechargement suivant
+ * rouvrirait le compte invite local.
  */
 export async function loginWithEmail(
   baseUrl: string,
   email: string,
   password: string,
+  deviceSecret: string,
   options: AuthOptions = {},
 ): Promise<SessionResponse> {
   const body = await send(
@@ -332,7 +310,7 @@ export async function loginWithEmail(
     {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ email: checkedEmail(email), password }),
+      body: JSON.stringify({ email: checkedEmail(email), password, deviceSecret }),
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
