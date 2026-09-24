@@ -1,15 +1,31 @@
+import { animationIdsFor } from '@aura/content';
+import type { CosmeticKind } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import { wardrobeFromInventory, WearingRefresh, wearingFrom } from './wearing.js';
 import type { SeatWearing } from './match-runtime.js';
 
+/** Le kind de chaque objet, tel que le catalogue le donne. */
+const KINDS: ReadonlyMap<string, CosmeticKind> = new Map<string, CosmeticKind>([
+  ['outfit.kimono', 'OUTFIT'],
+  ['hair.long', 'HAIR'],
+  ['color.violet', 'AURA_COLOR'],
+  ['fx.glow', 'AURA_EFFECT'],
+  ['anim.hype.t2.floss', 'ANIMATION'],
+  ['anim.calme.t4.backflip', 'ANIMATION'],
+]);
+
 describe('wearingFrom', () => {
   it('garde ce qui est possede, emplacement par emplacement', () => {
-    const worn = wearingFrom(['outfit.kimono', 'anim.hype.t2.floss', 'color.violet'], {
-      outfit: 'outfit.kimono',
-      auraColor: 'color.violet',
-      signature: 'anim.hype.t2.floss',
-      dances: { 'hype.t2': 'anim.hype.t2.floss' },
-    });
+    const worn = wearingFrom(
+      ['outfit.kimono', 'anim.hype.t2.floss', 'color.violet'],
+      {
+        outfit: 'outfit.kimono',
+        auraColor: 'color.violet',
+        signature: 'anim.hype.t2.floss',
+        dances: { 'hype.t2': 'anim.hype.t2.floss' },
+      },
+      KINDS,
+    );
 
     expect(worn.look).toEqual({
       outfit: 'outfit.kimono',
@@ -25,18 +41,52 @@ describe('wearingFrom', () => {
     arriver.
   */
   it('ecarte ce qui n est plus possede', () => {
-    const worn = wearingFrom([], {
-      hair: 'hair.long',
-      signature: 'anim.hype.t2.floss',
-      dances: { 'hype.t2': 'anim.hype.t2.floss' },
-    });
+    const worn = wearingFrom(
+      [],
+      {
+        hair: 'hair.long',
+        signature: 'anim.hype.t2.floss',
+        dances: { 'hype.t2': 'anim.hype.t2.floss' },
+      },
+      KINDS,
+    );
 
     expect(worn.look).toEqual({});
     expect(worn.dances).toEqual({});
   });
 
+  /*
+    Un loadout ANCIEN, ecrit avant le controle des emplacements, peut ranger
+    n'importe quoi n'importe ou. Il ne doit rien annoncer de faux : ni une
+    danse en couleur d'aura, ni un palier 4 danse sous `calme.t0`.
+  */
+  it('ecarte ce qui est range dans le mauvais emplacement', () => {
+    const backflip = animationIdsFor({ style: 'calme', tier: 4 }).find((id) =>
+      id.endsWith('.backflip'),
+    )!;
+    const worn = wearingFrom(
+      ['outfit.kimono', 'color.violet', 'hair.long', 'anim.hype.t2.floss', backflip],
+      {
+        outfit: 'color.violet',
+        hair: 'anim.hype.t2.floss',
+        auraColor: 'anim.hype.t2.floss',
+        signature: 'color.violet',
+        dances: { 'calme.t0': backflip, 'hype.t2': 'hair.long' },
+      },
+      KINDS,
+    );
+
+    expect(worn.look).toEqual({});
+    expect(worn.dances).toEqual({});
+  });
+
+  it('ecarte un objet dont le catalogue ignore le kind', () => {
+    const worn = wearingFrom(['outfit.inconnue'], { outfit: 'outfit.inconnue' }, KINDS);
+    expect(worn.look).toEqual({});
+  });
+
   it('rend les defauts sans loadout', () => {
-    expect(wearingFrom(['fx.glow'], null)).toEqual({
+    expect(wearingFrom(['fx.glow'], null, KINDS)).toEqual({
       ownedEffects: ['fx.glow'],
       dances: {},
       look: {},

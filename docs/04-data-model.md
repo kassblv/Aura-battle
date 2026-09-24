@@ -235,6 +235,10 @@ Les objets offerts ne sont **jamais écrits** dans `InventoryItem` : ils sont aj
 
 Un prix de zéro sous une autre rareté est refusé par un test de `@aura/content` (`pricing.test.ts`). Ce qui a été acheté reste possédé quelles que soient ces conditions.
 
+## Loadout : un kind par emplacement
+
+`Loadout.data` range chaque objet à sa place (`inventory/domain/slots.ts`) : `outfit` → `OUTFIT`, `hair` → `HAIR`, `auraColor` → `AURA_COLOR`, `auraEffect` → `AURA_EFFECT` (kind lu au catalogue) ; `dances["<style>.t<palier>"]` → une danse de **ce** mouvement ; `signature` → une danse de mouvement. `PUT /inventory/loadout` refuse le reste en `WRONG_SLOT`. Le match rejoue la même règle en lecture (`wearingFrom`) : un loadout ancien mal rangé, ou un objet que le catalogue ne connaît plus, n'est simplement pas annoncé à l'adversaire.
+
 ## Redis
 
 | Clé | Contenu | Durée de vie |

@@ -1,5 +1,11 @@
-import { animationIdsFor, danceKey, dayIndexOf, STYLES, TIERS } from '@aura/content';
-import { ownedWithFree, purchaseOutcome, type PurchaseRefusal } from '../domain/purchase.js';
+import { dayIndexOf } from '@aura/content';
+import {
+  ownedWithFree,
+  purchaseOutcome,
+  type CatalogueEntry,
+  type PurchaseRefusal,
+} from '../domain/purchase.js';
+import { fitsDanceSlot, fitsLookSlot, fitsSignature, lookEntries } from '../domain/slots.js';
 import type {
   Clock,
   InventoryChanges,
@@ -18,21 +24,6 @@ import type {
  */
 
 export type InventoryFailure = PurchaseRefusal | 'UNKNOWN_ITEM' | 'NOT_OWNED' | 'WRONG_SLOT';
-
-/**
- * Le mouvement de chaque danse, par identifiant.
- *
- * Tire du catalogue de `@aura/content`, jamais d'un identifiant decoupe a la
- * main : c'est la meme table que le client lit pour jouer une danse, et la
- * meme cle (`danceKey`) que le runtime lit pour l'annoncer.
- */
-const MOVE_OF_DANCE: ReadonlyMap<string, string> = new Map(
-  STYLES.flatMap((style) =>
-    TIERS.flatMap((tier) =>
-      animationIdsFor({ style, tier }).map((id) => [id, danceKey({ style, tier })] as const),
-    ),
-  ),
-);
 
 export class InventoryError extends Error {
   constructor(readonly reason: InventoryFailure) {
@@ -60,19 +51,22 @@ export class InventoryService {
    * disent rien.
    */
   async read(playerId: string): Promise<PlayerInventory> {
+    return (await this.load(playerId)).inventory;
+  }
+
+  /** L'inventaire, offerts compris, et le catalogue qui a servi a le calculer. */
+  private async load(
+    playerId: string,
+  ): Promise<{ inventory: PlayerInventory; catalogue: readonly CatalogueEntry[] }> {
     const [stored, catalogue] = await Promise.all([
       this.deps.inventory.read(playerId),
       this.deps.inventory.catalogue(),
     ]);
-
-    return { ...stored, owned: ownedWithFree(stored.owned, catalogue) };
+    return { inventory: { ...stored, owned: ownedWithFree(stored.owned, catalogue) }, catalogue };
   }
 
   async buy(playerId: string, itemId: string): Promise<void> {
-    const [inventory, catalogue] = await Promise.all([
-      this.read(playerId),
-      this.deps.inventory.catalogue(),
-    ]);
+    const { inventory, catalogue } = await this.load(playerId);
 
     const item = catalogue.find((entry) => entry.id === itemId);
     if (item === undefined) throw new InventoryError('UNKNOWN_ITEM');
@@ -119,7 +113,7 @@ export class InventoryService {
    * vestiaire d'un client modifie devient la boutique entiere, gratuite.
    */
   async equip(playerId: string, data: LoadoutData): Promise<void> {
-    const inventory = await this.read(playerId);
+    const { inventory, catalogue } = await this.load(playerId);
     const owned = new Set(inventory.owned);
 
     const worn = [
@@ -134,17 +128,20 @@ export class InventoryService {
     }
 
     /*
-      Une danse se range sous SON mouvement.
-
-      Le client refusait deja de jouer une danse rangee ailleurs ; le runtime,
-      lui, l'annoncait telle quelle a la revelation. L'adversaire aurait vu un
-      palier 4 danse sur un palier 0 — un coup qui n'a pas ete joue.
+      Chaque emplacement a SON kind : une danse rangee sous `auraColor`
+      partait telle quelle chez l'adversaire, dans `opponent.cosmetics`.
+      Meme regle que la lecture du match (`wearingFrom`), dans `slots.ts`.
     */
-    for (const [key, id] of Object.entries(data.dances ?? {})) {
-      if (MOVE_OF_DANCE.get(id) !== key) throw new InventoryError('WRONG_SLOT');
+    const kinds = new Map(catalogue.map((item) => [item.id, item.kind]));
+    for (const [slot, id] of lookEntries(data)) {
+      if (!fitsLookSlot(slot, id, (candidate) => kinds.get(candidate))) {
+        throw new InventoryError('WRONG_SLOT');
+      }
     }
-    // La signature se joue : ce doit etre une danse de mouvement, pas une couleur.
-    if (data.signature !== undefined && !MOVE_OF_DANCE.has(data.signature)) {
+    for (const [key, id] of Object.entries(data.dances ?? {})) {
+      if (!fitsDanceSlot(key, id)) throw new InventoryError('WRONG_SLOT');
+    }
+    if (data.signature !== undefined && !fitsSignature(data.signature)) {
       throw new InventoryError('WRONG_SLOT');
     }
 

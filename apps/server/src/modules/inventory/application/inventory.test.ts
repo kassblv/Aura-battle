@@ -251,6 +251,30 @@ describe('equip', () => {
     });
   });
 
+  /*
+    Chaque emplacement a SON kind. Sans ce controle, une danse rangee sous
+    `auraColor` partait telle quelle chez l'adversaire, dans
+    `opponent.cosmetics` — une couleur qui n'en est pas une.
+  */
+  it.each([
+    ['une danse en couleur d aura', { auraColor: FLOSS }],
+    ['une couleur en tenue', { outfit: 'color.violet' }],
+    ['un effet en coiffure', { hair: 'fx.galaxy' }],
+    ['une couleur en effet d aura', { auraEffect: 'color.violet' }],
+  ])('refuse %s', async (_why, loadout) => {
+    const repo = repository({ owned: [FLOSS, 'color.violet', 'fx.galaxy'] });
+    await expect(service(repo).equip('p-1', loadout)).rejects.toMatchObject({
+      reason: 'WRONG_SLOT',
+    });
+    expect(repo.state.loadout).toBeNull();
+  });
+
+  it('accepte chaque kind dans son emplacement', async () => {
+    const repo = repository({ owned: ['color.violet', 'fx.galaxy'] });
+    await service(repo).equip('p-1', { auraColor: 'color.violet', auraEffect: 'fx.galaxy' });
+    expect(repo.state.loadout).toEqual({ auraColor: 'color.violet', auraEffect: 'fx.galaxy' });
+  });
+
   it('accepte l offerte d un mouvement en signature', async () => {
     const repo = repository({ owned: [CALME_T0] });
     await service(repo).equip('p-1', { signature: CALME_T0 });

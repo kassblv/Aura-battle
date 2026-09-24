@@ -3,7 +3,14 @@ import type {
   InventoryRepository,
   LoadoutData,
 } from '../../inventory/domain/ports.js';
+import type { CosmeticKind } from '@prisma/client';
 import { ownedWithFree } from '../../inventory/domain/purchase.js';
+import {
+  fitsDanceSlot,
+  fitsLookSlot,
+  fitsSignature,
+  lookEntries,
+} from '../../inventory/domain/slots.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import { describeCause } from '../../../shared/describe-cause.js';
 import type { PlayerWardrobe } from '../domain/wardrobe.js';
@@ -12,31 +19,39 @@ import type { SeatWearing } from './match-runtime.js';
 /**
  * Ce que porte un joueur, vu par le match : de l'inventaire a `SeatWearing`.
  *
- * **On ne porte que ce qu'on possede.** L'inventaire l'impose a l'ecriture ; on
- * le rejoue ici parce qu'un objet peut avoir quitte le catalogue depuis — et
+ * **On ne porte que ce qu'on possede, a sa place.** L'inventaire l'impose a
+ * l'ecriture ; on le rejoue ici parce qu'un objet peut avoir quitte le
+ * catalogue depuis, qu'un loadout ecrit avant le controle des emplacements
+ * peut ranger une danse en couleur d'aura ou un palier 4 sous `calme.t0` — et
  * que ce qui sort d'ici part chez l'ADVERSAIRE, dans `match:found`.
+ *
+ * @param kinds le kind de chaque objet du catalogue : un objet inconnu n'est
+ *   annonce nulle part.
  */
-export function wearingFrom(owned: readonly string[], loadout: LoadoutData | null): SeatWearing {
+export function wearingFrom(
+  owned: readonly string[],
+  loadout: LoadoutData | null,
+  kinds: ReadonlyMap<string, CosmeticKind>,
+): SeatWearing {
   const has = new Set(owned);
-  const kept = (id: string | undefined): string | undefined =>
-    id !== undefined && has.has(id) ? id : undefined;
+  const kindOf = (id: string): CosmeticKind | undefined => kinds.get(id);
 
   const dances: Record<string, string> = {};
   for (const [key, id] of Object.entries(loadout?.dances ?? {})) {
-    if (has.has(id)) dances[key] = id;
+    if (has.has(id) && fitsDanceSlot(key, id)) dances[key] = id;
   }
 
-  // Recopie champ par champ : un emplacement ajoute un jour a l'inventaire ne
-  // doit pas arriver chez l'adversaire sans qu'on l'ait decide ici.
+  // Recopie emplacement par emplacement : un emplacement ajoute un jour a
+  // l'inventaire ne doit pas arriver chez l'adversaire sans qu'on l'ait decide
+  // ici. L'effet d'aura n'en fait pas partie — il se joue par niveau, a la
+  // revelation, depuis `ownedEffects`.
   const look: Record<string, string> = {};
-  const slots = {
-    outfit: kept(loadout?.outfit),
-    hair: kept(loadout?.hair),
-    auraColor: kept(loadout?.auraColor),
-    signature: kept(loadout?.signature),
-  };
-  for (const [slot, id] of Object.entries(slots)) {
-    if (id !== undefined) look[slot] = id;
+  for (const [slot, id] of lookEntries(loadout)) {
+    if (slot !== 'auraEffect' && has.has(id) && fitsLookSlot(slot, id, kindOf)) look[slot] = id;
+  }
+  const signature = loadout?.signature;
+  if (signature !== undefined && has.has(signature) && fitsSignature(signature)) {
+    look.signature = signature;
   }
 
   return { ownedEffects: owned, dances, look };
@@ -59,7 +74,11 @@ export function wardrobeFromInventory(
         inventory.read(playerId),
         inventory.catalogue(),
       ]);
-      return wearingFrom(ownedWithFree(owned, catalogue), loadout);
+      return wearingFrom(
+        ownedWithFree(owned, catalogue),
+        loadout,
+        new Map(catalogue.map((item) => [item.id, item.kind])),
+      );
     },
   };
 }
