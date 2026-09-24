@@ -1,6 +1,7 @@
 import type {
   InventoryChanges,
   InventoryRepository,
+  InventorySnapshot,
   LoadoutData,
 } from '../../inventory/domain/ports.js';
 import type { CosmeticKind } from '@prisma/client';
@@ -57,6 +58,11 @@ export function wearingFrom(
   return { ownedEffects: owned, dances, look };
 }
 
+/** Ce que porte un joueur, calcule a partir d'un etat d'inventaire deja lu. */
+export interface WearingSource {
+  wearingFor(snapshot: InventorySnapshot): Promise<SeatWearing>;
+}
+
 /**
  * Ce que porte un joueur, lu dans l'inventaire.
  *
@@ -64,22 +70,26 @@ export function wearingFrom(
  * base. Les oublier retirait de l'apparence annoncee la tenue, la couleur et
  * la danse signature de quiconque n'avait rien achete — c'est-a-dire de
  * presque tout le monde.
+ *
+ * `wearingFor` part d'un etat deja lu (celui que l'inventaire vient
+ * d'ecrire) et ne lit que le catalogue, garde en memoire par l'adaptateur.
  */
 export function wardrobeFromInventory(
   inventory: Pick<InventoryRepository, 'read' | 'catalogue'>,
-): PlayerWardrobe {
+): PlayerWardrobe & WearingSource {
+  const wearingFor = async ({ owned, loadout }: InventorySnapshot): Promise<SeatWearing> => {
+    const catalogue = await inventory.catalogue();
+    return wearingFrom(
+      ownedWithFree(owned, catalogue),
+      loadout,
+      new Map(catalogue.map((item) => [item.id, item.kind])),
+    );
+  };
   return {
     async wearingOf(playerId: string): Promise<SeatWearing> {
-      const [{ owned, loadout }, catalogue] = await Promise.all([
-        inventory.read(playerId),
-        inventory.catalogue(),
-      ]);
-      return wearingFrom(
-        ownedWithFree(owned, catalogue),
-        loadout,
-        new Map(catalogue.map((item) => [item.id, item.kind])),
-      );
+      return wearingFor(await inventory.read(playerId));
     },
+    wearingFor,
   };
 }
 
@@ -104,18 +114,20 @@ export interface WearingRuntime {
  * Ne leve jamais : l'equipement est deja enregistre quand on arrive ici, et un
  * rafraichissement manque ne doit pas le faire passer pour refuse. Le prochain
  * branchement relira l'inventaire de toute facon.
+ *
+ * Ne relit pas l'inventaire : le signal porte l'etat qui vient d'etre ecrit.
  */
 export class WearingRefresh implements InventoryChanges {
   constructor(
-    private readonly wardrobe: PlayerWardrobe,
+    private readonly wardrobe: WearingSource,
     private readonly presence: WearingPresence,
     private readonly runtime: WearingRuntime,
     private readonly log: AppLog | null = null,
   ) {}
 
-  async changed(playerId: string): Promise<void> {
+  async changed(playerId: string, snapshot: InventorySnapshot): Promise<void> {
     try {
-      const wearing = await this.wardrobe.wearingOf(playerId);
+      const wearing = await this.wardrobe.wearingFor(snapshot);
       this.presence.setWearing(playerId, wearing);
       this.runtime.refreshDances(playerId, wearing.dances);
     } catch (cause) {

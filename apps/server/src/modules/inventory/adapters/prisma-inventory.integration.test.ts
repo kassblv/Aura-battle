@@ -81,11 +81,29 @@ describe.skipIf(!reachable)('PrismaInventoryRepository', () => {
     const playerId = await newPlayer(500);
     const itemId = await newItem(80);
 
-    await repository().grant(playerId, itemId, { soft: 80, hard: 0 });
+    // La bourse rendue est celle de la base apres debit : la route repond
+    // avec, sans relire l'inventaire.
+    expect(await repository().grant(playerId, itemId, { soft: 80, hard: 0 })).toEqual({
+      soft: 420,
+      hard: 0,
+    });
 
     const after = await repository().read(playerId);
     expect(after.wallet.soft).toBe(420);
     expect(after.owned).toContain(itemId);
+  });
+
+  it('lit le catalogue avec la rarete, une seule fois', async () => {
+    const itemId = await newItem(80);
+    const repo = repository();
+
+    const catalogue = await repo.catalogue();
+    expect(catalogue.find((entry) => entry.id === itemId)).toMatchObject({
+      kind: 'AURA_COLOR',
+      rarity: 'rare',
+      priceSoft: 80,
+    });
+    expect(await repo.catalogue()).toBe(catalogue);
   });
 
   /*

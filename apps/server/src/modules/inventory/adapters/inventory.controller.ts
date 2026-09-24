@@ -20,7 +20,7 @@ import {
 } from '@aura/protocol';
 import { readBearer } from '../../auth/application/bearer.js';
 import type { AccessTokenVerifier } from '../../auth/application/socket-auth.js';
-import type { LoadoutData } from '../domain/ports.js';
+import type { LoadoutData, PlayerInventory } from '../domain/ports.js';
 import {
   InventoryError,
   InventoryService,
@@ -69,6 +69,15 @@ function toLoadout(payload: LoadoutPayload): LoadoutData {
   return out;
 }
 
+/** Ce que lit le client : l'inventaire complet, jamais un simple accuse. */
+function toState(inventory: PlayerInventory): InventoryState {
+  return {
+    wallet: inventory.wallet,
+    owned: [...inventory.owned],
+    loadout: inventory.loadout ?? {},
+  };
+}
+
 @Controller('inventory')
 export class InventoryController {
   // Jetons explicites : esbuild n'emet pas `design:paramtypes`.
@@ -80,12 +89,7 @@ export class InventoryController {
   @Get()
   async read(@Headers('authorization') authorization: string | undefined): Promise<InventoryState> {
     const playerId = await this.requirePlayer(authorization);
-    const inventory = await this.inventory.read(playerId);
-    return {
-      wallet: inventory.wallet,
-      owned: [...inventory.owned],
-      loadout: inventory.loadout ?? {},
-    };
+    return toState(await this.inventory.read(playerId));
   }
 
   /**
@@ -105,10 +109,10 @@ export class InventoryController {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
 
-    await this.run(() => this.inventory.buy(playerId, parsed.data.itemId));
     // On rend l'etat complet plutot qu'un accuse de reception : le client
     // n'a alors rien a recalculer de son cote, donc rien a faire diverger.
-    return this.read(authorization);
+    // L'etat que le service a lu et ecrit, pas une relecture de la base.
+    return toState(await this.run(() => this.inventory.buy(playerId, parsed.data.itemId)));
   }
 
   @Put('loadout')
@@ -122,8 +126,7 @@ export class InventoryController {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
 
-    await this.run(() => this.inventory.equip(playerId, toLoadout(parsed.data)));
-    return this.read(authorization);
+    return toState(await this.run(() => this.inventory.equip(playerId, toLoadout(parsed.data))));
   }
 
   private async requirePlayer(authorization: string | undefined): Promise<string> {
@@ -146,9 +149,9 @@ export class InventoryController {
    * choisit les mots, et il les choisit en francais. Un message traduit ici
    * serait un deuxieme endroit ou ecrire la meme chose.
    */
-  private async run(action: () => Promise<void>): Promise<void> {
+  private async run<T>(action: () => Promise<T>): Promise<T> {
     try {
-      await action();
+      return await action();
     } catch (cause) {
       if (!(cause instanceof InventoryError)) throw cause;
       const payload = { code: cause.reason, message: cause.reason };

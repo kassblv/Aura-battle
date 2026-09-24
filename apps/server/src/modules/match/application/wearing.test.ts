@@ -2,6 +2,7 @@ import { animationIdsFor } from '@aura/content';
 import type { CosmeticKind } from '@prisma/client';
 import { describe, expect, it } from 'vitest';
 import { wardrobeFromInventory, WearingRefresh, wearingFrom } from './wearing.js';
+import type { InventorySnapshot } from '../../inventory/domain/ports.js';
 import type { SeatWearing } from './match-runtime.js';
 
 /** Le kind de chaque objet, tel que le catalogue le donne. */
@@ -104,14 +105,26 @@ describe('WearingRefresh', () => {
   it('met a jour la session et les danses du match en cours', async () => {
     const sessions: [string, SeatWearing][] = [];
     const matches: [string, Readonly<Record<string, string>>][] = [];
+    const given: InventorySnapshot[] = [];
     const refresh = new WearingRefresh(
-      { wearingOf: () => Promise.resolve(WORN) },
+      {
+        wearingFor: (snapshot) => {
+          given.push(snapshot);
+          return Promise.resolve(WORN);
+        },
+      },
       { setWearing: (id, w) => sessions.push([id, w]) },
       { refreshDances: (id, d) => matches.push([id, d]) },
     );
 
-    await refresh.changed('p1');
+    const snapshot = {
+      owned: ['anim.hype.t2.floss'],
+      loadout: { signature: 'anim.hype.t2.floss' },
+    };
+    await refresh.changed('p1', snapshot);
 
+    // L'etat que l'inventaire vient d'ecrire, pas une relecture de la base.
+    expect(given).toEqual([snapshot]);
     expect(sessions).toEqual([['p1', WORN]]);
     expect(matches).toEqual([['p1', WORN.dances]]);
   });
@@ -119,19 +132,49 @@ describe('WearingRefresh', () => {
   it('ne leve pas quand l inventaire ne repond pas, et le dit', async () => {
     const warnings: string[] = [];
     const refresh = new WearingRefresh(
-      { wearingOf: () => Promise.reject(new Error('base indisponible')) },
+      { wearingFor: () => Promise.reject(new Error('base indisponible')) },
       { setWearing: () => undefined },
       { refreshDances: () => undefined },
       { warn: (message) => warnings.push(message) },
     );
 
-    await expect(refresh.changed('p1')).resolves.toBeUndefined();
+    await expect(refresh.changed('p1', { owned: [], loadout: null })).resolves.toBeUndefined();
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('p1');
   });
 });
 
 describe('wardrobeFromInventory', () => {
+  /* Le rafraichissement part de l'etat deja lu : il ne relit que le catalogue. */
+  it('calcule l apparence d un etat donne sans relire l inventaire', async () => {
+    let reads = 0;
+    const wardrobe = wardrobeFromInventory({
+      read: () => {
+        reads += 1;
+        return Promise.reject(new Error('ne doit pas etre appele'));
+      },
+      catalogue: () =>
+        Promise.resolve([
+          {
+            id: 'outfit.kimono',
+            kind: 'OUTFIT' as const,
+            rarity: 'common',
+            priceSoft: 300,
+            priceHard: null,
+            availableFrom: null,
+            availableTo: null,
+          },
+        ]),
+    });
+
+    const worn = await wardrobe.wearingFor({
+      owned: ['outfit.kimono'],
+      loadout: { outfit: 'outfit.kimono' },
+    });
+    expect(worn.look).toEqual({ outfit: 'outfit.kimono' });
+    expect(reads).toBe(0);
+  });
+
   /*
     Le defaut qu'on a eu : l'inventaire en base ne contient que les ACHATS.
     La tenue offerte et la danse offerte etaient donc « non possedees » et

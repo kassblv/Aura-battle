@@ -16,7 +16,32 @@ export class PrismaInventoryRepository implements InventoryRepository {
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir auth.controller.ts).
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
-  async catalogue(): Promise<readonly CatalogueEntry[]> {
+  /** Le catalogue lu, partage par tous les appels : voir `catalogue()`. */
+  private cachedCatalogue: Promise<readonly CatalogueEntry[]> | null = null;
+
+  /**
+   * Le catalogue, lu une fois par processus.
+   *
+   * Il ne change qu'au seed, et le seed tourne AVANT le serveur, a chaque
+   * demarrage (`docker/entrypoint.sh`). Le relire a chaque equipement coutait
+   * une requete par appel pour une reponse toujours identique. On garde la
+   * PROMESSE : deux appels simultanes au demarrage ne lisent qu'une fois.
+   *
+   * Un echec n'est pas garde, sinon une base indisponible une seconde au
+   * demarrage laisserait la boutique vide jusqu'au deploiement suivant.
+   *
+   * En developpement, relancer le seed a chaud demande de redemarrer
+   * `pnpm dev` — comme une migration (voir CLAUDE.md, Prisma 7).
+   */
+  catalogue(): Promise<readonly CatalogueEntry[]> {
+    this.cachedCatalogue ??= this.readCatalogue().catch((cause: unknown) => {
+      this.cachedCatalogue = null;
+      throw cause;
+    });
+    return this.cachedCatalogue;
+  }
+
+  private async readCatalogue(): Promise<readonly CatalogueEntry[]> {
     return this.prisma.cosmeticItem.findMany({
       select: {
         id: true,
@@ -62,8 +87,8 @@ export class PrismaInventoryRepository implements InventoryRepository {
    * pas — deux objets distincts, aucun conflit — et sans le `WHERE`, la bourse
    * passerait dans le negatif.
    */
-  async grant(playerId: string, itemId: string, spend: Wallet): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
+  async grant(playerId: string, itemId: string, spend: Wallet): Promise<Wallet> {
+    return this.prisma.$transaction(async (tx) => {
       const debited = await tx.player.updateMany({
         where: {
           id: playerId,
@@ -80,6 +105,14 @@ export class PrismaInventoryRepository implements InventoryRepository {
       // Apres le debit : un objet accorde sans paiement est pire qu'un
       // paiement sans objet, qui lui se rembourse.
       await tx.inventoryItem.create({ data: { playerId, itemId, source: 'shop' } });
+
+      // La bourse apres debit, dans la transaction : la ligne est verrouillee
+      // par la mise a jour, rien n'a pu la toucher entre-temps.
+      const after = await tx.player.findUniqueOrThrow({
+        where: { id: playerId },
+        select: { softCurrency: true, hardCurrency: true },
+      });
+      return { soft: after.softCurrency, hard: after.hardCurrency };
     });
   }
 

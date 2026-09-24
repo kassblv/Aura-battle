@@ -2,7 +2,7 @@ import { animationIdsFor, defaultAnimationFor } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import { InventoryError, InventoryService } from './inventory.js';
 import type { CatalogueEntry } from '../domain/purchase.js';
-import type { InventoryRepository, PlayerInventory } from '../domain/ports.js';
+import type { InventoryRepository, InventorySnapshot, PlayerInventory } from '../domain/ports.js';
 
 const CATALOGUE: readonly CatalogueEntry[] = [
   {
@@ -43,12 +43,19 @@ function repository(start: Partial<PlayerInventory> = {}) {
     ...start,
   };
   const debits: { soft: number; hard: number }[] = [];
+  /** Lectures de l'inventaire en base : chacune coute plusieurs requetes. */
+  const reads = { count: 0 };
   /** Achats qu'on force a perdre la course, une fois chacun. */
   let collideOnce = false;
 
   const port: InventoryRepository = {
     catalogue: () => Promise.resolve(CATALOGUE),
-    read: () => Promise.resolve(state),
+    read: () => {
+      reads.count += 1;
+      // Une COPIE, comme la base : muter l'etat apres coup ne doit pas
+      // reecrire ce que le service a deja lu.
+      return Promise.resolve({ ...state, owned: [...state.owned] });
+    },
     grant: (_playerId, itemId, spend) => {
       if (collideOnce) {
         collideOnce = false;
@@ -61,7 +68,7 @@ function repository(start: Partial<PlayerInventory> = {}) {
         soft: state.wallet.soft - spend.soft,
         hard: state.wallet.hard - spend.hard,
       };
-      return Promise.resolve();
+      return Promise.resolve(state.wallet);
     },
     setLoadout: (_playerId, data) => {
       (state as { loadout: unknown }).loadout = data;
@@ -73,13 +80,17 @@ function repository(start: Partial<PlayerInventory> = {}) {
     port,
     state,
     debits,
+    reads,
     collideNext: () => {
       collideOnce = true;
     },
   };
 }
 
-const service = (repo: ReturnType<typeof repository>, changed?: (playerId: string) => void) =>
+const service = (
+  repo: ReturnType<typeof repository>,
+  changed?: (playerId: string, snapshot: InventorySnapshot) => void,
+) =>
   new InventoryService({
     inventory: repo.port,
     clock: { now: () => new Date('2026-09-21') },
@@ -87,8 +98,8 @@ const service = (repo: ReturnType<typeof repository>, changed?: (playerId: strin
       ? {}
       : {
           changes: {
-            changed: (playerId: string) => {
-              changed(playerId);
+            changed: (playerId: string, snapshot: InventorySnapshot) => {
+              changed(playerId, snapshot);
               return Promise.resolve();
             },
           },
@@ -308,6 +319,52 @@ describe('signal de changement', () => {
       service(repository(), (id) => seen.push(id)).equip('p-1', { signature: FLOSS }),
     ).rejects.toBeInstanceOf(InventoryError);
     expect(seen).toEqual([]);
+  });
+});
+
+/*
+  Un `PUT /inventory/loadout` coutait une douzaine de requetes : `equip`
+  relisait l'inventaire, le match le relisait pour se rafraichir, puis le
+  controleur le relisait pour repondre. En boucle depuis un compte invite, de
+  quoi epuiser le pool Postgres. Une seule lecture, et l'etat qu'elle a donne
+  sert aux trois.
+*/
+describe('une seule lecture par ecriture', () => {
+  it('equip rend l inventaire tel qu il est enregistre, sans relire', async () => {
+    const repo = repository({ owned: [FLOSS] });
+    const after = await service(repo).equip('p-1', { dances: { 'hype.t2': FLOSS } });
+
+    expect(repo.reads.count).toBe(1);
+    expect(after.loadout).toEqual({ dances: { 'hype.t2': FLOSS } });
+    // Les offerts comptent, comme a la lecture.
+    expect(after.owned).toEqual(expect.arrayContaining([FLOSS, 'color.gold']));
+  });
+
+  it('buy rend la bourse debitee et l objet possede, sans relire', async () => {
+    const repo = repository();
+    const after = await service(repo).buy('p-1', 'color.violet');
+
+    expect(repo.reads.count).toBe(1);
+    expect(after.wallet).toEqual({ soft: 920, hard: 0 });
+    expect(after.owned).toEqual(expect.arrayContaining(['color.violet', 'color.gold']));
+  });
+
+  it('previent le match avec ce qui vient d etre enregistre', async () => {
+    const seen: InventorySnapshot[] = [];
+    const repo = repository({ owned: [FLOSS] });
+    await service(repo, (_id, snapshot) => seen.push(snapshot)).equip('p-1', {
+      signature: FLOSS,
+    });
+
+    expect(seen).toHaveLength(1);
+    expect(seen[0]?.loadout).toEqual({ signature: FLOSS });
+    expect(seen[0]?.owned).toEqual(expect.arrayContaining([FLOSS, 'color.gold']));
+  });
+
+  it('previent le match de l objet achete', async () => {
+    const seen: InventorySnapshot[] = [];
+    await service(repository(), (_id, snapshot) => seen.push(snapshot)).buy('p-1', 'color.violet');
+    expect(seen[0]?.owned).toContain('color.violet');
   });
 });
 

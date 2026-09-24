@@ -250,19 +250,21 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
      *
      * L'apparence etait lue a la connexion et nulle part ailleurs : une danse
      * equipee au vestiaire n'etait vue qu'apres une reconnexion. L'inventaire
-     * previent par son port ; le match relit, met a jour la session, et les
-     * danses par mouvement d'un match en cours.
+     * previent par son port, avec l'etat qu'il vient d'ecrire ; le match en
+     * tire l'apparence sans relire la base (seul le catalogue, garde en
+     * memoire par le depot), met a jour la session, et les danses par
+     * mouvement d'un match en cours.
      */
     {
       provide: INVENTORY_CHANGES,
-      inject: [PLAYER_WARDROBE, SocketNotifier, MatchRuntime, PinoLoggerService],
+      inject: [PrismaInventoryRepository, SocketNotifier, MatchRuntime, PinoLoggerService],
       useFactory: (
-        wardrobe: PlayerWardrobe,
+        inventory: PrismaInventoryRepository,
         notifier: SocketNotifier,
         runtime: MatchRuntime,
         logger: PinoLoggerService,
       ) =>
-        new WearingRefresh(wardrobe, notifier, runtime, {
+        new WearingRefresh(wardrobeFromInventory(inventory), notifier, runtime, {
           warn: (message: string) => {
             logger.warn(message, 'WearingRefresh');
           },

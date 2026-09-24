@@ -65,7 +65,13 @@ export class InventoryService {
     return { inventory: { ...stored, owned: ownedWithFree(stored.owned, catalogue) }, catalogue };
   }
 
-  async buy(playerId: string, itemId: string): Promise<void> {
+  /**
+   * Achete un objet, et rend l'inventaire qui en resulte.
+   *
+   * Rendu plutot que relu : la bourse vient de la transaction du debit, la
+   * liste des possessions de la lecture qui a servi a juger l'achat.
+   */
+  async buy(playerId: string, itemId: string): Promise<PlayerInventory> {
     const { inventory, catalogue } = await this.load(playerId);
 
     const item = catalogue.find((entry) => entry.id === itemId);
@@ -88,8 +94,9 @@ export class InventoryService {
     });
     if (!outcome.ok) throw new InventoryError(outcome.reason);
 
+    let wallet;
     try {
-      await this.deps.inventory.grant(playerId, itemId, outcome.spend);
+      wallet = await this.deps.inventory.grant(playerId, itemId, outcome.spend);
     } catch {
       /*
         La base a refuse : un autre appel a accorde le meme objet entre notre
@@ -101,9 +108,15 @@ export class InventoryService {
       */
       throw new InventoryError('ALREADY_OWNED');
     }
+    const after: PlayerInventory = {
+      wallet,
+      owned: [...inventory.owned, itemId],
+      loadout: inventory.loadout,
+    };
     // Posseder un effet d'aura, c'est le porter a son niveau : le match doit
     // l'apprendre avant la prochaine revelation, pas a la prochaine connexion.
-    await this.deps.changes?.changed(playerId);
+    await this.deps.changes?.changed(playerId, after);
+    return after;
   }
 
   /**
@@ -111,8 +124,11 @@ export class InventoryService {
    *
    * **On ne porte que ce qu'on possede.** Sans cette garde, l'ecran de
    * vestiaire d'un client modifie devient la boutique entiere, gratuite.
+   *
+   * Rend l'inventaire enregistre : c'est la reponse de la route, et le signal
+   * au match. Une seule lecture pour les trois.
    */
-  async equip(playerId: string, data: LoadoutData): Promise<void> {
+  async equip(playerId: string, data: LoadoutData): Promise<PlayerInventory> {
     const { inventory, catalogue } = await this.load(playerId);
     const owned = new Set(inventory.owned);
 
@@ -146,6 +162,8 @@ export class InventoryService {
     }
 
     await this.deps.inventory.setLoadout(playerId, data);
-    await this.deps.changes?.changed(playerId);
+    const after: PlayerInventory = { ...inventory, loadout: data };
+    await this.deps.changes?.changed(playerId, after);
+    return after;
   }
 }

@@ -26,6 +26,9 @@ export interface PlayerInventory {
   readonly loadout: LoadoutData | null;
 }
 
+/** Ce qu'un joueur possede (offerts compris) et porte, sans sa bourse. */
+export type InventorySnapshot = Pick<PlayerInventory, 'owned' | 'loadout'>;
+
 export interface InventoryRepository {
   catalogue(): Promise<readonly CatalogueEntry[]>;
   read(playerId: string): Promise<PlayerInventory>;
@@ -35,8 +38,11 @@ export interface InventoryRepository {
    * Rejette si le joueur possede deja l'objet : c'est la cle primaire
    * `(playerId, itemId)` qui tranche, et elle seule peut le faire — entre la
    * lecture de la regle et l'ecriture, un autre onglet a pu passer.
+   *
+   * Rend la bourse APRES le debit, lue dans la meme transaction : l'appelant
+   * repond avec, sans relire tout l'inventaire.
    */
-  grant(playerId: string, itemId: string, spend: Wallet): Promise<void>;
+  grant(playerId: string, itemId: string, spend: Wallet): Promise<Wallet>;
   setLoadout(playerId: string, data: LoadoutData): Promise<void>;
 }
 
@@ -50,9 +56,12 @@ export interface InventoryRepository {
  * Attendu avant de repondre : quand le client recoit sa reponse, le match sait
  * deja. L'implementation ne doit pas echouer — l'equipement est enregistre, et
  * un signal perdu ne doit pas le faire passer pour refuse.
+ *
+ * Le signal PORTE l'etat qui vient d'etre enregistre : le relire ici coutait
+ * trois requetes de plus a chaque equipement, pour une reponse deja connue.
  */
 export interface InventoryChanges {
-  changed(playerId: string): Promise<void>;
+  changed(playerId: string, snapshot: InventorySnapshot): Promise<void>;
 }
 
 /** Jeton d'injection du signal. */
