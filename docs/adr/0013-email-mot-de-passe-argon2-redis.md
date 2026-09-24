@@ -49,23 +49,69 @@ production : Traefik parle depuis le réseau Docker). Fastify 5 refuse
 désormais un simple nombre de sauts, et `true` croirait la partie gauche de
 `X-Forwarded-For`, que le client écrit.
 
-**Le mot de passe oublié passe par le code de récupération.** Changer son mot
-de passe exige une preuve : l'ancien, **ou** le code. Pas de fenêtre « session
-ouverte par code il y a moins de dix minutes » : elle demanderait de marquer
-les jetons d'accès, pour un gain nul — le joueur qui vient de se servir de son
-code l'a encore sous les yeux.
+**Dès qu'une adresse est rattachée, le mot de passe est le secret maître.**
+Une session seule (téléphone déverrouillé, jeton volé) ne suffit plus :
+
+- **délivrer un nouveau code de récupération exige l'ancien mot de passe**
+  (`POST /auth/recovery { currentPassword }`). Sans cela, l'intrus remplaçait
+  le code du joueur par le sien, puis changeait le mot de passe avec ;
+- **un code ne prouve un changement de mot de passe que s'il a plus d'une
+  heure** (`AuthIdentity.createdAt` de la ligne `RECOVERY`, déjà posé à chaque
+  délivrance : aucune migration). Le parcours légitime n'en souffre pas : le
+  « mot de passe oublié » se fait avec le code **noté**, délivré bien avant
+  (`recovery/claim`, puis changement avec ce même code) ;
+- **changer de mot de passe chasse tout le monde** : tous les jetons de
+  rafraîchissement sont révoqués et toutes les identités `DEVICE` détachées,
+  sauf celle de l'appareil qui fait la demande (il joint son secret). Un
+  appareil détaché qui se relance ouvre un compte invité neuf, plus celui-ci.
+  Le code de récupération, lui, reste : c'est la porte de secours.
+
+Variante écartée : exiger que la session ait été ouverte par un code depuis
+moins de dix minutes. Il faudrait marquer les jetons d'accès, et un code
+fraîchement délivré par un intrus passerait quand même.
+
+**Les compteurs d'IP comptent par seau** : une adresse IPv4 vue en IPv6
+(`::ffff:a.b.c.d`) est ramenée à l'IPv4, une IPv6 compte par préfixe /64 (un
+abonné en reçoit un entier). Une requête sans adresse lisible est refusée
+plutôt que rangée sous une clé commune que n'importe qui pourrait remplir.
+
+**Le coût d'argon2 a un plafond global** : deux hachages à la fois, trente-deux
+en attente, `503 BUSY` au-delà. Les limites par adresse et par IP ne bornent
+pas une rafale répartie sur mille IP et mille adresses ; celui-ci, si. Les
+preuves de mot de passe (changement, demande de code) sont aussi comptées par
+IP, en plus du joueur.
+
+**Les empreintes d'adresse sont des HMAC** avec la clé du serveur
+(`JWT_SECRET`, message préfixé `email-attempts:`), pas un SHA-256 nu qu'on
+renverserait en hachant des adresses candidates. Changer `JWT_SECRET` remet
+les compteurs d'adresse à zéro, ce qui est sans conséquence.
+
+La longueur minimale est recomptée côté serveur **après NFKC, en caractères** :
+c'est ce qui est haché.
 
 ## Conséquences
 
-- Bloquer une adresse bloque aussi son propriétaire, quinze minutes. Le prix
-  est faible : son appareil reste ouvert par son secret, et le code de
-  récupération ouvre toujours son compte.
+- **Un tiers peut bloquer un compte** quinze minutes en ratant six fois son
+  adresse. Le prix est faible : l'appareil du joueur reste ouvert par son
+  secret, et le code de récupération ouvre toujours son compte.
+- **Un compte sans adresse n'a qu'un facteur : la session.** Qui la détient
+  peut rattacher un email, délivrer un code ; c'est la nature d'un compte
+  invité, et c'est pour cela que le rattachement d'une adresse est proposé
+  dès l'écran de bienvenue.
+- **L'adresse n'est pas vérifiée**, donc elle est **réservable** : quelqu'un
+  peut rattacher l'adresse d'un autre à son propre compte, et le vrai
+  propriétaire lira « adresse déjà utilisée ». Il faudra une procédure de
+  support (preuve de possession de la boîte, puis libération de l'adresse) le
+  jour où cela arrive ; rien ne l'automatise aujourd'hui.
 - « Cette adresse est déjà prise » est une information que la route de
   rattachement donne à tout compte invité, donc à tout le monde. Elle est
   bornée comme la connexion.
-- Changer d'adresse n'est pas prévu : on change le mot de passe. Un compte
-  garde l'adresse qu'il a rattachée.
+- Changer d'adresse n'est pas prévu : on change le mot de passe.
 - Relever les paramètres d'argon2 plus tard ne casse rien : chaque hachage porte
   les siens (format PHC). Re-hacher à la connexion n'est pas encore fait.
-- Si un CDN s'intercale un jour devant Traefik, `TRUST_PROXY` doit l'inclure,
-  sinon tous ses clients partageront un compteur.
+- **`TRUST_PROXY=uniquelocal` fait confiance à toute adresse privée.** Sur
+  `shipease`, le réseau Docker est partagé avec d'autres applications : un
+  conteneur voisin compromis pourrait écrire `X-Forwarded-For` et choisir
+  l'adresse IP comptée. Le resserrer au sous-réseau de Traefik (un CIDR précis)
+  est la prochaine étape. Si un CDN s'intercale un jour devant Traefik, ses
+  plages doivent être ajoutées, sinon tous ses clients partageront un compteur.

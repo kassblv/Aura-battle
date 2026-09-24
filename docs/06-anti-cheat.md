@@ -36,6 +36,8 @@ Sanctions progressives : partie rapide uniquement, puis suspension, puis banniss
 
 - Limite de débit par socket et par IP (messages/seconde, créations d'invitations/minute).
 - **Connexion par email : tentatives bornées** (ADR 0013). 5 par adresse et 20 par IP sur quinze minutes, comptées dans Redis **avant** le hachage — une rafale bloquée ne coûte rien au processeur. Une réponse unique, `INVALID_CREDENTIALS`, et le même temps de calcul pour une adresse inconnue que pour un mauvais mot de passe. L'IP est celle du joueur grâce à `TRUST_PROXY`, jamais la partie de `X-Forwarded-For` que le client écrit. Les échecs sont journalisés avec un fragment d'empreinte de l'adresse, jamais l'adresse ni le mot de passe.
+- **Une session seule ne prend pas un compte qui a une adresse** (ADR 0013) : délivrer un code de récupération exige le mot de passe, un code ne prouve un changement de mot de passe que s'il a plus d'une heure, et changer de mot de passe révoque toutes les sessions et détache tous les appareils sauf le sien. Plafond global de deux hachages argon2 simultanés (`503 BUSY` au-delà). Compteurs d'IP par seau (IPv6 par /64), requête sans adresse refusée.
+- **Limites connues** (ADR 0013) : six essais ratés bloquent une adresse quinze minutes, y compris pour son propriétaire (le code de récupération reste ouvert) ; une adresse non vérifiée est réservable par un tiers, procédure de support à prévoir ; `TRUST_PROXY=uniquelocal` croit tout le réseau Docker partagé de `shipease`, à resserrer au sous-réseau de Traefik.
 - JWT d'accès courts (15 min) + refresh token avec rotation.
 - Aucune donnée sensible dans les messages temps réel.
 - Journal des événements de chaque match conservé 30 jours pour les litiges.
