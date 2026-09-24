@@ -230,3 +230,45 @@ describe('PinoLoggerService — une erreur ne doit jamais disparaitre', () => {
     expect(lines.join('')).toContain('m_01');
   });
 });
+
+/*
+  Troisieme relecture : un objet passe a l'adaptateur Nest partait en TEXTE
+  (JSON.stringify), donc sous la redaction de pino, qui ne lit que des champs.
+*/
+describe('PinoLoggerService — la redaction s applique aux objets', () => {
+  it('ne sort jamais un mot de passe passe en objet, a plat ou imbrique', () => {
+    const { lines, stream } = capture();
+    const logger = new PinoLoggerService(createLogger(config, stream));
+    // `warn` et non `debug` : le niveau de test filtrerait `debug`, et le test
+    // passerait sans rien avoir ecrit.
+    logger.warn({ password: 'secret-a-plat', visible: 'ligne-ecrite' });
+    logger.warn({ requete: { corps: { utilisateur: { password: 'secret-profond' } } } });
+    logger.log({ lignes: [{ recoveryCode: 'AURA-DANS-UN-TABLEAU' }] });
+    const sortie = lines.join('');
+    expect(sortie).not.toContain('secret-a-plat');
+    expect(sortie).not.toContain('secret-profond');
+    expect(sortie).not.toContain('AURA-DANS-UN-TABLEAU');
+    expect(sortie).toContain('ligne-ecrite');
+  });
+
+  it('survit a un objet qui se contient lui-meme', () => {
+    const { lines, stream } = capture();
+    const boucle: Record<string, unknown> = { nom: 'boucle' };
+    boucle.moi = boucle;
+    new PinoLoggerService(createLogger(config, stream)).warn(boucle);
+    expect(lines.join('')).toContain('boucle');
+  });
+
+  /* Une violation d'unicite peut citer l'adresse en conflit dans son message. */
+  it('ne garde d une erreur Prisma que son code', () => {
+    const { lines, stream } = capture();
+    const conflit = Object.assign(
+      new Error('Unique constraint failed: (subject)=(kassim@gmail.com)'),
+      { name: 'PrismaClientKnownRequestError', code: 'P2002' },
+    );
+    new PinoLoggerService(createLogger(config, stream)).error(conflit);
+    const sortie = lines.join('');
+    expect(sortie).not.toContain('kassim@gmail.com');
+    expect(sortie).toContain('P2002');
+  });
+});

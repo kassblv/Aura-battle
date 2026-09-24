@@ -15,6 +15,8 @@ import type { ServerConfig } from './config.js';
  *    (regle d'or n°4). Un `logger.debug({ choice })` place la pendant un
  *    deboguage est exactement le genre de fuite qui survit au deboguage.
  */
+const CENSOR = '[masque]';
+
 const REDACTED_PATHS = [
   // Secrets
   'token',
@@ -84,7 +86,7 @@ export function createLogger(config: ServerConfig, destination?: DestinationStre
   const development = config.nodeEnv === 'development';
   const options = {
     level: development ? 'debug' : 'info',
-    redact: { paths: REDACTED_PATHS, censor: '[masque]' },
+    redact: { paths: REDACTED_PATHS, censor: CENSOR },
     base: { env: config.nodeEnv },
   } as const;
 
@@ -120,6 +122,41 @@ const MAX_ERROR_MESSAGE = 300;
  * elle est bornee comme lui.
  */
 const MAX_STACK_LINES = 8;
+
+/** Code d'erreur connu de Prisma (`P2002`…) : le seul morceau d'une telle erreur qu'on garde. */
+const PRISMA_CODE = /^P\d{4}$/;
+
+/** Une pile sans sa premiere ligne, qui recopie le message. */
+function withoutHead(stack: string | undefined): string | undefined {
+  return stack?.split('\n').slice(1).join('\n');
+}
+
+/** Les noms de champ sensibles, a toute profondeur : le dernier segment des chemins masques. */
+const SENSITIVE_KEYS = new Set(
+  REDACTED_PATHS.map((path) => path.split('.').at(-1) ?? path).filter((key) => /^\w+$/.test(key)),
+);
+
+/** Au-dela, un objet journalise est tronque : un journal n'est pas un vidage memoire. */
+const MAX_SCRUB_DEPTH = 6;
+
+/**
+ * Copie un objet en masquant les champs sensibles, a toute profondeur.
+ *
+ * Les cycles et la profondeur sont bornes : un objet de bibliotheque passe
+ * par megarde ne doit ni boucler ni deverser tout son graphe.
+ */
+function scrub(value: unknown, seen: WeakSet<object>, depth: number): unknown {
+  if (typeof value !== 'object' || value === null) return value;
+  if (seen.has(value)) return '[cycle]';
+  if (depth >= MAX_SCRUB_DEPTH) return '[tronque]';
+  seen.add(value);
+  if (Array.isArray(value)) return value.map((item) => scrub(item, seen, depth + 1));
+  const copy: Record<string, unknown> = {};
+  for (const [key, field] of Object.entries(value)) {
+    copy[key] = SENSITIVE_KEYS.has(key) ? CENSOR : scrub(field, seen, depth + 1);
+  }
+  return copy;
+}
 
 /** Coupe une chaine, en disant qu'on l'a coupee. */
 function clamp(text: string, limit: number): string {
@@ -160,13 +197,39 @@ export class PinoLoggerService implements LoggerService {
       return { text: value, fields: {} };
     }
     if (value instanceof Error) {
+      const code = (value as { code?: unknown }).code;
+      if (typeof code === 'string' && PRISMA_CODE.test(code)) {
+        /*
+          Une erreur Prisma recopie dans son message ce qu'elle a refuse — une
+          violation d'unicite peut y citer l'adresse email en conflit. On ne
+          garde que le code, la classe et les cadres de pile (sans leur
+          premiere ligne, qui recopie le message).
+        */
+        const message = `${value.name} [${code}]`;
+        return {
+          text: message,
+          fields: {
+            err: { name: value.name, code, message, stack: shortStack(withoutHead(value.stack)) },
+          },
+        };
+      }
       const message = clamp(value.message, MAX_ERROR_MESSAGE);
       return {
         text: message,
         fields: { err: { name: value.name, message, stack: shortStack(value.stack) } },
       };
     }
-    return { text: JSON.stringify(value) ?? String(value), fields: {} };
+    if (typeof value === 'object' && value !== null) {
+      /*
+        Un objet part en CHAMPS, pas en texte. Serialise en chaine, il passait
+        sous la redaction de pino, qui ne lit que des champs : un
+        `logger.debug({ password })` ecrivait le mot de passe en clair. Et les
+        jokers de pino ne descendent que d'un niveau : `scrub` masque les cles
+        sensibles a toute profondeur.
+      */
+      return { text: '', fields: { data: scrub(value, new WeakSet(), 0) } };
+    }
+    return { text: String(value), fields: {} };
   }
 
   private write(
