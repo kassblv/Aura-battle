@@ -19,6 +19,7 @@ import {
   type MatchEffect,
   type MatchEvent,
   type MatchState,
+  type Move,
   type RechargeTap,
   type RoundResult,
   type Seat,
@@ -300,13 +301,17 @@ const CLOCK_ALLOWANCE_MS = 250;
 /**
  * Mouvement attribue a un siege qui n'a pas verrouille.
  *
- * Le moteur joue « palier 0 d'un style tire par la graine » (`@aura/rules`,
- * §9) ; le serveur, lui, n'a qu'a **nommer** ce qui s'est passe pour la
- * revelation et pour la trace de fantome. Une seule constante pour les deux :
- * deux replis differents montreraient deux mouvements differents pour la meme
+ * Le moteur joue « palier 0 d'une famille tiree par la graine » (docs/01 §9),
+ * et c'est CETTE famille qu'il faut nommer — a la revelation comme dans la
+ * trace de fantome. Un repli fixe (il valait `calme`) affichait une famille
+ * alors que le score et le contre avaient ete calcules sur une autre : faux
+ * quatre fois sur cinq avec cinq familles. Une seule fonction pour les trois
+ * usages : deux replis differents montreraient deux mouvements pour la meme
  * manche.
  */
-const FALLBACK_MOVE = { style: 'calme', tier: 0 } as const;
+function fallbackMove(state: MatchState): Move {
+  return { style: state.roundContext?.defaultStyle ?? 'calme', tier: 0 };
+}
 
 /** Cle du minuteur de deconnexion d'un siege. */
 const disconnectKey = (matchId: string, seat: Seat): string => `${matchId}:disconnect:${seat}`;
@@ -905,7 +910,7 @@ export class MatchRuntime {
    */
   private cosmeticOf(match: LiveMatch, seat: Seat, result: RoundResult): Cosmetic {
     const locked = match.state.pending[seat].locked;
-    const move = locked?.choice.move ?? FALLBACK_MOVE;
+    const move = locked?.choice.move ?? fallbackMove(match.state);
     const amplifier = locked?.choice.amplifier ?? 0;
     const wearing = match.wearing[seat];
     const pose = match.poses[seat];
@@ -948,7 +953,7 @@ export class MatchRuntime {
       const outcome = result.seats[seat];
       const locked = match.state.pending[seat].locked;
       const recharge = match.state.pending[seat].recharge;
-      const move = locked?.choice.move ?? FALLBACK_MOVE;
+      const move = locked?.choice.move ?? fallbackMove(match.state);
 
       return {
         move,
@@ -1005,7 +1010,7 @@ export class MatchRuntime {
       match.ghostTrace[seat].push({
         // Meme repli que la vue ci-dessus : qui n'a pas verrouille a joue
         // l'action par defaut, et c'est bien ce que son adversaire a vu.
-        move: locked?.choice.move ?? FALLBACK_MOVE,
+        move: locked?.choice.move ?? fallbackMove(match.state),
         amplifier: locked?.choice.amplifier ?? 0,
         useUltimate: locked?.choice.useUltimate ?? false,
         // Repris de la resolution, jamais recalcule (regle d'or n°1).

@@ -1,4 +1,12 @@
-import { BALANCE, type Choice, type Seat } from '@aura/rules';
+import { defaultAnimationFor } from '@aura/content';
+import {
+  BALANCE,
+  createRng,
+  deriveSeed,
+  type Choice,
+  type Seat,
+  type Style,
+} from '@aura/rules';
 import type { ServerMessage, ServerMessageName } from '@aura/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 import type {
@@ -1280,6 +1288,10 @@ describe('effet d aura a la revelation', () => {
  * verifie qu'elle est offerte ou possedee. Une pose refusee est imputee au
  * seul siege fautif, et le siege joue alors le choix par defaut du moteur.
  */
+/** La famille du choix par defaut, telle que le moteur la tire (docs/01 §9). */
+const seededDefaultStyle = (seed: string, round: number): Style =>
+  createRng(deriveSeed(seed, 'default', round)).pick(BALANCE.styles);
+
 describe('pose verrouillee', () => {
   const WHEEL = 'anim.acrobatie.t2.wheel'; // offerte
   const FLEX = 'anim.prouesse.t0.flex'; // offerte
@@ -1402,7 +1414,13 @@ describe('pose verrouillee', () => {
     const second = result();
     expect(second.round).toBe(2);
     expect(second.sides.a.cosmetic.animationId).not.toBe(WHEEL);
-    expect(second.sides.a.cosmetic.animationId).toMatch(/^anim\.[a-z]+\.t0\./);
+    // La famille que le MOTEUR a jouee — tiree par la graine —, pas une
+    // famille de repli : sinon le contre affiche contredit les familles
+    // affichees, quatre fois sur cinq.
+    const drawn = { style: seededDefaultStyle('graine', 2), tier: 0 } as const;
+    expect(second.sides.a.move).toEqual(drawn);
+    expect(second.sides.b.move).toEqual(drawn);
+    expect(second.sides.a.cosmetic.animationId).toBe(defaultAnimationFor(drawn));
   });
 });
 
