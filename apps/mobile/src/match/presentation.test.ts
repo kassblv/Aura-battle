@@ -228,7 +228,7 @@ describe('danse equipee', () => {
     const match = solo('skin');
     runTo(match, 'reveal');
     const move = match.state.seats.a.moves.at(-1)!;
-    const etranger = move.style === 'calme' ? 'anim.hype.t4.boat' : 'anim.calme.t4.backflip';
+    const etranger = move.style === 'calme' ? 'anim.hype.t4.boat' : 'anim.acrobatie.t4.backflip';
     const scene = present(match.state, looks, { skins: { a: etranger } });
     expect(scene.fighters.a.animationId).toBe(animationFor(move).id);
   });

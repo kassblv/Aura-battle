@@ -10,7 +10,7 @@
  * fichiers, et un test verifie qu'aucun fichier n'y manque ni ne s'y ajoute.
  */
 
-export type Style = 'calme' | 'hype' | 'provoc';
+export type Style = 'calme' | 'hype' | 'provoc' | 'acrobatie' | 'prouesse';
 export type Tier = 0 | 1 | 2 | 3 | 4;
 
 export interface Move {
@@ -30,14 +30,14 @@ export const MOVE_ANIMATIONS: Readonly<Record<Style, Readonly<Record<Tier, reado
       1: ['pocket', 'stride'],
       2: ['lookaway', 'crown'],
       3: ['meditate', 'moonwalk', 'slowkick'],
-      4: ['levitate', 'backflip'],
+      4: ['levitate'],
     },
     hype: {
-      0: ['dab', 'jumpclap'],
+      0: ['dab'],
       1: ['sixseven', 'shoulders'],
       2: ['fist', 'floss', 'goal'],
-      3: ['griddy', 'spin'],
-      4: ['boat', 'wheel'],
+      3: ['griddy'],
+      4: ['boat'],
     },
     provoc: {
       0: ['shush', 'skyward'],
@@ -45,6 +45,25 @@ export const MOVE_ANIMATIONS: Readonly<Record<Style, Readonly<Record<Tier, reado
       2: ['mewing', 'shrug', 'slowclap'],
       3: ['lfront', 'dust'],
       4: ['back', 'bow'],
+    },
+    /*
+      La voltige : les quatre acrobaties qui vivaient chez Hype et Calme y ont
+      ete deplacees, et chacune y est devenue la pose offerte de sa case.
+    */
+    acrobatie: {
+      0: ['jumpclap'],
+      1: ['roll'],
+      2: ['wheel'],
+      3: ['spin'],
+      4: ['backflip'],
+    },
+    /* La force pure : pompes, gainage, equilibres. */
+    prouesse: {
+      0: ['flex'],
+      1: ['pushups'],
+      2: ['plank'],
+      3: ['handstand'],
+      4: ['humanflag'],
     },
   });
 
@@ -57,7 +76,11 @@ export const SYSTEM_ANIMATIONS: readonly string[] = [
   'defeat',
 ];
 
-export const STYLES: readonly Style[] = ['calme', 'hype', 'provoc'];
+/**
+ * L ordre du cercle des contres (docs/01 §2) : chaque famille bat la suivante
+ * et celle a trois crans. Ne pas trier.
+ */
+export const STYLES: readonly Style[] = ['calme', 'hype', 'provoc', 'acrobatie', 'prouesse'];
 export const TIERS: readonly Tier[] = [0, 1, 2, 3, 4];
 
 /** Identifiant complet d'une animation de mouvement. */
@@ -111,4 +134,25 @@ export function allAnimationIds(): readonly string[] {
     ),
   );
   return [...moves, ...SYSTEM_ANIMATIONS.map(systemAnimationId)];
+}
+
+/** Index inverse : identifiant complet d une pose → son mouvement. */
+const MOVE_BY_ANIMATION: ReadonlyMap<string, Move> = new Map(
+  STYLES.flatMap((style) =>
+    TIERS.flatMap((tier) =>
+      animationsFor({ style, tier }).map(
+        (slug) => [animationId({ style, tier }, slug), { style, tier }] as const,
+      ),
+    ),
+  ),
+);
+
+/**
+ * Le mouvement d une pose, ou `null` si ce n est pas une pose de mouvement.
+ *
+ * C est ce que le serveur lit au verrouillage : le client ne dit que la pose,
+ * et famille et palier s en deduisent ici, nulle part ailleurs.
+ */
+export function moveOfAnimation(id: string): Move | null {
+  return MOVE_BY_ANIMATION.get(id) ?? null;
 }

@@ -1,14 +1,14 @@
 {
-  "id": "anim.hype.t4.wheel",
+  "id": "anim.acrobatie.t2.wheel",
   "version": 1,
   "name": {
     "fr": "Roue"
   },
   "move": {
-    "style": "hype",
-    "tier": 4
+    "style": "acrobatie",
+    "tier": 2
   },
-  "rarity": "legendary",
+  "rarity": "default",
   "loop": {
     "duration": 2.4,
     "weights": [0.22, 0.13, 0.18, 0.13, 0.1, 0.24],

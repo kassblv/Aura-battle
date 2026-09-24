@@ -103,6 +103,13 @@ async function seedCosmetics(): Promise<number> {
       create: item,
     });
   }
+
+  // Une pose qui change de famille change d'identifiant (`anim.hype.t4.wheel`
+  // devient `anim.acrobatie.t2.wheel`). L'ancien resterait en base avec son
+  // ancien prix, et la boutique continuerait de le vendre : on le retire.
+  await prisma.cosmeticItem.deleteMany({
+    where: { kind: 'ANIMATION', id: { notIn: [...allAnimationIds()] } },
+  });
   return items.length;
 }
 

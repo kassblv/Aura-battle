@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { STYLES, TIERS } from './catalogue.js';
 import { AMPLIFIER_LEVELS, defaultEffectForLevel } from './cosmetics.js';
-import { amplifierName, styleName, tierName } from './naming.js';
+import { amplifierName, styleIcon, styleName, tierName } from './naming.js';
 
 describe('noms affiches', () => {
   it('nomme chaque palier', () => {
@@ -47,5 +47,18 @@ describe('noms affiches', () => {
   it('donne un nom distinct a chaque amplificateur', () => {
     const names = new Set(AMPLIFIER_LEVELS.map((level) => amplifierName(level).fr));
     expect(names.size).toBe(AMPLIFIER_LEVELS.length);
+  });
+});
+
+describe('cinq familles', () => {
+  it('les nomme et les illustre', () => {
+    expect(STYLES.map((style) => styleName(style).fr)).toEqual([
+      'Calme',
+      'Hype',
+      'Provoc',
+      'Acrobatie',
+      'Prouesse',
+    ]);
+    expect(STYLES.map(styleIcon)).toEqual(['🧊', '🔥', '😏', '🤸', '💪']);
   });
 });

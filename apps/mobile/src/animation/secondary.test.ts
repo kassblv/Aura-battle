@@ -180,7 +180,7 @@ describe('livePose', () => {
   });
 
   it('fait regarder la tete en retard sur un corps qui tourne', () => {
-    const spin = byId('anim.hype.t3.spin');
+    const spin = byId('anim.acrobatie.t3.spin');
     let widest = 0;
     for (const t of instants(spin, 96)) {
       widest = Math.max(widest, Math.abs(livePose(spin, t, 0, FULL).hy - samplePose(spin, t).hy));

@@ -37,7 +37,22 @@ const STYLE_NAMES: Readonly<Record<Style, LocalizedName>> = {
   calme: { fr: 'Calme' },
   hype: { fr: 'Hype' },
   provoc: { fr: 'Provoc' },
+  acrobatie: { fr: 'Acrobatie' },
+  prouesse: { fr: 'Prouesse' },
 };
+
+const STYLE_ICONS: Readonly<Record<Style, string>> = {
+  calme: '🧊',
+  hype: '🔥',
+  provoc: '😏',
+  acrobatie: '🤸',
+  prouesse: '💪',
+};
+
+/** L icone d une famille : une seule source, lue par tous les ecrans. */
+export function styleIcon(style: Style): string {
+  return STYLE_ICONS[style];
+}
 
 export function tierName(tier: Tier): LocalizedName {
   return TIER_NAMES[tier];

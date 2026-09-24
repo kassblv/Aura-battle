@@ -12,7 +12,7 @@ const KINDS: ReadonlyMap<string, CosmeticKind> = new Map<string, CosmeticKind>([
   ['color.violet', 'AURA_COLOR'],
   ['fx.glow', 'AURA_EFFECT'],
   ['anim.hype.t2.floss', 'ANIMATION'],
-  ['anim.calme.t4.backflip', 'ANIMATION'],
+  ['anim.acrobatie.t4.backflip', 'ANIMATION'],
 ]);
 
 describe('wearingFrom', () => {
@@ -62,7 +62,7 @@ describe('wearingFrom', () => {
     danse en couleur d'aura, ni un palier 4 danse sous `calme.t0`.
   */
   it('ecarte ce qui est range dans le mauvais emplacement', () => {
-    const backflip = animationIdsFor({ style: 'calme', tier: 4 }).find((id) =>
+    const backflip = animationIdsFor({ style: 'acrobatie', tier: 4 }).find((id) =>
       id.endsWith('.backflip'),
     )!;
     const worn = wearingFrom(

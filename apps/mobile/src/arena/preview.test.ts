@@ -118,7 +118,7 @@ describe('previewFraming', () => {
   });
 
   it('recule pour le salto arriere et se rapproche pour une pose debout', () => {
-    const flip = previewFraming({ worldX: 0, bounds: boundsOf('anim.calme.t4.backflip') });
+    const flip = previewFraming({ worldX: 0, bounds: boundsOf('anim.acrobatie.t4.backflip') });
     const still = previewFraming({ worldX: 0, bounds: boundsOf('anim.calme.t0.crossed') });
     expect(flip.distance).toBeGreaterThan(still.distance + 0.5);
   });

@@ -33,3 +33,4 @@ apps/mobile/ios/App/Podfile.lock
 apps/mobile/ios/App/build/
 apps/mobile/ios/DerivedData/
 apps/mobile/ios/App/Pods/
+.superpowers/

@@ -22,7 +22,11 @@ export interface PlayerProfile {
   readonly wins: number;
   readonly currentStreak: number;
   readonly bestStreak: number;
-  readonly roundsByStyle: Readonly<Record<Style, number>>;
+  /**
+   * Manches jouees par famille. Partiel : un profil local enregistre avant les
+   * cinq familles n a que trois cles, et une cle absente vaut zero.
+   */
+  readonly roundsByStyle: Readonly<Partial<Record<Style, number>>>;
   readonly wallet: Wallet;
   /**
    * Experience cumulee, telle que le serveur l a annoncee.
@@ -95,9 +99,9 @@ export interface StyleShare {
 
 /** Repartition des manches par style, dans l ordre du cycle de contres. */
 export function styleShares(profile: PlayerProfile): readonly StyleShare[] {
-  const total = STYLES.reduce((sum, style) => sum + profile.roundsByStyle[style], 0);
+  const total = STYLES.reduce((sum, style) => sum + (profile.roundsByStyle[style] ?? 0), 0);
   return STYLES.map((style) => {
-    const rounds = profile.roundsByStyle[style];
+    const rounds = profile.roundsByStyle[style] ?? 0;
     return { style, rounds, share: total > 0 ? rounds / total : 0 };
   });
 }
@@ -125,7 +129,7 @@ export function newProfile(name: string, playerId: string): PlayerProfile {
     wins: 0,
     currentStreak: 0,
     bestStreak: 0,
-    roundsByStyle: { calme: 0, hype: 0, provoc: 0 },
+    roundsByStyle: { calme: 0, hype: 0, provoc: 0, acrobatie: 0, prouesse: 0 },
     wallet: { soft: 0, hard: 0 },
   };
 }

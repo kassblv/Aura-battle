@@ -108,7 +108,7 @@ describe('les accents du catalogue livre', () => {
   };
 
   it('fait claquer la roue une fois par tour, souffle avant impact', () => {
-    const roue = animation('anim.hype.t4.wheel');
+    const roue = animation('anim.acrobatie.t2.wheel');
     const entendus: string[] = [];
     const step = 1 / 60;
     const tours = Math.round((roue.loop.duration / step) * 2);

@@ -1,14 +1,14 @@
 {
-  "id": "anim.hype.t3.spin",
+  "id": "anim.acrobatie.t3.spin",
   "version": 2,
   "name": {
     "fr": "Toupie"
   },
   "move": {
-    "style": "hype",
+    "style": "acrobatie",
     "tier": 3
   },
-  "rarity": "epic",
+  "rarity": "default",
   "loop": {
     "duration": 0.9,
     "weights": [0.2, 0.14, 0.12, 0.14, 0.18, 0.22],

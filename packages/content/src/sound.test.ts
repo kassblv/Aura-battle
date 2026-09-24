@@ -138,8 +138,8 @@ describe('champ sound', () => {
       (animations.find((animation) => animation.id === id)?.sound ?? []).map(
         (entry) => entry.accent,
       );
-    expect(accents('anim.hype.t4.wheel')).toEqual(['whoosh', 'impact']);
-    expect(accents('anim.calme.t4.backflip')).toEqual(['whoosh', 'impact']);
+    expect(accents('anim.acrobatie.t2.wheel')).toEqual(['whoosh', 'impact']);
+    expect(accents('anim.acrobatie.t4.backflip')).toEqual(['whoosh', 'impact']);
     expect(accents('anim.provoc.t2.slowclap')).toEqual(['impact', 'impact']);
     expect(accents('anim.calme.t2.crown')).toEqual(['hold']);
   });

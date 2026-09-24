@@ -1,5 +1,13 @@
 import { useState, type JSX } from 'react';
-import { STYLES, styleName, tierName, TIERS, type Style, type Tier } from '@aura/content';
+import {
+  STYLES,
+  styleIcon,
+  styleName,
+  tierName,
+  TIERS,
+  type Style,
+  type Tier,
+} from '@aura/content';
 import type { PanelLayout } from './panel.js';
 import { memeGallery } from './memes.js';
 import {
@@ -44,8 +52,6 @@ const SLOTS_OF: Readonly<Record<WardrobeTab, readonly LookSlot[]>> = {
   aura: ['aura'],
   dances: [],
 };
-
-const STYLE_ICONS: Readonly<Record<Style, string>> = { calme: '🧊', hype: '🔥', provoc: '😏' };
 
 export interface WardrobeProps {
   readonly wardrobe: Wardrobe;
@@ -218,7 +224,7 @@ export function WardrobeScreen({
                     onTry(danceOptions(wardrobe, { style: id, tier }).current);
                   }}
                 >
-                  <span aria-hidden="true">{STYLE_ICONS[id]}</span>
+                  <span aria-hidden="true">{styleIcon(id)}</span>
                   <span>{styleName(id).fr}</span>
                 </button>
               </li>

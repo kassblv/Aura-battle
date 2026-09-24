@@ -1,4 +1,4 @@
-import { tierName } from '@aura/content';
+import { styleIcon, tierName } from '@aura/content';
 import { levelFor } from '@aura/rules';
 import type { JSX } from 'react';
 import type { MemeCard } from './memes.js';
@@ -14,9 +14,13 @@ import type { HomeClusters } from '../ui/layout.js';
  * meme titre que `renderer.ts`.
  */
 
-const STYLE_ICONS = { calme: '🧊', hype: '🔥', provoc: '😏' } as const;
-
-const STYLE_COLORS = { calme: '#4fc3f7', hype: '#ff8a3d', provoc: '#c97bff' } as const;
+const STYLE_COLORS = {
+  calme: '#4fc3f7',
+  hype: '#ff8a3d',
+  provoc: '#c97bff',
+  acrobatie: '#7cf29a',
+  prouesse: '#ffd54f',
+} as const;
 
 const percent = (value: number): string => `${(value * 100).toFixed(1).replace('.', ',')} %`;
 
@@ -206,7 +210,7 @@ export function HomeScreen({
             >
               <span className="memes__name">{meme.name}</span>
               <span className="memes__meta">
-                <span aria-hidden="true">{STYLE_ICONS[meme.style]}</span>
+                <span aria-hidden="true">{styleIcon(meme.style)}</span>
                 {tierName(meme.tier).fr}
                 {memeEquipped && <span className="memes__state">signature</span>}
                 {!memeEquipped && memeOwned && <span className="memes__state">choisir</span>}
@@ -427,7 +431,7 @@ export function ProfileScreen({ profile, onClose }: ProfileProps): JSX.Element {
         {styleShares(profile).map(({ style, share }) => (
           <li key={style} className="split__row">
             <span>
-              {STYLE_ICONS[style]} {style}
+              {styleIcon(style)} {style}
             </span>
             <span className="split__track">
               <i

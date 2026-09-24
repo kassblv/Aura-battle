@@ -42,19 +42,19 @@ describe('animationFor', () => {
   });
 
   it('joue le skin demande quand il existe, et l offert sinon', () => {
-    const offered = animationFor({ style: 'calme', tier: 4 });
-    const chosen = animationFor({ style: 'calme', tier: 4 }, 'anim.calme.t4.backflip');
-    expect(chosen.id).toBe('anim.calme.t4.backflip');
+    const offered = animationFor({ style: 'calme', tier: 3 });
+    const chosen = animationFor({ style: 'calme', tier: 3 }, 'anim.calme.t3.moonwalk');
+    expect(chosen.id).toBe('anim.calme.t3.moonwalk');
     // Un cosmetique absent ne doit jamais faire echouer une manche : on
     // retombe sur l animation offerte, strictement equivalente au score.
-    expect(animationFor({ style: 'calme', tier: 4 }, 'anim.inconnue').id).toBe(offered.id);
+    expect(animationFor({ style: 'calme', tier: 3 }, 'anim.inconnue').id).toBe(offered.id);
   });
 
   it('refuse un skin d un autre mouvement', () => {
     // Porter l animation d un palier 4 sur un palier 0 serait un mensonge
     // visuel sur ce que l adversaire vient de depenser.
     const offered = animationFor({ style: 'calme', tier: 0 });
-    expect(animationFor({ style: 'calme', tier: 0 }, 'anim.calme.t4.backflip').id).toBe(offered.id);
+    expect(animationFor({ style: 'calme', tier: 0 }, 'anim.acrobatie.t4.backflip').id).toBe(offered.id);
   });
 });
 

@@ -7,7 +7,7 @@ describe('@aura/content — surface publique', () => {
   });
 
   it('expose le catalogue des animations et des cosmetiques', () => {
-    expect(allAnimationIds()).toHaveLength(38);
+    expect(allAnimationIds()).toHaveLength(44);
     expect(AURA_EFFECTS.length).toBeGreaterThan(0);
     expect(defaultAnimationFor({ style: 'hype', tier: 0 })).toBe('anim.hype.t0.dab');
   });

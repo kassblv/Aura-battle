@@ -11,8 +11,11 @@ function boundsOf(id: string) {
   return animationBounds(animation);
 }
 
+/** Poses tenues la tete en bas l essentiel de leur boucle. */
+const INVERTED_BY_DESIGN: ReadonlySet<string> = new Set(['anim.prouesse.t3.handstand']);
+
 describe('animationBounds', () => {
-  it('mesure les 26 animations sans produire de borne aberrante', () => {
+  it('mesure toutes les animations sans produire de borne aberrante', () => {
     for (const animation of all) {
       const b = animationBounds(animation);
       for (const [name, value] of Object.entries(b)) {
@@ -22,7 +25,13 @@ describe('animationBounds', () => {
       expect(b.radius, animation.id).toBeGreaterThan(0);
       // Le bassin est sous la tete dans toutes les poses, salto compris : au
       // milieu d un salto les deux tournent ensemble, et la moyenne sur la
-      // boucle garde l ordre.
+      // boucle garde l ordre. Sauf une pose qui passe l essentiel de sa boucle
+      // a l envers PAR CONSTRUCTION : l y exiger reviendrait a interdire le
+      // poirier, pas a detecter une erreur de repere.
+      if (INVERTED_BY_DESIGN.has(animation.id)) {
+        expect(b.headY, animation.id).toBeLessThan(b.hipY);
+        continue;
+      }
       expect(b.headY, animation.id).toBeGreaterThan(b.hipY);
     }
   });
@@ -50,7 +59,7 @@ describe('animationBounds', () => {
    * comme une pose debout, le personnage sort du haut de l image.
    */
   it('voit que le salto arriere occupe bien plus de hauteur qu une pose debout', () => {
-    const flip = boundsOf('anim.calme.t4.backflip');
+    const flip = boundsOf('anim.acrobatie.t4.backflip');
     const still = boundsOf('anim.calme.t0.crossed');
     expect(flip.maxY).toBeGreaterThan(still.maxY + 0.6);
   });

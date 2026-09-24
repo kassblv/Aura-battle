@@ -152,7 +152,7 @@
   "properties": {
     "id": {
       "type": "string",
-      "pattern": "^anim\\.(calme|hype|provoc|system)\\.(t[0-4]|none)\\.[a-z0-9-]+$"
+      "pattern": "^anim\\.(calme|hype|provoc|acrobatie|prouesse|system)\\.(t[0-4]|none)\\.[a-z0-9-]+$"
     },
     "version": {
       "type": "integer",
@@ -181,6 +181,8 @@
             "calme",
             "hype",
             "provoc",
+            "acrobatie",
+            "prouesse",
             "system"
           ]
         },

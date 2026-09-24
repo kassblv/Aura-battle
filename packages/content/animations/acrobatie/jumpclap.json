@@ -1,14 +1,14 @@
 {
-  "id": "anim.hype.t0.jumpclap",
+  "id": "anim.acrobatie.t0.jumpclap",
   "version": 1,
   "name": {
     "fr": "Saut applaudi"
   },
   "move": {
-    "style": "hype",
+    "style": "acrobatie",
     "tier": 0
   },
-  "rarity": "common",
+  "rarity": "default",
   "loop": {
     "duration": 1.1,
     "weights": [0.26, 0.24, 0.5],

@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { animationPrice } from './pricing.js';
 import {
   allAnimationIds,
   animationId,
@@ -6,6 +7,7 @@ import {
   animationsFor,
   defaultAnimationFor,
   MOVE_ANIMATIONS,
+  moveOfAnimation,
   STYLES,
   SYSTEM_ANIMATIONS,
   systemAnimationId,
@@ -21,23 +23,24 @@ describe('MOVE_ANIMATIONS', () => {
     }
   });
 
-  it('compte 33 animations de mouvement : les 21 du prototype et les 12 ajoutees', () => {
+  it('compte 39 poses : 25 offertes, une par case, et 14 variantes', () => {
     const total = STYLES.flatMap((style) =>
       TIERS.flatMap((tier) => animationsFor({ style, tier })),
     ).length;
-    expect(total).toBe(33);
+    expect(total).toBe(39);
   });
 
   /**
-   * Une aura battle est un echange : chaque style doit offrir de quoi varier,
-   * sinon deux joueurs du meme style rejouent le meme geste toute la partie.
-   * Le compte par style est donc un critere de contenu, pas une statistique.
+   * Une aura battle est un echange : chaque famille doit offrir de quoi
+   * varier. Les trois familles historiques gardent leurs variantes ; les deux
+   * nouvelles partent d une pose offerte par case, et leurs variantes viendront
+   * avec la boutique (chantier n°5).
    */
-  it('donne autant de choix aux trois styles', () => {
-    for (const style of STYLES) {
-      const total = TIERS.flatMap((tier) => animationsFor({ style, tier })).length;
-      expect(total, style).toBe(11);
-    }
+  it('compte les poses de chaque famille', () => {
+    const perFamily = Object.fromEntries(
+      STYLES.map((style) => [style, TIERS.flatMap((tier) => animationsFor({ style, tier })).length]),
+    );
+    expect(perFamily).toEqual({ calme: 10, hype: 8, provoc: 11, acrobatie: 5, prouesse: 5 });
   });
 
   /** Chaque palier a au moins un cosmetique a cote de son animation offerte. */
@@ -62,7 +65,7 @@ describe('MOVE_ANIMATIONS', () => {
 
 describe('identifiants', () => {
   it('suit la convention de nommage du schema', () => {
-    const pattern = /^anim\.(calme|hype|provoc|system)\.(t[0-4]|none)\.[a-z0-9-]+$/;
+    const pattern = /^anim\.(calme|hype|provoc|acrobatie|prouesse|system)\.(t[0-4]|none)\.[a-z0-9-]+$/;
     for (const id of allAnimationIds()) {
       expect(id).toMatch(pattern);
     }
@@ -76,9 +79,9 @@ describe('identifiants', () => {
     expect(systemAnimationId('victory')).toBe('anim.system.none.victory');
   });
 
-  it('rend 38 identifiants uniques au total', () => {
+  it('rend 44 identifiants uniques au total', () => {
     const ids = allAnimationIds();
-    expect(ids).toHaveLength(33 + SYSTEM_ANIMATIONS.length);
+    expect(ids).toHaveLength(39 + SYSTEM_ANIMATIONS.length);
     expect(new Set(ids).size).toBe(ids.length);
   });
 });
@@ -100,8 +103,12 @@ describe('defaultAnimationFor', () => {
 
 describe('animationIdsFor', () => {
   it('rend des identifiants complets, la ou animationsFor rend des slugs', () => {
-    const move = { style: 'calme', tier: 4 } as const;
-    expect(animationIdsFor(move)).toEqual(['anim.calme.t4.levitate', 'anim.calme.t4.backflip']);
+    const move = { style: 'calme', tier: 3 } as const;
+    expect(animationIdsFor(move)).toEqual([
+      'anim.calme.t3.meditate',
+      'anim.calme.t3.moonwalk',
+      'anim.calme.t3.slowkick',
+    ]);
   });
 
   /**
@@ -115,5 +122,36 @@ describe('animationIdsFor', () => {
         expect(animationIdsFor(move)).toContain(defaultAnimationFor(move));
       }
     }
+  });
+});
+
+describe('cinq familles', () => {
+  it('dans l ordre du cercle', () => {
+    expect(STYLES).toEqual(['calme', 'hype', 'provoc', 'acrobatie', 'prouesse']);
+  });
+
+  it('chaque case a exactement une pose gratuite, la premiere', () => {
+    for (const style of STYLES) {
+      for (const tier of TIERS) {
+        const ids = animationIdsFor({ style, tier });
+        expect(ids.length).toBeGreaterThan(0);
+        expect(ids[0]).toBe(defaultAnimationFor({ style, tier }));
+        const free = ids.filter((id) => animationPrice(id, 'common') === 0);
+        expect(free).toEqual([ids[0]]);
+      }
+    }
+  });
+
+  it('retrouve le mouvement d une pose', () => {
+    expect(moveOfAnimation('anim.acrobatie.t2.wheel')).toEqual({ style: 'acrobatie', tier: 2 });
+    expect(moveOfAnimation('anim.prouesse.t0.flex')).toEqual({ style: 'prouesse', tier: 0 });
+  });
+
+  it('refuse ce qui n est pas une pose de mouvement', () => {
+    expect(moveOfAnimation('anim.system.none.victory')).toBeNull();
+    expect(moveOfAnimation('fx.flames')).toBeNull();
+    // ancien identifiant, avant que la roue ne change de famille
+    expect(moveOfAnimation('anim.hype.t4.wheel')).toBeNull();
+    expect(moveOfAnimation('')).toBeNull();
   });
 });

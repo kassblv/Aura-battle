@@ -5,6 +5,7 @@ import {
   featuredForDay,
   HAIRSTYLES,
   OUTFITS,
+  styleIcon,
 } from '@aura/content';
 import { memeGallery } from './memes.js';
 import type { Wallet } from './profile.js';
@@ -64,7 +65,6 @@ const EFFECT_GLYPHS: Readonly<Record<string, string>> = {
 };
 
 /** Le style d'une danse se lit d'un coup d'oeil ; son nom, non. */
-const STYLE_GLYPHS = { calme: '🧊', hype: '🔥', provoc: '😏' } as const;
 
 /**
  * L etalage.
@@ -114,7 +114,7 @@ function allSections(): readonly ShopSection[] {
         .map((card) => ({
           id: card.animationId,
           name: card.name,
-          glyph: STYLE_GLYPHS[card.style],
+          glyph: styleIcon(card.style),
           price: card.price,
         })),
     },

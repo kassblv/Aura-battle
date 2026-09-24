@@ -1,14 +1,14 @@
 {
-  "id": "anim.calme.t4.backflip",
+  "id": "anim.acrobatie.t4.backflip",
   "version": 1,
   "name": {
     "fr": "Salto arrière"
   },
   "move": {
-    "style": "calme",
+    "style": "acrobatie",
     "tier": 4
   },
-  "rarity": "legendary",
+  "rarity": "default",
   "loop": {
     "duration": 2.1,
     "weights": [0.26, 0.14, 0.18, 0.14, 0.28],
