@@ -35,6 +35,7 @@ Sanctions progressives : partie rapide uniquement, puis suspension, puis banniss
 ## Réseau et abus
 
 - Limite de débit par socket et par IP (messages/seconde, créations d'invitations/minute).
+- **Connexion par email : tentatives bornées** (ADR 0013). 5 par adresse et 20 par IP sur quinze minutes, comptées dans Redis **avant** le hachage — une rafale bloquée ne coûte rien au processeur. Une réponse unique, `INVALID_CREDENTIALS`, et le même temps de calcul pour une adresse inconnue que pour un mauvais mot de passe. L'IP est celle du joueur grâce à `TRUST_PROXY`, jamais la partie de `X-Forwarded-For` que le client écrit. Les échecs sont journalisés avec un fragment d'empreinte de l'adresse, jamais l'adresse ni le mot de passe.
 - JWT d'accès courts (15 min) + refresh token avec rotation.
 - Aucune donnée sensible dans les messages temps réel.
 - Journal des événements de chaque match conservé 30 jours pour les litiges.

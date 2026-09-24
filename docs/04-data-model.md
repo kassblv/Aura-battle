@@ -26,12 +26,13 @@ model AuthIdentity {
   id         String   @id @default(uuid())
   playerId   String
   provider   AuthProvider
-  subject    String            // identifiant d'appareil, code de récupération, Apple sub, Google sub
+  subject    String            // identifiant d'appareil, code de récupération, email, Apple sub, Google sub
+  secretHash String?           // EMAIL seulement : hachage argon2id du mot de passe
   createdAt  DateTime @default(now())
   player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   @@unique([provider, subject])
 }
-enum AuthProvider { DEVICE RECOVERY APPLE GOOGLE }
+enum AuthProvider { DEVICE RECOVERY EMAIL APPLE GOOGLE }
 
 ### `RECOVERY` — garder son compte quand le navigateur oublie
 
@@ -71,6 +72,28 @@ verrait son compte revenir, puis disparaître. Le client tire donc un secret
 `@@unique([provider, subject])`) et le rattache au compte retrouvé par
 `POST /auth/device/link`. Là encore : on **ajoute** une ligne, on n'en déplace
 aucune.
+
+### `EMAIL` — un email et un mot de passe
+
+Même principe que le code : une ligne de plus, rattachée par un joueur
+connecté (`POST /auth/email/link`), présentée d'ailleurs pour ouvrir le compte
+(`POST /auth/email/login`, suivi du même rattachement d'appareil).
+
+- **`subject` porte l'adresse normalisée** (rognée, en minuscules), **en
+  clair** : c'est un identifiant qu'on cherche, pas un secret. Elle n'est ni
+  vérifiée ni jamais écrite à personne — le serveur n'envoie aucun courrier.
+- **`secretHash` porte le hachage argon2id du mot de passe** (ADR 0013), nul
+  pour tous les autres fournisseurs. Une colonne à part plutôt que dans
+  `subject` : `subject` est ce qu'on cherche (unique), le hachage est ce qu'on
+  vérifie (salé, donc impossible à chercher).
+- **Une adresse par joueur.** La contrainte `(provider, subject)` empêche deux
+  joueurs de partager une adresse, pas un joueur d'en avoir deux : le
+  rattachement verrouille la ligne du joueur (`FOR UPDATE`) le temps de
+  vérifier et d'écrire.
+- **Mot de passe oublié : le code de récupération.** `POST /auth/email/password`
+  accepte l'ancien mot de passe **ou** le code comme preuve.
+- **Rien ne sort :** `GET /auth/email` rend `linked` et l'adresse masquée
+  (`k•••@gmail.com`), jamais l'adresse ni le hachage.
 
 model Season {
   id        String   @id @default(uuid())
