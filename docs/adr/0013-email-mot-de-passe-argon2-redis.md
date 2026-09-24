@@ -66,23 +66,47 @@ Une session seule (téléphone déverrouillé, jeton volé) ne suffit plus :
   appareil détaché qui se relance ouvre un compte invité neuf, plus celui-ci.
   Le code de récupération, lui, reste : c'est la porte de secours.
 
-**L'intrus chassé ne revient pas.** Le changement de mot de passe pose
-`Player.credentialsChangedAt` dans la même transaction que la révocation et le
-détachement. Le vérificateur de jetons d'accès partagé — toutes les routes
-authentifiées et le handshake Socket.IO — refuse tout jeton dont l'`iat` est
-antérieur, **à la seconde** (`iat` est en secondes) : le jeton émis dans la
-seconde du changement passe, et c'est justement celui que la route de
-changement rend à l'appareil qui l'a demandé, sous forme de session fraîche.
-Sans cela, l'intrus gardait son jeton d'accès jusqu'à quinze minutes, assez
-pour rattacher un nouvel appareil et revenir. Les sockets déjà ouvertes ne
-sont pas coupées : elles perdent leur jeton à la reconnexion suivante.
+**L'intrus chassé ne revient pas : des identifiants versionnés.**
+`Player.credentialsVersion` est incrémentée par le changement de mot de passe,
+dans la même transaction que la révocation et le détachement. Chaque jeton de
+rafraîchissement porte la version lue — **sous verrou partagé de la ligne du
+joueur** — à sa création ou à sa rotation, et chaque jeton d'accès la porte en
+claim `cv`. Le vérificateur partagé (toutes les routes authentifiées et le
+handshake Socket.IO) exige l'**égalité** avec la base. La signature peut donc
+avoir lieu hors transaction : la version qu'elle inscrit a été lue atomiquement
+avec le jeton de rafraîchissement. La première version, par dates
+(`credentialsChangedAt` comparé à `iat`), arrondissait à la seconde et laissait
+passer un jeton émis dans la seconde du changement ; la colonne est supprimée.
+**Compatibilité :** un jeton signé avant le claim `cv` vaut version 0, celle de
+tout joueur qui n'a jamais changé de mot de passe ; il tombe au premier
+changement. La route de changement rend une session fraîche à l'appareil qui l'a
+demandé, et le changement **ferme les sockets ouvertes** du joueur (évènement
+`CredentialsEvents`, écouté par le module match) : son appareil se reconnecte
+avec la nouvelle session, celui de l'intrus ne peut plus.
 
 **Le renouvellement ne court plus contre la révocation.** Il consomme son jeton
 par une mise à jour conditionnelle (encore vivant, sinon `REUSED`) et crée le
-remplaçant dans la même transaction, après avoir lu `credentialsChangedAt` sous
-verrou partagé de la ligne du joueur : un changement de mot de passe concurrent
-passe soit avant (le jeton est refusé), soit après (sa révocation atteint le
-remplaçant).
+remplaçant dans la même transaction ; un jeton d'une autre version est `STALE`.
+
+**Aucun appareil ne se rattache sans preuve.** `POST /auth/device/link` a
+disparu : un jeton volé suffisait à y rattacher le secret de l'intrus, qui
+devenait ensuite une « preuve d'appareil ». `recovery/claim` et `email/login`
+prennent le secret **neuf** de l'appareil et le rattachent dans la même requête
+que le code ou le mot de passe ; le client ne range ce secret qu'une fois la
+requête acceptée. **Au plus dix appareils par joueur** : au-delà, les plus
+anciens sont détachés. Refuser aurait bloqué le joueur sur ordinateur, dont
+chaque navigateur vidé laisse un appareil mort ; remplacer borne ce qu'un
+compte accumule sans fermer la porte à personne. Le prix : un joueur qui
+rejoint son compte depuis onze navigateurs perd le plus ancien, qui rouvrira un
+compte invité au prochain lancement.
+
+**Limite de débit par IP des routes publiques** (`/auth/device` 60,
+`/auth/refresh` 60, `/auth/recovery/claim` 20, par quart d'heure et par seau
+d'IP). `AUTH_RATE_LIMIT=off` ne se coupe **que hors production** ; le banc de
+charge, qui tourne en production, donne à chaque joueur simulé sa propre
+adresse (`X-Forwarded-For` derrière `TRUST_PROXY=loopback`) plutôt que de
+couper la limite. Cas limite : un réseau d'opérateur qui partage une adresse
+entre beaucoup d'abonnés.
 
 **Sans adresse, la preuve d'un appareil.** Sur un compte invité, rattacher une
 adresse ou délivrer un code exige le secret d'un appareil déjà rattaché à ce
@@ -90,6 +114,11 @@ joueur (`deviceSecret`). Un jeton volé ne suffit donc plus à poser l'adresse e
 le mot de passe d'un intrus. Les parcours légitimes ont ce secret : l'écran de
 bienvenue tourne sur l'appareil qui a ouvert le compte, et un compte retrouvé
 par code sur un appareil neuf vient d'y rattacher son nouveau secret.
+
+**Le journal ne recopie aucun secret.** Un objet passé au journal part en
+champs (et non en texte, que la rédaction de pino ne lit pas), nettoyé des clés
+sensibles à toute profondeur ; d'une erreur Prisma on ne garde que le code
+(`P2002`), son message pouvant citer l'adresse en conflit.
 
 **Seuls les échecs de preuve comptent par joueur, et par appareil.** Un intrus
 qui rate exprès ne remplit que son propre compteur (celui de son appareil, ou
@@ -128,8 +157,8 @@ c'est ce qui est haché.
   secret d'un appareil détient le compte ; c'est la nature d'un compte invité,
   et c'est pour cela que le rattachement d'une adresse est proposé dès l'écran
   de bienvenue. Un simple jeton volé, lui, ne suffit plus.
-- Chaque requête authentifiée lit `credentialsChangedAt` : une lecture par
-  clé primaire, le prix d'un contrôle qu'aucune route ne peut oublier.
+- Chaque requête authentifiée lit `credentialsVersion` : une lecture par clé
+  primaire, le prix d'un contrôle qu'aucune route ne peut oublier.
 - **L'adresse n'est pas vérifiée**, donc elle est **réservable** : quelqu'un
   peut rattacher l'adresse d'un autre à son propre compte, et le vrai
   propriétaire lira « adresse déjà utilisée ». Il faudra une procédure de
