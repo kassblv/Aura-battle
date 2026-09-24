@@ -3,9 +3,7 @@ import { levelFor } from '@aura/rules';
 import type { JSX } from 'react';
 import type { MemeCard } from './memes.js';
 import { leagueProgress, styleShares, summarize, type PlayerProfile } from './profile.js';
-import type { PanelLayout } from './panel.js';
 import type { HomeClusters } from '../ui/layout.js';
-import { isOwned, wardrobeSections, type LookSlot, type Wardrobe } from './wardrobe.js';
 
 /**
  * Les ecrans hors match.
@@ -33,9 +31,12 @@ export interface HomeProps {
   readonly onStepMeme: (delta: number) => void;
   /** Vrai si le joueur possede le meme montre — offert ou achete. */
   readonly memeOwned: boolean;
-  /** Vrai si c est deja celui qu il jouera sur ce mouvement. */
+  /** Vrai si c est deja sa danse signature. */
   readonly memeEquipped: boolean;
-  /** Equipe le meme montre pour son mouvement. */
+  /**
+   * En fait sa danse signature — jouee a chaque victoire, vue par
+   * l adversaire — et la danse de son mouvement.
+   */
   readonly onEquipMeme: () => void;
   readonly onPlay: () => void;
   readonly onProfile: () => void;
@@ -195,13 +196,20 @@ export function HomeScreen({
               onClick={onEquipMeme}
               disabled={!memeOwned || memeEquipped}
               data-owned={memeOwned}
+              aria-label={
+                memeEquipped
+                  ? `${meme.name} : ta danse signature, jouée à chaque victoire`
+                  : memeOwned
+                    ? `Faire de ${meme.name} ta danse signature, jouée à chaque victoire`
+                    : `${meme.name} : ${String(meme.price)} pièces en boutique`
+              }
             >
               <span className="memes__name">{meme.name}</span>
               <span className="memes__meta">
                 <span aria-hidden="true">{STYLE_ICONS[meme.style]}</span>
                 {tierName(meme.tier).fr}
-                {memeEquipped && <span className="memes__state">équipé</span>}
-                {!memeEquipped && memeOwned && <span className="memes__state">équiper</span>}
+                {memeEquipped && <span className="memes__state">signature</span>}
+                {!memeEquipped && memeOwned && <span className="memes__state">choisir</span>}
                 {!memeOwned && (
                   <span className="memes__price">
                     <span aria-hidden="true">◈</span>
@@ -430,78 +438,6 @@ export function ProfileScreen({ profile, onClose }: ProfileProps): JSX.Element {
           </li>
         ))}
       </ul>
-    </section>
-  );
-}
-
-export interface WardrobeProps {
-  readonly wardrobe: Wardrobe;
-  readonly onEquip: (slot: LookSlot, id: string) => void;
-  readonly onClose: () => void;
-  /**
-   * Meme largeur que la boutique, et pour la meme raison : ici aussi le
-   * personnage a gauche porte ce qu'on touche a droite. Les pastilles se
-   * rangent en ligne, donc la largeur suffit — pas besoin de colonnes.
-   */
-  readonly layout: PanelLayout;
-}
-
-export function WardrobeScreen({ wardrobe, onEquip, onClose, layout }: WardrobeProps): JSX.Element {
-  return (
-    <section
-      className="sheet"
-      aria-label="Vestiaire"
-      style={{ width: `${String(layout.width)}px` }}
-    >
-      <header className="sheet__head">
-        <h2>Vestiaire</h2>
-        <button type="button" className="mini" onClick={onClose}>
-          Fermer
-        </button>
-      </header>
-
-      <p className="sheet__note">
-        Aucun de ces objets ne touche un score. La boutique ne vend que de l’apparence.
-      </p>
-
-      {wardrobeSections().map((section) => (
-        <div key={section.id} className="ward">
-          <h3>{section.title}</h3>
-          <ul className="ward__items">
-            {section.items.map((item) => {
-              const owned = isOwned(wardrobe, item.id);
-              const worn = wardrobe.look[section.id] === item.id;
-              return (
-                <li key={item.id}>
-                  <button
-                    type="button"
-                    className="ward__item"
-                    aria-pressed={worn}
-                    disabled={!owned}
-                    onClick={() => {
-                      onEquip(section.id, item.id);
-                    }}
-                  >
-                    <span
-                      className="ward__swatch"
-                      style={
-                        item.swatchSecondary === undefined
-                          ? { background: item.swatch }
-                          : {
-                              backgroundImage: `linear-gradient(135deg, ${item.swatch} 50%, ${item.swatchSecondary} 50%)`,
-                            }
-                      }
-                    />
-                    <span>{item.name}</span>
-                    {/* Un objet gratuit n affiche pas « 0 » : ce serait un prix. */}
-                    {item.price > 0 && <small>{owned ? 'acquis' : `${item.price} ◈`}</small>}
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      ))}
     </section>
   );
 }

@@ -1,4 +1,4 @@
-import { AURA_COLORS } from '@aura/content';
+import { AURA_COLORS, AURA_EFFECTS } from '@aura/content';
 import { memeGallery } from './memes.js';
 import type { Look } from './wardrobe.js';
 
@@ -28,6 +28,14 @@ export interface TryOn {
  */
 const HEX_BY_COLOR = new Map(AURA_COLORS.map((color) => [color.id, color.hex]));
 
+/**
+ * Les effets d'aura : ils s'essaient autour du personnage.
+ *
+ * Oublies ici, ils etaient les seuls articles de la boutique qu'on touchait
+ * sans rien voir changer — et ce sont les plus chers.
+ */
+const EFFECT_IDS = new Set(AURA_EFFECTS.map((effect) => effect.id));
+
 /** Les danses, pour reconnaitre un identifiant d'animation vendable. */
 const DANCE_IDS = new Set(memeGallery().map((card) => card.animationId));
 
@@ -38,6 +46,8 @@ export function tryOn(look: Look, animationId: string, itemId: string | null): T
 
   const hex = HEX_BY_COLOR.get(itemId);
   if (hex !== undefined) return { look: { ...look, aura: hex }, animationId };
+
+  if (EFFECT_IDS.has(itemId)) return { look: { ...look, auraEffect: itemId }, animationId };
 
   if (itemId.startsWith('outfit.')) return { look: { ...look, outfit: itemId }, animationId };
   if (itemId.startsWith('hair.')) return { look: { ...look, hair: itemId }, animationId };

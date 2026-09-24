@@ -1477,6 +1477,87 @@ body {
   flex: none;
 }
 
+/*
+  Les onglets du vestiaire : Style, Aura, Danses.
+
+  Trois rayons empiles faisaient defiler un panneau deja plus haut que
+  l'ecran ; en onglets, chacun tient a peu pres dans la hauteur.
+*/
+.ward__tabs {
+  display: flex;
+  gap: 6px;
+}
+.ward__tab {
+  flex: 1 1 0;
+  min-height: var(--touch);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--chip);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  cursor: pointer;
+}
+.ward__tab[aria-selected='true'] {
+  color: var(--ink);
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Ce qu'on ne possede pas se touche quand meme : on l'essaie. */
+.ward__item[data-owned='false'] {
+  color: var(--muted);
+}
+.ward__item[data-trying='true'] {
+  border-style: dashed;
+  border-color: var(--gold-ink);
+  color: var(--ink);
+}
+
+/* Le niveau d'amplificateur qu'un effet habille. */
+.ward__level {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 4px;
+  border-radius: 5px;
+  background: var(--line);
+  color: var(--ink);
+}
+
+/*
+  La barre d'essai, collee au bas du panneau : ce qu'on porte sans l'avoir,
+  et le chemin vers la boutique, sous le pouce quel que soit l'onglet.
+*/
+.ward__try {
+  position: sticky;
+  bottom: -13px;
+  margin: auto -15px -13px;
+  padding: 8px 15px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  font-size: 12px;
+  /* Opaque : le HUD est translucide, et les articles defilaient au travers. */
+  background: rgb(21, 12, 46);
+  border-top: 1px solid var(--hud-line);
+}
+.ward__buy {
+  min-height: var(--touch);
+  padding: 0 14px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--bg);
+  background: var(--gold-ink);
+  border: none;
+  border-radius: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
 /* --- inscription --- */
 .onboard {
   position: absolute;
@@ -2655,6 +2736,22 @@ body {
   gap: var(--band-gap);
 }
 
+/*
+  L'Ultime et la danse du mouvement, cote a cote.
+
+  Une rangee plutot qu'un empilement : en paysage la hauteur est la ressource
+  rare, et la jauge doit garder sa place juste en dessous.
+*/
+.band__row {
+  display: flex;
+  gap: var(--band-gap);
+  min-width: 0;
+}
+.band__row > * {
+  flex: 1 1 0;
+  min-width: 0;
+}
+
 .ultimate {
   display: grid;
   gap: 1px;
@@ -2686,6 +2783,48 @@ body {
   font-size: 9px;
   text-transform: uppercase;
   letter-spacing: 0.08em;
+}
+
+/*
+  La danse du mouvement choisi : un seul geste, la suivante.
+
+  Meme gabarit que l'Ultime, a cote de lui : deux boutons de meme hauteur se
+  lisent comme une rangee, et la cible reste au-dessus des 46 px de l'ADR 0008.
+*/
+.dance-pick {
+  display: grid;
+  gap: 1px;
+  min-height: var(--touch);
+  height: var(--ultimate-h);
+  padding: 4px 10px;
+  border-radius: 14px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink);
+  font: inherit;
+  text-align: center;
+  cursor: pointer;
+  transition: transform var(--d-tap) var(--e-out);
+}
+.dance-pick b {
+  font-weight: 700;
+  font-size: 12px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dance-pick small {
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+}
+.dance-pick:disabled {
+  cursor: default;
+  opacity: 0.7;
+}
+.dance-pick:not(:disabled):active {
+  transform: translateY(2px);
 }
 
 /* Pret : la jauge est pleine, le bouton s'allume. */
@@ -2955,9 +3094,20 @@ body {
  * pas s il est trop cher, deja joue, ou casse. Celui-ci reste lisible, son
  * cout passe au rouge et son contour avec : la raison est sur le bouton.
  */
-.pick:disabled[data-afford='false'] {
+.pick[data-afford='false'] {
   opacity: 0.62;
   border-color: color-mix(in srgb, var(--bad-ink) 50%, var(--line));
+}
+
+/*
+  Un amplificateur trop cher reste touchable, pour l'apercu. Regarde, il se
+  distingue du choix (plein) par un contour en pointilles : on le voit, on ne
+  le joue pas.
+*/
+.pick[data-peek='true'] {
+  opacity: 1;
+  outline: 2px dashed var(--gold-ink);
+  outline-offset: -3px;
 }
 .pick[data-afford='false'] small {
   color: var(--bad-ink);
@@ -3003,6 +3153,16 @@ body {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bet__hint {
+  font-size: 9px;
+  line-height: 1;
+  font-weight: 700;
+  color: var(--bad-ink);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

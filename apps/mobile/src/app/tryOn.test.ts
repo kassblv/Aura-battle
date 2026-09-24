@@ -1,6 +1,7 @@
-import { AURA_COLORS, HAIRSTYLES, OUTFITS } from '@aura/content';
+import { AURA_COLORS, AURA_EFFECTS, HAIRSTYLES, OUTFITS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import { memeGallery } from './memes.js';
+import { shopSections } from './shop.js';
 import { tryOn } from './tryOn.js';
 import { defaultLook } from './wardrobe.js';
 
@@ -80,6 +81,26 @@ describe('tryOn', () => {
     }
     for (const dance of memeGallery().filter((card) => !card.free)) {
       expect(shown(dance.animationId).animationId).toBe(dance.animationId);
+    }
+    for (const effect of AURA_EFFECTS.filter((e) => e.price > 0)) {
+      expect(shown(effect.id).look.auraEffect).toBe(effect.id);
+    }
+  });
+
+  /*
+    La liste ci-dessus etait tenue a la main, et elle avait oublie les effets
+    d'aura : la boutique affichait « touche pour essayer » sur Flammes, et le
+    personnage ne changeait pas. Celle-ci part de ce que la boutique affiche
+    vraiment — un article ajoute demain y entre tout seul.
+  */
+  it('change quelque chose a l ecran pour chaque article de la boutique', () => {
+    for (const section of shopSections(0)) {
+      for (const item of section.items) {
+        const shown = tryOn(base, MEME, item.id);
+        const changed =
+          shown.animationId !== MEME || JSON.stringify(shown.look) !== JSON.stringify(base);
+        expect(changed, item.id).toBe(true);
+      }
     }
   });
 });

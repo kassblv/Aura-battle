@@ -14,15 +14,15 @@ import {
 import { createHaptics } from '../platform/haptics.js';
 import { lockLandscape } from '../platform/orientation.js';
 import {
-  danceFor,
   defaultLook,
   equip,
   equipDance,
+  equipSignature,
   type Look,
   type LookSlot,
   type Wardrobe,
 } from './wardrobe.js';
-import { MatchScreen } from './MatchScreen.jsx';
+import { MatchScreen, type DanceChoice } from './MatchScreen.jsx';
 import { useSoloMatch } from './useMatch.js';
 import { navigate, openingScreen, type Navigation } from './navigation.js';
 import { needsOnboarding } from './onboarding.js';
@@ -53,7 +53,8 @@ import {
   type QualityTier,
 } from '../platform/quality.js';
 import { browserStore, loadProgress, saveProgress } from './persist.js';
-import { HomeScreen, ProfileScreen, WardrobeScreen } from './screens.jsx';
+import { HomeScreen, ProfileScreen } from './screens.jsx';
+import { WardrobeScreen } from './WardrobeScreen.jsx';
 
 /**
  * La coque de l application.
@@ -235,6 +236,27 @@ export function App(): JSX.Element {
     looks,
     arena,
     audio,
+    inventory.owned,
+  );
+
+  /**
+   * Changer la danse d un mouvement depuis le panneau de choix.
+   *
+   * Par le serveur, comme au vestiaire : il juge la possession, puis previent
+   * le match en cours — la danse vaut des la revelation suivante. Stable pour
+   * ne pas faire redessiner la bande de commandes a chaque image.
+   */
+  const equipMatchDance = useCallback(
+    (animationId: string) => {
+      void inventory.equip(
+        equipDance({ look: inventory.look, owned: inventory.owned }, animationId).look,
+      );
+    },
+    [inventory],
+  );
+  const danceChoice = useMemo(
+    () => ({ wardrobe, onEquip: equipMatchDance }),
+    [wardrobe, equipMatchDance],
   );
 
   /** Le serveur a ouvert un match : on quitte l ecran d invitation pour l arene. */
@@ -550,7 +572,11 @@ export function App(): JSX.Element {
    */
   if (nav.screen !== 'match' && !inDuel) {
     // Ce qu'on essaie prend le pas sur ce qu'on porte, et seulement a l'ecran.
-    const shown = tryOn(looks.a, meme.animationId, nav.screen === 'shop' ? trying : null);
+    const shown = tryOn(
+      looks.a,
+      meme.animationId,
+      nav.screen === 'shop' || nav.screen === 'wardrobe' ? trying : null,
+    );
     arena.presentation.current = {
       fighters: {
         a: { animationId: shown.animationId, look: shown.look },
@@ -597,6 +623,33 @@ export function App(): JSX.Element {
     dismissCompleted();
     setNav((current) => navigate({ ...current, matchRunning: false }, 'home'));
   }, [dismissCompleted]);
+
+  /*
+    Les gestes de fin de match, STABLES.
+
+    Ecrits en ligne dans le rendu, ils changeaient d identite a chaque image —
+    `useOnlineMatch` redessine l application a chaque image pendant un duel —
+    et annulaient la memoisation de l ecran de match : trente boutons
+    reconcilies soixante fois par seconde en pleine phase de choix.
+  */
+  const { joinQueue } = online;
+  const requeue = useCallback(() => {
+    // En ligne, « rejouer » c est se remettre en file : l adversaire
+    // precedent n a aucune raison d etre encore la.
+    dismissCompleted();
+    joinQueue(mode);
+  }, [dismissCompleted, joinQueue, mode]);
+  const requeueFromInvite = useCallback(() => {
+    // Depuis une invitation aussi, « rejouer » passe par la file : celui qui
+    // avait donne le code n a pas forcement envie d'un second duel, et
+    // l attendre laisserait le joueur devant rien.
+    dismissCompleted();
+    setNav((current) => navigate(current, 'queue'));
+    joinQueue(mode);
+  }, [dismissCompleted, joinQueue, mode]);
+  const goHome = useCallback(() => {
+    setNav((current) => navigate(current, 'home'));
+  }, []);
 
   return (
     <div className="app">
@@ -678,15 +731,14 @@ export function App(): JSX.Element {
               setMemeId((current) => stepMeme(gallery, current, delta));
             }}
             memeOwned={meme.free || wardrobe.owned.has(meme.animationId)}
-            memeEquipped={
-              danceFor(wardrobe.look, { style: meme.style, tier: meme.tier }) ===
-                meme.animationId ||
-              (meme.free &&
-                danceFor(wardrobe.look, { style: meme.style, tier: meme.tier }) === undefined)
-            }
+            memeEquipped={wardrobe.look.signature === meme.animationId}
             onEquipMeme={() => {
+              // Le meme de l accueil est la danse SIGNATURE : jouee a chaque
+              // victoire, et vue par l adversaire. Il devient aussi la danse
+              // de son mouvement, comme la galerie le faisait deja.
               void inventory.equip(
-                equipDance({ look: inventory.look, owned: inventory.owned }, meme.animationId).look,
+                equipSignature({ look: inventory.look, owned: inventory.owned }, meme.animationId)
+                  .look,
               );
             }}
           />
@@ -806,7 +858,17 @@ export function App(): JSX.Element {
           <WardrobeScreen
             wardrobe={wardrobe}
             onEquip={onEquip}
+            onEquipDance={equipMatchDance}
+            trying={trying}
+            onTry={setTrying}
+            onShop={(id) => {
+              // L essai suit le joueur en boutique : l article y est deja
+              // enfile, et le second appui l achete.
+              setTrying(id);
+              go('shop');
+            }}
             onClose={() => {
+              setTrying(null);
               go('home');
             }}
             layout={panel}
@@ -834,14 +896,11 @@ export function App(): JSX.Element {
             opponentName={online.opponentName}
             opponentIsGhost={online.opponentIsGhost}
             onLeave={leaveMatch}
-            onRematch={() => {
-              // En ligne, « rejouer » c est se remettre en file : l adversaire
-              // precedent n a aucune raison d etre encore la.
-              dismissCompleted();
-              online.joinQueue(mode);
-            }}
+            onRematch={requeue}
             rematchLabel="Rejouer"
             questsDone={questsDone}
+            onPreview={online.preview}
+            dances={danceChoice}
           />
         )}
 
@@ -866,19 +925,12 @@ export function App(): JSX.Element {
             clock={online.clock}
             opponentName={online.opponentName}
             opponentIsGhost={online.opponentIsGhost}
-            onLeave={() => {
-              go('home');
-            }}
-            onRematch={() => {
-              // Depuis une invitation aussi, « rejouer » passe par la file :
-              // celui qui avait donne le code n a pas forcement envie d'un
-              // second duel, et l attendre laisserait le joueur devant rien.
-              dismissCompleted();
-              go('queue');
-              online.joinQueue(mode);
-            }}
+            onLeave={goHome}
+            onRematch={requeueFromInvite}
             rematchLabel="Rejouer"
             questsDone={questsDone}
+            onPreview={online.preview}
+            dances={danceChoice}
           />
         )}
 
@@ -891,6 +943,7 @@ export function App(): JSX.Element {
             ownedEffects={inventory.owned}
             questsDone={questsDone}
             onQuestsSeen={dismissCompleted}
+            dances={danceChoice}
           />
         )}
       </div>
@@ -912,6 +965,7 @@ function SoloMatchScreen({
   ownedEffects,
   questsDone,
   onQuestsSeen,
+  dances,
 }: {
   readonly looks: Readonly<Record<'a' | 'b', Look>>;
   readonly arena: ArenaControls;
@@ -927,8 +981,14 @@ function SoloMatchScreen({
   }[];
   /** Efface l annonce : elle appartient au match qu on vient de finir. */
   readonly onQuestsSeen: () => void;
+  readonly dances: DanceChoice;
 }): JSX.Element {
   const session = useSoloMatch(looks, arena, audio, ownedEffects);
+  const { restart } = session;
+  const rematch = useCallback(() => {
+    onQuestsSeen();
+    restart();
+  }, [onQuestsSeen, restart]);
   return (
     <MatchScreen
       view={session.view}
@@ -937,12 +997,11 @@ function SoloMatchScreen({
       clock={session.clock}
       opponentName="Nova"
       onLeave={onLeave}
-      onRematch={() => {
-        onQuestsSeen();
-        session.restart();
-      }}
+      onRematch={rematch}
       rematchLabel="Rejouer"
       questsDone={questsDone}
+      onPreview={session.preview}
+      dances={dances}
     />
   );
 }
