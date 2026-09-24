@@ -43,7 +43,7 @@ export interface AuraLook {
   readonly effectId: string;
   /** Couleur d aura, en `#rrggbb`. */
   readonly color: string;
-  /** 0 au repos sur l accueil, 1 a la revelation d un palier 4. */
+  /** 0 eteinte, 1 pleine, jusqu a `AURA_PEAK` au sommet d un choc. */
   readonly intensity: number;
 }
 
@@ -60,6 +60,17 @@ export interface AuraLook {
  * appareil, ou la luminosite et la taille de l ecran ne sont pas celles-ci.
  */
 export const IDLE_INTENSITY = 0.6;
+
+/**
+ * Sommet d une aura : l Ultime au choc.
+ *
+ * Le prototype laissait l intensite depasser 1 — jusqu a 2,1 au choc, 1,85
+ * pour le vainqueur — et c est ce depassement qui faisait du choc le moment
+ * le plus charge de l ecran. Borne a 1, le choc ne montrait pas plus d aura
+ * que la revelation. 1,6 garde la gradation sans sortir du budget : deux
+ * auras a ce sommet tiennent encore dans `ADDITIVE_CAPACITY` (voir le test).
+ */
+export const AURA_PEAK = 1.6;
 
 /**
  * Tout ce dont l aura a besoin pour savoir quelle force afficher.
@@ -86,7 +97,11 @@ export function auraIntensity(drive: AuraDrive): number {
   if (drive.showcase) return IDLE_INTENSITY;
   // Le choc l emporte : c est le moment que tout l ecran prepare, et le seul
   // ou les deux auras ont le droit de ne pas se ressembler.
-  if (drive.clashWeight > 0) return clamp(drive.clashWeight / BEAM_WEIGHT_ULTIMATE, 0, 1);
+  // Un faisceau simple pese 1 et donne une aura pleine ; seuls le contre et
+  // l Ultime la poussent au-dela.
+  if (drive.clashWeight > 0) {
+    return clamp(drive.clashWeight / BEAM_WEIGHT_ULTIMATE, 0, 1) * AURA_PEAK;
+  }
   return clamp(drive.hype, 0, 1);
 }
 
@@ -111,6 +126,18 @@ export const AURA_BUDGET = QUALITY_PROFILES.rich.auraParticles;
 
 /** Vitesse de rattrapage de l intensite affichee, reprise du prototype. */
 const INTENSITY_RATE = 3.5;
+
+/**
+ * Ce qu un nouvel effet a deja vecu quand il apparait, en secondes.
+ *
+ * L effet du palier joue n arrive qu avec `round:result`, et la revelation ne
+ * dure qu une seconde et demie. Parti de zero, l effet mettait l essentiel de
+ * ce temps a se peupler — la Galaxie, dont les etoiles vivent deux secondes,
+ * n avait pas fini d apparaitre qu elle etait deja remplacee. Il nait donc
+ * deja en place, comme s il tournait depuis un moment.
+ */
+const WARM_SECONDS = 0.9;
+const WARM_STEP = 1 / 20;
 
 /** Points dessines pour un anneau : au sol, puis en ellipse verticale. */
 const RING_GROUND_POINTS = 44;
@@ -205,6 +232,8 @@ export function createAuraEmitter(options: AuraEmitterOptions = {}): AuraEmitter
   /** Accumulateurs d emission, un par couche du style courant. */
   let accumulators: number[] = [];
   let boltAccumulator = 0;
+  /** Vrai entre un changement d effet et l image qui le fait naitre deja peuple. */
+  let warmPending = false;
 
   const spawn = (layer: AuraLayer): void => {
     if (particles.length >= budget) return;
@@ -324,9 +353,10 @@ export function createAuraEmitter(options: AuraEmitterOptions = {}): AuraEmitter
         bolts.length = 0;
         accumulators = style.layers.map(() => 0);
         boltAccumulator = 0;
+        warmPending = true;
       }
       color = look.color;
-      target = clamp(look.intensity, 0, 1);
+      target = clamp(look.intensity, 0, AURA_PEAK);
     },
 
     setBudget(next): void {
@@ -341,162 +371,18 @@ export function createAuraEmitter(options: AuraEmitterOptions = {}): AuraEmitter
       if (delta <= 0) return;
       intensity += (target - intensity) * damp(INTENSITY_RATE, delta);
 
-      if (accumulators.length !== style.layers.length) {
-        accumulators = style.layers.map(() => 0);
+      if (warmPending) {
+        warmPending = false;
+        // Peuple a la cible, pas a l intensite affichee : c est ce que l effet
+        // montrera une fois installe. L intensite affichee, elle, garde son
+        // rattrapage — le voile continue de monter en douceur.
+        for (let t = 0; t < WARM_SECONDS; t += WARM_STEP) simulate(WARM_STEP, target);
       }
-
-      // Moins de matiere quand l utilisateur demande moins d animation ; le
-      // vocabulaire de l effet reste le meme, il est juste moins dense.
-      const density = reducedMotion ? 0.5 : 1;
-
-      style.layers.forEach((layer, index) => {
-        let accumulator = (accumulators[index] ?? 0) + layer.rate * intensity * density * delta;
-        // Un onglet revenu au premier plan livre un grand `delta` : sans cette
-        // borne, on ferait naitre des milliers de particules d un coup.
-        if (accumulator > budget) accumulator = budget;
-        while (accumulator >= 1) {
-          accumulator -= 1;
-          spawn(layer);
-        }
-        accumulators[index] = accumulator;
-      });
-
-      const spec = style.bolts;
-      if (spec !== null && intensity >= spec.minIntensity) {
-        boltAccumulator += spec.rate * intensity * density * delta;
-        if (boltAccumulator > 8) boltAccumulator = 8;
-        while (boltAccumulator >= 1) {
-          boltAccumulator -= 1;
-          spawnBolt();
-        }
-      }
-
-      for (const particle of particles) {
-        particle.life -= delta;
-        switch (particle.layer.shape) {
-          case 'orbit':
-            particle.angle += particle.spin * delta;
-            particle.y += particle.climb * delta;
-            break;
-          case 'ring':
-            break;
-          default:
-            particle.x += particle.vx * delta;
-            particle.y += particle.vy * delta;
-            particle.z += particle.vz * delta;
-            break;
-        }
-      }
-      prune(particles);
-
-      for (const bolt of bolts) bolt.life -= delta;
-      prune(bolts);
+      simulate(delta, intensity);
     },
 
     draw(sink, origin, elapsed): void {
-      // Deux enveloppes par image, pas par particule : `sink.add` passe en
-      // valeur perdrait son `this` le jour ou un puits deviendra une classe.
-      const additive: Put = (x, y, z, c, a, s) => {
-        sink.add(x, y, z, c, a, s);
-      };
-      const opaque: Put = (x, y, z, c, a, s) => {
-        sink.dark(x, y, z, c, a, s);
-      };
-
-      for (const particle of particles) {
-        const layer = particle.layer;
-        // `k` va de 1 a la naissance a 0 a la mort : c est le fondu.
-        const k = Math.max(0, particle.life / particle.max);
-        const put = layer.additive ? additive : opaque;
-
-        let size = particle.size;
-        if (layer.shrink) size *= 0.35 + 0.65 * k;
-        if (layer.grow > 0) size *= 1 + (1 - k) * layer.grow;
-
-        let alpha = layer.alpha * k;
-        if (layer.twinkle && !reducedMotion) {
-          alpha *= 0.5 + 0.5 * Math.sin(elapsed * 6 + particle.phase);
-        }
-
-        // Le coeur d une flamme est blanc a la naissance, puis prend la
-        // couleur du joueur : c est ce qui la fait lire comme du feu.
-        const tint = layer.coreTint !== null && k > 0.65 ? layer.coreTint : particle.tint;
-
-        switch (layer.shape) {
-          case 'orbit': {
-            const radius = particle.radius;
-            const cos = Math.cos(particle.angle);
-            const sin = Math.sin(particle.angle);
-            put(
-              origin.x + cos * radius,
-              origin.y + particle.y + sin * radius * Math.sin(layer.tilt),
-              origin.z + sin * radius * Math.cos(layer.tilt),
-              tint,
-              alpha,
-              size,
-            );
-            break;
-          }
-          case 'ring': {
-            // L anneau s ouvre vite puis ralentit, et se double d une ellipse
-            // verticale : au sol seul, il disparait des que la camera baisse.
-            const radius = easeOut(1 - k) * particle.radius;
-            for (let i = 0; i < RING_GROUND_POINTS; i++) {
-              const a = (i / RING_GROUND_POINTS) * Math.PI * 2;
-              put(
-                origin.x + Math.cos(a) * radius,
-                origin.y + 0.02,
-                origin.z + Math.sin(a) * radius,
-                tint,
-                alpha * 0.9,
-                size,
-              );
-            }
-            for (let i = 0; i < RING_BODY_POINTS; i++) {
-              const a = (i / RING_BODY_POINTS) * Math.PI * 2;
-              put(
-                origin.x + Math.cos(a) * radius * 0.55,
-                origin.y + FIGHTER_HEIGHT * 0.5 + Math.sin(a) * radius * 0.75,
-                origin.z,
-                tint,
-                alpha * 0.35,
-                size * 0.82,
-              );
-            }
-            break;
-          }
-          default:
-            put(
-              origin.x + particle.x,
-              origin.y + particle.y,
-              origin.z + particle.z,
-              tint,
-              alpha,
-              size,
-            );
-            break;
-        }
-      }
-
-      for (const bolt of bolts) {
-        const k = Math.max(0, bolt.life / bolt.max);
-        for (let i = 0; i < bolt.points.length - 2; i += 2) {
-          const ax = bolt.points[i]!;
-          const ay = bolt.points[i + 1]!;
-          const bx = bolt.points[i + 2]!;
-          const by = bolt.points[i + 3]!;
-          for (let s = 0; s < BOLT_SUBDIVISIONS; s++) {
-            const u = s / BOLT_SUBDIVISIONS;
-            const x = origin.x + ax + (bx - ax) * u;
-            const y = origin.y + ay + (by - ay) * u;
-            const z = origin.z + bolt.z;
-            // Un halo a la couleur du joueur, un coeur blanc plus fin : sans
-            // le coeur, l eclair se lit comme un trait de peinture.
-            sink.add(x, y, z, color, 0.8 * k, 0.08);
-            sink.add(x, y, z, '#ffffff', k, 0.03);
-          }
-        }
-      }
+      drawInto(sink, origin, elapsed);
     },
 
     clear(): void {
@@ -506,22 +392,204 @@ export function createAuraEmitter(options: AuraEmitterOptions = {}): AuraEmitter
       boltAccumulator = 0;
       intensity = 0;
       target = 0;
+      warmPending = false;
     },
   };
+
+  function simulate(delta: number, emitAt: number): void {
+    if (accumulators.length !== style.layers.length) {
+      accumulators = style.layers.map(() => 0);
+    }
+
+    // Moins de matiere quand l utilisateur demande moins d animation ; le
+    // vocabulaire de l effet reste le meme, il est juste moins dense.
+    const density = reducedMotion ? 0.5 : 1;
+
+    style.layers.forEach((layer, index) => {
+      let accumulator = (accumulators[index] ?? 0) + layer.rate * emitAt * density * delta;
+      // Un onglet revenu au premier plan livre un grand `delta` : sans cette
+      // borne, on ferait naitre des milliers de particules d un coup.
+      if (accumulator > budget) accumulator = budget;
+      while (accumulator >= 1) {
+        accumulator -= 1;
+        spawn(layer);
+      }
+      accumulators[index] = accumulator;
+    });
+
+    const spec = style.bolts;
+    if (spec !== null && emitAt >= spec.minIntensity) {
+      boltAccumulator += spec.rate * emitAt * density * delta;
+      if (boltAccumulator > 8) boltAccumulator = 8;
+      while (boltAccumulator >= 1) {
+        boltAccumulator -= 1;
+        spawnBolt();
+      }
+    }
+
+    for (const particle of particles) {
+      particle.life -= delta;
+      switch (particle.layer.shape) {
+        case 'orbit':
+          particle.angle += particle.spin * delta;
+          particle.y += particle.climb * delta;
+          break;
+        case 'ring':
+          break;
+        default:
+          particle.x += particle.vx * delta;
+          particle.y += particle.vy * delta;
+          particle.z += particle.vz * delta;
+          break;
+      }
+    }
+    prune(particles);
+
+    for (const bolt of bolts) bolt.life -= delta;
+    prune(bolts);
+  }
+
+  function drawInto(sink: ParticleSink, origin: AuraOrigin, elapsed: number): void {
+    // Deux enveloppes par image, pas par particule : `sink.add` passe en
+    // valeur perdrait son `this` le jour ou un puits deviendra une classe.
+    const additive: Put = (x, y, z, c, a, s) => {
+      sink.add(x, y, z, c, a, s);
+    };
+    const opaque: Put = (x, y, z, c, a, s) => {
+      sink.dark(x, y, z, c, a, s);
+    };
+
+    for (const particle of particles) {
+      const layer = particle.layer;
+      // `k` va de 1 a la naissance a 0 a la mort : c est le fondu.
+      const k = Math.max(0, particle.life / particle.max);
+      const put = layer.additive ? additive : opaque;
+
+      let size = particle.size;
+      if (layer.shrink) size *= 0.35 + 0.65 * k;
+      if (layer.grow > 0) size *= 1 + (1 - k) * layer.grow;
+
+      // Une orbite garde son eclat les deux premiers tiers de sa vie, comme
+      // au prototype : fondue lineairement, une etoile qui tourne passait
+      // la moitie de son tour a moitie eteinte.
+      let alpha = layer.alpha * (layer.shape === 'orbit' ? Math.min(1, k * 1.5) : k);
+      if (layer.twinkle && !reducedMotion) {
+        alpha *= 0.5 + 0.5 * Math.sin(elapsed * 6 + particle.phase);
+      }
+
+      // Le coeur d une flamme est blanc a la naissance, puis prend la
+      // couleur du joueur : c est ce qui la fait lire comme du feu.
+      const tint = layer.coreTint !== null && k > 0.65 ? layer.coreTint : particle.tint;
+
+      switch (layer.shape) {
+        case 'orbit': {
+          const radius = particle.radius;
+          const cos = Math.cos(particle.angle);
+          const sin = Math.sin(particle.angle);
+          put(
+            origin.x + cos * radius,
+            origin.y + particle.y + sin * radius * Math.sin(layer.tilt),
+            origin.z + sin * radius * Math.cos(layer.tilt),
+            tint,
+            alpha,
+            size,
+          );
+          break;
+        }
+        case 'ring': {
+          // L anneau s ouvre vite puis ralentit, et se double d une ellipse
+          // verticale : au sol seul, il disparait des que la camera baisse.
+          const radius = easeOut(1 - k) * particle.radius;
+          for (let i = 0; i < RING_GROUND_POINTS; i++) {
+            const a = (i / RING_GROUND_POINTS) * Math.PI * 2;
+            put(
+              origin.x + Math.cos(a) * radius,
+              origin.y + 0.02,
+              origin.z + Math.sin(a) * radius,
+              tint,
+              alpha * 0.9,
+              size,
+            );
+          }
+          for (let i = 0; i < RING_BODY_POINTS; i++) {
+            const a = (i / RING_BODY_POINTS) * Math.PI * 2;
+            put(
+              origin.x + Math.cos(a) * radius * 0.55,
+              origin.y + FIGHTER_HEIGHT * 0.5 + Math.sin(a) * radius * 0.75,
+              origin.z,
+              tint,
+              alpha * 0.35,
+              size * 0.82,
+            );
+          }
+          break;
+        }
+        default:
+          put(
+            origin.x + particle.x,
+            origin.y + particle.y,
+            origin.z + particle.z,
+            tint,
+            alpha,
+            size,
+          );
+          break;
+      }
+    }
+
+    for (const bolt of bolts) {
+      const k = Math.max(0, bolt.life / bolt.max);
+      for (let i = 0; i < bolt.points.length - 2; i += 2) {
+        const ax = bolt.points[i]!;
+        const ay = bolt.points[i + 1]!;
+        const bx = bolt.points[i + 2]!;
+        const by = bolt.points[i + 3]!;
+        for (let s = 0; s < BOLT_SUBDIVISIONS; s++) {
+          const u = s / BOLT_SUBDIVISIONS;
+          const x = origin.x + ax + (bx - ax) * u;
+          const y = origin.y + ay + (by - ay) * u;
+          const z = origin.z + bolt.z;
+          // Un halo a la couleur du joueur, un coeur blanc plus fin : sans
+          // le coeur, l eclair se lit comme un trait de peinture.
+          sink.add(x, y, z, color, 0.8 * k, 0.08);
+          sink.add(x, y, z, '#ffffff', k, 0.03);
+        }
+      }
+    }
+  }
 }
 
 /* ------------------------------------------------------------------ *
  * Voile lumineux et tache au sol
  * ------------------------------------------------------------------ */
 
+/**
+ * Au-dela, le voile cesse de grandir.
+ *
+ * L intensite monte jusqu a `AURA_PEAK` pour les particules ; un voile qui la
+ * suivrait jusque-la ferait trois metres cinquante de haut, deux combattants
+ * de haut, et avalerait l adversaire.
+ */
+const GLOW_GROWTH_CAP = 1.25;
+
 /** Echelle du voile, en largeur et en hauteur. Porte du prototype. */
 export function haloScale(intensity: number): readonly [number, number] {
-  const i = clamp(intensity, 0, 1);
+  const i = clamp(intensity, 0, GLOW_GROWTH_CAP);
   return [1.3 + 0.75 * i, 2 + 0.95 * i];
 }
 
 export function floorScale(intensity: number): number {
-  return 1.1 + 0.5 * clamp(intensity, 0, 1);
+  return 1.1 + 0.5 * clamp(intensity, 0, GLOW_GROWTH_CAP);
+}
+
+/**
+ * Opacite du voile et de la tache au sol.
+ *
+ * Pleine des 1 : au-dela, c est la matiere (les particules) qui dit le choc,
+ * pas un voile qui blanchirait le combattant.
+ */
+export function glowOpacity(base: number, intensity: number): number {
+  return base * clamp(intensity, 0, 1);
 }
 
 export interface AuraGlowResources {
@@ -582,11 +650,24 @@ export function createAuraGlow(resources: AuraGlowResources): AuraGlow {
   group.add(halo, floor);
 
   let disposed = false;
+  let tinted = '';
 
   return {
     group,
 
     update(emitter, origin): void {
+      /*
+        Le voile prend la couleur d aura, comme au prototype.
+
+        Le portage l avait laisse blanc : une tache laiteuse derriere chaque
+        combattant, la meme pour tout le monde, qui palissait l aura au lieu
+        de la porter. Repeint seulement quand la couleur change.
+      */
+      if (emitter.color !== tinted) {
+        tinted = emitter.color;
+        haloMaterial.color.set(tinted);
+        floorMaterial.color.set(tinted);
+      }
       const intensity = emitter.intensity;
       const [width, height] = haloScale(intensity);
 
@@ -599,7 +680,7 @@ export function createAuraGlow(resources: AuraGlowResources): AuraGlow {
        */
       halo.position.set(origin.x, origin.y + height * 0.42, origin.z - 0.45);
       halo.scale.set(width, height, 1);
-      haloMaterial.opacity = emitter.style.haloOpacity * intensity;
+      haloMaterial.opacity = glowOpacity(emitter.style.haloOpacity, intensity);
       halo.visible = haloMaterial.opacity > 0.01;
 
       const spread = floorScale(intensity) * 2.2;
@@ -607,7 +688,7 @@ export function createAuraGlow(resources: AuraGlowResources): AuraGlow {
       // surfaces se disputent le plan et scintillent.
       floor.position.set(origin.x, 0.006, origin.z);
       floor.scale.set(spread, spread, 1);
-      floorMaterial.opacity = emitter.style.floorOpacity * intensity;
+      floorMaterial.opacity = glowOpacity(emitter.style.floorOpacity, intensity);
       floor.visible = floorMaterial.opacity > 0.01;
     },
 

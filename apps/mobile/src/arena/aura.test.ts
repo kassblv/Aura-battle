@@ -1,7 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { AURA_BUDGET, auraIntensity, createAuraEmitter, floorScale, haloScale } from './aura.js';
+import { Texture } from 'three';
+import {
+  AURA_BUDGET,
+  AURA_PEAK,
+  auraIntensity,
+  createAuraEmitter,
+  createAuraGlow,
+  floorScale,
+  glowOpacity,
+  haloScale,
+} from './aura.js';
 import { AURA_STYLES, styleForEffect, totalRate } from './auraTheme.js';
-import { ADDITIVE_CAPACITY, type ParticleSink } from './particles.js';
+import { CAMERA_FOV, REST_DISTANCE } from './camera.js';
+import { ADDITIVE_CAPACITY, projectionScale, type ParticleSink } from './particles.js';
 
 /**
  * Generateur reproductible : deux auras de meme graine sont identiques.
@@ -83,11 +94,13 @@ describe('createAuraEmitter', () => {
     expect(emitter.particleCount).toBe(0);
   });
 
-  it('borne l intensite a l intervalle 0–1', () => {
+  it('borne l intensite entre 0 et le sommet du choc', () => {
     const emitter = createAuraEmitter({ rng: seeded(2) });
     emitter.set({ effectId: 'fx.glow', color: '#ffffff', intensity: 9 });
     run(emitter, 4);
-    expect(emitter.intensity).toBeLessThanOrEqual(1);
+    expect(emitter.intensity).toBeLessThanOrEqual(AURA_PEAK);
+    // Le depassement de 1 est voulu : c est lui qui fait du choc le sommet.
+    expect(emitter.intensity).toBeGreaterThan(1.5);
 
     emitter.set({ effectId: 'fx.glow', color: '#ffffff', intensity: -3 });
     run(emitter, 4);
@@ -124,6 +137,22 @@ describe('createAuraEmitter', () => {
     expect(emitter.style.id).toBe('fx.vortex');
   });
 
+  /*
+    L effet du palier joue n arrive qu avec le resultat, et la revelation dure
+    une seconde et demie. Parti de zero, il passait ce temps a se peupler : la
+    Galaxie mesurait sept particules a l image ou elle apparaissait.
+  */
+  it('fait apparaitre un nouvel effet deja en place', () => {
+    const emitter = settled('fx.glow', '#ffcf3f', 0.4);
+    emitter.set({ effectId: 'fx.galaxy', color: '#ffcf3f', intensity: 0.95 });
+    emitter.update(1 / 60);
+    const steady = settled('fx.galaxy', '#ffcf3f', 0.95).particleCount;
+    expect(emitter.particleCount).toBeGreaterThan(steady * 0.35);
+    expect(emitter.particleCount).toBeLessThanOrEqual(AURA_BUDGET);
+    // L intensite affichee, elle, ne saute pas : le voile monte en douceur.
+    expect(emitter.intensity).toBeLessThan(0.5);
+  });
+
   it('garde ses particules quand seules la couleur ou l intensite changent', () => {
     const emitter = settled('fx.sparks');
     const before = emitter.particleCount;
@@ -146,12 +175,12 @@ describe('createAuraEmitter', () => {
     }
   });
 
-  it('tient dans le tampon additif avec deux combattants a fond', () => {
+  it('tient dans le tampon additif avec deux combattants au sommet du choc', () => {
     // Ce sont les anneaux et les eclairs qui comptent : un anneau vaut
     // soixante-dix points, un eclair autant.
     let worst = 0;
     for (const style of AURA_STYLES) {
-      const emitter = settled(style.id, '#ffcf3f', 1, 17);
+      const emitter = settled(style.id, '#ffcf3f', AURA_PEAK, 17);
       let peak = 0;
       for (let i = 0; i < 180; i++) {
         emitter.update(1 / 60);
@@ -164,6 +193,23 @@ describe('createAuraEmitter', () => {
     }
     // Garde-fou : si un reglage double le cout, le test le dit avant l ecran.
     expect(worst).toBeLessThan(900);
+  });
+
+  /*
+    Le portage initial avait recopie les rayons du prototype sans leur facteur
+    de dessin : les etoiles de la Galaxie faisaient un a trois pixels, et une
+    aura mesuree a quatre-vingts particules restait invisible a l ecran. Pire
+    cas : le palier de qualite le plus bas (un pixel par point) et la camera
+    du duel au repos.
+  */
+  it('dessine chaque particule assez grosse pour se voir en duel', () => {
+    const pixelsPerMetre = projectionScale(390, 1, CAMERA_FOV) / REST_DISTANCE;
+    for (const style of AURA_STYLES) {
+      for (const layer of style.layers) {
+        if (!layer.additive) continue;
+        expect(layer.size.min * pixelsPerMetre, style.id).toBeGreaterThanOrEqual(3);
+      }
+    }
   });
 
   it('est reproductible a graine egale', () => {
@@ -359,16 +405,48 @@ describe('dessin', () => {
   });
 });
 
+/** Deux hauteurs de combattant : un voile plus haut couvrirait l adversaire. */
+const FIGHTER_TWICE = 3.3;
+
 describe('voile lumineux', () => {
   it('grandit avec l intensite, et reste borne au-dela de 1', () => {
     const [restWidth, restHeight] = haloScale(0);
     const [fullWidth, fullHeight] = haloScale(1);
     expect(fullWidth).toBeGreaterThan(restWidth);
     expect(fullHeight).toBeGreaterThan(restHeight);
-    expect(haloScale(4)).toEqual(haloScale(1));
+    // Il grandit encore un peu au choc, puis s arrete : au sommet, il
+    // avalerait l adversaire.
+    expect(haloScale(AURA_PEAK)[1]).toBeGreaterThan(fullHeight);
+    expect(haloScale(AURA_PEAK)[1]).toBeLessThan(FIGHTER_TWICE);
+    expect(haloScale(40)).toEqual(haloScale(AURA_PEAK));
     expect(haloScale(-1)).toEqual(haloScale(0));
     expect(floorScale(1)).toBeGreaterThan(floorScale(0));
-    expect(floorScale(9)).toBe(floorScale(1));
+    expect(floorScale(9)).toBe(floorScale(AURA_PEAK));
+  });
+
+  it('ne blanchit pas le combattant au-dela d une aura pleine', () => {
+    expect(glowOpacity(0.6, AURA_PEAK)).toBe(glowOpacity(0.6, 1));
+    expect(glowOpacity(0.6, 0.5)).toBeCloseTo(0.3, 6);
+  });
+
+  /*
+    Le portage laissait le voile et la tache au sol en blanc : une meme tache
+    laiteuse derriere chaque combattant, qui palissait l aura au lieu de la
+    porter.
+  */
+  it('peint le voile et la tache au sol a la couleur d aura', () => {
+    const glow = createAuraGlow({ texture: new Texture() });
+    const emitter = createAuraEmitter({ rng: seeded(4) });
+    emitter.set({ effectId: 'fx.glow', color: '#ff4fa3', intensity: 1 });
+    run(emitter, 2);
+    glow.update(emitter, ORIGIN);
+    for (const name of ['aura-halo', 'aura-floor']) {
+      const node = glow.group.getObjectByName(name) as unknown as {
+        material: { color: { getHexString(): string } };
+      };
+      expect(node.material.color.getHexString(), name).toBe('ff4fa3');
+    }
+    glow.dispose();
   });
 
   it('assombrit le voile de l Aura noire, qui doit manger la lumiere', () => {
@@ -422,7 +500,11 @@ describe('auraIntensity', () => {
     const ultimate = auraIntensity({ showcase: false, hype: 0, clashWeight: 1.6 });
     expect(countering).toBeGreaterThan(plain);
     expect(ultimate).toBeGreaterThan(countering);
-    expect(ultimate).toBeCloseTo(1, 6);
+    // Un faisceau simple donne une aura pleine, l Ultime le sommet.
+    expect(plain).toBeCloseTo(1, 6);
+    expect(ultimate).toBeCloseTo(AURA_PEAK, 6);
+    // Et le choc passe au-dessus de la revelation, qui plafonne a 1.
+    expect(countering).toBeGreaterThan(auraIntensity({ showcase: false, hype: 1, clashWeight: 0 }));
   });
 
   it('fait retomber l aura du perdant sous celle d un faisceau plein', () => {
@@ -432,7 +514,7 @@ describe('auraIntensity', () => {
     expect(losing).toBeGreaterThan(0);
   });
 
-  it('reste entre 0 et 1 quoi qu on lui donne', () => {
+  it('reste entre 0 et le sommet quoi qu on lui donne', () => {
     for (const drive of [
       { showcase: false, hype: -5, clashWeight: 0 },
       { showcase: false, hype: 12, clashWeight: 0 },
@@ -441,7 +523,7 @@ describe('auraIntensity', () => {
     ]) {
       const value = auraIntensity(drive);
       expect(value).toBeGreaterThanOrEqual(0);
-      expect(value).toBeLessThanOrEqual(1);
+      expect(value).toBeLessThanOrEqual(AURA_PEAK);
     }
   });
 });

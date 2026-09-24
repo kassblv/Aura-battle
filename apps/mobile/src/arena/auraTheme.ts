@@ -33,7 +33,15 @@ export interface AuraLayer {
   readonly rate: number;
   /** Duree de vie, en secondes. */
   readonly life: Range;
-  /** Rayon dessine, en metres. */
+  /**
+   * Diametre dessine, en metres.
+   *
+   * C est un DIAMETRE — le nuanceur de `particles.ts` en fait la taille du
+   * point — et le degrade radial n en eclaire vraiment que le coeur. Le
+   * portage initial y avait recopie les rayons du prototype sans leur facteur
+   * de dessin (x2,8 a x3) : des etoiles de galaxie de un a trois pixels,
+   * des auras qu on cherchait a l ecran.
+   */
   readonly size: Range;
   /** Hauteur de naissance, en fraction de la taille du combattant. */
   readonly height: Range;
@@ -162,12 +170,12 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         shape: 'rise',
         rate: 22,
         life: r(1.2, 2.2),
-        size: r(0.1, 0.19),
+        size: r(0.26, 0.46),
         height: r(0, 1),
         spread: r(0.14, 0.4),
         speed: r(0.1, 0.3),
         drift: r(-0.05, 0.05),
-        alpha: 0.3,
+        alpha: 0.34,
       }),
     ],
     bolts: null,
@@ -181,7 +189,7 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         shape: 'rise',
         rate: 40,
         life: r(0.5, 1.1),
-        size: r(0.02, 0.045),
+        size: r(0.045, 0.09),
         height: r(0, 1),
         spread: r(0, 0.45),
         speed: r(0.3, 0.8),
@@ -201,12 +209,12 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         shape: 'rise',
         rate: 70,
         life: r(0.55, 1),
-        size: r(0.09, 0.18),
+        size: r(0.2, 0.38),
         height: r(0, 0.2),
         spread: r(0, 0.28),
         speed: r(0.9, 1.7),
         drift: r(-0.1, 0.1),
-        alpha: 0.5,
+        alpha: 0.42,
         coreTint: '#fff4c2',
         shrink: true,
       }),
@@ -222,7 +230,7 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         shape: 'burst',
         rate: 30,
         life: r(0.15, 0.35),
-        size: r(0.015, 0.03),
+        size: r(0.035, 0.065),
         height: r(0.12, 1),
         spread: r(0, 0.35),
         speed: r(0.4, 0.75),
@@ -249,7 +257,7 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         shape: 'ring',
         rate: 2.4,
         life: r(1.1, 1.1),
-        size: r(0.05, 0.055),
+        size: r(0.06, 0.068),
         radius: r(1.1, 1.5),
       }),
       // Une poussiere au ras du sol entre deux ondes : sans elle, l effet
@@ -258,7 +266,7 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         shape: 'rise',
         rate: 14,
         life: r(0.4, 0.8),
-        size: r(0.02, 0.04),
+        size: r(0.04, 0.075),
         height: r(0, 0.08),
         spread: r(0.2, 0.55),
         speed: r(0.1, 0.35),
@@ -277,7 +285,7 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         shape: 'orbit',
         rate: 60,
         life: r(1, 1.6),
-        size: r(0.02, 0.045),
+        size: r(0.055, 0.1),
         height: r(0, 0.2),
         // Serre, rapide, et qui monte : une helice, pas un anneau.
         radius: r(0.38, 0.62),
@@ -297,7 +305,7 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         shape: 'smoke',
         rate: 34,
         life: r(1, 1.8),
-        size: r(0.1, 0.18),
+        size: r(0.26, 0.46),
         height: r(0, 0.7),
         spread: r(0, 0.3),
         speed: r(0.25, 0.6),
@@ -307,11 +315,14 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         grow: 1.3,
         additive: false,
       }),
+      // Les braises portent la couleur du joueur : sur une tenue sombre et la
+      // nuit du fond, la fumee seule ne se voit pas, et l effet epique etait
+      // le moins lisible des huit.
       layer({
         shape: 'rise',
-        rate: 11,
+        rate: 20,
         life: r(0.6, 1.2),
-        size: r(0.012, 0.024),
+        size: r(0.035, 0.07),
         height: r(0, 0.8),
         spread: r(0, 0.35),
         speed: r(0.3, 0.7),
@@ -320,18 +331,19 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
     ],
     bolts: null,
     // La fumee mange deja la lumiere : un voile fort par-dessus la ferait
-    // grise. Le prototype tombait a 0,3 pour la meme raison.
-    haloOpacity: 0.3,
-    floorOpacity: 0.3,
+    // grise. Le prototype tombait a 0,3 ; un peu plus ici, parce que c est
+    // le voile qui detache la fumee noire de la nuit.
+    haloOpacity: 0.4,
+    floorOpacity: 0.35,
   },
   {
     id: 'fx.galaxy',
     layers: [
       layer({
         shape: 'orbit',
-        rate: 75,
+        rate: 64,
         life: r(1.4, 2.4),
-        size: r(0.012, 0.032),
+        size: r(0.035, 0.085),
         height: r(0.1, 0.95),
         // Large, lent, incline : un disque d etoiles, pas une tornade. Le
         // rayon ne recouvre jamais celui du Vortex — de loin, deux helices de
@@ -343,11 +355,28 @@ const STYLES: readonly AuraStyle[] = Object.freeze([
         tints: STAR_TINTS,
         twinkle: true,
       }),
+      // La nebuleuse : de grandes taches lentes a la couleur du joueur, sur
+      // le meme disque incline. Sans elle, la galaxie n etait qu une
+      // poussiere d etoiles eparse — moins presente que la Lueur offerte, pour
+      // l effet du palier le plus haut.
+      layer({
+        shape: 'orbit',
+        rate: 14,
+        life: r(1.4, 2),
+        size: r(0.32, 0.52),
+        height: r(0.25, 0.8),
+        radius: r(0.35, 0.85),
+        speed: r(0.5, 1),
+        drift: r(-0.03, 0.03),
+        tilt: 0.38,
+        alpha: 0.26,
+      }),
     ],
     bolts: {
       rate: 2,
-      // La galaxie ne craque qu au sommet : sinon elle imite les Éclairs.
-      minIntensity: 0.8,
+      // La galaxie ne craque qu au sommet — revelation et choc : sinon elle
+      // imite les Éclairs.
+      minIntensity: 0.9,
       life: 0.14,
       start: r(0.6, 1.05),
       reach: 0.8,
