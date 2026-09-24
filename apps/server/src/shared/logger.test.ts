@@ -272,3 +272,29 @@ describe('PinoLoggerService — la redaction s applique aux objets', () => {
     expect(sortie).toContain('P2002');
   });
 });
+
+describe('PinoLoggerService — erreurs Prisma et codes lisibles', () => {
+  /* Quatrieme relecture (M2) : une erreur de validation recopie la requete. */
+  it('ne garde que le nom d une erreur Prisma sans code', () => {
+    const { lines, stream } = capture();
+    const validation = Object.assign(
+      new Error(
+        'Invalid `prisma.authIdentity.create()` invocation: { subject: "kassim@gmail.com", secretHash: "$argon2id$x" }',
+      ),
+      { name: 'PrismaClientValidationError' },
+    );
+    new PinoLoggerService(createLogger(config, stream)).error(validation);
+    const sortie = lines.join('');
+    expect(sortie).toContain('PrismaClientValidationError');
+    expect(sortie).not.toContain('kassim@gmail.com');
+    expect(sortie).not.toContain('$argon2id$x');
+  });
+
+  it('laisse lisible un champ `code` a toute profondeur', () => {
+    const { lines, stream } = capture();
+    new PinoLoggerService(createLogger(config, stream)).warn({
+      a: { b: { code: 'CODE-LISIBLE' } },
+    });
+    expect(lines.join('')).toContain('CODE-LISIBLE');
+  });
+});

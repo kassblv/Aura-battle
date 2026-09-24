@@ -131,9 +131,18 @@ function withoutHead(stack: string | undefined): string | undefined {
   return stack?.split('\n').slice(1).join('\n');
 }
 
-/** Les noms de champ sensibles, a toute profondeur : le dernier segment des chemins masques. */
+/**
+ * Les noms de champ sensibles, a toute profondeur.
+ *
+ * Seulement les chemins generiques (`password`, `*.password`) : les chemins
+ * precis (`req.body.code`) masquent un champ A CET ENDROIT, et en faire une
+ * regle generale masquerait aussi `err.code` — le premier indice d'un
+ * incident, qu'on tient justement a garder lisible.
+ */
 const SENSITIVE_KEYS = new Set(
-  REDACTED_PATHS.map((path) => path.split('.').at(-1) ?? path).filter((key) => /^\w+$/.test(key)),
+  REDACTED_PATHS.filter((path) => /^(\*\.)?\w+$/.test(path)).map((path) =>
+    path.replace(/^\*\./, ''),
+  ),
 );
 
 /** Au-dela, un objet journalise est tronque : un journal n'est pas un vidage memoire. */
@@ -195,6 +204,17 @@ export class PinoLoggerService implements LoggerService {
   private describe(value: unknown): { text: string; fields: Record<string, unknown> } {
     if (typeof value === 'string') {
       return { text: value, fields: {} };
+    }
+    if (value instanceof Error && value.name.startsWith('Prisma')) {
+      const code = (value as { code?: unknown }).code;
+      if (typeof code !== 'string' || !PRISMA_CODE.test(code)) {
+        /*
+          Une erreur Prisma sans code connu (validation, requete inconnue)
+          recopie la requete entiere dans son message ET dans sa pile — sujet
+          d'identite, adresse email, hache. On n'en garde que le nom.
+        */
+        return { text: value.name, fields: { err: { name: value.name } } };
+      }
     }
     if (value instanceof Error) {
       const code = (value as { code?: unknown }).code;
