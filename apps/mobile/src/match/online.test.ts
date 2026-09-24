@@ -246,7 +246,35 @@ describe('envois du joueur', () => {
     const seqs = sent
       .filter((m) => m.name === 'recharge:taps')
       .map((m) => (m.payload as { seq: number }).seq);
-    expect(seqs).toEqual([0, 1]);
+    expect(seqs).toHaveLength(2);
+    expect(seqs[1]).toBe(seqs[0]! + 1);
+  });
+
+  it('reprend au-dessus de la session precedente apres une reconnexion', () => {
+    /*
+      Le serveur jette tout `seq` inferieur ou egal au dernier recu, et il le
+      retient pour tout le match. Le client, lui, est recree a chaque nouveau
+      jeton d'acces — un rechargement, une reprise depuis l'arriere-plan, un
+      jeton renouvele en pleine partie. Reparti de 0, il voyait alors TOUS ses
+      taps et son verrouillage refuses en silence jusqu'a la fin du match.
+
+      Partir de l'heure murale garantit qu'une session plus recente numerote
+      au-dessus de la precedente, sans rien stocker.
+    */
+    const startedAt = Date.now();
+    const { match, emit, sent } = harness();
+    emit('match:found', {
+      matchId: MATCH,
+      seat: 'a',
+      opponent: { displayName: 'Nova', league: 'Or II', cosmetics: {} },
+      protocolVersion: PROTOCOL_VERSION,
+      rulesVersion: '1.0.0',
+      contentVersion: '1.0.0',
+      ghost: false,
+    });
+    match.tap([{ atMs: 100, orbIndex: 0 }]);
+    const seq = (sent.find((m) => m.name === 'recharge:taps')?.payload as { seq: number }).seq;
+    expect(seq).toBeGreaterThanOrEqual(startedAt);
   });
 
   it('trie les taps par instant : le schema refuse le desordre', () => {

@@ -121,8 +121,16 @@ export const EMPTY_ONLINE_STATE: OnlineState = {
 
 export function createOnlineMatch(client: GameClient): OnlineMatch {
   let state: OnlineState = EMPTY_ONLINE_STATE;
-  /** Compteur d actions, croissant : il rend les renvois idempotents. */
-  let seq = 0;
+  /**
+   * Compteur d actions, croissant : il rend les renvois idempotents.
+   *
+   * Il part de l heure murale, pas de 0. Le serveur retient le dernier `seq`
+   * recu pour tout le match et jette ce qui n est pas au-dessus ; or ce
+   * compteur est recree a chaque nouveau jeton d acces — rechargement, reprise
+   * depuis l arriere-plan, jeton renouvele en pleine partie. Reparti de 0, il
+   * faisait refuser en silence tous les taps et le verrouillage restants.
+   */
+  let seq = Date.now();
 
   /** Heure serveur vers heure locale. Sans horloge synchronisee, on ne traduit pas. */
   const toLocal = (serverMs: number): number =>

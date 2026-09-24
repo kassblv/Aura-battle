@@ -588,6 +588,17 @@ describe('idempotence — un renvoi ne doit pas compter deux fois', () => {
     expect(runtime.acceptSeq(MATCH_ID, 'a', 7)).toBe(true);
   });
 
+  it('accepte seq 0, le premier numero que le client envoie', () => {
+    // Le protocole admet 0 (`seqSchema` : entier positif ou nul) et le client
+    // compte a partir de 0. Un compteur serveur parti de 0 jetait donc en
+    // silence le premier message de chaque match : un paquet de taps, ou — si
+    // le joueur n'avait rien tape — son verrouillage. La manche se jouait
+    // alors avec le choix par defaut, et l'aura choisie ne sortait jamais.
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 0)).toBe(true);
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 0)).toBe(false);
+    expect(runtime.acceptSeq(MATCH_ID, 'a', 1)).toBe(true);
+  });
+
   it('refuse un seq deja traite', () => {
     runtime.acceptSeq(MATCH_ID, 'a', 5);
     // Le cas reel : le client se reconnecte et renvoie ses taps par securite.

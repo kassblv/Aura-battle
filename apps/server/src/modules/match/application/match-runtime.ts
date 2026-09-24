@@ -500,7 +500,10 @@ export class MatchRuntime {
       state: step.state,
       wearing: { a: NOTHING_WORN, b: NOTHING_WORN },
       contributions: { a: emptyContribution(), b: emptyContribution() },
-      lastSeq: { a: 0, b: 0 },
+      // -1 et non 0 : le protocole admet `seq = 0`, et c'est le premier numero
+      // qu'envoie le client. Parti de 0, ce compteur jetait le premier message
+      // de chaque match — parfois le verrouillage lui-meme.
+      lastSeq: { a: -1, b: -1 },
       journal: [],
       rejected: { a: 0, b: 0 },
       dropped: { a: 0, b: 0 },
