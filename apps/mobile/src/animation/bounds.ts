@@ -3,6 +3,7 @@ import { CM, FLIP_PIVOT, SHOULDER_DROP, skeletonDepths } from './layout.js';
 import { JOINT_NAMES, type JointName } from './pose.js';
 import { samplePose } from './sample.js';
 import { SECONDARY_REACH } from './secondary.js';
+import { clearArmFromTorso, type MutablePoint } from './torsoClearance.js';
 
 /**
  * Encombrement d une animation, en metres.
@@ -111,6 +112,14 @@ export function forEachWorldJoint(
     rf: [0, depths.footRight],
   };
 
+  const point = (): MutablePoint => ({ x: 0, y: 0, z: 0 });
+  const world = Object.fromEntries(JOINT_NAMES.map((name) => [name, point()])) as Record<
+    JointName,
+    MutablePoint
+  >;
+  const shoulderL = point();
+  const shoulderR = point();
+
   for (let i = 0; i < steps; i++) {
     const time = (i / steps) * animation.loop.duration;
     const pose = samplePose(animation, time);
@@ -138,7 +147,10 @@ export function forEachWorldJoint(
     for (const name of JOINT_NAMES) {
       const joint = pose.joints[name];
       const [shift, depth] = placement[name];
-      send(name, joint[0] * CM + shift, -joint[1] * CM, depth + joint[2] * CM);
+      const point = world[name];
+      point.x = joint[0] * CM + shift;
+      point.y = -joint[1] * CM;
+      point.z = depth + joint[2] * CM;
     }
 
     /**
@@ -149,8 +161,21 @@ export function forEachWorldJoint(
      */
     const neck = pose.joints.neck;
     const shoulderY = -neck[1] * CM - SHOULDER_DROP;
-    send('shoulderLeft', neck[0] * CM, shoulderY, depths.shoulderLeft + neck[2] * CM);
-    send('shoulderRight', neck[0] * CM, shoulderY, depths.shoulderRight + neck[2] * CM);
+    shoulderL.x = neck[0] * CM;
+    shoulderL.y = shoulderY;
+    shoulderL.z = depths.shoulderLeft + neck[2] * CM;
+    shoulderR.x = neck[0] * CM;
+    shoulderR.y = shoulderY;
+    shoulderR.z = depths.shoulderRight + neck[2] * CM;
+
+    // Les bras qui passeraient dans le buste en sont sortis, comme dans le
+    // rig : un bras croise avance, et c est cette position-la qu il faut cadrer.
+    clearArmFromTorso(world.hip, world.neck, shoulderL, world.le, world.lh);
+    clearArmFromTorso(world.hip, world.neck, shoulderR, world.re, world.rh);
+
+    for (const name of JOINT_NAMES) send(name, world[name].x, world[name].y, world[name].z);
+    send('shoulderLeft', shoulderL.x, shoulderL.y, shoulderL.z);
+    send('shoulderRight', shoulderR.x, shoulderR.y, shoulderR.z);
   }
 }
 

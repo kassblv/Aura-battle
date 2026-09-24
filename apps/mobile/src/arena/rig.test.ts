@@ -460,6 +460,65 @@ describe('bras et epaules', () => {
     rig.dispose();
   });
 
+  /*
+    « Les bras traversent le corps. » Les danses sont dessinees a plat : un bras
+    qui passe d'un cote a l'autre (bras croises, floss, epaules epoussetees, dos
+    tourne) le fait dans le plan du corps, et le rig ne l'ecartait que sur le
+    cote — jamais devant ni derriere. Mesure avant correction : bras croises
+    dans le buste 100 % du temps, floss 87 % et jusqu'a son axe.
+
+    Le controle lit le VRAI rig : chaque os est un cylindre pose entre deux
+    articulations, on le ramene dans le repere du buste et on verifie que son
+    axe reste hors du tronc, epaisseur du bras comprise.
+  */
+  it('ne fait jamais passer un bras a travers le buste', { timeout: 30_000 }, () => {
+    const rig = build(-0.5, 1);
+    const fautes = new Map<string, number>();
+    const inverse = new Matrix4();
+    const tip = new Vector3();
+    const base = new Vector3();
+    const point = new Vector3();
+    const MARGIN = 0.04;
+
+    for (const anim of shippedAnimations()) {
+      for (let step = 0; step < 24; step++) {
+        const t = (anim.loop.duration * step) / 24;
+        rig.pose(livePose(anim, t, 0, { hype: 1, reducedMotion: false }), anim, t, 1 / 60);
+        const torso = rig.parts.torso;
+        torso.updateMatrix();
+        inverse.copy(torso.matrix).invert();
+
+        const bones = [
+          [rig.parts.upperArmLeft, 0.35],
+          [rig.parts.foreArmLeft, 0],
+          [rig.parts.upperArmRight, 0.35],
+          [rig.parts.foreArmRight, 0],
+        ] as const;
+        for (const [bone, from] of bones) {
+          // Les extremites d'un os : son milieu, plus ou moins la moitie de sa
+          // longueur le long de son axe local y.
+          tip.set(0, bone.scale.y / 2, 0).applyQuaternion(bone.quaternion).add(bone.position);
+          base.set(0, -bone.scale.y / 2, 0).applyQuaternion(bone.quaternion).add(bone.position);
+          for (let k = 0; k <= 10; k++) {
+            const f = from + ((1 - from) * k) / 10;
+            point.lerpVectors(base, tip, f).applyMatrix4(inverse);
+            // Hors de la hauteur du tronc, rien a traverser.
+            if (point.y < -0.45 || point.y > 0.45) continue;
+            // Le cylindre du buste va de 0,8 (hanches) a 1 (epaules).
+            const radius = 0.8 + 0.2 * (point.y + 0.5);
+            const inside = Math.hypot(
+              point.x / (radius + MARGIN / torso.scale.x),
+              point.z / (radius + MARGIN / torso.scale.z),
+            );
+            if (inside < 1) fautes.set(anim.id, (fautes.get(anim.id) ?? 0) + 1);
+          }
+        }
+      }
+    }
+    expect(Object.fromEntries(fautes)).toEqual({});
+    rig.dispose();
+  });
+
   it('ne laisse ni marche ni trou a l epaule et au coude', () => {
     const rig = build(-0.5, 1);
     rig.dress(LOOK);

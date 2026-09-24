@@ -30,6 +30,13 @@ import {
 import type { Pose } from '../animation/pose.js';
 import { createHand, type Hand, type HandSpec } from './hands.js';
 import { createRimUniforms, withRim } from './rim.js';
+import {
+  clearArmFromTorso,
+  TORSO_ABOVE_NECK,
+  TORSO_BELOW_HIP,
+  TORSO_FORWARD,
+  TORSO_SIDE,
+} from '../animation/torsoClearance.js';
 
 /**
  * Le combattant (port de `buildRig` / `rigLook` / `updateRig` du prototype).
@@ -648,6 +655,12 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
       v.elL.x += depths.elbowShift;
       v.elR.x += depths.elbowShift;
 
+      // Un bras qui passe d un cote a l autre le fait dans le plan du corps :
+      // on l avance (ou le recule) juste assez pour qu il longe le buste au
+      // lieu de le traverser. Voir `torsoClearance.ts`.
+      clearArmFromTorso(hip, neck, v.shL, v.elL, v.hL);
+      clearArmFromTorso(hip, neck, v.shR, v.elR, v.hR);
+
       v.hpL.set(hip.x, hip.y, hip.z + depths.hipLeft * facing);
       v.hpR.set(hip.x, hip.y, hip.z + depths.hipRight * facing);
       at(v.knL, 'lk', depths.kneeLeft * facing);
@@ -655,13 +668,13 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
       at(v.ftL, 'lf', depths.footLeft * facing);
       at(v.ftR, 'rf', depths.footRight * facing);
 
-      v.a.set(hip.x, hip.y - 0.03, hip.z);
-      v.b.set(neck.x, neck.y + 0.01, neck.z);
+      v.a.set(hip.x, hip.y - TORSO_BELOW_HIP, hip.z);
+      v.b.set(neck.x, neck.y + TORSO_ABOVE_NECK, neck.z);
       // Plus large (z) que profond (x), comme un torse. L inverse — 26 cm
       // de profondeur pour 19 de large — faisait lire un profil meme de
       // trois quarts, et avalait les bras qui pendaient le long des flancs.
       // Les ecartements de `animation/layout` se mesurent contre ces valeurs.
-      setBone(parts.torso, v.a, v.b, 0.105, 0.125);
+      setBone(parts.torso, v.a, v.b, TORSO_FORWARD, TORSO_SIDE);
 
       v.a.set(skull.x * 0.6 + neck.x * 0.4, skull.y - 0.1, skull.z * 0.6 + neck.z * 0.4);
       setBone(parts.neck, neck, v.a, LIMB_RADIUS.neck);
