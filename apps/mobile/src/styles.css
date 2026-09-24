@@ -1526,6 +1526,14 @@ body {
   cursor: not-allowed;
 }
 
+/* Les deux sorties discretes, cote a cote : aucune n est le chemin principal. */
+.onboard__alts {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
 .onboard__skip {
   font: inherit;
   font-size: 12px;

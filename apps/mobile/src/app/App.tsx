@@ -622,6 +622,11 @@ export function App(): JSX.Element {
             onSkip={() => {
               setGreeted(true);
             }}
+            onRestore={(code) => {
+              void session.claimRecovery(code).then((ok) => {
+                if (ok) setGreeted(true);
+              });
+            }}
           />
         )}
 

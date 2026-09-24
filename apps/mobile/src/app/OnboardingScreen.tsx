@@ -10,6 +10,12 @@ import { nameHint } from './onboarding.js';
  * qu une question, et elle est facultative — d ou le « Plus tard » : un jeu qui
  * retient son joueur derriere un formulaire perd celui qui voulait juste voir
  * a quoi ca ressemble.
+ *
+ * Le second geste, « J'ai deja un compte », vit ICI et pas seulement dans les
+ * Reglages : c est sur un appareil neuf qu on en a besoin, et c est cet ecran
+ * qu un appareil neuf montre en premier. Cache dans les Reglages, le code de
+ * recuperation n etait trouve par personne — le joueur choisissait un nom,
+ * jouait sous un compte vide, et concluait qu il avait tout perdu.
  */
 
 export interface OnboardingProps {
@@ -20,6 +26,8 @@ export interface OnboardingProps {
   readonly error: string | null;
   readonly onSubmit: (displayName: string) => void;
   readonly onSkip: () => void;
+  /** Presente un code de recuperation : ce navigateur rejoint ce compte. */
+  readonly onRestore: (code: string) => void;
 }
 
 export function OnboardingScreen({
@@ -28,11 +36,76 @@ export function OnboardingScreen({
   error,
   onSubmit,
   onSkip,
+  onRestore,
 }: OnboardingProps): JSX.Element {
+  const [mode, setMode] = useState<'name' | 'restore'>('name');
   const [name, setName] = useState('');
+  const [code, setCode] = useState('');
   const hint = nameHint(name);
   const trimmed = name.trim();
   const ready = trimmed.length > 0 && hint === null && !busy;
+
+  if (mode === 'restore') {
+    const canRestore = code.trim().length > 0 && !busy;
+    return (
+      <section className="onboard" aria-label="Retrouver mon compte">
+        <div className="onboard__panel">
+          <h1 className="onboard__title">Bon retour</h1>
+          <p className="onboard__lede">
+            Entre le code que tu as noté sur ton autre appareil. Tu retrouves ton nom, ton rang, ta
+            bourse et tes objets.
+          </p>
+
+          <form
+            className="onboard__form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (canRestore) onRestore(code);
+            }}
+          >
+            <label className="onboard__label" htmlFor="recovery-code">
+              Ton code
+            </label>
+            <input
+              id="recovery-code"
+              className="onboard__input"
+              value={code}
+              onChange={(event) => {
+                setCode(event.target.value);
+              }}
+              placeholder="AURA-…"
+              autoComplete="off"
+              autoCapitalize="characters"
+              spellCheck={false}
+              enterKeyHint="go"
+              disabled={busy}
+            />
+
+            {error !== null && (
+              <p className="onboard__error" role="alert">
+                {error}
+              </p>
+            )}
+
+            <button type="submit" className="onboard__go" disabled={!canRestore}>
+              {busy ? 'Un instant…' : 'Retrouver mon compte'}
+            </button>
+          </form>
+
+          <button
+            type="button"
+            className="onboard__skip"
+            onClick={() => {
+              setMode('name');
+            }}
+            disabled={busy}
+          >
+            Retour
+          </button>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section className="onboard" aria-label="Choisis ton nom">
@@ -83,9 +156,21 @@ export function OnboardingScreen({
           </button>
         </form>
 
-        <button type="button" className="onboard__skip" onClick={onSkip} disabled={busy}>
-          Plus tard
-        </button>
+        <div className="onboard__alts">
+          <button type="button" className="onboard__skip" onClick={onSkip} disabled={busy}>
+            Plus tard
+          </button>
+          <button
+            type="button"
+            className="onboard__skip"
+            onClick={() => {
+              setMode('restore');
+            }}
+            disabled={busy}
+          >
+            J’ai déjà un compte
+          </button>
+        </div>
       </div>
     </section>
   );
