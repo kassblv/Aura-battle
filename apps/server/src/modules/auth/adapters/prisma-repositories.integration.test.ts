@@ -5,7 +5,7 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
-import { DeviceIdentityConflictError } from '../domain/ports.js';
+import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
 import { PrismaPlayerRepository } from './prisma-repositories.js';
 
 /**
@@ -267,5 +267,104 @@ describe.skipIf(!reachable)('code de recuperation, contre une vraie base', () =>
     // Le compte invite continue de s'ouvrir depuis le navigateur d'origine :
     // lier un compte AJOUTE une ligne, sans rien deplacer (docs/04).
     await expect(repository.findByDeviceHash(deviceHash)).resolves.toEqual(player);
+  });
+});
+
+describe.skipIf(!reachable)('identite email, contre une vraie base', () => {
+  const newEmail = (): string => `test_${randomUUID()}@exemple.test`;
+
+  async function newPlayer(name = 'Joueuse') {
+    return buildRepository().createWithDeviceIdentity({
+      deviceHash: newDeviceHash(),
+      displayName: name,
+    });
+  }
+
+  it('rattache une adresse, la retrouve, et ne rend jamais une autre ligne', async () => {
+    const repository = buildRepository();
+    const player = await newPlayer();
+    const email = newEmail();
+
+    await expect(repository.linkEmailIdentity(player.id, email, '$argon2id$un')).resolves.toBe(
+      'LINKED',
+    );
+    const expected = { playerId: player.id, email, secretHash: '$argon2id$un' };
+    await expect(repository.findByEmail(email)).resolves.toEqual(expected);
+    await expect(repository.findEmailOf(player.id)).resolves.toEqual(expected);
+    await expect(repository.findByEmail(newEmail())).resolves.toBeNull();
+  });
+
+  /*
+    C'est Postgres qui doit refuser qu'une adresse serve deux comptes : la
+    contrainte `(provider, subject)`, traduite en erreur du domaine.
+  */
+  it('refuse une adresse deja prise par un autre joueur', async () => {
+    const repository = buildRepository();
+    const first = await newPlayer('Premiere');
+    const second = await newPlayer('Seconde');
+    const email = newEmail();
+
+    await repository.linkEmailIdentity(first.id, email, '$argon2id$a');
+    const thrown = await repository
+      .linkEmailIdentity(second.id, email, '$argon2id$b')
+      .catch((error: unknown) => error);
+    expect(thrown).toBeInstanceOf(EmailIdentityConflictError);
+    await expect(repository.findEmailOf(second.id)).resolves.toBeNull();
+  });
+
+  /*
+    La contrainte d'unicite ne dit rien d'un joueur a deux adresses : c'est le
+    verrou de la ligne du joueur qui l'empeche. Deux appels lances ENSEMBLE,
+    comme un double appui sur « Valider » : un seul doit gagner.
+  */
+  it('ne laisse pas deux appels simultanes poser deux adresses au meme joueur', async () => {
+    const repository = buildRepository();
+    const player = await newPlayer();
+
+    /*
+      Des connexions deja ouvertes, sinon le test ne prouve rien : la premiere
+      transaction se termine pendant que les autres attendent encore leur
+      connexion, et la course n'a jamais lieu. Verifie en retirant le verrou —
+      avec ce prechauffage, les huit appels posent huit adresses.
+    */
+    await Promise.all(Array.from({ length: 8 }, () => prisma!.$queryRaw`select 1 as x`));
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        repository.linkEmailIdentity(player.id, newEmail(), `$argon2id$${String(i)}`),
+      ),
+    );
+
+    expect(outcomes.filter((o) => o === 'LINKED')).toHaveLength(1);
+    expect(
+      await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'EMAIL' } }),
+    ).toBe(1);
+  });
+
+  it('change le hache sans toucher a l adresse ni aux autres identites', async () => {
+    const repository = buildRepository();
+    const player = await newPlayer();
+    const email = newEmail();
+    await repository.linkEmailIdentity(player.id, email, '$argon2id$ancien');
+    await repository.setRecoveryIdentity(player.id, `hash_recovery_${randomUUID()}`);
+
+    await expect(repository.setPasswordHash(player.id, '$argon2id$nouveau')).resolves.toBe(true);
+    await expect(repository.findByEmail(email)).resolves.toEqual({
+      playerId: player.id,
+      email,
+      secretHash: '$argon2id$nouveau',
+    });
+    // Le code de recuperation garde un hache nul : la colonne n'appartient
+    // qu'aux identites email.
+    const recovery = await prisma!.authIdentity.findFirst({
+      where: { playerId: player.id, provider: 'RECOVERY' },
+      select: { secretHash: true },
+    });
+    expect(recovery?.secretHash).toBeNull();
+  });
+
+  it('rend faux quand le joueur n a pas d adresse', async () => {
+    const player = await newPlayer();
+    await expect(buildRepository().setPasswordHash(player.id, '$argon2id$x')).resolves.toBe(false);
   });
 });

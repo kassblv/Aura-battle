@@ -84,6 +84,98 @@ export interface RecoveryIdentityRepository {
   setRecoveryIdentity(playerId: string, codeHash: string): Promise<void>;
 }
 
+/**
+ * L'adresse visee appartient deja a un autre joueur.
+ *
+ * Meme role que `DeviceIdentityConflictError` : l'adaptateur traduit la
+ * violation d'unicite `(provider, subject)`, le cas d'usage n'en connait que le
+ * sens.
+ */
+export class EmailIdentityConflictError extends Error {
+  constructor(cause?: unknown) {
+    super('EMAIL_IDENTITY_CONFLICT', { cause });
+    this.name = 'EmailIdentityConflictError';
+  }
+}
+
+export interface EmailIdentityRecord {
+  readonly playerId: string;
+  /** L'adresse normalisee. */
+  readonly email: string;
+  /** Hache argon2id, au format PHC (`$argon2id$v=19$...`). */
+  readonly secretHash: string;
+}
+
+/**
+ * Le versant « email et mot de passe » du depot de joueurs.
+ *
+ * Port a part, comme `RecoveryIdentityRepository` : le service n'a besoin que
+ * de ceci, et un port qui ne promet que ce qu'on lui demande se simule en
+ * quelques lignes.
+ */
+export interface EmailIdentityRepository {
+  findById(playerId: string): Promise<PlayerRecord | null>;
+  /** L'identite portant cette adresse normalisee, ou `null`. */
+  findByEmail(email: string): Promise<EmailIdentityRecord | null>;
+  /** L'identite email de ce joueur, ou `null` s'il n'en a pas. */
+  findEmailOf(playerId: string): Promise<EmailIdentityRecord | null>;
+  /**
+   * Rattache une adresse et son hache a un joueur, **si** il n'en a pas deja.
+   *
+   * La verification et l'ecriture sont atomiques cote adaptateur : deux
+   * appuis sur « Valider » ne doivent pas laisser deux adresses au meme joueur.
+   * Rend `ALREADY_LINKED` si le joueur en a deja une ; leve
+   * `EmailIdentityConflictError` si l'adresse appartient a quelqu'un d'autre.
+   */
+  linkEmailIdentity(
+    playerId: string,
+    email: string,
+    secretHash: string,
+  ): Promise<'LINKED' | 'ALREADY_LINKED'>;
+  /** Remplace le hache du mot de passe. Rend `false` si le joueur n'a pas d'adresse. */
+  setPasswordHash(playerId: string, secretHash: string): Promise<boolean>;
+}
+
+/**
+ * Hachage des mots de passe.
+ *
+ * Un port, parce qu'un bon hachage de mot de passe est **lent a dessein** :
+ * les tests du cas d'usage n'ont pas a payer ses dizaines de millisecondes, et
+ * changer d'algorithme un jour ne toucherait que l'adaptateur.
+ */
+export interface PasswordHasher {
+  hash(password: string): Promise<string>;
+  /**
+   * Vrai si le mot de passe correspond au hache. Un hache illisible rend
+   * `false`, jamais une exception : il ne doit pas devenir une 500 qu'on
+   * distinguerait d'un refus.
+   */
+  verify(hash: string, password: string): Promise<boolean>;
+}
+
+/** Un compteur de tentatives et sa limite sur la fenetre. */
+export interface AttemptKey {
+  readonly key: string;
+  readonly limit: number;
+}
+
+/**
+ * Limite de tentatives sur une fenetre fixe (anti-bourrage d'identifiants).
+ *
+ * Compter les **tentatives**, pas les echecs : verifier d'abord puis compter
+ * apres laisserait passer cent essais lances en meme temps, qui verraient
+ * tous le compteur a zero. Chaque appel incremente d'abord, et c'est le
+ * resultat de l'increment qui decide.
+ */
+export interface AttemptLimiter {
+  /** Compte une tentative sur chaque cle ; rend `false` si l'une depasse sa limite. */
+  attempt(keys: readonly AttemptKey[]): Promise<boolean>;
+  /** Remet un compteur a zero : son proprietaire a fait la preuve attendue. */
+  reset(key: string): Promise<void>;
+  /** Rend une tentative : elle a reussi, elle ne doit pas peser sur les autres. */
+  refund(key: string): Promise<void>;
+}
+
 export interface RefreshTokenRepository {
   findByHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
   create(input: {

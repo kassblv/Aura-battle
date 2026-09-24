@@ -46,12 +46,20 @@ model Player {
 /// Lier plus tard Apple ou Google ajoute une ligne ici, sans rien deplacer —
 /// le joueur garde son historique, son classement et ses achats.
 model AuthIdentity {
-  id        String       @id @default(uuid())
-  playerId  String
-  provider  AuthProvider
+  id         String       @id @default(uuid())
+  playerId   String
+  provider   AuthProvider
   /// Identifiant d'appareil, `sub` Apple ou `sub` Google. Stocke hache pour DEVICE.
-  subject   String
-  createdAt DateTime     @default(now())
+  /// Pour EMAIL : l'adresse normalisee (rognee, en minuscules), en clair — c'est
+  /// un identifiant qu'on cherche, pas un secret.
+  subject    String
+  /// Hache argon2id du mot de passe, pour EMAIL seulement.
+  ///
+  /// Une colonne a part plutot que dans `subject` : `subject` est ce qu'on
+  /// CHERCHE (unique), le hache est ce qu'on VERIFIE (sale, donc impossible a
+  /// chercher). Nulle pour tous les autres fournisseurs.
+  secretHash String?
+  createdAt  DateTime     @default(now())
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
@@ -67,6 +75,11 @@ enum AuthProvider {
   /// rien sur ordinateur. Le code est delivre par le serveur, note par le
   /// joueur, et le presenter ailleurs y rattache le meme compte.
   RECOVERY
+  /// Email et mot de passe : retrouver son compte depuis un autre appareil.
+  ///
+  /// L'adresse est un identifiant, jamais verifiee ni ecrite a personne. Un
+  /// mot de passe oublie se rattrape par le code de recuperation.
+  EMAIL
   APPLE
   GOOGLE
 }

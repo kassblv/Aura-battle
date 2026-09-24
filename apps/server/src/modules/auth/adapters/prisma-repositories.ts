@@ -1,8 +1,10 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
-import { DeviceIdentityConflictError } from '../domain/ports.js';
+import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
 import type {
+  EmailIdentityRecord,
+  EmailIdentityRepository,
   PlayerRecord,
   PlayerRepository,
   RecoveryIdentityRepository,
@@ -19,7 +21,9 @@ import type {
  */
 
 @Injectable()
-export class PrismaPlayerRepository implements PlayerRepository, RecoveryIdentityRepository {
+export class PrismaPlayerRepository
+  implements PlayerRepository, RecoveryIdentityRepository, EmailIdentityRepository
+{
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir auth.controller.ts).
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
@@ -83,6 +87,69 @@ export class PrismaPlayerRepository implements PlayerRepository, RecoveryIdentit
     ]);
   }
 
+  async findByEmail(email: string): Promise<EmailIdentityRecord | null> {
+    const identity = await this.prisma.authIdentity.findUnique({
+      where: { provider_subject: { provider: 'EMAIL', subject: email } },
+      select: { playerId: true, subject: true, secretHash: true },
+    });
+    return toEmailRecord(identity);
+  }
+
+  async findEmailOf(playerId: string): Promise<EmailIdentityRecord | null> {
+    const identity = await this.prisma.authIdentity.findFirst({
+      where: { playerId, provider: 'EMAIL' },
+      select: { playerId: true, subject: true, secretHash: true },
+    });
+    return toEmailRecord(identity);
+  }
+
+  /**
+   * Rattache une adresse, a condition que le joueur n'en ait pas deja une.
+   *
+   * La contrainte d'unicite porte sur `(provider, subject)` : elle empeche deux
+   * joueurs de partager une adresse, pas un joueur d'en avoir deux. Verifier
+   * puis creer ne suffit pas — deux appuis sur « Valider » verraient tous deux
+   * la place libre. La ligne du joueur est donc **verrouillee** (`FOR UPDATE`)
+   * le temps de la transaction : le second appel attend le premier, puis voit
+   * son adresse.
+   *
+   * `P2002` veut dire que l'adresse appartient a un autre joueur : traduit en
+   * erreur du domaine, comme pour les appareils.
+   */
+  async linkEmailIdentity(
+    playerId: string,
+    email: string,
+    secretHash: string,
+  ): Promise<'LINKED' | 'ALREADY_LINKED'> {
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await tx.$queryRaw`SELECT id FROM "Player" WHERE id = ${playerId} FOR UPDATE`;
+        const existing = await tx.authIdentity.findFirst({
+          where: { playerId, provider: 'EMAIL' },
+          select: { id: true },
+        });
+        if (existing !== null) return 'ALREADY_LINKED' as const;
+        await tx.authIdentity.create({
+          data: { playerId, provider: 'EMAIL', subject: email, secretHash },
+        });
+        return 'LINKED' as const;
+      });
+    } catch (cause) {
+      if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
+        throw new EmailIdentityConflictError(cause);
+      }
+      throw cause;
+    }
+  }
+
+  async setPasswordHash(playerId: string, secretHash: string): Promise<boolean> {
+    const { count } = await this.prisma.authIdentity.updateMany({
+      where: { playerId, provider: 'EMAIL' },
+      data: { secretHash },
+    });
+    return count > 0;
+  }
+
   /**
    * Cree le joueur et son identite d'appareil **en une transaction**.
    * Un joueur sans identite serait injoignable ; une identite sans joueur
@@ -143,6 +210,21 @@ export class PrismaPlayerRepository implements PlayerRepository, RecoveryIdentit
       data: { lastSeenAt: new Date() },
     });
   }
+}
+
+/**
+ * Une identite email sans hache n'ouvre rien.
+ *
+ * La colonne est nullable parce qu'elle est vide pour tous les autres
+ * fournisseurs. Une ligne EMAIL sans hache ne devrait pas exister ; si elle
+ * existait, la traiter comme absente vaut mieux que de la laisser comparer un
+ * mot de passe a une chaine vide.
+ */
+function toEmailRecord(
+  identity: { playerId: string; subject: string; secretHash: string | null } | null,
+): EmailIdentityRecord | null {
+  if (!identity?.secretHash) return null;
+  return { playerId: identity.playerId, email: identity.subject, secretHash: identity.secretHash };
 }
 
 @Injectable()
