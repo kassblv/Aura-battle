@@ -131,7 +131,11 @@ async function bootstrap(): Promise<void> {
   app.enableCors({
     origin: config.nodeEnv === 'production' ? config.corsOrigins : true,
     credentials: false,
-    methods: ['GET', 'POST', 'PATCH', 'OPTIONS'],
+    // `PUT` : c'est la methode de `/inventory/loadout`. Absente, le navigateur
+    // refusait le pre-vol et TOUT equipement echouait hors du meme hote — le
+    // client de Vite en developpement, et l'application native, dont
+    // l'origine n'est jamais celle de l'API.
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'OPTIONS'],
     allowedHeaders: ['content-type', 'authorization'],
   });
   // Le logger vient du conteneur : un seul objet pour tout le serveur, donc un
