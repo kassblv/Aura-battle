@@ -1,15 +1,22 @@
 import { useCallback, useEffect, useState } from 'react';
+import type { EmailStatusResponse, SessionResponse } from '@aura/protocol';
 import {
   AuthError,
   authenticateDevice,
+  changePassword as requestPasswordChange,
   claimRecoveryCode,
+  fetchEmailStatus,
   issueRecoveryCode,
   linkDevice,
+  linkEmail as requestEmailLink,
+  loginWithEmail,
   renameProfile,
+  type PasswordProof,
 } from '../net/auth.js';
 import { deviceSecret, rotateDeviceSecret } from '../net/identity.js';
 import { loadIdentity, saveIdentity, type StoredIdentity } from '../net/session.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
+import { emailFailureMessage } from './emailAccount.js';
 
 /**
  * La session du joueur, du premier lancement au nom choisi.
@@ -41,6 +48,16 @@ export interface SessionState {
    * perdue.
    */
   claimRecovery(code: string): Promise<boolean>;
+  /** L adresse rattachee a ce compte, masquee ; `null` tant qu on ne sait pas. */
+  readonly email: EmailStatusResponse | null;
+  /** Rattache une adresse et un mot de passe a ce compte. */
+  linkEmail(email: string, password: string): Promise<boolean>;
+  /**
+   * Rejoint le compte de cette adresse — meme consequence que `claimRecovery` :
+   * le compte invite de ce navigateur est abandonne.
+   */
+  loginEmail(email: string, password: string): Promise<boolean>;
+  changePassword(proof: PasswordProof, newPassword: string): Promise<boolean>;
 }
 
 const MESSAGES: Readonly<Record<string, string>> = {
@@ -52,6 +69,15 @@ const MESSAGES: Readonly<Record<string, string>> = {
   MALFORMED: 'Réponse inattendue du serveur.',
 };
 
+/** L adresse du serveur, resolue comme partout ailleurs dans ce fichier. */
+function serverUrl(): string {
+  return resolveServerUrl(
+    import.meta.env.VITE_SERVER_URL,
+    window.location.hostname,
+    currentPageLocation(),
+  );
+}
+
 export function useSession(): SessionState {
   const [phase, setPhase] = useState<SessionPhase>('opening');
   // On part de ce qui est range : le nom s affiche avant le premier octet recu.
@@ -59,6 +85,7 @@ export function useSession(): SessionState {
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [email, setEmail] = useState<EmailStatusResponse | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -193,5 +220,116 @@ export function useSession(): SessionState {
     }
   }, []);
 
-  return { phase, identity, accessToken, error, busy, rename, issueRecovery, claimRecovery };
+  /*
+    L adresse rattachee, relue a chaque nouvelle session : apres un code de
+    recuperation ou une connexion par email, ce n est plus le meme compte.
+  */
+  useEffect(() => {
+    if (accessToken === null) {
+      setEmail(null);
+      return;
+    }
+    let cancelled = false;
+    fetchEmailStatus(serverUrl(), accessToken).then(
+      (status) => {
+        if (!cancelled) setEmail(status);
+      },
+      () => {
+        // Sans reponse, les Reglages proposent simplement de rattacher une
+        // adresse ; le serveur dira EMAIL_ALREADY_LINKED si c est deja fait.
+        if (!cancelled) setEmail(null);
+      },
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [accessToken]);
+
+  const linkEmail = useCallback(
+    async (address: string, password: string): Promise<boolean> => {
+      if (accessToken === null) {
+        setError(MESSAGES.UNREACHABLE ?? null);
+        return false;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        setEmail(await requestEmailLink(serverUrl(), accessToken, address, password));
+        return true;
+      } catch (cause) {
+        setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [accessToken],
+  );
+
+  /** Prend la session d un compte retrouve : nom, jeton, phase. */
+  const adopt = useCallback((session: SessionResponse): void => {
+    const next = { playerId: session.player.id, displayName: session.player.displayName };
+    saveIdentity(next);
+    setIdentity(next);
+    setAccessToken(session.accessToken);
+    setPhase('ready');
+  }, []);
+
+  const loginEmail = useCallback(
+    async (address: string, password: string): Promise<boolean> => {
+      setBusy(true);
+      setError(null);
+      try {
+        const baseUrl = serverUrl();
+        const session = await loginWithEmail(baseUrl, address, password);
+        // Meme rattachement qu apres un code de recuperation, pour la meme
+        // raison : sans lui, le rechargement rouvrirait le compte invite local.
+        await linkDevice(baseUrl, session.accessToken, rotateDeviceSecret());
+        adopt(session);
+        return true;
+      } catch (cause) {
+        setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [adopt],
+  );
+
+  const changePassword = useCallback(
+    async (proof: PasswordProof, newPassword: string): Promise<boolean> => {
+      if (accessToken === null) {
+        setError(MESSAGES.UNREACHABLE ?? null);
+        return false;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        await requestPasswordChange(serverUrl(), accessToken, proof, newPassword);
+        return true;
+      } catch (cause) {
+        setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
+        return false;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [accessToken],
+  );
+
+  return {
+    phase,
+    identity,
+    accessToken,
+    error,
+    busy,
+    rename,
+    issueRecovery,
+    claimRecovery,
+    email,
+    linkEmail,
+    loginEmail,
+    changePassword,
+  };
 }

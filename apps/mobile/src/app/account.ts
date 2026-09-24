@@ -6,7 +6,7 @@
  * peut alors verifier qu ils disent bien ce qu ils doivent dire.
  */
 
-export type AccountMoment = 'idle' | 'issued' | 'claim';
+export type AccountMoment = 'issued' | 'claim';
 
 /**
  * Decoupe un code en groupes lisibles.
@@ -20,7 +20,6 @@ export function groupsOf(code: string): readonly string[] {
 }
 
 const NOTICES: Readonly<Record<AccountMoment, string>> = Object.freeze({
-  idle: 'Ton compte vit dans ce navigateur. Un code te permet de le retrouver ailleurs.',
   /*
     Deux faits, et le joueur doit repartir en connaissant les deux : le serveur
     ne garde que l empreinte du code, donc personne ne pourra le lui réafficher ;

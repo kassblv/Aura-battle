@@ -1,7 +1,13 @@
 import {
+  AUTH_ERROR_CODES,
   displayNameSchema,
+  emailSchema,
+  emailStatusResponseSchema,
+  newPasswordSchema,
   recoveryCodeResponseSchema,
   sessionResponseSchema,
+  type AuthErrorCode,
+  type EmailStatusResponse,
   type SessionResponse,
 } from '@aura/protocol';
 
@@ -13,7 +19,14 @@ import {
  */
 
 export type AuthFailure =
-  'UNREACHABLE' | 'REJECTED' | 'UNAUTHORIZED' | 'MALFORMED' | 'INVALID_NAME';
+  | 'UNREACHABLE'
+  | 'REJECTED'
+  | 'UNAUTHORIZED'
+  | 'MALFORMED'
+  | 'INVALID_NAME'
+  | 'INVALID_EMAIL'
+  | 'PASSWORD_TOO_SHORT'
+  | AuthErrorCode;
 
 export class AuthError extends Error {
   constructor(readonly reason: AuthFailure) {
@@ -41,13 +54,33 @@ async function send(url: string, init: RequestInit, fetcher: Fetcher): Promise<u
     throw new AuthError('UNREACHABLE');
   }
 
-  if (response.status === 401) throw new AuthError('UNAUTHORIZED');
-  if (!response.ok) throw new AuthError('REJECTED');
+  if (!response.ok) {
+    // Le `code` du corps dit POURQUOI, quand le serveur le sait : un 401
+    // « identifiants invalides » n'est pas une session expiree, et les
+    // confondre dirait « relance le jeu » a qui s'est trompe de mot de passe.
+    const code = await refusalCode(response);
+    if (code !== null) throw new AuthError(code);
+    if (response.status === 401) throw new AuthError('UNAUTHORIZED');
+    throw new AuthError('REJECTED');
+  }
 
   try {
     return await response.json();
   } catch {
     throw new AuthError('MALFORMED');
+  }
+}
+
+const KNOWN_CODES: ReadonlySet<string> = new Set(AUTH_ERROR_CODES);
+
+/** Le code de refus du corps, s il fait partie de ceux que le client sait dire. */
+async function refusalCode(response: Response): Promise<AuthErrorCode | null> {
+  try {
+    const body = (await response.json()) as { code?: unknown } | null;
+    const code = body?.code;
+    return typeof code === 'string' && KNOWN_CODES.has(code) ? (code as AuthErrorCode) : null;
+  } catch {
+    return null;
   }
 }
 
@@ -197,6 +230,123 @@ export async function linkDevice(
         authorization: `Bearer ${accessToken}`,
       },
       body: JSON.stringify({ deviceSecret }),
+    },
+    options.fetcher ?? globalThis.fetch.bind(globalThis),
+  );
+}
+
+/**
+ * Ce que le serveur sait de l adresse rattachee : si elle existe, et masquee.
+ *
+ * Valide comme une session : un schema ferme refuse une reponse qui porterait
+ * plus que l adresse masquee.
+ */
+export async function fetchEmailStatus(
+  baseUrl: string,
+  accessToken: string,
+  options: AuthOptions = {},
+): Promise<EmailStatusResponse> {
+  const body = await send(
+    endpoint(baseUrl, '/auth/email'),
+    { method: 'GET', headers: { authorization: `Bearer ${accessToken}` } },
+    options.fetcher ?? globalThis.fetch.bind(globalThis),
+  );
+  const parsed = emailStatusResponseSchema.safeParse(body);
+  if (!parsed.success) throw new AuthError('MALFORMED');
+  return parsed.data;
+}
+
+/** Controle local de l adresse : le meme schema que le serveur. */
+function checkedEmail(email: string): string {
+  const parsed = emailSchema.safeParse(email);
+  if (!parsed.success) throw new AuthError('INVALID_EMAIL');
+  return parsed.data;
+}
+
+/** Controle local du mot de passe choisi : la longueur, que le schema connait. */
+function checkedNewPassword(password: string): string {
+  if (!newPasswordSchema.safeParse(password).success) throw new AuthError('PASSWORD_TOO_SHORT');
+  return password;
+}
+
+/**
+ * Rattache une adresse et un mot de passe au compte de la session.
+ *
+ * Les regles que le client connait sont verifiees avant l aller-retour ; la
+ * liste des mots de passe trop courants, elle, est au serveur, qui repond par
+ * un code.
+ */
+export async function linkEmail(
+  baseUrl: string,
+  accessToken: string,
+  email: string,
+  password: string,
+  options: AuthOptions = {},
+): Promise<EmailStatusResponse> {
+  const body = await send(
+    endpoint(baseUrl, '/auth/email/link'),
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ email: checkedEmail(email), password: checkedNewPassword(password) }),
+    },
+    options.fetcher ?? globalThis.fetch.bind(globalThis),
+  );
+  const parsed = emailStatusResponseSchema.safeParse(body);
+  if (!parsed.success) throw new AuthError('MALFORMED');
+  return parsed.data;
+}
+
+/**
+ * Ouvre la session du compte de cette adresse.
+ *
+ * Identifiants dans le **corps**, jamais dans l URL. Comme apres un code de
+ * recuperation, l appelant rattache ensuite l appareil (`linkDevice`) : sans
+ * cela, le rechargement suivant rouvrirait le compte invite local.
+ */
+export async function loginWithEmail(
+  baseUrl: string,
+  email: string,
+  password: string,
+  options: AuthOptions = {},
+): Promise<SessionResponse> {
+  const body = await send(
+    endpoint(baseUrl, '/auth/email/login'),
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ email: checkedEmail(email), password }),
+    },
+    options.fetcher ?? globalThis.fetch.bind(globalThis),
+  );
+  const parsed = sessionResponseSchema.safeParse(body);
+  if (!parsed.success) throw new AuthError('MALFORMED');
+  return parsed.data;
+}
+
+/** La preuve d un changement de mot de passe : l ancien, ou le code de recuperation. */
+export type PasswordProof =
+  { readonly currentPassword: string } | { readonly recoveryCode: string };
+
+/**
+ * Change le mot de passe.
+ *
+ * Le code de recuperation est le chemin du mot de passe oublie : aucun
+ * courrier ne part jamais, c est la seule autre preuve que le joueur detient.
+ */
+export async function changePassword(
+  baseUrl: string,
+  accessToken: string,
+  proof: PasswordProof,
+  newPassword: string,
+  options: AuthOptions = {},
+): Promise<void> {
+  await send(
+    endpoint(baseUrl, '/auth/email/password'),
+    {
+      method: 'POST',
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify({ ...proof, newPassword: checkedNewPassword(newPassword) }),
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );

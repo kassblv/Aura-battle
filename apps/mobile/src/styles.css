@@ -1324,6 +1324,87 @@ body {
   background: var(--chip-deep);
 }
 
+/*
+  Email et mot de passe : du texte, pas un code.
+
+  Le champ du code de recuperation est a chasse fixe et espace, pour que ses
+  groupes s'alignent. Une adresse ou un mot de passe ainsi espaces se lisent
+  mal et debordent de la colonne pour rien.
+*/
+.account__field--plain input {
+  font-family: inherit;
+  letter-spacing: normal;
+}
+
+.account__field input:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 1px;
+}
+
+/*
+  Un formulaire de compte prend la place des DEUX colonnes du compte.
+
+  Empiler trois champs, deux notes et trois boutons dans une colonne de
+  230 pixels la faisait deborder de la hauteur — la ressource rare en
+  paysage — et defiler au doigt au milieu d'un jeu. Sur deux colonnes, les
+  champs a gauche et ce qu'on en dit a droite tiennent sans defiler.
+*/
+.account__wide {
+  grid-column: span 2;
+}
+
+/*
+  Sur une seule colonne, « deux colonnes » en creerait une implicite. Ecrit
+  APRES la regle qu'il corrige : un `@media` pose avant perd en silence.
+*/
+@media (max-width: 560px) {
+  .account__wide {
+    grid-column: auto;
+  }
+  .account__form {
+    grid-template-columns: 1fr;
+  }
+}
+
+.account__form {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px 16px;
+  align-items: start;
+}
+
+.account__fields,
+.account__aside {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+
+.account__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.account__actions .choice {
+  flex: 1 1 auto;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Le geste principal du formulaire se distingue sans la pastille d'un choix. */
+.account__submit {
+  border-color: var(--accent);
+  background: linear-gradient(180deg, rgba(179, 107, 255, 0.22), var(--chip));
+}
+
+/* Un bouton inactif doit se voir inactif : sinon on appuie, et rien ne vient. */
+.choice:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
 /* Un avertissement se lit a sa couleur avant de se lire a ses mots. */
 .sheet__note--warn {
   color: var(--gold-ink);
@@ -1546,6 +1627,68 @@ body {
   min-height: 46px;
   padding: 6px 16px;
   cursor: pointer;
+}
+
+/*
+  « Bon retour » : deux colonnes, l'explication et le formulaire.
+
+  Empile dans 430 pixels, le formulaire email — deux champs, le bouton,
+  l'aide, les onglets — faisait 500 pixels de haut pour un ecran de 390. En
+  paysage la largeur ne manque pas : on la prend.
+*/
+.onboard__panel--wide {
+  width: min(720px, 100%);
+}
+
+.onboard__cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 22px;
+  align-items: start;
+}
+
+.onboard__col {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+/* Le choix de la methode : deux onglets, et celui qui est actif se voit. */
+.onboard__tabs {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 3px;
+  border-radius: 14px;
+  background: var(--chip-deep);
+  border: 1px solid var(--line);
+}
+
+.onboard__tab {
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: 11px;
+  min-height: 46px;
+  padding: 4px 8px;
+  cursor: pointer;
+}
+
+.onboard__tab[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--chip);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+
+/* Ecrit APRES les regles qu'il corrige : un `@media` pose avant perd en silence. */
+@media (max-width: 560px) {
+  .onboard__cols {
+    grid-template-columns: 1fr;
+  }
 }
 
 /*

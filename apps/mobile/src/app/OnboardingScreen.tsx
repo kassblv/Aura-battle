@@ -1,5 +1,6 @@
 import { DISPLAY_NAME_MAX } from '@aura/protocol';
 import { useState, type JSX } from 'react';
+import { FORGOT_PASSWORD_HINT, emailFormProblem } from './emailAccount.js';
 import { nameHint } from './onboarding.js';
 
 /**
@@ -15,7 +16,8 @@ import { nameHint } from './onboarding.js';
  * Reglages : c est sur un appareil neuf qu on en a besoin, et c est cet ecran
  * qu un appareil neuf montre en premier. Cache dans les Reglages, le code de
  * recuperation n etait trouve par personne — le joueur choisissait un nom,
- * jouait sous un compte vide, et concluait qu il avait tout perdu.
+ * jouait sous un compte vide, et concluait qu il avait tout perdu. On y entre
+ * par email et mot de passe par defaut, ou par le code.
  */
 
 export interface OnboardingProps {
@@ -28,6 +30,8 @@ export interface OnboardingProps {
   readonly onSkip: () => void;
   /** Presente un code de recuperation : ce navigateur rejoint ce compte. */
   readonly onRestore: (code: string) => void;
+  /** Presente un email et un mot de passe : meme consequence que le code. */
+  readonly onLogin: (email: string, password: string) => void;
 }
 
 export function OnboardingScreen({
@@ -37,8 +41,14 @@ export function OnboardingScreen({
   onSubmit,
   onSkip,
   onRestore,
+  onLogin,
 }: OnboardingProps): JSX.Element {
   const [mode, setMode] = useState<'name' | 'restore'>('name');
+  // L'email d'abord : c'est ce dont on se souvient. Le code reste a un geste,
+  // et c'est aussi la porte du mot de passe oublie.
+  const [method, setMethod] = useState<'email' | 'code'>('email');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [code, setCode] = useState('');
   const hint = nameHint(name);
@@ -46,62 +56,152 @@ export function OnboardingScreen({
   const ready = trimmed.length > 0 && hint === null && !busy;
 
   if (mode === 'restore') {
-    const canRestore = code.trim().length > 0 && !busy;
+    const loginProblem = emailFormProblem('login', { email, password });
+    const canRestore =
+      !busy &&
+      (method === 'code'
+        ? code.trim().length > 0
+        : email.trim().length > 0 && password.length > 0 && loginProblem === null);
     return (
       <section className="onboard" aria-label="Retrouver mon compte">
-        <div className="onboard__panel">
-          <h1 className="onboard__title">Bon retour</h1>
-          <p className="onboard__lede">
-            Entre le code que tu as noté sur ton autre appareil. Tu retrouves ton nom, ton rang, ta
-            bourse et tes objets.
-          </p>
-
-          <form
-            className="onboard__form"
-            onSubmit={(event) => {
-              event.preventDefault();
-              if (canRestore) onRestore(code);
-            }}
-          >
-            <label className="onboard__label" htmlFor="recovery-code">
-              Ton code
-            </label>
-            <input
-              id="recovery-code"
-              className="onboard__input"
-              value={code}
-              onChange={(event) => {
-                setCode(event.target.value);
-              }}
-              placeholder="AURA-…"
-              autoComplete="off"
-              autoCapitalize="characters"
-              spellCheck={false}
-              enterKeyHint="go"
-              disabled={busy}
-            />
-
-            {error !== null && (
-              <p className="onboard__error" role="alert">
-                {error}
+        {/*
+          Deux colonnes : a gauche ce qu'on explique, a droite ce qu'on
+          remplit. Empile, le formulaire email debordait des 390 pixels du
+          paysage — et un ecran d'accueil qui defile au doigt perd le joueur
+          avant la premiere partie.
+        */}
+        <div className="onboard__panel onboard__panel--wide">
+          <div className="onboard__cols">
+            <div className="onboard__col">
+              <h1 className="onboard__title">Bon retour</h1>
+              <p className="onboard__lede">
+                Tu retrouves ton nom, ton rang, ta bourse et tes objets.
               </p>
-            )}
 
-            <button type="submit" className="onboard__go" disabled={!canRestore}>
-              {busy ? 'Un instant…' : 'Retrouver mon compte'}
-            </button>
-          </form>
+              <div className="onboard__tabs" role="group" aria-label="Comment te connecter">
+                <button
+                  type="button"
+                  className="onboard__tab"
+                  aria-pressed={method === 'email'}
+                  onClick={() => {
+                    setMethod('email');
+                  }}
+                  disabled={busy}
+                >
+                  Email
+                </button>
+                <button
+                  type="button"
+                  className="onboard__tab"
+                  aria-pressed={method === 'code'}
+                  onClick={() => {
+                    setMethod('code');
+                  }}
+                  disabled={busy}
+                >
+                  Code de récupération
+                </button>
+              </div>
 
-          <button
-            type="button"
-            className="onboard__skip"
-            onClick={() => {
-              setMode('name');
-            }}
-            disabled={busy}
-          >
-            Retour
-          </button>
+              <p className="onboard__hint">
+                {method === 'email'
+                  ? FORGOT_PASSWORD_HINT
+                  : 'Le code que tu as noté sur ton autre appareil.'}
+              </p>
+
+              <button
+                type="button"
+                className="onboard__skip"
+                onClick={() => {
+                  setMode('name');
+                }}
+                disabled={busy}
+              >
+                Retour
+              </button>
+            </div>
+
+            <form
+              className="onboard__form onboard__col"
+              onSubmit={(event) => {
+                event.preventDefault();
+                if (!canRestore) return;
+                if (method === 'code') onRestore(code);
+                else onLogin(email, password);
+              }}
+            >
+              {method === 'email' ? (
+                <>
+                  <label className="onboard__label" htmlFor="login-email">
+                    Email
+                  </label>
+                  <input
+                    id="login-email"
+                    className="onboard__input"
+                    type="email"
+                    name="email"
+                    value={email}
+                    onChange={(event) => {
+                      setEmail(event.target.value);
+                    }}
+                    autoComplete="email"
+                    inputMode="email"
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    enterKeyHint="next"
+                    disabled={busy}
+                  />
+                  <label className="onboard__label" htmlFor="login-password">
+                    Mot de passe
+                  </label>
+                  <input
+                    id="login-password"
+                    className="onboard__input"
+                    type="password"
+                    name="password"
+                    value={password}
+                    onChange={(event) => {
+                      setPassword(event.target.value);
+                    }}
+                    autoComplete="current-password"
+                    enterKeyHint="go"
+                    disabled={busy}
+                  />
+                  {loginProblem !== null && <p className="onboard__hint">{loginProblem}</p>}
+                </>
+              ) : (
+                <>
+                  <label className="onboard__label" htmlFor="recovery-code">
+                    Ton code
+                  </label>
+                  <input
+                    id="recovery-code"
+                    className="onboard__input"
+                    value={code}
+                    onChange={(event) => {
+                      setCode(event.target.value);
+                    }}
+                    placeholder="AURA-…"
+                    autoComplete="off"
+                    autoCapitalize="characters"
+                    spellCheck={false}
+                    enterKeyHint="go"
+                    disabled={busy}
+                  />
+                </>
+              )}
+
+              {error !== null && (
+                <p className="onboard__error" role="alert">
+                  {error}
+                </p>
+              )}
+
+              <button type="submit" className="onboard__go" disabled={!canRestore}>
+                {busy ? 'Un instant…' : 'Retrouver mon compte'}
+              </button>
+            </form>
+          </div>
         </div>
       </section>
     );

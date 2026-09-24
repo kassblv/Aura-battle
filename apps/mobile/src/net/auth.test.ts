@@ -2,7 +2,11 @@ import { describe, expect, it, vi } from 'vitest';
 import {
   AuthError,
   authenticateDevice,
+  changePassword,
   claimRecoveryCode,
+  fetchEmailStatus,
+  linkEmail,
+  loginWithEmail,
   issueRecoveryCode,
   renameProfile,
   type Fetcher,
@@ -166,5 +170,138 @@ describe('code de recuperation', () => {
     await expect(claimRecoveryCode('http://srv', 'AURA-0000', { fetcher })).rejects.toMatchObject({
       reason: 'UNAUTHORIZED',
     });
+  });
+});
+
+describe('email et mot de passe', () => {
+  const password = 'aura du dimanche';
+
+  async function reasonOf(promise: Promise<unknown>): Promise<string> {
+    const thrown = await promise.then(
+      () => null,
+      (error: unknown) => error,
+    );
+    expect(thrown).toBeInstanceOf(AuthError);
+    return (thrown as AuthError).reason;
+  }
+
+  it('se connecte en envoyant les identifiants dans le corps, jamais dans l URL', async () => {
+    const fetcher = ok(session);
+    await expect(
+      loginWithEmail('http://srv', ' Kassim@Gmail.com ', password, { fetcher }),
+    ).resolves.toMatchObject({ player: { id: 'p_1' } });
+
+    const [url, init] = fetcher.mock.calls[0] ?? [];
+    expect(url).toBe('http://srv/auth/email/login');
+    expect(String(url)).not.toContain('kassim');
+    expect(String(url)).not.toContain(password);
+    // L'adresse part normalisee : c'est la meme chaine que le serveur range.
+    expect(JSON.parse(init?.body as string)).toEqual({ email: 'kassim@gmail.com', password });
+  });
+
+  /*
+    Le client lit le `code` du corps : un 401 « identifiants invalides » n'est
+    pas une session expiree, et les confondre dirait « relance le jeu » a
+    quelqu'un qui s'est trompe de mot de passe.
+  */
+  it('distingue des identifiants refuses d une session expiree', async () => {
+    expect(
+      await reasonOf(
+        loginWithEmail('http://srv', 'k@gmail.com', password, {
+          fetcher: fails(401, { code: 'INVALID_CREDENTIALS' }),
+        }),
+      ),
+    ).toBe('INVALID_CREDENTIALS');
+    expect(
+      await reasonOf(
+        loginWithEmail('http://srv', 'k@gmail.com', password, {
+          fetcher: fails(429, { code: 'TOO_MANY_ATTEMPTS' }),
+        }),
+      ),
+    ).toBe('TOO_MANY_ATTEMPTS');
+  });
+
+  it('ignore un code de refus qu il ne connait pas', async () => {
+    expect(
+      await reasonOf(
+        loginWithEmail('http://srv', 'k@gmail.com', password, {
+          fetcher: fails(400, { code: 'AUTRE_CHOSE' }),
+        }),
+      ),
+    ).toBe('REJECTED');
+  });
+
+  it('refuse une adresse mal formee sans appeler le serveur', async () => {
+    const fetcher = ok(session);
+    expect(await reasonOf(loginWithEmail('http://srv', 'kassim', password, { fetcher }))).toBe(
+      'INVALID_EMAIL',
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('rattache une adresse avec le jeton, et lit l etat masque', async () => {
+    const fetcher = ok({ linked: true, maskedEmail: 'k•••@gmail.com' });
+    await expect(
+      linkEmail('http://srv', 'acc', 'k@gmail.com', password, { fetcher }),
+    ).resolves.toEqual({ linked: true, maskedEmail: 'k•••@gmail.com' });
+    const [url, init] = fetcher.mock.calls[0] ?? [];
+    expect(url).toBe('http://srv/auth/email/link');
+    expect(new Headers(init?.headers).get('authorization')).toBe('Bearer acc');
+  });
+
+  it('refuse un mot de passe trop court avant l aller-retour', async () => {
+    const fetcher = ok({});
+    expect(
+      await reasonOf(linkEmail('http://srv', 'acc', 'k@gmail.com', 'court', { fetcher })),
+    ).toBe('PASSWORD_TOO_SHORT');
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
+  it('rapporte une adresse deja prise', async () => {
+    expect(
+      await reasonOf(
+        linkEmail('http://srv', 'acc', 'k@gmail.com', password, {
+          fetcher: fails(409, { code: 'EMAIL_UNAVAILABLE' }),
+        }),
+      ),
+    ).toBe('EMAIL_UNAVAILABLE');
+  });
+
+  it('lit l etat du rattachement', async () => {
+    const fetcher = ok({ linked: false, maskedEmail: null });
+    await expect(fetchEmailStatus('http://srv', 'acc', { fetcher })).resolves.toEqual({
+      linked: false,
+      maskedEmail: null,
+    });
+    expect(fetcher.mock.calls[0]?.[1]?.method).toBe('GET');
+  });
+
+  it('refuse un etat qui porterait autre chose que l adresse masquee', async () => {
+    expect(
+      await reasonOf(
+        fetchEmailStatus('http://srv', 'acc', {
+          fetcher: ok({ linked: true, maskedEmail: 'k•••@gmail.com', secretHash: 'x' }),
+        }),
+      ),
+    ).toBe('MALFORMED');
+  });
+
+  it('change le mot de passe avec l ancien, ou avec le code de recuperation', async () => {
+    const fetcher = ok({ changed: true });
+    await changePassword('http://srv', 'acc', { currentPassword: 'ancien' }, password, {
+      fetcher,
+    });
+    await changePassword('http://srv', 'acc', { recoveryCode: 'AURA-XXXX' }, password, {
+      fetcher,
+    });
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toEqual({
+      currentPassword: 'ancien',
+      newPassword: password,
+    });
+    expect(JSON.parse(fetcher.mock.calls[1]?.[1]?.body as string)).toEqual({
+      recoveryCode: 'AURA-XXXX',
+      newPassword: password,
+    });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('http://srv/auth/email/password');
   });
 });

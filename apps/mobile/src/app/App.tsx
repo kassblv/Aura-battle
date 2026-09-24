@@ -627,6 +627,11 @@ export function App(): JSX.Element {
                 if (ok) setGreeted(true);
               });
             }}
+            onLogin={(email, password) => {
+              void session.loginEmail(email, password).then((ok) => {
+                if (ok) setGreeted(true);
+              });
+            }}
           />
         )}
 
@@ -780,6 +785,15 @@ export function App(): JSX.Element {
                   // progression locale n'est plus la sienne. On repart de
                   // l'accueil plutot que de laisser a l'ecran des chiffres qui
                   // appartiennent a quelqu'un d'autre.
+                  if (ok) go('home');
+                });
+              },
+              email: session.email,
+              linkEmail: (email, password) => session.linkEmail(email, password),
+              changePassword: (proof, password) => session.changePassword(proof, password),
+              loginEmail: (email, password) => {
+                // Meme consequence qu'un code : retour a l'accueil.
+                void session.loginEmail(email, password).then((ok) => {
                   if (ok) go('home');
                 });
               },
