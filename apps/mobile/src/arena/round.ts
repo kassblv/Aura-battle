@@ -1,6 +1,6 @@
 import type { Seat, TimingQuality } from '@aura/rules';
 import type { ArenaEvent } from './events.js';
-import { CLASH_DURATION_MS } from './clash.js';
+import { CLASH_DURATION_MS, CLASH_HIT_AT } from './clash.js';
 
 /**
  * De la manche revelee a la choregraphie de l arene.
@@ -120,19 +120,47 @@ export function storyOfRound(report: RoundReport): RoundStory {
 
 /** Premiere revelation : le temps que la phase s installe. */
 export const REVEAL_FIRST_AT_MS = 120;
-/** Ecart entre les deux revelations. */
-export const REVEAL_GAP_MS = 500;
+/**
+ * Ecart entre les deux revelations.
+ *
+ * Il etait de 500 ms, et tout tenait en 1 400 : le second danseur passait
+ * 780 ms a l ecran avant de basculer sur la joie ou l encaissement — a peine
+ * une mesure. Une aura battle existe pour montrer deux memes face a face ; on
+ * leur laisse le temps d etre vus, sans toucher a la duree de la revelation
+ * (4,5 s, `BALANCE`), que le panneau de verdict partage.
+ */
+export const REVEAL_GAP_MS = 700;
 /**
  * Depart du choc.
  *
- * Le contact tombe a `CLASH_HIT_AT` de sa duree, soit 970 + 0,45 × 950 ≈ 1 400 ms :
- * exactement l instant ou l ecran bascule sur la pose de victoire
- * (`VERDICT_AFTER_MS`). Le perdant encaisse donc **parce qu** il vient d etre
- * touche, au lieu de chanceler avant que les auras se rencontrent.
+ * Les deux danses tournent depuis 730 ms quand les faisceaux partent : le
+ * choc se joue par-dessus elles, pas a leur place. Plus tard, le panneau de
+ * verdict n aurait plus ses deux secondes de lecture.
  */
-export const CLASH_AT_MS = 970;
-/** Verdict : pose de victoire d un cote, d encaissement de l autre. */
-export const VICTORY_AT_MS = 1_400;
+export const CLASH_AT_MS = 1_550;
+/**
+ * Verdict : pose de victoire d un cote, d encaissement de l autre.
+ *
+ * Calcule, pas recopie : le contact tombe a `CLASH_HIT_AT` de la duree du
+ * choc, et c est a cet instant precis que le perdant doit encaisser —
+ * **parce qu** il vient d etre touche, pas avant que les auras se rencontrent.
+ * `useOnlineMatch` et `useMatch` le lisent ici, par `outcomeShown`.
+ */
+export const VICTORY_AT_MS = Math.round(CLASH_AT_MS + CLASH_DURATION_MS * CLASH_HIT_AT);
+
+/**
+ * La joie et l encaissement sont-ils a l ecran, `inPhaseMs` apres le debut de la phase ?
+ *
+ * Un seul endroit pour le dire : l ecran en ligne gardait sa propre copie de
+ * l instant (`VERDICT_AFTER_MS`), qui aurait continue de valoir 1 400 ms le
+ * jour ou la choregraphie aurait bouge — et le perdant aurait chancele avant
+ * d etre touche. Le solo, lui, basculait des la premiere image de la
+ * revelation : les danses ne s y voyaient pas du tout.
+ */
+export function outcomeShown(phase: string, inPhaseMs: number): boolean {
+  if (phase === 'ended') return true;
+  return phase === 'reveal' && inPhaseMs >= VICTORY_AT_MS;
+}
 
 /**
  * Apparition du panneau de verdict, une fois les faisceaux eteints.

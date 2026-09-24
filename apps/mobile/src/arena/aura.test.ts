@@ -4,6 +4,7 @@ import {
   AURA_BUDGET,
   AURA_PEAK,
   auraIntensity,
+  PREVIEW_INTENSITY,
   createAuraEmitter,
   createAuraGlow,
   floorScale,
@@ -478,6 +479,17 @@ describe('auraIntensity', () => {
     for (const hype of [0, 0.18, 0.4, 0.55, 0.95, 1]) {
       expect(auraIntensity({ showcase: false, hype, clashWeight: 0 })).toBeCloseTo(hype, 6);
     }
+  });
+
+  /*
+    L apercu du choix allume l aura de SON personnage, a une force qui ne
+    depend pas de l amplificateur regarde : rien de ce qu il choisit ne passe
+    par ici.
+  */
+  it('allume l apercu a une force fixe, independante de ce qui est regarde', () => {
+    const shown = auraIntensity({ showcase: false, hype: 0.4, clashWeight: 0, preview: true });
+    expect(shown).toBe(PREVIEW_INTENSITY);
+    expect(shown).toBeGreaterThan(auraIntensity({ showcase: false, hype: 0.4, clashWeight: 0 }));
   });
 
   it('pose une aura de repos hors match, quelle que soit la ferveur', () => {

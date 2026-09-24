@@ -1,8 +1,9 @@
 import { useEffect, useMemo, useRef, type RefObject } from 'react';
-import type { Animation } from '@aura/content';
+import { systemAnimationId, type Animation } from '@aura/content';
 import { animationBounds, type AnimationBounds } from '../animation/bounds.js';
 import { livePose } from '../animation/secondary.js';
 import { createPoseSmoother } from '../animation/smooth.js';
+import { clipTime, followClip, NO_CLIP, type ClipClock } from '../animation/clip.js';
 import { ANIMATIONS } from '../content/animations.js';
 import { gestureCues } from '../audio/gestures.js';
 import type { AudioCue } from '../audio/cues.js';
@@ -54,6 +55,9 @@ const boundsCache = new Map<string, AnimationBounds>();
  * des particules, et tout le monde jouait ce repli code en dur.
  */
 const DEFAULT_AURA_EFFECT = 'fx.glow';
+
+/** La garde : seule pose d attente, donc seule a garder le decalage entre sieges. */
+const GUARD = systemAnimationId('charge');
 
 function boundsOf(animation: Animation): AnimationBounds {
   let bounds = boundsCache.get(animation.id);
@@ -268,6 +272,8 @@ export function useArena(
      * ralentir sans sauter en arriere.
      */
     let danceClock = 0;
+    /** Debut de l animation de chaque siege : une danse part de sa premiere image. */
+    const clips: Record<'a' | 'b', ClipClock> = { a: NO_CLIP, b: NO_CLIP };
     /** Abscisse de repos du siege de gauche, avant recul. */
     let restingX = arena.fighters.a.root.position.x;
 
@@ -358,15 +364,30 @@ export function useArena(
         const animation = ANIMATIONS.get(shown.animationId);
         if (animation === undefined) continue;
         if (seat === 'a') showcaseAnimation = animation;
-        // Le decalage de phase evite que les deux respirent a l unisson.
+        /*
+          Chaque animation part de sa premiere image, pas de l endroit ou en
+          etait l horloge commune : une danse revelee commencait sinon au
+          milieu de son geste. Le decalage de phase ne reste que pour les
+          poses d attente, pour que les deux ne respirent pas a l unisson.
+        */
+        clips[seat] = followClip(clips[seat], animation.id, danceClock);
         const offset = seat === 'a' ? 0 : 1.7;
+        const time = clipTime(clips[seat], danceClock, animation.id === GUARD, offset);
         // La ferveur est la meme pour les deux sieges (voir `auraHype`) : le
         // rebond des genoux ne peut rien dire du coup joue.
-        const target = livePose(animation, danceClock, offset, {
+        const target = livePose(animation, time, 0, {
           hype: Math.max(scene?.hype ?? 0.2, director.hype),
           reducedMotion: motion.reduced,
         });
-        fighter.pose(smoothers[seat].step(target, danceDelta), animation, danceClock, danceDelta);
+        // Le clignement et le flottement suivent l horloge continue : les
+        // remettre a zero a chaque changement ferait cligner tout le monde a
+        // chaque revelation, au meme instant.
+        fighter.pose(
+          smoothers[seat].step(target, danceDelta),
+          animation,
+          danceClock + offset,
+          danceDelta,
+        );
 
         /**
          * Les temps forts du geste, sonnes au passage.
@@ -376,9 +397,10 @@ export function useArena(
          * qu un mouvement deja visible a l ecran.
          */
         const cue = cueRef.current;
-        if (cue !== undefined) {
-          const from = danceClock - danceDelta + offset;
-          for (const accent of gestureCues(animation, from, danceClock + offset)) {
+        // Pas d accent sur l image ou l animation demarre : l intervalle
+        // commencerait avant son debut et rejouerait la fin de sa boucle.
+        if (cue !== undefined && time - danceDelta >= 0) {
+          for (const accent of gestureCues(animation, time - danceDelta, time)) {
             cue(accent);
           }
         }
@@ -471,6 +493,7 @@ export function useArena(
             showcase: solo,
             hype: auraHype,
             clashWeight: director.auraWeight(seat),
+            preview: scene?.fighters[seat].auraPreview === true,
           }),
         });
       }

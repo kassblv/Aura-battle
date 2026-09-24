@@ -23,6 +23,8 @@ import { countdownLabel, orbPaint, ORB_SLOTS, phaseClock, progressTransform } fr
 import { renderKey, type MeterZonesView } from '../ui/renderKey.js';
 import { betFor, levelFill, type Bet } from '../ui/bet.js';
 import { chunkEvenly, pickNameClass, STYLE_COLUMNS } from '../ui/layout.js';
+import type { ChoicePreview } from '../match/choicePreview.js';
+import { danceOptions, type Wardrobe } from './wardrobe.js';
 
 /**
  * L ecran de match.
@@ -95,6 +97,18 @@ export interface MatchActions {
 
 export type { MeterZonesView };
 
+/**
+ * Changer la danse d un mouvement sans quitter le panneau de choix.
+ *
+ * Le panneau ne connait ni l inventaire ni le serveur : il recoit ce que le
+ * joueur possede et porte, et rend une intention — « equipe celle-ci ». C est
+ * l appelant qui la fait passer par le serveur, seul juge de la possession.
+ */
+export interface DanceChoice {
+  readonly wardrobe: Wardrobe;
+  readonly onEquip: (animationId: string) => void;
+}
+
 export interface MatchScreenProps {
   readonly view: MatchView & Partial<MeterZonesView>;
   readonly actions: MatchActions;
@@ -149,6 +163,14 @@ export interface MatchScreenProps {
     readonly name: string;
     readonly reward: number;
   }[];
+  /**
+   * Ce que le joueur regarde pendant le choix, pour que SON personnage le
+   * montre. Local : l appelant le pose dans l arene, rien ne part au serveur.
+   * Doit etre stable d un rendu a l autre.
+   */
+  readonly onPreview?: (preview: ChoicePreview | null) => void;
+  /** Absent : pas de choix de danse (inventaire injoignable, par exemple). */
+  readonly dances?: DanceChoice;
 }
 
 function MatchScreenBody({
@@ -162,10 +184,21 @@ function MatchScreenBody({
   onRematch,
   rematchLabel,
   questsDone = [],
+  onPreview,
+  dances,
 }: MatchScreenProps): JSX.Element {
   const [style, setStyle] = useState<Style | null>(null);
   const [tier, setTier] = useState<Tier>(0);
   const [amplifier, setAmplifier] = useState<AmplifierLevel>(0);
+  /**
+   * L amplificateur qu on REGARDE sans pouvoir le jouer.
+   *
+   * Un amplificateur trop cher reste injouable — c est la regle, le serveur le
+   * refuserait. Mais le griser sans recours privait le joueur de la seule
+   * chose qu il voulait : voir cette aura sur son personnage. Le toucher la
+   * montre, et dit ce qui manque ; le choix, lui, ne bouge pas.
+   */
+  const [peek, setPeek] = useState<AmplifierLevel | null>(null);
   const [locked, setLocked] = useState(false);
   /**
    * L Ultime, arme pour cette manche.
@@ -227,6 +260,7 @@ function MatchScreenBody({
     setStyle(null);
     setTier(0);
     setAmplifier(0);
+    setPeek(null);
     setLocked(false);
     // L Ultime se rearme a chaque manche : l activation vide la jauge, et le
     // garder arme ferait croire qu on le relance avec une jauge vide.
@@ -306,6 +340,44 @@ function MatchScreenBody({
 
   const cap = Math.min(BALANCE.maxRoundCost, view.me.energy ?? BALANCE.maxRoundCost);
   const armed = style !== null;
+
+  /*
+    L apercu suit chaque geste du choix : mon personnage prend la pose du
+    mouvement selectionne et l aura de l amplificateur touche. Pose par
+    reference chez l appelant — ni rendu de l arene, ni message au serveur.
+  */
+  const shownAmplifier = peek ?? amplifier;
+  useEffect(() => {
+    if (onPreview === undefined) return;
+    onPreview({ move: style === null ? null : { style, tier }, amplifier: shownAmplifier });
+  }, [onPreview, style, tier, shownAmplifier]);
+  useEffect(
+    () => () => {
+      onPreview?.(null);
+    },
+    [onPreview],
+  );
+
+  const chooseAmplifier = useCallback((next: AmplifierLevel): void => {
+    setAmplifier(next);
+    setPeek(null);
+  }, []);
+
+  const toggleUltimate = useCallback((): void => {
+    setUltimate((current) => !current);
+  }, []);
+
+  /** La danse du mouvement selectionne, et ce qu on peut mettre a la place. */
+  const move = style === null ? null : { style, tier };
+  const danceView =
+    dances === undefined || move === null ? null : danceOptions(dances.wardrobe, move);
+  const danceNext = danceView?.next;
+  const equipDance = dances?.onEquip;
+  const nextDance = useCallback((): void => {
+    if (danceNext !== undefined) equipDance?.(danceNext);
+  }, [danceNext, equipDance]);
+  const danceName =
+    danceView?.choices.find((card) => card.animationId === danceView.current)?.name ?? null;
 
   /** Ce que la partie a rapporte, ou `null` en solo — il n y a rien a crediter. */
   const spoils = view.ended?.spoils ?? null;
@@ -465,12 +537,16 @@ function MatchScreenBody({
           needleRef={needleRef}
           ultimate={ultimate}
           ultimateReady={(view.me.ultimate ?? 0) >= ULTIMATE_FULL}
-          onUltimate={() => {
-            setUltimate((current) => !current);
-          }}
+          onUltimate={toggleUltimate}
           onStyle={chooseStyle}
           onTier={setTier}
-          onAmplifier={setAmplifier}
+          onAmplifier={chooseAmplifier}
+          peek={peek}
+          onPeek={setPeek}
+          danceName={danceName}
+          danceCount={danceView?.choices.length ?? 0}
+          danceForSale={danceView?.forSale ?? 0}
+          onDance={nextDance}
         />
       </div>
 
@@ -643,7 +719,10 @@ function sameFrame(previous: MatchScreenProps, next: MatchScreenProps): boolean 
     previous.opponentName === next.opponentName &&
     previous.rematchLabel === next.rematchLabel &&
     previous.onLeave === next.onLeave &&
-    previous.onRematch === next.onRematch
+    previous.onRematch === next.onRematch &&
+    previous.onPreview === next.onPreview &&
+    previous.dances?.wardrobe === next.dances?.wardrobe &&
+    previous.dances?.onEquip === next.dances?.onEquip
   );
 }
 
@@ -680,6 +759,12 @@ const ControlBand = memo(function ControlBand({
   onStyle,
   onTier,
   onAmplifier,
+  peek,
+  onPeek,
+  danceName,
+  danceCount,
+  danceForSale,
+  onDance,
 }: {
   readonly style: Style | null;
   readonly tier: Tier;
@@ -698,9 +783,20 @@ const ControlBand = memo(function ControlBand({
   readonly onStyle: (next: Style) => void;
   readonly onTier: (next: Tier) => void;
   readonly onAmplifier: (next: AmplifierLevel) => void;
+  /** L amplificateur regarde sans pouvoir etre joue, ou `null`. */
+  readonly peek: AmplifierLevel | null;
+  readonly onPeek: (next: AmplifierLevel) => void;
+  /** La danse du mouvement selectionne, ou `null` tant qu aucun style n est choisi. */
+  readonly danceName: string | null;
+  /** Danses portables pour ce mouvement : a une seule, rien a changer. */
+  readonly danceCount: number;
+  readonly danceForSale: number;
+  readonly onDance: () => void;
 }): JSX.Element {
   const armed = style !== null;
   const bet = betFor(tier, amplifier, cap);
+  /** Energie qui manque pour jouer l amplificateur regarde. */
+  const missing = peek === null ? null : Math.max(1, peek + tier - cap);
   return (
     <>
       <div className="cluster">
@@ -745,21 +841,52 @@ const ControlBand = memo(function ControlBand({
         l'instant precis ou il vient d'en toucher un.
       */}
       <div className="band__middle">
-        <button
-          type="button"
-          className="ultimate"
-          disabled={!ultimateReady || locked}
-          aria-pressed={ultimate}
-          onClick={onUltimate}
-          aria-label={
-            ultimateReady
-              ? 'Ultime : ×1,5 et impossible à contrer'
-              : 'Ultime : jauge pas encore pleine'
-          }
-        >
-          <b>Ultime</b>
-          <small>{ultimateReady ? '×1,5 · incontrable' : 'jauge à remplir'}</small>
-        </button>
+        <div className="band__row">
+          <button
+            type="button"
+            className="ultimate"
+            disabled={!ultimateReady || locked}
+            aria-pressed={ultimate}
+            onClick={onUltimate}
+            aria-label={
+              ultimateReady
+                ? 'Ultime : ×1,5 et impossible à contrer'
+                : 'Ultime : jauge pas encore pleine'
+            }
+          >
+            <b>Ultime</b>
+            <small>{ultimateReady ? '×1,5 · incontrable' : 'jauge à remplir'}</small>
+          </button>
+          {/*
+            La danse du mouvement choisi, changeable sans quitter le choix.
+
+            Un seul geste — la suivante, en boucle — plutot qu une liste : en
+            paysage et en plein compte a rebours, rien ne doit s ouvrir ni
+            defiler. Un mouvement n a que deux ou trois danses.
+          */}
+          {danceName !== null && (
+            <button
+              type="button"
+              className="dance-pick"
+              disabled={locked || danceCount < 2}
+              onClick={onDance}
+              aria-label={
+                danceCount < 2
+                  ? `Danse : ${danceName}${danceForSale > 0 ? `, ${String(danceForSale)} autre(s) en boutique` : ''}`
+                  : `Danse : ${danceName}, toucher pour la suivante`
+              }
+            >
+              <small>
+                {danceCount < 2
+                  ? danceForSale > 0
+                    ? `+${String(danceForSale)} en boutique`
+                    : 'Danse'
+                  : `Danse · ${String(danceCount)}`}
+              </small>
+              <b>{danceName}</b>
+            </button>
+          )}
+        </div>
 
         <div className={armed ? 'gauge-slot' : 'gauge-slot gauge-slot--empty'}>
           {armed && (
@@ -780,6 +907,11 @@ const ControlBand = memo(function ControlBand({
           bet={bet}
           cap={cap}
           names={`${tierName(tier).fr} · ${amplifierName(amplifier).fr}`}
+          hint={
+            peek === null || missing === null
+              ? null
+              : `${amplifierName(peek).fr} : il te manque ${String(missing)} énergie`
+          }
         />
         <div className="row">
           {TIERS.map((t) => {
@@ -814,6 +946,11 @@ const ControlBand = memo(function ControlBand({
             const multiplier = BALANCE.amplifierMultiplier[a].toFixed(2).replace('.', ',');
             const affordable = a + tier <= cap;
             return (
+              /*
+                Trop cher, il reste TOUCHABLE : on n y mise pas, on le regarde.
+                L aura s affiche sur le personnage et l en-tete dit ce qui
+                manque. Le choix envoye au serveur, lui, ne change pas.
+              */
               <button
                 key={a}
                 type="button"
@@ -821,11 +958,13 @@ const ControlBand = memo(function ControlBand({
                 aria-pressed={amplifier === a}
                 aria-label={`${name}, multiplicateur ${multiplier}, ${
                   a === 0 ? 'gratuit' : `coûte ${String(a)} d’énergie`
-                }`}
+                }${affordable ? '' : ', trop cher : aperçu seulement'}`}
                 data-afford={String(affordable)}
-                disabled={locked || !affordable}
+                data-peek={String(peek === a)}
+                disabled={locked}
                 onClick={() => {
-                  onAmplifier(a);
+                  if (affordable) onAmplifier(a);
+                  else onPeek(a);
                 }}
               >
                 <Rung fill={levelFill(a, AMPLIFIER_LEVELS.length)} tone="amplifier" />
@@ -940,10 +1079,13 @@ function BetHeader({
   bet,
   cap,
   names,
+  hint,
 }: {
   readonly bet: Bet;
   readonly cap: number;
   readonly names: string;
+  /** Ce qui manque pour l amplificateur regarde : remplace les noms, sans prendre de hauteur. */
+  readonly hint: string | null;
 }): JSX.Element {
   return (
     <div className="bet">
@@ -952,7 +1094,13 @@ function BetHeader({
         <b key={bet.power} className="bet__power">
           {bet.power}
         </b>
-        <span className="bet__names">{names}</span>
+        {hint === null ? (
+          <span className="bet__names">{names}</span>
+        ) : (
+          <span className="bet__hint" role="status">
+            {hint}
+          </span>
+        )}
       </span>
       <span
         className="bet__pips"

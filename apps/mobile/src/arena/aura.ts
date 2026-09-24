@@ -91,7 +91,24 @@ export interface AuraDrive {
   readonly hype: number;
   /** Poids du faisceau de ce siege pendant le choc, zero le reste du temps. */
   readonly clashWeight: number;
+  /**
+   * Le joueur regarde son propre choix, sur son propre ecran.
+   *
+   * Un drapeau, et pas le palier : l aura s allume a la meme force quel que
+   * soit l amplificateur regarde. Meme pose par erreur sur le rig d en face,
+   * il ne dirait donc rien du coup — c est `withChoicePreview` qui garantit
+   * qu il ne l est pas.
+   */
+  readonly preview?: boolean;
 }
+
+/**
+ * Force de l aura qu on regarde pendant le choix.
+ *
+ * Celle de la vitrine : a la ferveur de la phase de choix (0,4), un effet
+ * d aura se devinait a peine — on touchait Galaxie sans voir de galaxie.
+ */
+export const PREVIEW_INTENSITY = IDLE_INTENSITY;
 
 export function auraIntensity(drive: AuraDrive): number {
   if (drive.showcase) return IDLE_INTENSITY;
@@ -102,7 +119,8 @@ export function auraIntensity(drive: AuraDrive): number {
   if (drive.clashWeight > 0) {
     return clamp(drive.clashWeight / BEAM_WEIGHT_ULTIMATE, 0, 1) * AURA_PEAK;
   }
-  return clamp(drive.hype, 0, 1);
+  const hype = clamp(drive.hype, 0, 1);
+  return drive.preview === true ? Math.max(hype, PREVIEW_INTENSITY) : hype;
 }
 
 export interface AuraOrigin {

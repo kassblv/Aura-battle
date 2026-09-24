@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { InventoryState } from '@aura/protocol';
 import { AuthError } from '../net/auth.js';
 import { buyItem, equipLoadout, readInventory, InventoryRequestError } from '../net/inventory.js';
@@ -23,6 +23,7 @@ const MESSAGES: Readonly<Record<string, string>> = {
   ALREADY_OWNED: 'Tu possèdes déjà cet objet.',
   INSUFFICIENT_FUNDS: 'Il te manque des pièces.',
   NOT_OWNED: 'Tu ne possèdes pas cet objet.',
+  WRONG_SLOT: 'Cette danse ne va pas avec ce mouvement.',
   NOT_PURCHASABLE: 'Cet objet n’est pas en vente.',
   UNAVAILABLE: 'Cet objet n’est plus disponible.',
   UNKNOWN_ITEM: 'Cet objet n’existe plus.',
@@ -62,16 +63,12 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
 
-  /**
-   * La teinte de peau ne vient pas du serveur.
-   *
-   * Ce n est pas un cosmetique : ni identifiant, ni prix, ni ligne au
-   * catalogue. Elle reste une preference locale, et c est l appelant qui la
-   * detient — une reference, pour qu un changement de teinte ne relance pas la
-   * lecture de l inventaire.
-   */
-  const skin = useRef(localSkin);
-  skin.current = localSkin;
+  /*
+    La teinte de peau ne vient pas du serveur : ce n est pas un cosmetique, ni
+    identifiant, ni prix, ni ligne au catalogue. C est l appelant qui la
+    detient ; elle n entre que dans l apparence calculee, jamais dans la
+    lecture de l inventaire.
+  */
 
   const baseUrl = useCallback(
     () =>
@@ -123,44 +120,63 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
     }
   }, []);
 
-  const owned = new Set(state.owned);
+  /*
+    Des identites STABLES tant que rien ne change.
 
-  return {
-    wallet: state.wallet,
-    owned,
-    look: lookFromLoadout(state.loadout, owned, { ...defaultLook(), skin: skin.current }),
-    busy,
-    error,
-    synced,
+    Recalcule a chaque rendu, l inventaire etait un objet neuf soixante fois
+    par seconde pendant un duel — l application se redessine a chaque image —
+    et tout ce qui en dependait aussi : l apparence, les danses proposees au
+    panneau de choix, et donc la memoisation de l ecran de match.
+  */
+  const owned = useMemo(() => new Set(state.owned), [state.owned]);
+  const look = useMemo(
+    () => lookFromLoadout(state.loadout, owned, { ...defaultLook(), skin: localSkin }),
+    [state.loadout, owned, localSkin],
+  );
 
-    refresh: useCallback(() => {
-      setTick((value) => value + 1);
-    }, []),
+  const refresh = useCallback(() => {
+    setTick((value) => value + 1);
+  }, []);
 
-    buy: useCallback(
-      async (itemId: string) => {
-        if (accessToken === null) {
-          setError(MESSAGES.UNREACHABLE ?? null);
-          return false;
-        }
-        return run(() => buyItem(baseUrl(), accessToken, itemId));
-      },
-      [accessToken, baseUrl, run],
-    ),
+  const buy = useCallback(
+    async (itemId: string) => {
+      if (accessToken === null) {
+        setError(MESSAGES.UNREACHABLE ?? null);
+        return false;
+      }
+      return run(() => buyItem(baseUrl(), accessToken, itemId));
+    },
+    [accessToken, baseUrl, run],
+  );
 
-    equip: useCallback(
-      async (look: Look) => {
-        if (accessToken === null) {
-          setError(MESSAGES.UNREACHABLE ?? null);
-          return false;
-        }
-        return run(() => equipLoadout(baseUrl(), accessToken, loadoutFromLook(look)));
-      },
-      [accessToken, baseUrl, run],
-    ),
+  const equip = useCallback(
+    async (next: Look) => {
+      if (accessToken === null) {
+        setError(MESSAGES.UNREACHABLE ?? null);
+        return false;
+      }
+      return run(() => equipLoadout(baseUrl(), accessToken, loadoutFromLook(next)));
+    },
+    [accessToken, baseUrl, run],
+  );
 
-    clearError: useCallback(() => {
-      setError(null);
-    }, []),
-  };
+  const clearError = useCallback(() => {
+    setError(null);
+  }, []);
+
+  return useMemo(
+    () => ({
+      wallet: state.wallet,
+      owned,
+      look,
+      busy,
+      error,
+      synced,
+      refresh,
+      buy,
+      equip,
+      clearError,
+    }),
+    [state.wallet, owned, look, busy, error, synced, refresh, buy, equip, clearError],
+  );
 }

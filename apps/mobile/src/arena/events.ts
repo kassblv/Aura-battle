@@ -80,12 +80,11 @@ const HYPE_SCORE = 110;
  * Duree du cadrage sur un combattant qui se revele.
  *
  * Le prototype tenait 1 050 ms parce que ses revelations etaient espacees de
- * 1 150 ms. Ici la manche entiere — deux revelations, le choc, le verdict —
- * doit tenir dans les 1 400 ms qui precedent la pose de victoire : un cadrage
- * qui durerait une seconde serait encore colle au second combattant quand les
- * auras se percutent, et le choc se jouerait hors champ.
+ * 1 150 ms. Ici elles le sont de `REVEAL_GAP_MS` (700 ms) : le cadrage doit
+ * lacher le premier danseur avant que le second se revele, et le second avant
+ * que les auras se percutent — sinon le choc se joue hors champ.
  */
-export const REVEAL_FOCUS_MS = 480;
+export const REVEAL_FOCUS_MS = 650;
 
 /** Le vainqueur, lui, a tout le temps : plus rien ne se joue apres. */
 export const VICTORY_FOCUS_MS = 2_600;

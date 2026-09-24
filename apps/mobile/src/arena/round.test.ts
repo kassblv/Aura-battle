@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import type { ArenaEvent } from './events.js';
 import {
   VERDICT_PANEL_AT_MS,
+  outcomeShown,
   verdictPanelShown,
   CLASH_AT_MS,
   REVEAL_FIRST_AT_MS,
@@ -14,6 +15,7 @@ import {
   type RoundStory,
 } from './round.js';
 import { CLASH_DURATION_MS, CLASH_HIT_AT } from './clash.js';
+import { REVEAL_FOCUS_MS } from './events.js';
 
 const report = (over: Partial<RoundReport> = {}): RoundReport => ({
   round: 1,
@@ -99,6 +101,24 @@ describe('roundChoreography', () => {
     ]);
   });
 
+  /*
+    Les deux danses doivent se VOIR avant le choc.
+
+    La revelation durait 1 400 ms du premier geste au verdict : le second
+    danseur avait 780 ms a l ecran, a peine une mesure, avant de basculer sur
+    la joie ou l encaissement. C'est pourtant le moment qu'une aura battle
+    existe pour montrer — deux memes, l'un en face de l'autre.
+  */
+  it('laisse danser le second revele plus d une seconde avant le contact', () => {
+    const second = REVEAL_FIRST_AT_MS + REVEAL_GAP_MS;
+    expect(VICTORY_AT_MS - second).toBeGreaterThanOrEqual(1_100);
+  });
+
+  it('laisse chaque cadrage de revelation finir avant le suivant et avant le choc', () => {
+    expect(REVEAL_FOCUS_MS).toBeLessThanOrEqual(REVEAL_GAP_MS);
+    expect(REVEAL_FIRST_AT_MS + REVEAL_GAP_MS + REVEAL_FOCUS_MS).toBeLessThanOrEqual(CLASH_AT_MS);
+  });
+
   it('respecte l ordre de revelation annonce par le serveur', () => {
     const plan = roundChoreography(story({ revealFirst: 'a' }));
     expect(plan.slice(0, 2).map((e) => (e.event as { seat: string }).seat)).toEqual(['a', 'b']);
@@ -159,6 +179,18 @@ describe('roundChoreography', () => {
       }),
     );
     expect(plan.find((e) => e.event.type === 'clash')!.event).toMatchObject({ ultimate: null });
+  });
+});
+
+describe('outcomeShown — la joie et l encaissement attendent le contact', () => {
+  it('attend le contact des faisceaux pendant la revelation', () => {
+    expect(outcomeShown('reveal', VICTORY_AT_MS - 1)).toBe(false);
+    expect(outcomeShown('reveal', VICTORY_AT_MS)).toBe(true);
+  });
+
+  it('reste acquis en fin de match, et absent ailleurs', () => {
+    expect(outcomeShown('ended', 0)).toBe(true);
+    expect(outcomeShown('choice', 10_000)).toBe(false);
   });
 });
 

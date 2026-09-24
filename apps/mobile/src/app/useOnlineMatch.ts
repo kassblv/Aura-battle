@@ -5,6 +5,9 @@ import type { ServerMessage } from '@aura/protocol';
 import { createSocketTransport } from '../net/socketTransport.js';
 import { createOnlineMatch, type OnlineMatch, type OnlinePhase } from '../match/online.js';
 import { presentOnline } from '../match/onlinePresentation.js';
+import { withChoicePreview, type ChoicePreview } from '../match/choicePreview.js';
+import { outcomeShown } from '../arena/round.js';
+import { lookFromCosmetics } from './loadout.js';
 import { cuesForTransition } from '../audio/matchCues.js';
 import { viewOfOnline, type MatchView } from '../match/view.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
@@ -23,16 +26,6 @@ import type { MatchActions } from './MatchScreen.jsx';
  * tenir ces objets en vie le temps d un montage React et donner a l ecran une
  * image rafraichie a chaque image.
  */
-
-/**
- * Delai entre le debut de la revelation et le verdict.
- *
- * Basculer sur la joie et l encaissement des la premiere image de `reveal`
- * escamoterait la danse : le joueur verrait le resultat sans avoir vu ce qui l
- * a produit, et la manche perdrait son moment. On laisse donc les deux
- * mouvements se jouer, puis le verdict tombe.
- */
-const VERDICT_AFTER_MS = 1_400;
 
 /** Rythme des `ping` : assez souvent pour suivre la derive, assez rare pour ne rien couter. */
 const PING_EVERY_MS = 5_000;
@@ -53,6 +46,13 @@ export interface OnlineSession {
   readonly opponentName: string;
   /** Vrai si l adversaire est un differe : le jeu doit le dire. */
   readonly opponentIsGhost: boolean;
+  /**
+   * Ce que l ecran de choix est en train de regarder, pour l apercu local.
+   *
+   * Stable d un rendu a l autre. Rien ne part au serveur : c est une
+   * reference que la boucle relit (regle d or n°4).
+   */
+  readonly preview: (next: ChoicePreview | null) => void;
   /**
    * Ce que le serveur a accorde a la fin du dernier match, une seule fois.
    *
@@ -117,6 +117,8 @@ export function useOnlineMatch(
   looks: Readonly<Record<Seat, Look>>,
   arena: ArenaControls,
   audio: AudioControls,
+  /** Effets possedes : l apercu d un amplificateur montre le skin de son niveau. */
+  ownedEffects: Iterable<string> = [],
 ): OnlineSession {
   const clientRef = useRef<GameClient | null>(null);
   const matchRef = useRef<OnlineMatch | null>(null);
@@ -134,10 +136,21 @@ export function useOnlineMatch(
    */
   const looksRef = useRef(looks);
   looksRef.current = looks;
+  const ownedRef = useRef(ownedEffects);
+  ownedRef.current = ownedEffects;
+  /** L apercu du choix en cours, pose par l ecran de choix. Local, jamais envoye. */
+  const previewRef = useRef<ChoicePreview | null>(null);
 
   /** Debut de la phase courante, en heure locale, pour dater la choregraphie. */
   const phaseRef = useRef<OnlinePhase>('idle');
   const phaseStartedAt = useRef(0);
+
+  /** L apparence de l adversaire, et l annonce dont elle vient. */
+  const opponentFor = useRef<{ from: unknown; base: Look | null; look: Look }>({
+    from: null,
+    base: null,
+    look: looks.b,
+  });
 
   /** Derniere vue deja sonnee : le son se declenche sur un bord, pas sur un etat. */
   const soundedRef = useRef<MatchView>(EMPTY_VIEW);
@@ -234,10 +247,34 @@ export function useOnlineMatch(
       if (state.phase !== 'idle') {
         arena.showcase.current = false;
         const intoPhase = nowRef.current - phaseStartedAt.current;
-        arena.presentation.current = presentOnline(state, looksRef.current, {
-          showOutcome:
-            state.phase === 'ended' || (state.phase === 'reveal' && intoPhase >= VERDICT_AFTER_MS),
-        });
+        /*
+          L adversaire porte ce que le serveur a annonce de lui — tenue,
+          couleur, danse signature —, et plus la tenue ecrite en dur ici.
+          Recalcule seulement quand l annonce change : elle est figee pour le
+          match, pas la peine d allouer une apparence par image.
+        */
+        const own = looksRef.current;
+        if (
+          opponentFor.current.from !== state.opponentCosmetics ||
+          opponentFor.current.base !== own.b
+        ) {
+          opponentFor.current = {
+            from: state.opponentCosmetics,
+            base: own.b,
+            look: lookFromCosmetics(state.opponentCosmetics, own.b),
+          };
+        }
+        const scene = presentOnline(
+          state,
+          { a: own.a, b: opponentFor.current.look },
+          { showOutcome: outcomeShown(state.phase, intoPhase) },
+        );
+        arena.presentation.current = withChoicePreview(
+          scene,
+          state.phase,
+          previewRef.current,
+          ownedRef.current,
+        );
         // Le choc des auras : voir `useMatch`, meme oubli, meme remede. Un
         // nouveau match n a pas de `lastRound`, donc rien d ancien ne rejoue.
         arena.round.current = seen.lastRound;
@@ -330,6 +367,10 @@ export function useOnlineMatch(
     clientRef.current?.wake();
   }, []);
 
+  const preview = useCallback((next: ChoicePreview | null) => {
+    previewRef.current = next;
+  }, []);
+
   const match = matchRef.current;
   return {
     status: clientRef.current?.connection.status ?? 'offline',
@@ -339,6 +380,7 @@ export function useOnlineMatch(
     clock,
     opponentName: match?.state.opponentName ?? 'Adversaire',
     opponentIsGhost: match?.state.opponentIsGhost ?? false,
+    preview,
     settled,
     clearSettled,
     inviteCode,

@@ -2,6 +2,8 @@ import type { Choice, RechargeTap } from '@aura/rules';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ArenaControls } from '../arena/useArena.js';
 import { present } from '../match/presentation.js';
+import { withChoicePreview, type ChoicePreview } from '../match/choicePreview.js';
+import { outcomeShown } from '../arena/round.js';
 import { createSoloMatch, type SoloMatch } from '../match/solo.js';
 import { viewOfSolo, type MatchView } from '../match/view.js';
 import { cuesForTransition } from '../audio/matchCues.js';
@@ -36,6 +38,8 @@ export interface MatchSession {
    * apprendrait le tirage au lieu d apprendre le jeu.
    */
   readonly restart: () => void;
+  /** L apercu du choix en cours, pour l arene. Voir `withChoicePreview`. */
+  readonly preview: (next: ChoicePreview | null) => void;
 }
 
 /** Une graine par partie. L horloge suffit : rien ici n a besoin d etre secret. */
@@ -79,6 +83,9 @@ export function useSoloMatch(
   const ownedEffectsRef = useRef(ownedEffects);
   ownedEffectsRef.current = ownedEffects;
   const [nowMs, setNow] = useState(0);
+  const previewRef = useRef<ChoicePreview | null>(null);
+  /** Debut de la phase courante, pour savoir ou en est la revelation. */
+  const phaseRef = useRef<{ phase: string; since: number }>({ phase: '', since: 0 });
 
   /**
    * Derniere vue deja sonnee.
@@ -107,11 +114,25 @@ export function useSoloMatch(
        */
       const mine = match.state.seats.a.moves.at(-1);
       const skin = mine === undefined ? undefined : danceFor(looks.a, mine);
-      arena.presentation.current = present(match.state, looks, {
-        showOutcome: match.state.phase === 'reveal',
+      if (phaseRef.current.phase !== match.state.phase) {
+        phaseRef.current = { phase: match.state.phase, since: now };
+      }
+      /*
+        La joie et l encaissement attendent le contact des faisceaux, comme en
+        ligne. Le solo basculait des la premiere image de la revelation : les
+        deux danses ne s y voyaient jamais.
+      */
+      const scene = present(match.state, looks, {
+        showOutcome: outcomeShown(match.state.phase, now - phaseRef.current.since),
         ownedEffects: { a: ownedEffectsRef.current },
         ...(skin === undefined ? {} : { skins: { a: skin } }),
       });
+      arena.presentation.current = withChoicePreview(
+        scene,
+        match.state.phase,
+        previewRef.current,
+        ownedEffectsRef.current,
+      );
 
       const seen = viewOfSolo(match);
       /*
@@ -181,6 +202,10 @@ export function useSoloMatch(
     setNow(0);
   }, []);
 
+  const preview = useCallback((next: ChoicePreview | null) => {
+    previewRef.current = next;
+  }, []);
+
   const match = matchRef.current;
-  return { view: viewOfSolo(match), actions, nowMs, clock, restart };
+  return { view: viewOfSolo(match), actions, nowMs, clock, restart, preview };
 }
