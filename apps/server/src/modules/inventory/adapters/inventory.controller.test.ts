@@ -121,6 +121,47 @@ const buy = (playerId: string, itemId: string) =>
     payload: { itemId },
   });
 
+const read = (playerId: string) =>
+  app.inject({
+    method: 'GET',
+    url: '/inventory',
+    headers: { authorization: `Bearer jwt.${playerId}` },
+  });
+
+describe('GET /inventory', () => {
+  it('rend l inventaire du joueur', async () => {
+    const reply = await read('p-reader');
+    expect(reply.statusCode).toBe(200);
+    expect(reply.json<{ owned: string[] }>().owned).toEqual(['color.gold']);
+  });
+
+  /*
+    Une lecture coute une requete pour le jeton et trois pour l'inventaire :
+    sans borne, c'etait la route la moins chere pour vider le pool Postgres.
+  */
+  it('refuse une boucle de lectures en 429, avant toute lecture', async () => {
+    const { capacity, refillPerSecond } = INVENTORY_RATE_LIMITS.read;
+    for (let i = 0; i < capacity; i++) {
+      expect((await read('p-readloop')).statusCode).toBe(200);
+    }
+
+    reads = 0;
+    const refused = await read('p-readloop');
+    expect(refused.statusCode).toBe(429);
+    expect(refused.json()).toEqual({ code: 'RATE_LIMITED', message: 'RATE_LIMITED' });
+    expect(reads).toBe(0);
+
+    nowMs += Math.ceil(1_000 / refillPerSecond);
+    expect((await read('p-readloop')).statusCode).toBe(200);
+  });
+
+  /* Lire en boucle ne doit pas empecher d'equiper : chaque route a son seau. */
+  it('n entame pas le seau des equipements', async () => {
+    while ((await read('p-readfirst')).statusCode === 200);
+    expect((await equip('p-readfirst')).statusCode).toBe(200);
+  });
+});
+
 describe('PUT /inventory/loadout', () => {
   it('repond avec l etat enregistre, en une seule lecture', async () => {
     reads = 0;

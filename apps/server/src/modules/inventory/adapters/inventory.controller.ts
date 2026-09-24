@@ -43,7 +43,7 @@ import { InventoryRateLimit, type InventoryRoute } from '../application/inventor
  * `auth.controller.ts` : la garde y fermerait aussi les routes qu'on appelle
  * justement sans jeton.
  *
- * Les deux ecritures sont limitees en debit PAR JOUEUR (`InventoryRateLimit`),
+ * Les trois routes sont limitees en debit PAR JOUEUR (`InventoryRateLimit`),
  * apres l'authentification et avant tout le reste : un corps invalide ou un
  * achat refuse coute un jeton comme les autres, sinon la boucle passerait par
  * la. Le refus est un 429 `RATE_LIMITED`, le code que la socket de match
@@ -101,6 +101,9 @@ export class InventoryController {
   @Get()
   async read(@Headers('authorization') authorization: string | undefined): Promise<InventoryState> {
     const playerId = await this.requirePlayer(authorization);
+    // La lecture aussi : trois requetes par appel, c'etait la boucle la moins
+    // chere pour occuper le pool Postgres.
+    this.throttle('read', playerId);
     return toState(await this.inventory.read(playerId));
   }
 
