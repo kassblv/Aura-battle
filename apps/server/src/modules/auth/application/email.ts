@@ -110,6 +110,8 @@ export interface EmailAuthDependencies {
     prove(code: string): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date }>;
   };
   readonly clock: Clock;
+  /** Prevenu apres un changement de mot de passe : le module match ferme les sockets. */
+  readonly events: { publish(playerId: string): void };
   /** Cle du HMAC qui cache les adresses dans Redis et dans les journaux. */
   readonly traceKey: string;
   readonly log: AppLog;
@@ -283,6 +285,10 @@ export class EmailAuthService {
     ) {
       throw new EmailAuthError('EMAIL_NOT_LINKED');
     }
+    // Les sockets deja ouvertes ne reverifient pas leur jeton : on les ferme,
+    // celle de l'intrus comme celle du joueur, qui se reconnecte avec sa
+    // session fraiche.
+    this.deps.events.publish(playerId);
   }
 
   /**

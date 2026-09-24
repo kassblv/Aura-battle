@@ -225,6 +225,9 @@ function startServer(args: BenchArgs, redisUrl: string): ChildProcess {
       DATABASE_POOL_MAX: String(args.dbPool),
       AURA_METRICS: '1',
       AURA_METRICS_TOKEN: METRICS_TOKEN,
+      // Les joueurs simules annoncent chacun leur adresse (`worker.ts`) : la
+      // limite de debit par IP reste active, comme en production (ADR 0013).
+      TRUST_PROXY: 'loopback',
       /**
        * `production`, et pas `development`.
        *

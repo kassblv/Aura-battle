@@ -6,6 +6,7 @@ import { RedisModule } from '../../shared/redis.module.js';
 import { RedisService } from '../../shared/redis.js';
 import { PrismaService } from '../../shared/prisma.service.js';
 import { AuthModule } from '../auth/auth.module.js';
+import { CredentialsEvents } from '../auth/application/credentials-events.js';
 import { GhostNotifier } from '../matchmaking/adapters/ghost-notifier.js';
 import { PrismaGhostStore } from '../matchmaking/adapters/prisma-ghost.store.js';
 import { PrismaRatingReader } from '../matchmaking/adapters/prisma-rating.reader.js';
@@ -73,9 +74,19 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
   providers: [
     {
       provide: SocketNotifier,
-      inject: [PinoLoggerService, MessageMetrics],
-      useFactory: (logger: PinoLoggerService, metrics: MessageMetrics) =>
-        new SocketNotifier(logger, metrics),
+      inject: [PinoLoggerService, MessageMetrics, CredentialsEvents],
+      useFactory: (
+        logger: PinoLoggerService,
+        metrics: MessageMetrics,
+        events: CredentialsEvents,
+      ) => {
+        const notifier = new SocketNotifier(logger, metrics);
+        // Un changement de mot de passe ferme les sockets du joueur (ADR 0013).
+        events.subscribe((playerId) => {
+          notifier.disconnectPlayer(playerId);
+        });
+        return notifier;
+      },
     },
     TimeoutScheduler,
     SystemMatchClock,

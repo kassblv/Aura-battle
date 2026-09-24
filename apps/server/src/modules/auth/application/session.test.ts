@@ -102,37 +102,37 @@ class FakeRefreshTokens implements RefreshTokenRepository {
       expiresAt: input.expiresAt,
       revokedAt: null,
       replacedBy: null,
+      credentialsVersion: this.credentialsVersion,
     };
     this.rows.set(row.id, row);
     return Promise.resolve(row);
   }
 
-  /** Changement de mot de passe a simuler, comme `Player.credentialsChangedAt`. */
-  credentialsChangedAt: Date | null = null;
+  /** `Player.credentialsVersion` : un changement de mot de passe l'incremente. */
+  credentialsVersion = 0;
 
   async rotate(input: {
     id: string;
     playerId: string;
-    createdAt: Date;
+    credentialsVersion: number;
     replacedByHash: string;
     expiresAt: Date;
     at: Date;
-  }): Promise<'ROTATED' | 'REUSED' | 'STALE'> {
+  }): Promise<
+    | { readonly outcome: 'ROTATED'; readonly credentialsVersion: number }
+    | { readonly outcome: 'REUSED' }
+    | { readonly outcome: 'STALE' }
+  > {
     const row = this.rows.get(input.id);
-    if (row?.revokedAt !== null || row.replacedBy !== null) return 'REUSED';
+    if (row?.revokedAt !== null || row.replacedBy !== null) return { outcome: 'REUSED' };
     this.rows.set(input.id, { ...row, replacedBy: input.replacedByHash, revokedAt: input.at });
-    if (
-      this.credentialsChangedAt !== null &&
-      this.credentialsChangedAt.getTime() > input.createdAt.getTime()
-    ) {
-      return 'STALE';
-    }
-    await this.create({
+    if (input.credentialsVersion !== this.credentialsVersion) return { outcome: 'STALE' };
+    const created = await this.create({
       playerId: input.playerId,
       tokenHash: input.replacedByHash,
       expiresAt: input.expiresAt,
     });
-    return 'ROTATED';
+    return { outcome: 'ROTATED', credentialsVersion: created.credentialsVersion };
   }
 
   revokeAllForPlayer(playerId: string, at: Date): Promise<void> {
@@ -146,7 +146,9 @@ class FakeRefreshTokens implements RefreshTokenRepository {
 }
 
 class StubSigner implements AccessTokenSigner {
-  sign(payload: { playerId: string }): Promise<string> {
+  readonly signed: { playerId: string; credentialsVersion: number }[] = [];
+  sign(payload: { playerId: string; credentialsVersion: number }): Promise<string> {
+    this.signed.push(payload);
     return Promise.resolve(`jwt.${payload.playerId}`);
   }
 }
@@ -306,8 +308,24 @@ describe('refresh — renouveler une session', () => {
   /* Relecture de securite (C) : un jeton cree avant un changement de mot de passe. */
   it('refuse de renouveler un jeton anterieur a un changement de mot de passe', async () => {
     const ouverte = await service.authenticateDevice(generateDeviceSecret());
-    refreshTokens.credentialsChangedAt = new Date(1);
+    refreshTokens.credentialsVersion = 1;
     await expect(service.refresh(ouverte.refreshToken)).rejects.toThrow(/INVALID_REFRESH_TOKEN/);
+  });
+
+  it('signe le jeton d acces avec la version des identifiants du jeton renouvele', async () => {
+    const signer = new StubSigner();
+    const sut = new SessionService({
+      players,
+      refreshTokens,
+      signer,
+      clock,
+      accessTtlSeconds: 900,
+      refreshTtlSeconds: 2_592_000,
+    });
+    refreshTokens.credentialsVersion = 4;
+    const ouverte = await sut.authenticateDevice(generateDeviceSecret());
+    await sut.refresh(ouverte.refreshToken);
+    expect(signer.signed.map((s) => s.credentialsVersion)).toEqual([4, 4]);
   });
 
   it('permet plusieurs renouvellements successifs', async () => {

@@ -149,24 +149,24 @@ export class SessionService {
       revocation — l'intrus chasse restait dedans.
     */
     const replacement = generateRefreshToken();
-    const outcome = await this.deps.refreshTokens.rotate({
+    const rotated = await this.deps.refreshTokens.rotate({
       id: stored.id,
       playerId: player.id,
-      createdAt: stored.createdAt,
+      credentialsVersion: stored.credentialsVersion,
       replacedByHash: hashSecret(replacement),
       expiresAt: this.refreshExpiry(now),
       at: now,
     });
-    if (outcome === 'REUSED') {
+    if (rotated.outcome === 'REUSED') {
       await this.deps.refreshTokens.revokeAllForPlayer(stored.playerId, now);
       throw new SessionError('REFRESH_TOKEN_REUSED');
     }
-    if (outcome === 'STALE') {
+    if (rotated.outcome === 'STALE') {
       // Le mot de passe a change depuis : ce jeton appartient a une session
       // que le changement devait fermer.
       throw new SessionError('INVALID_REFRESH_TOKEN');
     }
-    return this.sessionFor(player, replacement);
+    return this.sessionFor(player, replacement, rotated.credentialsVersion);
   }
 
   /**
@@ -218,12 +218,14 @@ export class SessionService {
     readonly displayName: string;
   }): Promise<Session> {
     const refreshToken = generateRefreshToken();
-    await this.deps.refreshTokens.create({
+    const stored = await this.deps.refreshTokens.create({
       playerId: player.id,
       tokenHash: hashSecret(refreshToken),
       expiresAt: this.refreshExpiry(this.deps.clock.now()),
     });
-    return this.sessionFor(player, refreshToken);
+    // La version lue AVEC la creation du jeton, sous verrou : le jeton d'acces
+    // signe ensuite porte la meme, meme si la signature a lieu hors transaction.
+    return this.sessionFor(player, refreshToken, stored.credentialsVersion);
   }
 
   private refreshExpiry(now: Date): Date {
@@ -234,9 +236,10 @@ export class SessionService {
   private async sessionFor(
     player: { readonly id: string; readonly displayName: string },
     refreshToken: string,
+    credentialsVersion: number,
   ): Promise<Session> {
     return {
-      accessToken: await this.deps.signer.sign({ playerId: player.id }),
+      accessToken: await this.deps.signer.sign({ playerId: player.id, credentialsVersion }),
       refreshToken,
       expiresIn: this.deps.accessTtlSeconds,
       player: { id: player.id, displayName: player.displayName, guest: true },

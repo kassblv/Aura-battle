@@ -7,6 +7,8 @@ import type { AccessTokenSigner } from '../domain/ports.js';
 export interface AccessTokenPayload {
   /** Sujet : l'identifiant du joueur. */
   readonly sub: string;
+  /** Version des identifiants a l'emission (`Player.credentialsVersion`). */
+  readonly cv: number;
 }
 
 /**
@@ -23,8 +25,9 @@ export class JwtAccessTokenSigner implements AccessTokenSigner {
     private readonly config: ServerConfig,
   ) {}
 
-  sign(payload: { playerId: string }): Promise<string> {
-    return this.jwt.signAsync({ sub: payload.playerId } satisfies AccessTokenPayload, {
+  sign(payload: { playerId: string; credentialsVersion: number }): Promise<string> {
+    const claims: AccessTokenPayload = { sub: payload.playerId, cv: payload.credentialsVersion };
+    return this.jwt.signAsync(claims, {
       expiresIn: this.config.jwtAccessTtl,
     });
   }

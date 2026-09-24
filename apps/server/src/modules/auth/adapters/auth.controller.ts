@@ -17,7 +17,6 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import {
-  parseAuthDeviceLinkRequest,
   parseAuthDeviceRequest,
   parseAuthEmailLinkRequest,
   parseAuthEmailLoginRequest,
@@ -32,6 +31,7 @@ import {
 } from '@aura/protocol';
 import { readBearer } from '../application/bearer.js';
 import { EmailAuthError, EmailAuthService } from '../application/email.js';
+import { IpRateLimit, type IpRateScope } from '../application/ip-rate-limit.js';
 import { PasswordHasherBusyError } from '../domain/ports.js';
 import type { AccessTokenVerifier } from '../application/socket-auth.js';
 import { ProfileError, ProfileService } from '../application/profile.js';
@@ -69,6 +69,7 @@ export class AuthController {
     @Inject(ProfileService) private readonly profiles: ProfileService,
     @Inject(RecoveryService) private readonly recovery: RecoveryService,
     @Inject(EmailAuthService) private readonly email: EmailAuthService,
+    @Inject(IpRateLimit) private readonly ipLimit: IpRateLimit,
     @Inject('ACCESS_TOKEN_VERIFIER') private readonly verifier: AccessTokenVerifier,
   ) {}
 
@@ -77,7 +78,8 @@ export class AuthController {
    * Cree le joueur au premier appel, le retrouve ensuite.
    */
   @Post('device')
-  async device(@Body() body: unknown): Promise<SessionResponse> {
+  async device(@Body() body: unknown, @Ip() ip: string | undefined): Promise<SessionResponse> {
+    await this.limitIp('device', ip);
     const parsed = parseAuthDeviceRequest(body);
     if (!parsed.success) {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
@@ -87,7 +89,8 @@ export class AuthController {
 
   /** Echange un jeton de rafraichissement contre un nouveau couple. */
   @Post('refresh')
-  async refresh(@Body() body: unknown): Promise<SessionResponse> {
+  async refresh(@Body() body: unknown, @Ip() ip: string | undefined): Promise<SessionResponse> {
+    await this.limitIp('refresh', ip);
     const parsed = parseAuthRefreshRequest(body);
     if (!parsed.success) {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
@@ -193,9 +196,18 @@ export class AuthController {
    * La session est ouverte par le chemin habituel plutot que par un second :
    * un autre point d'emission serait un autre endroit ou la rotation,
    * l'expiration et la revocation des jetons pourraient diverger.
+   *
+   * L'appareil (`deviceSecret`, un secret NEUF) est rattache **dans le meme
+   * geste**, avant d'ouvrir la session. Une route de rattachement a part
+   * laissait n'importe quel jeton vole fabriquer une « preuve d'appareil »
+   * (ADR 0013) ; ici, seul qui presente le code rattache un appareil.
    */
   @Post('recovery/claim')
-  async claimRecovery(@Body() body: unknown): Promise<SessionResponse> {
+  async claimRecovery(
+    @Body() body: unknown,
+    @Ip() ip: string | undefined,
+  ): Promise<SessionResponse> {
+    await this.limitIp('claim', ip);
     const parsed = parseAuthRecoveryClaimRequest(body);
     if (!parsed.success) {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
@@ -217,43 +229,7 @@ export class AuthController {
       throw cause;
     }
 
-    return this.toResponse(() => this.sessions.openForPlayer(player.id));
-  }
-
-  /**
-   * Rattache l'appareil courant au compte de la session.
-   *
-   * Appelee juste apres `recovery/claim`. Sans elle, le navigateur garderait
-   * son propre secret d'appareil et rouvrirait le compte invite local au
-   * rechargement suivant : le joueur verrait son compte revenir, puis
-   * disparaitre, sans rien comprendre.
-   */
-  @Post('device/link')
-  async linkDevice(
-    @Headers('authorization') authorization: string | undefined,
-    @Body() body: unknown,
-  ): Promise<{ readonly linked: true }> {
-    const playerId = await this.requirePlayer(authorization);
-    const parsed = parseAuthDeviceLinkRequest(body);
-    if (!parsed.success) {
-      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
-    }
-
-    try {
-      await this.sessions.linkDevice(playerId, parsed.data.deviceSecret);
-      return { linked: true };
-    } catch (cause) {
-      if (cause instanceof SessionError && cause.reason === 'DEVICE_ALREADY_LINKED') {
-        throw new ConflictException({
-          code: 'DEVICE_ALREADY_LINKED',
-          message: 'cet appareil est deja rattache a un autre compte',
-        });
-      }
-      if (cause instanceof SessionError) {
-        throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: 'secret invalide' });
-      }
-      throw cause;
-    }
+    return this.joinWithDevice(player.id, parsed.data.deviceSecret);
   }
 
   /**
@@ -304,10 +280,10 @@ export class AuthController {
    * Presente une adresse et un mot de passe, et ouvre la session du compte.
    *
    * **Non** authentifiee, comme `recovery/claim` : c'est la route de quelqu'un
-   * qui arrive sur un appareil neuf. La session est ouverte par le chemin
-   * habituel ; le client rattache ensuite son appareil par `device/link`,
-   * exactement comme apres un code de recuperation — sans quoi le
-   * rechargement suivant rouvrirait le compte invite local.
+   * qui arrive sur un appareil neuf. Comme `recovery/claim`, elle rattache
+   * l'appareil dans le meme geste que la preuve, puis ouvre la session par le
+   * chemin habituel — sans ce rattachement, le rechargement suivant rouvrirait
+   * le compte invite local.
    */
   @Post('email/login')
   @HttpCode(HttpStatus.OK)
@@ -319,7 +295,7 @@ export class AuthController {
     const playerId = await this.emailCall(() =>
       this.email.login(parsed.data.email, parsed.data.password, ip),
     );
-    return this.toResponse(() => this.sessions.openForPlayer(playerId));
+    return this.joinWithDevice(playerId, parsed.data.deviceSecret);
   }
 
   /**
@@ -356,6 +332,44 @@ export class AuthController {
       celle-ci, il serait deconnecte a l'instant ou il reprend son compte.
     */
     return this.toResponse(() => this.sessions.openForPlayer(playerId));
+  }
+
+  /**
+   * Rattache l'appareil qui vient de faire sa preuve, puis ouvre la session.
+   *
+   * Le seul chemin qui rattache un appareil a un compte existant : il suit
+   * toujours une preuve (code ou mot de passe), jamais un simple jeton.
+   */
+  private async joinWithDevice(playerId: string, deviceSecret: string): Promise<SessionResponse> {
+    try {
+      await this.sessions.linkDevice(playerId, deviceSecret);
+    } catch (cause) {
+      if (cause instanceof SessionError && cause.reason === 'DEVICE_ALREADY_LINKED') {
+        throw new ConflictException({
+          code: 'DEVICE_ALREADY_LINKED',
+          message: 'cet appareil est deja rattache a un autre compte',
+        });
+      }
+      if (cause instanceof SessionError) {
+        throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: 'secret invalide' });
+      }
+      throw cause;
+    }
+    return this.toResponse(() => this.sessions.openForPlayer(playerId));
+  }
+
+  /** Limite de debit par IP des routes publiques (ADR 0013). */
+  private async limitIp(scope: IpRateScope, ip: string | undefined): Promise<void> {
+    const verdict = await this.ipLimit.allow(scope, ip);
+    if (verdict === 'NO_ADDRESS') {
+      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: 'adresse inconnue' });
+    }
+    if (verdict === 'LIMITED') {
+      throw new HttpException(
+        { code: 'TOO_MANY_ATTEMPTS', message: 'trop de tentatives, reessaie dans quinze minutes' },
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
+    }
   }
 
   /**

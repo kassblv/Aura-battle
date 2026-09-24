@@ -2,58 +2,59 @@ import { describe, expect, it } from 'vitest';
 import { CredentialsChangedError, FreshAccessTokenVerifier } from './fresh-token.js';
 import type { VerifiedToken } from './socket-auth.js';
 
-/** Jeton `sub@iat` : le verificateur interne est un double lisible. */
+/** Jeton `sub@cv` : le verificateur interne est un double lisible. */
 const inner = {
   verify: (token: string): Promise<VerifiedToken> => {
-    const [sub = '', iat] = token.split('@');
-    return Promise.resolve(iat === undefined ? { sub } : { sub, iat: Number(iat) });
+    const [sub = '', cv] = token.split('@');
+    return Promise.resolve(cv === undefined ? { sub } : { sub, cv: Number(cv) });
   },
 };
 
-function verifier(changedAt: Date | null) {
-  return new FreshAccessTokenVerifier(inner, {
-    credentialsChangedAt: () => Promise.resolve(changedAt),
+function verifier(version: number | null) {
+  const reads: string[] = [];
+  const sut = new FreshAccessTokenVerifier(inner, {
+    credentialsVersion: (playerId) => {
+      reads.push(playerId);
+      return Promise.resolve(version);
+    },
   });
+  return { sut, reads };
 }
 
-// Changement de mot de passe a 1 000 000,400 s.
-const CHANGED = new Date(1_000_000_400);
-
 describe('FreshAccessTokenVerifier', () => {
-  it('laisse passer tout jeton d un joueur qui n a jamais change de mot de passe', async () => {
-    await expect(verifier(null).verify('p1@10')).resolves.toEqual({ sub: 'p1', iat: 10 });
-  });
-
-  /* L'intrus chasse garde un jeton d'acces signe, non expire : il ne vaut plus rien. */
-  it('refuse un jeton emis avant le changement', async () => {
-    await expect(verifier(CHANGED).verify('p1@999999')).rejects.toBeInstanceOf(
-      CredentialsChangedError,
-    );
+  it('accepte un jeton de la version en cours', async () => {
+    await expect(verifier(3).sut.verify('p1@3')).resolves.toEqual({ sub: 'p1', cv: 3 });
   });
 
   /*
-    `iat` est en secondes : le jeton que la route de changement delivre a
-    l'appareil qui l'a demande tombe dans la meme seconde, et doit passer.
+    L'intrus chasse garde un jeton d'acces signe, non expire : il porte
+    l'ancienne version et ne vaut plus rien. Egalite stricte, pas d'arrondi :
+    c'est l'arrondi a la seconde de la version par dates qui laissait passer
+    un jeton emis dans la seconde du changement.
   */
-  it('accepte un jeton emis dans la seconde du changement, ou apres', async () => {
-    await expect(verifier(CHANGED).verify('p1@1000000')).resolves.toMatchObject({ sub: 'p1' });
-    await expect(verifier(CHANGED).verify('p1@1000001')).resolves.toMatchObject({ sub: 'p1' });
+  it('refuse un jeton d une autre version', async () => {
+    await expect(verifier(3).sut.verify('p1@2')).rejects.toBeInstanceOf(CredentialsChangedError);
+    await expect(verifier(3).sut.verify('p1@4')).rejects.toBeInstanceOf(CredentialsChangedError);
   });
 
-  it('refuse un jeton sans instant d emission apres un changement', async () => {
-    await expect(verifier(CHANGED).verify('p1')).rejects.toBeInstanceOf(CredentialsChangedError);
+  /*
+    Compatibilite : un jeton signe avant l'existence du claim `cv` vaut
+    version 0, celle de tout joueur qui n'a jamais change de mot de passe. Il
+    tombe des le premier changement.
+  */
+  it('traite un jeton sans version comme la version 0', async () => {
+    await expect(verifier(0).sut.verify('p1')).resolves.toEqual({ sub: 'p1' });
+    await expect(verifier(1).sut.verify('p1')).rejects.toBeInstanceOf(CredentialsChangedError);
   });
 
-  it('laisse l appelant refuser un sujet vide, sans lire la base', async () => {
-    const reader = {
-      calls: 0,
-      credentialsChangedAt() {
-        this.calls += 1;
-        return Promise.resolve(CHANGED);
-      },
-    };
-    const sut = new FreshAccessTokenVerifier(inner, reader);
-    await expect(sut.verify('@5')).resolves.toEqual({ sub: '', iat: 5 });
-    expect(reader.calls).toBe(0);
+  it('refuse le jeton d un joueur qui n existe plus', async () => {
+    await expect(verifier(null).sut.verify('p1@0')).rejects.toBeInstanceOf(CredentialsChangedError);
+  });
+
+  /* Meme regle que le handshake : un sujet vide n'est personne. */
+  it('refuse un sujet vide, sans lire la base', async () => {
+    const { sut, reads } = verifier(0);
+    await expect(sut.verify('@0')).rejects.toBeInstanceOf(CredentialsChangedError);
+    expect(reads).toEqual([]);
   });
 });

@@ -1,14 +1,16 @@
-import type { CredentialsChangeReader } from '../domain/ports.js';
+import type { CredentialsVersionReader } from '../domain/ports.js';
 import type { AccessTokenVerifier, VerifiedToken } from './socket-auth.js';
 
 /**
- * Un jeton d'acces n'est valable que s'il est posterieur au dernier
- * changement de mot de passe (ADR 0013).
+ * Un jeton d'acces n'est valable que s'il porte la version des identifiants
+ * en cours (ADR 0013).
  *
  * Changer de mot de passe revoque les jetons de rafraichissement et detache
  * les appareils ; mais un jeton d'ACCES deja emis reste signe et non expire
- * jusqu'a quinze minutes. Sans ce controle, l'intrus chasse s'en servirait
- * pour rattacher un nouvel appareil (`device/link`) et revenir indefiniment.
+ * jusqu'a quinze minutes. Chaque jeton porte donc `cv`, la version des
+ * identifiants a son emission, et on exige l'EGALITE avec la base. Un compteur
+ * plutot qu'une date : une date se compare a la seconde pres (`iat`), et un
+ * jeton emis dans la seconde du changement passait.
  *
  * Decore le verificateur partage : toutes les routes authentifiees et le
  * handshake Socket.IO passent par lui, donc aucune ne peut l'oublier.
@@ -23,26 +25,19 @@ export class CredentialsChangedError extends Error {
 export class FreshAccessTokenVerifier implements AccessTokenVerifier {
   constructor(
     private readonly inner: AccessTokenVerifier,
-    private readonly players: CredentialsChangeReader,
+    private readonly players: CredentialsVersionReader,
   ) {}
 
   async verify(token: string): Promise<VerifiedToken> {
     const verified = await this.inner.verify(token);
-    if (verified.sub === '') return verified;
+    // Un sujet vide n'est personne : refuse ici, comme au handshake, plutot
+    // que de laisser chaque route s'en souvenir.
+    if (verified.sub === '') throw new CredentialsChangedError();
 
-    const changedAt = await this.players.credentialsChangedAt(verified.sub);
-    if (changedAt === null) return verified;
-
-    /*
-      `iat` est en secondes, la date en millisecondes. On compare a la SECONDE
-      du changement : un jeton emis dans la meme seconde passe. C'est le cas
-      du jeton que la route de changement delivre elle-meme a l'appareil qui
-      l'a demande — le refuser le deconnecterait a l'instant de sa victoire.
-      La fenetre concedee a un intrus est d'une seconde, pendant laquelle il
-      devrait justement obtenir un jeton neuf, que la revocation lui refuse.
-    */
-    const changedSecond = Math.floor(changedAt.getTime() / 1_000);
-    if (verified.iat === undefined || verified.iat < changedSecond) {
+    const current = await this.players.credentialsVersion(verified.sub);
+    // Sans claim `cv` : un jeton signe avant son introduction, qui vaut
+    // version 0 — celle de tout joueur qui n'a jamais change de mot de passe.
+    if (current === null || (verified.cv ?? 0) !== current) {
       throw new CredentialsChangedError();
     }
     return verified;

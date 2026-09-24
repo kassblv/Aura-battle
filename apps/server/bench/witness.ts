@@ -27,7 +27,8 @@ export class WitnessClient {
     const deviceSecret = createHash('sha256').update('aura-bench-witness').digest('hex');
     const response = await fetch(`${httpUrl}/auth/device`, {
       method: 'POST',
-      headers: { 'content-type': 'application/json' },
+      // Son adresse a lui, hors de la plage des joueurs simules (`worker.ts`).
+      headers: { 'content-type': 'application/json', 'x-forwarded-for': '10.255.255.254' },
       body: JSON.stringify({ deviceSecret }),
     });
     if (!response.ok) throw new Error('le temoin n a pas pu ouvrir de session');

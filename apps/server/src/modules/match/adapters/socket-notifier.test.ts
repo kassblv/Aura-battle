@@ -149,3 +149,19 @@ describe('send', () => {
     }).not.toThrow();
   });
 });
+
+describe('disconnectPlayer', () => {
+  /* Troisieme relecture : la socket d'un intrus ne survit pas au changement de mot de passe. */
+  it('ferme la socket du joueur, et seulement la sienne', () => {
+    const sienne = new FakeSocket();
+    const autre = new FakeSocket();
+    notifier.register('p1', sienne.asSocket(), 'Aura Rouge');
+    notifier.register('p2', autre.asSocket(), 'Aura Bleue');
+
+    notifier.disconnectPlayer('p1');
+    notifier.disconnectPlayer('inconnu');
+
+    expect(sienne.closed).toBe(true);
+    expect(autre.closed).toBe(false);
+  });
+});

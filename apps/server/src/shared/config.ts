@@ -162,6 +162,17 @@ const configSchema = z.object({
    * `uniquelocal`, des CIDR separes par des virgules), et seulement eux.
    * Vide (defaut) : pas de mandataire, c'est la socket qui fait foi.
    */
+  /**
+   * Limite de debit par IP des routes publiques d'authentification (ADR 0013).
+   *
+   * `'off'` et rien d'autre la coupe, pour les bancs de charge qui creent des
+   * centaines de comptes depuis 127.0.0.1. Refusee en production : une limite
+   * qu'une variable oubliee eteint n'en est pas une.
+   */
+  authRateLimit: z
+    .string()
+    .default('on')
+    .transform((raw) => raw.trim() !== 'off'),
   trustProxy: z
     .string()
     .default('')
@@ -213,6 +224,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     commit: env.SOURCE_COMMIT,
     clientDir: env.CLIENT_DIR,
     trustProxy: env.TRUST_PROXY,
+    authRateLimit: env.AUTH_RATE_LIMIT,
   });
 
   if (!parsed.success) {
@@ -225,6 +237,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
   if (parsed.data.metricsEnabled && parsed.data.metricsToken.length === 0) {
     throw new ConfigError(
       "Configuration invalide :\n  - AURA_METRICS_TOKEN : requis des que AURA_METRICS=1, sinon les releves de charge sont lisibles et effacables par n'importe qui",
+    );
+  }
+
+  if (parsed.data.nodeEnv === 'production' && !parsed.data.authRateLimit) {
+    throw new ConfigError(
+      "Configuration invalide :\n  - AUTH_RATE_LIMIT : 'off' est refuse en production, la limite de debit des routes d'authentification ne se coupe que pour un banc de charge",
     );
   }
 

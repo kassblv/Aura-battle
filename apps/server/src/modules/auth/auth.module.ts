@@ -17,7 +17,9 @@ import {
 } from './adapters/prisma-repositories.js';
 import { RedisAttemptLimiter } from './adapters/redis-attempt-limiter.js';
 import { EmailAuthService, LIMITS } from './application/email.js';
+import { CredentialsEvents } from './application/credentials-events.js';
 import { FreshAccessTokenVerifier } from './application/fresh-token.js';
+import { IpRateLimit } from './application/ip-rate-limit.js';
 import { ProfileService } from './application/profile.js';
 import { RecoveryService } from './application/recovery.js';
 import { SessionService } from './application/session.js';
@@ -81,6 +83,16 @@ import { SocketAuthenticator } from './application/socket-auth.js';
       inject: [PrismaPlayerRepository],
       useFactory: (players: PrismaPlayerRepository) => new RecoveryService({ players }),
     },
+    CredentialsEvents,
+    {
+      provide: IpRateLimit,
+      inject: [RedisService, CONFIG],
+      useFactory: (redis: RedisService, config: ServerConfig) =>
+        new IpRateLimit(
+          new RedisAttemptLimiter(redis.client, LIMITS.windowMs),
+          config.authRateLimit,
+        ),
+    },
     {
       provide: EmailAuthService,
       inject: [
@@ -90,6 +102,7 @@ import { SocketAuthenticator } from './application/socket-auth.js';
         SystemClock,
         PinoLoggerService,
         CONFIG,
+        CredentialsEvents,
       ],
       useFactory: (
         players: PrismaPlayerRepository,
@@ -98,6 +111,7 @@ import { SocketAuthenticator } from './application/socket-auth.js';
         clock: SystemClock,
         logger: PinoLoggerService,
         config: ServerConfig,
+        events: CredentialsEvents,
       ) =>
         new EmailAuthService({
           identities: players,
@@ -110,6 +124,7 @@ import { SocketAuthenticator } from './application/socket-auth.js';
           }),
           limiter: new RedisAttemptLimiter(redis.client, LIMITS.windowMs),
           recovery,
+          events,
           clock,
           // La cle du serveur, deja secrete et deja requise : le HMAC prefixe
           // son message (`email-attempts:`), donc aucune signature de jeton ne
@@ -159,6 +174,14 @@ import { SocketAuthenticator } from './application/socket-auth.js';
   // `ACCESS_TOKEN_VERIFIER` sort d'ici : l'inventaire authentifie ses routes
   // avec le MEME verificateur. Deux verificateurs seraient deux endroits ou
   // la validite d'un jeton pourrait diverger.
-  exports: [SessionService, SocketAuthenticator, PrismaService, 'ACCESS_TOKEN_VERIFIER'],
+  // `CredentialsEvents` sort aussi : le module match s'y abonne pour fermer
+  // les sockets d'un joueur qui vient de changer de mot de passe.
+  exports: [
+    SessionService,
+    SocketAuthenticator,
+    PrismaService,
+    'ACCESS_TOKEN_VERIFIER',
+    CredentialsEvents,
+  ],
 })
 export class AuthModule {}

@@ -31,6 +31,8 @@ export interface RefreshTokenRecord {
   readonly tokenHash: string;
   readonly createdAt: Date;
   readonly expiresAt: Date;
+  /** `Player.credentialsVersion` a l'emission : les jetons d'acces tires de lui la portent. */
+  readonly credentialsVersion: number;
   readonly revokedAt: Date | null;
   readonly replacedBy: string | null;
 }
@@ -149,9 +151,9 @@ export interface EmailIdentityRepository {
    * Changer de mot de passe, c'est souvent chasser quelqu'un : un appareil
    * reste rattache tant que sa ligne `DEVICE` existe, et son secret rouvrirait
    * le compte au prochain lancement. Les deux ecritures vont ensemble, dans
-   * une transaction. Dans la meme transaction : `credentialsChangedAt` pose
-   * a `at` (les jetons d'acces anterieurs deviennent inutilisables) et tous
-   * les jetons de rafraichissement revoques. Rend `false` si le joueur n'a pas
+   * une transaction. Dans la meme transaction : `credentialsVersion`
+   * incrementee (tout jeton anterieur devient inutilisable) et tous les
+   * jetons de rafraichissement revoques a `at`. Rend `false` si le joueur n'a pas
    * d'adresse.
    */
   setPasswordHash(
@@ -225,6 +227,11 @@ export interface AttemptLimiter {
 
 export interface RefreshTokenRepository {
   findByHash(tokenHash: string): Promise<RefreshTokenRecord | null>;
+  /**
+   * Cree un jeton, en y inscrivant la version des identifiants lue sous verrou
+   * partage de la ligne du joueur : un changement de mot de passe concurrent
+   * passe avant (le jeton porte la nouvelle version) ou apres (il le revoque).
+   */
   create(input: {
     readonly playerId: string;
     readonly tokenHash: string;
@@ -237,27 +244,34 @@ export interface RefreshTokenRepository {
    *   autre appel l'a consomme, ou il a ete revoque entre la lecture et
    *   l'ecriture). La consommation est conditionnelle, donc deux appels
    *   concurrents ne peuvent pas la reussir tous les deux.
-   * - `STALE` : le mot de passe a change apres la creation de ce jeton. La
-   *   lecture de `credentialsChangedAt` et la creation du remplacant se font
-   *   sous verrou de la ligne du joueur : un changement de mot de passe
-   *   concurrent passe soit avant (et on refuse), soit apres (et il revoque le
-   *   remplacant).
+   * - `STALE` : la version des identifiants du joueur n'est plus celle du
+   *   jeton — le mot de passe a change depuis son emission. Lue sous verrou de
+   *   la ligne du joueur, comme dans `create`.
+   * - `ROTATED` : le remplacant existe, et porte `credentialsVersion`.
    */
   rotate(input: {
     readonly id: string;
     readonly playerId: string;
-    readonly createdAt: Date;
+    readonly credentialsVersion: number;
     readonly replacedByHash: string;
     readonly expiresAt: Date;
     readonly at: Date;
-  }): Promise<'ROTATED' | 'REUSED' | 'STALE'>;
+  }): Promise<
+    | { readonly outcome: 'ROTATED'; readonly credentialsVersion: number }
+    | { readonly outcome: 'REUSED' }
+    | { readonly outcome: 'STALE' }
+  >;
   /** Revoque tous les jetons vivants d'un joueur. */
   revokeAllForPlayer(playerId: string, at: Date): Promise<void>;
 }
 
 /** Signature et verification des jetons d'acces. */
 export interface AccessTokenSigner {
-  sign(payload: { readonly playerId: string }): Promise<string>;
+  /** `credentialsVersion` devient le claim `cv`, que le verificateur compare a la base. */
+  sign(payload: {
+    readonly playerId: string;
+    readonly credentialsVersion: number;
+  }): Promise<string>;
 }
 
 /** L'horloge est un port : le temps est une entree, pas une globale. */
@@ -266,11 +280,12 @@ export interface Clock {
 }
 
 /**
- * L'instant du dernier changement de mot de passe d'un joueur.
+ * La version des identifiants d'un joueur, ou `null` s'il n'existe plus.
  *
- * Un jeton d'acces emis avant est refuse partout ou on le verifie : c'est ce
- * qui empeche l'intrus chasse de se reinstaller avec le jeton qu'il detenait.
+ * Un jeton d'acces d'une autre version est refuse partout ou on le verifie :
+ * c'est ce qui empeche l'intrus chasse de se reinstaller avec le jeton qu'il
+ * detenait.
  */
-export interface CredentialsChangeReader {
-  credentialsChangedAt(playerId: string): Promise<Date | null>;
+export interface CredentialsVersionReader {
+  credentialsVersion(playerId: string): Promise<number | null>;
 }

@@ -3,7 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
 import type {
-  CredentialsChangeReader,
+  CredentialsVersionReader,
   EmailIdentityRecord,
   EmailIdentityRepository,
   PlayerRecord,
@@ -21,13 +21,16 @@ import type {
  * `application/session.ts`, ou elle se teste sans base de donnees.
  */
 
+/** Appareils rattaches a un meme joueur, au plus (ADR 0013). */
+export const MAX_DEVICES = 10;
+
 @Injectable()
 export class PrismaPlayerRepository
   implements
     PlayerRepository,
     RecoveryIdentityRepository,
     EmailIdentityRepository,
-    CredentialsChangeReader
+    CredentialsVersionReader
 {
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir auth.controller.ts).
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -55,8 +58,26 @@ export class PrismaPlayerRepository
    */
   async linkDeviceIdentity(playerId: string, deviceHash: string): Promise<void> {
     try {
-      await this.prisma.authIdentity.create({
-        data: { playerId, provider: 'DEVICE', subject: deviceHash },
+      await this.prisma.$transaction(async (tx) => {
+        await tx.authIdentity.create({
+          data: { playerId, provider: 'DEVICE', subject: deviceHash },
+        });
+        /*
+          Plafond d'appareils (ADR 0013) : on garde les MAX_DEVICES plus
+          recents et on detache les autres. Refuser au-dela bloquerait le
+          joueur sur ordinateur, dont chaque navigateur vide laisse un
+          appareil mort ; remplacer le plus ancien borne ce qu'un compte peut
+          accumuler sans fermer la porte a personne.
+        */
+        const stale = await tx.authIdentity.findMany({
+          where: { playerId, provider: 'DEVICE' },
+          orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+          skip: MAX_DEVICES,
+          select: { id: true },
+        });
+        if (stale.length > 0) {
+          await tx.authIdentity.deleteMany({ where: { id: { in: stale.map((row) => row.id) } } });
+        }
       });
     } catch (cause) {
       if (cause instanceof Prisma.PrismaClientKnownRequestError && cause.code === 'P2002') {
@@ -187,7 +208,10 @@ export class PrismaPlayerRepository
       });
       // Meme transaction que la revocation : un renouvellement concurrent lit
       // cette ligne `FOR SHARE` et ne peut donc pas s'intercaler (voir `rotate`).
-      await tx.player.update({ where: { id: playerId }, data: { credentialsChangedAt: at } });
+      await tx.player.update({
+        where: { id: playerId },
+        data: { credentialsVersion: { increment: 1 } },
+      });
       await tx.refreshToken.updateMany({
         where: { playerId, revokedAt: null },
         data: { revokedAt: at },
@@ -196,12 +220,12 @@ export class PrismaPlayerRepository
     });
   }
 
-  async credentialsChangedAt(playerId: string): Promise<Date | null> {
+  async credentialsVersion(playerId: string): Promise<number | null> {
     const player = await this.prisma.player.findUnique({
       where: { id: playerId },
-      select: { credentialsChangedAt: true },
+      select: { credentialsVersion: true },
     });
-    return player?.credentialsChangedAt ?? null;
+    return player?.credentialsVersion ?? null;
   }
 
   /**
@@ -281,6 +305,31 @@ function toEmailRecord(
   return { playerId: identity.playerId, email: identity.subject, secretHash: identity.secretHash };
 }
 
+const TOKEN_FIELDS = {
+  id: true,
+  playerId: true,
+  tokenHash: true,
+  createdAt: true,
+  expiresAt: true,
+  revokedAt: true,
+  replacedBy: true,
+  credentialsVersion: true,
+} as const;
+
+/**
+ * La version des identifiants du joueur, lue sous verrou PARTAGE de sa ligne.
+ *
+ * Un changement de mot de passe modifie cette ligne : il attend donc la fin
+ * de la transaction qui lit, ou la fait attendre. Emettre un jeton et changer
+ * de mot de passe ne peuvent pas s'entrelacer. Un joueur disparu vaut -1, une
+ * version qu'aucun jeton ne porte.
+ */
+async function lockedVersion(tx: Prisma.TransactionClient, playerId: string): Promise<number> {
+  const rows = await tx.$queryRaw<{ credentialsVersion: number }[]>`
+    SELECT "credentialsVersion" FROM "Player" WHERE id = ${playerId} FOR SHARE`;
+  return rows[0]?.credentialsVersion ?? -1;
+}
+
 @Injectable()
 export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -296,6 +345,7 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
         expiresAt: true,
         revokedAt: true,
         replacedBy: true,
+        credentialsVersion: true,
       },
     });
   }
@@ -305,17 +355,12 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
     tokenHash: string;
     expiresAt: Date;
   }): Promise<RefreshTokenRecord> {
-    return this.prisma.refreshToken.create({
-      data: input,
-      select: {
-        id: true,
-        playerId: true,
-        tokenHash: true,
-        createdAt: true,
-        expiresAt: true,
-        revokedAt: true,
-        replacedBy: true,
-      },
+    return this.prisma.$transaction(async (tx) => {
+      const credentialsVersion = await lockedVersion(tx, input.playerId);
+      return tx.refreshToken.create({
+        data: { ...input, credentialsVersion },
+        select: TOKEN_FIELDS,
+      });
     });
   }
 
@@ -331,32 +376,32 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
   async rotate(input: {
     readonly id: string;
     readonly playerId: string;
-    readonly createdAt: Date;
+    readonly credentialsVersion: number;
     readonly replacedByHash: string;
     readonly expiresAt: Date;
     readonly at: Date;
-  }): Promise<'ROTATED' | 'REUSED' | 'STALE'> {
+  }): Promise<
+    | { readonly outcome: 'ROTATED'; readonly credentialsVersion: number }
+    | { readonly outcome: 'REUSED' }
+    | { readonly outcome: 'STALE' }
+  > {
     return this.prisma.$transaction(async (tx) => {
-      const rows = await tx.$queryRaw<{ credentialsChangedAt: Date | null }[]>`
-        SELECT "credentialsChangedAt" FROM "Player" WHERE id = ${input.playerId} FOR SHARE`;
+      const current = await lockedVersion(tx, input.playerId);
       const { count } = await tx.refreshToken.updateMany({
         where: { id: input.id, revokedAt: null, replacedBy: null },
         data: { replacedBy: input.replacedByHash, revokedAt: input.at },
       });
-      if (count !== 1) return 'REUSED' as const;
-
-      const changedAt = rows[0]?.credentialsChangedAt ?? null;
-      if (changedAt !== null && changedAt.getTime() > input.createdAt.getTime()) {
-        return 'STALE' as const;
-      }
+      if (count !== 1) return { outcome: 'REUSED' as const };
+      if (current !== input.credentialsVersion) return { outcome: 'STALE' as const };
       await tx.refreshToken.create({
         data: {
           playerId: input.playerId,
           tokenHash: input.replacedByHash,
           expiresAt: input.expiresAt,
+          credentialsVersion: current,
         },
       });
-      return 'ROTATED' as const;
+      return { outcome: 'ROTATED' as const, credentialsVersion: current };
     });
   }
 

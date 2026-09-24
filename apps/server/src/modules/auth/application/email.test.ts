@@ -27,6 +27,7 @@ function setup() {
   // Chaque joueur a deja son appareil, comme en vrai : c'est lui qui ouvre la session.
   repo.devices.set(hashSecret(ALICE_DEVICE), ALICE.id);
   repo.devices.set(hashSecret(BOB_DEVICE), BOB.id);
+  const published: string[] = [];
   const service = new EmailAuthService({
     identities: repo.port,
     hasher,
@@ -39,6 +40,7 @@ function setup() {
           : Promise.resolve(found);
       },
     },
+    events: { publish: (playerId) => published.push(playerId) },
     clock: { now: () => new Date(now) },
     traceKey: 'une-cle-de-test-assez-longue',
     log: { warn: (message) => warnings.push(message) },
@@ -48,8 +50,9 @@ function setup() {
     calls,
     warnings,
     service,
+    published,
     /** Joueurs dont le changement de mot de passe a tout revoque. */
-    revoked: () => [...repo.credentialsChangedAt.keys()],
+    revoked: () => [...repo.credentialsVersion.keys()],
     /** Delivre un code a l'instant present, comme `POST /auth/recovery`. */
     issueCode: (code: string, player: PlayerRecord) => {
       recoveryCodes.set(code, { player, issuedAt: new Date(now) });
@@ -469,7 +472,7 @@ describe('une session seule ne prend pas le compte', () => {
 /* Relecture de securite, point 2 : changer de mot de passe chasse tout le monde. */
 describe('changer de mot de passe revoque le reste', () => {
   it('revoque les sessions et detache les autres appareils, sauf celui qui demande', async () => {
-    const { service, repo, revoked } = setup();
+    const { service, repo, revoked, published } = setup();
     await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
     const mine = 'a'.repeat(64);
     const intruder = 'b'.repeat(64);
@@ -480,6 +483,8 @@ describe('changer de mot de passe revoque le reste', () => {
     await service.changePassword(ALICE.id, { currentPassword: GOOD }, 'nouvelle phrase', IP, mine);
 
     expect(revoked()).toEqual([ALICE.id]);
+    // Les sockets ouvertes sont fermees : le module match est prevenu.
+    expect(published).toEqual([ALICE.id]);
     expect(repo.devices.get(hashSecret(mine))).toBe(ALICE.id);
     expect(repo.devices.has(hashSecret(intruder))).toBe(false);
     // Les appareils d'un autre joueur ne sont pas touches.

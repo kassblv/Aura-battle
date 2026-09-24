@@ -39,11 +39,24 @@ function deviceSecretOf(index: number): string {
     .digest('hex');
 }
 
+/**
+ * Une adresse IP par joueur simule (10.x.y.z), annoncee par `X-Forwarded-For`.
+ *
+ * `/auth/device` est limite par adresse (ADR 0013) : mille joueurs depuis
+ * 127.0.0.1 seraient refuses des le soixante et unieme. Le serveur du banc
+ * croit le mandataire local (`TRUST_PROXY=loopback`, voir `load.ts`) : chaque
+ * joueur simule a donc son adresse, comme de vrais joueurs — sans couper la
+ * limite, qui reste celle de la production.
+ */
+export function addressOf(index: number): string {
+  return `10.${String((index >> 16) & 255)}.${String((index >> 8) & 255)}.${String(index & 255)}`;
+}
+
 /** Ouvre une session invitee et rend son jeton d'acces. */
 async function openSession(httpUrl: string, index: number): Promise<string> {
   const response = await fetch(`${httpUrl}/auth/device`, {
     method: 'POST',
-    headers: { 'content-type': 'application/json' },
+    headers: { 'content-type': 'application/json', 'x-forwarded-for': addressOf(index) },
     body: JSON.stringify({ deviceSecret: deviceSecretOf(index) }),
   });
   if (!response.ok) {

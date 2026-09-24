@@ -2,6 +2,7 @@ import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fa
 import { Test } from '@nestjs/testing';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { EmailAuthService, LIMITS } from '../application/email.js';
+import { IP_RATE_LIMITS, IpRateLimit } from '../application/ip-rate-limit.js';
 import { fakePasswordHasher, memoryEmailIdentities } from '../application/email-testing.js';
 import { ProfileService } from '../application/profile.js';
 import { RecoveryError, RecoveryService } from '../application/recovery.js';
@@ -36,6 +37,7 @@ for (let n = 0; n < players.length; n++) {
   identities.devices.set(hashSecret(deviceOf(n)), `p${String(n)}`);
 }
 const opened: string[] = [];
+const linkedDevices: { playerId: string; deviceSecret: string }[] = [];
 
 beforeAll(async () => {
   const fake = fakePasswordHasher();
@@ -59,6 +61,7 @@ beforeAll(async () => {
           : Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
     },
     clock: { now: () => new Date(24 * 60 * 60_000) },
+    events: { publish: () => undefined },
     traceKey: 'une-cle-de-test-assez-longue',
     log: { warn: () => undefined },
   });
@@ -71,6 +74,11 @@ beforeAll(async () => {
         provide: SessionService,
         // Le chemin d'emission habituel, reduit a ce que ces routes appellent.
         useValue: {
+          linkDevice: (playerId: string, deviceSecret: string) => {
+            linkedDevices.push({ playerId, deviceSecret });
+            return Promise.resolve();
+          },
+          refresh: () => Promise.reject(new Error('non utilise')),
           openForPlayer: (playerId: string) => {
             opened.push(playerId);
             return Promise.resolve({
@@ -85,7 +93,22 @@ beforeAll(async () => {
       { provide: ProfileService, useValue: {} },
       {
         provide: RecoveryService,
-        useValue: { issue: () => Promise.resolve('AURA-0000-0000-0000-0000') },
+        useValue: {
+          issue: () => Promise.resolve('AURA-0000-0000-0000-0000'),
+          claim: (code: string) =>
+            code === 'AURA-P7'
+              ? Promise.resolve(players[7]!)
+              : Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
+        },
+      },
+      {
+        provide: IpRateLimit,
+        // Une vraie limite, sur un compteur en memoire : le 21e code presente
+        // depuis la meme adresse est refuse.
+        useValue: new IpRateLimit(
+          new MemoryAttemptLimiter({ windowMs: LIMITS.windowMs, now: () => 0 }),
+          true,
+        ),
       },
       {
         provide: 'ACCESS_TOKEN_VERIFIER',
@@ -197,7 +220,7 @@ describe('POST /auth/email/login', () => {
 
   it('ouvre la session du compte par le chemin habituel', async () => {
     const reply = await call('POST', '/auth/email/login', {
-      body: { email: 'TROIS@exemple.fr', password: GOOD },
+      body: { deviceSecret: 'e'.repeat(64), email: 'TROIS@exemple.fr', password: GOOD },
       forwardedFor: '10.0.0.1',
     });
     expect(reply.statusCode).toBe(200);
@@ -207,11 +230,11 @@ describe('POST /auth/email/login', () => {
 
   it('rend exactement la meme reponse pour une adresse inconnue et un mauvais mot de passe', async () => {
     const unknown = await call('POST', '/auth/email/login', {
-      body: { email: 'personne@exemple.fr', password: GOOD },
+      body: { deviceSecret: 'e'.repeat(64), email: 'personne@exemple.fr', password: GOOD },
       forwardedFor: '10.0.0.2',
     });
     const wrong = await call('POST', '/auth/email/login', {
-      body: { email: 'trois@exemple.fr', password: 'pas le bon' },
+      body: { deviceSecret: 'e'.repeat(64), email: 'trois@exemple.fr', password: 'pas le bon' },
       forwardedFor: '10.0.0.2',
     });
     expect(unknown.statusCode).toBe(401);
@@ -227,12 +250,12 @@ describe('POST /auth/email/login', () => {
     });
     for (let i = 0; i < LIMITS.loginPerEmail; i++) {
       await call('POST', '/auth/email/login', {
-        body: { email: 'six@exemple.fr', password: 'faux' },
+        body: { deviceSecret: 'e'.repeat(64), email: 'six@exemple.fr', password: 'faux' },
         forwardedFor: `10.1.0.${String(i)}`,
       });
     }
     const reply = await call('POST', '/auth/email/login', {
-      body: { email: 'six@exemple.fr', password: GOOD },
+      body: { deviceSecret: 'e'.repeat(64), email: 'six@exemple.fr', password: GOOD },
       forwardedFor: '10.1.0.99',
     });
     expect(reply.statusCode).toBe(429);
@@ -248,19 +271,23 @@ describe('POST /auth/email/login', () => {
   it('compte par adresse reelle, pas par ce que le client ecrit dans l en-tete', async () => {
     for (let i = 0; i < LIMITS.loginPerIp; i++) {
       await call('POST', '/auth/email/login', {
-        body: { email: `cible${String(i)}@exemple.fr`, password: 'faux' },
+        body: {
+          deviceSecret: 'e'.repeat(64),
+          email: `cible${String(i)}@exemple.fr`,
+          password: 'faux',
+        },
         forwardedFor: `203.0.113.${String(i)}, 10.2.0.1`,
       });
     }
     const blocked = await call('POST', '/auth/email/login', {
-      body: { email: 'trois@exemple.fr', password: GOOD },
+      body: { deviceSecret: 'e'.repeat(64), email: 'trois@exemple.fr', password: GOOD },
       forwardedFor: '198.51.100.7, 10.2.0.1',
     });
     expect(blocked.statusCode).toBe(429);
 
     // Un autre joueur, derriere le meme Traefik, n'est pas puni pour le bot.
     const other = await call('POST', '/auth/email/login', {
-      body: { email: 'trois@exemple.fr', password: GOOD },
+      body: { deviceSecret: 'e'.repeat(64), email: 'trois@exemple.fr', password: GOOD },
       forwardedFor: '10.2.0.2',
     });
     expect(other.statusCode).toBe(200);
@@ -374,5 +401,69 @@ describe('plafond global du hachage', () => {
     });
     expect(reply.statusCode).toBe(503);
     expect(reply.json<Record<string, unknown>>().code).toBe('BUSY');
+  });
+});
+
+/*
+  Troisieme relecture (1) : il n'existe plus de route qui rattache un appareil
+  sur la seule foi d'un jeton. Le rattachement suit toujours une preuve.
+*/
+describe('rattachement d appareil', () => {
+  it('n expose plus de route autonome de rattachement', async () => {
+    const reply = await call('POST', '/auth/device/link', {
+      token: 'jwt.p7',
+      body: { deviceSecret: 'f'.repeat(64) },
+    });
+    expect(reply.statusCode).toBe(404);
+  });
+
+  it('rattache l appareil dans le meme geste que le code presente', async () => {
+    const reply = await call('POST', '/auth/recovery/claim', {
+      body: { code: 'AURA-P7', deviceSecret: 'f'.repeat(64) },
+      forwardedFor: '10.7.0.1',
+    });
+    expect(reply.statusCode).toBe(201);
+    expect(linkedDevices).toContainEqual({ playerId: 'p7', deviceSecret: 'f'.repeat(64) });
+  });
+
+  it('ne rattache rien sur un code refuse', async () => {
+    const before = linkedDevices.length;
+    const reply = await call('POST', '/auth/recovery/claim', {
+      body: { code: 'AURA-FAUX', deviceSecret: 'd'.repeat(64) },
+      forwardedFor: '10.7.0.2',
+    });
+    expect(reply.statusCode).toBe(401);
+    expect(linkedDevices).toHaveLength(before);
+  });
+
+  it('rattache l appareil dans le meme geste que l email presente', async () => {
+    await call('POST', '/auth/email/link', {
+      token: 'jwt.p13',
+      body: { deviceSecret: deviceOf(13), email: 'treize@exemple.fr', password: GOOD },
+    });
+    const reply = await call('POST', '/auth/email/login', {
+      body: { email: 'treize@exemple.fr', password: GOOD, deviceSecret: 'c'.repeat(64) },
+      forwardedFor: '10.7.0.3',
+    });
+    expect(reply.statusCode).toBe(200);
+    expect(linkedDevices).toContainEqual({ playerId: 'p13', deviceSecret: 'c'.repeat(64) });
+  });
+});
+
+/* Troisieme relecture (3) : les routes publiques sont bornees par IP. */
+describe('limite de debit des routes publiques', () => {
+  it('refuse le code presente de trop depuis la meme adresse', async () => {
+    for (let i = 0; i < IP_RATE_LIMITS.claim; i++) {
+      await call('POST', '/auth/recovery/claim', {
+        body: { code: 'AURA-FAUX', deviceSecret: 'd'.repeat(64) },
+        forwardedFor: '10.9.0.1',
+      });
+    }
+    const reply = await call('POST', '/auth/recovery/claim', {
+      body: { code: 'AURA-P7', deviceSecret: 'd'.repeat(64) },
+      forwardedFor: '10.9.0.1',
+    });
+    expect(reply.statusCode).toBe(429);
+    expect(reply.json<Record<string, unknown>>().code).toBe('TOO_MANY_ATTEMPTS');
   });
 });

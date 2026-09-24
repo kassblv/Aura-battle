@@ -5,11 +5,19 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { type EmailAuthError, EmailAuthService } from '../application/email.js';
+import { fakePasswordHasher } from '../application/email-testing.js';
 import { FreshAccessTokenVerifier } from '../application/fresh-token.js';
+import { RecoveryError } from '../application/recovery.js';
 import { SessionService } from '../application/session.js';
 import { generateDeviceSecret, hashSecret } from '../domain/credentials.js';
 import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
-import { PrismaPlayerRepository, PrismaRefreshTokenRepository } from './prisma-repositories.js';
+import { MemoryAttemptLimiter } from './memory-attempt-limiter.js';
+import {
+  MAX_DEVICES,
+  PrismaPlayerRepository,
+  PrismaRefreshTokenRepository,
+} from './prisma-repositories.js';
 
 /**
  * Test d'integration : c'est la **contrainte d'unicite de Postgres** qui doit
@@ -406,26 +414,7 @@ describe.skipIf(!reachable)('changer de mot de passe detache les appareils', () 
       repository.setPasswordHash(player.id, '$argon2id$b', hashSecret(mine), new Date()),
     ).resolves.toBe(true);
 
-    const sessions = new SessionService({
-      players: repository,
-      refreshTokens: {
-        findByHash: () => Promise.resolve(null),
-        create: (input) =>
-          Promise.resolve({
-            id: 'r',
-            ...input,
-            createdAt: new Date(),
-            revokedAt: null,
-            replacedBy: null,
-          }),
-        rotate: () => Promise.resolve('ROTATED' as const),
-        revokeAllForPlayer: () => Promise.resolve(),
-      },
-      signer: { sign: () => Promise.resolve('jwt') },
-      clock: { now: () => new Date() },
-      accessTtlSeconds: 900,
-      refreshTtlSeconds: 3_600,
-    });
+    const sessions = realSessions(repository);
 
     // L'appareil qui a change le mot de passe rouvre toujours le compte...
     expect((await sessions.authenticateDevice(mine)).player.id).toBe(player.id);
@@ -441,80 +430,113 @@ describe.skipIf(!reachable)('changer de mot de passe detache les appareils', () 
   });
 });
 
+/** Le vrai service de session sur les vrais depots ; le jeton est `sub:cv`, lisible. */
+function realSessions(players: PrismaPlayerRepository): SessionService {
+  return new SessionService({
+    players,
+    refreshTokens: new PrismaRefreshTokenRepository(prisma as never),
+    signer: {
+      sign: ({ playerId, credentialsVersion }) =>
+        Promise.resolve(`${playerId}:${String(credentialsVersion)}`),
+    },
+    clock: { now: () => new Date() },
+    accessTtlSeconds: 900,
+    refreshTtlSeconds: 3_600,
+  });
+}
+
+/** Le verificateur partage, sur la vraie base, pour les jetons `sub:cv` ci-dessus. */
+function realVerifier(players: PrismaPlayerRepository): FreshAccessTokenVerifier {
+  return new FreshAccessTokenVerifier(
+    {
+      verify: (token) => {
+        const [sub = '', cv = '0'] = token.split(':');
+        return Promise.resolve({ sub, cv: Number(cv) });
+      },
+    },
+    players,
+  );
+}
+
 /*
-  Seconde relecture (A et C), contre une vraie base : apres un changement de
-  mot de passe, l'intrus ne peut plus rien faire de ce qu'il detenait.
+  Troisieme relecture, contre une vraie base : apres un changement de mot de
+  passe, l'intrus ne peut plus rien faire de ce qu'il detenait.
 */
 describe.skipIf(!reachable)('l intrus ne se reinstalle pas apres un changement', () => {
   async function victim() {
     const players = buildRepository();
-    const deviceHash = newDeviceHash();
-    const player = await players.createWithDeviceIdentity({ deviceHash, displayName: 'Victime' });
+    const secret = generateDeviceSecret();
+    created.add(hashSecret(secret));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(secret),
+      displayName: 'Victime',
+    });
     await players.linkEmailIdentity(player.id, `test_${randomUUID()}@exemple.test`, '$argon2id$a');
-    return { players, player, deviceHash };
+    return { players, player, secret };
   }
 
-  it('pose credentialsChangedAt : un jeton d acces anterieur est refuse', async () => {
-    const { players, player, deviceHash } = await victim();
-    await expect(players.credentialsChangedAt(player.id)).resolves.toBeNull();
-
-    const at = new Date();
-    await players.setPasswordHash(player.id, '$argon2id$b', deviceHash, at);
-    await expect(players.credentialsChangedAt(player.id)).resolves.toEqual(at);
-
-    const inner = {
-      verify: (token: string) => Promise.resolve({ sub: player.id, iat: Number(token) }),
-    };
-    const fresh = new FreshAccessTokenVerifier(inner, players);
-    const second = Math.floor(at.getTime() / 1_000);
-    // Le jeton de l'intrus, emis avant : refuse, donc `device/link` aussi.
-    await expect(fresh.verify(String(second - 60))).rejects.toThrow('CREDENTIALS_CHANGED');
-    // Celui que la route delivre a l'appareil qui a change : accepte.
-    await expect(fresh.verify(String(second))).resolves.toMatchObject({ sub: player.id });
-  });
-
-  it('revoque les jetons de rafraichissement dans la meme transaction', async () => {
-    const { players, player, deviceHash } = await victim();
+  it('incremente la version et revoque les jetons dans la meme transaction', async () => {
+    const { players, player, secret } = await victim();
     const tokens = new PrismaRefreshTokenRepository(prisma as never);
     const before = await tokens.create({
       playerId: player.id,
       tokenHash: `test_${randomUUID()}`,
       expiresAt: new Date(Date.now() + 60_000),
     });
+    expect(before.credentialsVersion).toBe(0);
 
-    await players.setPasswordHash(player.id, '$argon2id$b', deviceHash, new Date());
+    await players.setPasswordHash(player.id, '$argon2id$b', hashSecret(secret), new Date());
+    await expect(players.credentialsVersion(player.id)).resolves.toBe(1);
     expect((await tokens.findByHash(before.tokenHash))?.revokedAt).not.toBeNull();
   });
 
   /*
-    C : un jeton cree avant le changement, meme s'il avait echappe a la
-    revocation, ne se renouvelle plus.
+    Scenario d'attaque 2 : l'intrus lance une rafale de renouvellements
+    PENDANT que le joueur change son mot de passe. Quel que soit l'ordre dans
+    lequel Postgres les range, aucun jeton d'acces obtenu par l'intrus n'est
+    utilisable ensuite, et aucun jeton de rafraichissement ne se renouvelle.
   */
-  it('refuse de renouveler un jeton anterieur au changement', async () => {
-    const { players, player, deviceHash } = await victim();
-    const tokens = new PrismaRefreshTokenRepository(prisma as never);
-    const stored = await tokens.create({
-      playerId: player.id,
-      tokenHash: `test_${randomUUID()}`,
-      expiresAt: new Date(Date.now() + 60_000),
-    });
-    await players.setPasswordHash(player.id, '$argon2id$b', deviceHash, new Date(Date.now() + 5));
-    // On le remet vivant, comme s'il avait echappe a la revocation.
-    await prisma!.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: null } });
+  it('une rafale de renouvellements pendant le changement ne laisse rien d utilisable', async () => {
+    const { players, player, secret } = await victim();
+    const sessions = realSessions(players);
+    const verifier = realVerifier(players);
 
-    await expect(
-      tokens.rotate({
-        id: stored.id,
-        playerId: player.id,
-        createdAt: stored.createdAt,
-        replacedByHash: `test_${randomUUID()}`,
-        expiresAt: new Date(Date.now() + 60_000),
-        at: new Date(),
-      }),
-    ).resolves.toBe('STALE');
+    // L'intrus detient plusieurs sessions (jetons voles ou ouverts avant).
+    const stolen = await Promise.all(
+      Array.from({ length: 8 }, () => sessions.openForPlayer(player.id)),
+    );
+    await Promise.all(Array.from({ length: 10 }, () => prisma!.$queryRaw`select 1 as x`));
+
+    const burst = stolen.map((session) =>
+      sessions.refresh(session.refreshToken).then(
+        (fresh) => fresh,
+        () => null,
+      ),
+    );
+    const change = players.setPasswordHash(
+      player.id,
+      '$argon2id$b',
+      hashSecret(secret),
+      new Date(),
+    );
+    const [refreshed] = await Promise.all([Promise.all(burst), change]);
+
+    const accessTokens = [
+      ...stolen.map((session) => session.accessToken),
+      ...refreshed.flatMap((session) => (session === null ? [] : [session.accessToken])),
+    ];
+    for (const token of accessTokens) {
+      await expect(verifier.verify(token)).rejects.toThrow('CREDENTIALS_CHANGED');
+    }
+    for (const session of refreshed) {
+      if (session !== null) await expect(sessions.refresh(session.refreshToken)).rejects.toThrow();
+    }
+
+    // L'appareil du joueur, lui, obtient une session valable.
+    const mine = await sessions.authenticateDevice(secret);
+    await expect(verifier.verify(mine.accessToken)).resolves.toMatchObject({ sub: player.id });
   });
 
-  /* C : de deux renouvellements concurrents du meme jeton, un seul reussit. */
   it('ne laisse qu un renouvellement concurrent consommer le jeton', async () => {
     const { player } = await victim();
     const tokens = new PrismaRefreshTokenRepository(prisma as never);
@@ -530,14 +552,88 @@ describe.skipIf(!reachable)('l intrus ne se reinstalle pas apres un changement',
         tokens.rotate({
           id: stored.id,
           playerId: player.id,
-          createdAt: stored.createdAt,
+          credentialsVersion: stored.credentialsVersion,
           replacedByHash: `test_${randomUUID()}`,
           expiresAt: new Date(Date.now() + 60_000),
           at: new Date(),
         }),
       ),
     );
-    expect(outcomes.filter((o) => o === 'ROTATED')).toHaveLength(1);
-    expect(outcomes.filter((o) => o === 'REUSED')).toHaveLength(5);
+    expect(outcomes.filter((o) => o.outcome === 'ROTATED')).toHaveLength(1);
+    expect(outcomes.filter((o) => o.outcome === 'REUSED')).toHaveLength(5);
+  });
+});
+
+/*
+  Scenario d'attaque 1 : l'intrus n'a qu'un jeton vole. Il ne peut plus
+  fabriquer la preuve d'appareil — la route `device/link` a disparu, et le
+  seul chemin qui rattache un appareil exige le code ou le mot de passe.
+*/
+describe.skipIf(!reachable)('la preuve d appareil ne se fabrique pas', () => {
+  it('un secret que l intrus invente ne prouve rien, et rien ne le rattache', async () => {
+    const players = buildRepository();
+    const owner = generateDeviceSecret();
+    created.add(hashSecret(owner));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(owner),
+      displayName: 'Invitee',
+    });
+    const email = new EmailAuthService({
+      identities: players,
+      hasher: fakePasswordHasher().hasher,
+      limiter: new MemoryAttemptLimiter({ windowMs: 60_000, now: () => 0 }),
+      recovery: { prove: () => Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')) },
+      clock: { now: () => new Date() },
+      events: { publish: () => undefined },
+      traceKey: 'une-cle-de-test-assez-longue',
+      log: { warn: () => undefined },
+    });
+
+    const intruder = generateDeviceSecret();
+    const reason = (promise: Promise<unknown>) =>
+      promise.then(
+        () => 'accepte',
+        (error: unknown) => (error as EmailAuthError).reason,
+      );
+    expect(
+      await reason(
+        email.link(
+          player.id,
+          `intrus_${randomUUID()}@exemple.test`,
+          'aura du soir',
+          '203.0.113.1',
+          intruder,
+        ),
+      ),
+    ).toBe('DEVICE_PROOF_REQUIRED');
+    expect(
+      await reason(email.authorizeRecoveryIssue(player.id, undefined, '203.0.113.1', intruder)),
+    ).toBe('DEVICE_PROOF_REQUIRED');
+
+    // Le secret du joueur, lui, prouve.
+    await expect(
+      email.authorizeRecoveryIssue(player.id, undefined, '203.0.113.1', owner),
+    ).resolves.toBeUndefined();
+  });
+
+  it('borne les appareils a dix, en detachant les plus anciens', async () => {
+    const players = buildRepository();
+    const first = generateDeviceSecret();
+    created.add(hashSecret(first));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(first),
+      displayName: 'Nomade',
+    });
+    const later = Array.from({ length: MAX_DEVICES + 1 }, () => generateDeviceSecret());
+    for (const secret of later) {
+      created.add(hashSecret(secret));
+      await players.linkDeviceIdentity(player.id, hashSecret(secret));
+    }
+
+    expect(
+      await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'DEVICE' } }),
+    ).toBe(MAX_DEVICES);
+    await expect(players.findByDeviceHash(hashSecret(first))).resolves.toBeNull();
+    await expect(players.findByDeviceHash(hashSecret(later.at(-1)!))).resolves.toEqual(player);
   });
 });

@@ -40,8 +40,8 @@ export function memoryEmailIdentities(players: readonly PlayerRecord[]) {
   const rows: EmailIdentityRecord[] = [];
   /** Identites DEVICE : empreinte du secret -> joueur. */
   const devices = new Map<string, string>();
-  /** `Player.credentialsChangedAt` : pose par un changement de mot de passe. */
-  const credentialsChangedAt = new Map<string, Date>();
+  /** `Player.credentialsVersion` : incrementee par un changement de mot de passe. */
+  const credentialsVersion = new Map<string, number>();
   const port: EmailIdentityRepository = {
     findById: (id) => Promise.resolve(players.find((p) => p.id === id) ?? null),
     findByEmail: (email) => Promise.resolve(rows.find((r) => r.email === email) ?? null),
@@ -54,14 +54,14 @@ export function memoryEmailIdentities(players: readonly PlayerRecord[]) {
       rows.push({ playerId, email, secretHash });
       return Promise.resolve('LINKED');
     },
-    setPasswordHash: (playerId, secretHash, keepDeviceHash, at) => {
+    setPasswordHash: (playerId, secretHash, keepDeviceHash) => {
       const index = rows.findIndex((r) => r.playerId === playerId);
       if (index < 0) return Promise.resolve(false);
       rows[index] = { ...rows[index]!, secretHash };
       for (const [hash, owner] of devices) {
         if (owner === playerId && hash !== keepDeviceHash) devices.delete(hash);
       }
-      credentialsChangedAt.set(playerId, at);
+      credentialsVersion.set(playerId, (credentialsVersion.get(playerId) ?? 0) + 1);
       return Promise.resolve(true);
     },
     findByDeviceHash: (hash) => {
@@ -69,5 +69,5 @@ export function memoryEmailIdentities(players: readonly PlayerRecord[]) {
       return Promise.resolve(players.find((p) => p.id === owner) ?? null);
     },
   };
-  return { rows, devices, credentialsChangedAt, port };
+  return { rows, devices, credentialsVersion, port };
 }

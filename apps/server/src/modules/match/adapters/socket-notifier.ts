@@ -120,6 +120,18 @@ export class SocketNotifier implements MatchNotifier, PresenceLeagueCache {
     return true;
   }
 
+  /**
+   * Ferme la socket d'un joueur dont les identifiants viennent de changer.
+   *
+   * Son jeton n'est verifie qu'au handshake : une socket ouverte par un intrus
+   * survivrait sinon au changement de mot de passe (ADR 0013). Le joueur, lui,
+   * se reconnecte aussitot avec sa session fraiche ; la reconnexion est le
+   * chemin ordinaire d'un match (`match:state`), elle ne lui coute rien.
+   */
+  disconnectPlayer(playerId: string): void {
+    this.sessions.get(playerId)?.socket.disconnect(true);
+  }
+
   /** Nombre de sessions connectees, pour la sonde de charge (jalon M7). */
   get liveSessions(): number {
     return this.sessions.size;

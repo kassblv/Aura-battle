@@ -171,3 +171,20 @@ describe('trustProxy', () => {
     );
   });
 });
+
+describe('authRateLimit', () => {
+  it('est active par defaut', () => {
+    expect(loadConfig({ ...validEnv }).authRateLimit).toBe(true);
+  });
+
+  it('se coupe hors production, pour un banc de charge', () => {
+    expect(loadConfig({ ...validEnv, AUTH_RATE_LIMIT: 'off' }).authRateLimit).toBe(false);
+  });
+
+  /* Une limite qu'une variable oubliee eteint n'en est pas une. */
+  it('refuse d etre coupee en production', () => {
+    expect(() =>
+      loadConfig({ ...validEnv, NODE_ENV: 'production', AUTH_RATE_LIMIT: 'off' }),
+    ).toThrow(/AUTH_RATE_LIMIT/);
+  });
+});
