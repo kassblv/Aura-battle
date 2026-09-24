@@ -1,5 +1,6 @@
 import type { Seat, TimingQuality } from '@aura/rules';
 import type { ArenaEvent } from './events.js';
+import { CLASH_DURATION_MS } from './clash.js';
 
 /**
  * De la manche revelee a la choregraphie de l arene.
@@ -132,6 +133,23 @@ export const REVEAL_GAP_MS = 500;
 export const CLASH_AT_MS = 970;
 /** Verdict : pose de victoire d un cote, d encaissement de l autre. */
 export const VICTORY_AT_MS = 1_400;
+
+/**
+ * Apparition du panneau de verdict, une fois les faisceaux eteints.
+ *
+ * Le panneau se pose au centre, la ou les deux auras se rencontrent. Il
+ * s affichait des la premiere image de la revelation et masquait donc le
+ * choc tout entier — le seul moment que la manche prepare. Le score tombe
+ * apres l image, pas a sa place : la revelation dure 4,5 s, il reste plus de
+ * deux secondes pour le lire.
+ */
+export const VERDICT_PANEL_AT_MS = CLASH_AT_MS + CLASH_DURATION_MS;
+
+/** Le panneau de verdict est-il a l ecran, `inPhaseMs` apres le debut de la phase ? */
+export function verdictPanelShown(phase: string, inPhaseMs: number): boolean {
+  if (phase === 'ended') return true;
+  return phase === 'reveal' && inPhaseMs >= VERDICT_PANEL_AT_MS;
+}
 
 export interface ScheduledArenaEvent {
   /** Instant de l evenement, en millisecondes depuis le debut de la revelation. */

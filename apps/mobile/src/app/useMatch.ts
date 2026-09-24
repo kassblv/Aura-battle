@@ -114,6 +114,15 @@ export function useSoloMatch(
       });
 
       const seen = viewOfSolo(match);
+      /*
+        La manche tranchee, pour que l arene joue le CHOC des auras.
+
+        L arene l attendait depuis que le choc existe (`useArena`, `round`) et
+        personne ne la lui donnait : les deux personnages dansaient, un verdict
+        tombait, et les faisceaux ne partaient jamais. L arene ne rejoue pas
+        deux fois la meme manche — elle compare son numero.
+      */
+      arena.round.current = seen.lastRound;
       if (soundedRef.current !== null) {
         for (const cue of cuesForTransition(soundedRef.current, seen)) {
           audio.engine.cue(cue);
@@ -127,6 +136,8 @@ export function useSoloMatch(
     return () => {
       cancelAnimationFrame(frame);
       arena.showcase.current = true;
+      // Un rapport laisse derriere soi rejouerait son choc au match suivant.
+      arena.round.current = null;
     };
   }, [arena, audio, looks]);
 

@@ -8,6 +8,7 @@ import {
   type Tier,
 } from '@aura/rules';
 import { memo, useCallback, useEffect, useRef, useState, type JSX, type RefObject } from 'react';
+import { verdictPanelShown } from '../arena/round.js';
 import type { MatchView } from '../match/view.js';
 import { leagueLabel } from './leagues.js';
 import {
@@ -473,7 +474,7 @@ function MatchScreenBody({
         />
       </div>
 
-      {(view.phase === 'reveal' || view.phase === 'ended') && view.lastRound !== null && (
+      {verdictPanelShown(view.phase, inPhaseNow()) && view.lastRound !== null && (
         <div className="verdict">
           <h2 className={view.lastRound.winner === 'moi' ? 'win' : 'lose'}>
             {view.lastRound.winner === null

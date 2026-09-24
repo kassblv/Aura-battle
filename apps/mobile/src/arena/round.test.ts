@@ -1,6 +1,9 @@
+import { BALANCE } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import type { ArenaEvent } from './events.js';
 import {
+  VERDICT_PANEL_AT_MS,
+  verdictPanelShown,
   CLASH_AT_MS,
   REVEAL_FIRST_AT_MS,
   REVEAL_GAP_MS,
@@ -156,5 +159,31 @@ describe('roundChoreography', () => {
       }),
     );
     expect(plan.find((e) => e.event.type === 'clash')!.event).toMatchObject({ ultimate: null });
+  });
+});
+
+describe('panneau de verdict — il attend que le choc soit fini', () => {
+  /*
+    Le panneau se pose au centre de l'ecran, exactement la ou les deux
+    faisceaux se rencontrent. Affiche des le debut de la revelation, il
+    cachait le seul moment que toute la manche prepare.
+  */
+  it('ne couvre pas le choc', () => {
+    expect(VERDICT_PANEL_AT_MS).toBeGreaterThanOrEqual(CLASH_AT_MS + CLASH_DURATION_MS);
+    expect(verdictPanelShown('reveal', CLASH_AT_MS + CLASH_DURATION_MS / 2)).toBe(false);
+  });
+
+  it('apparait une fois le choc termine, et reste en fin de match', () => {
+    expect(verdictPanelShown('reveal', VERDICT_PANEL_AT_MS)).toBe(true);
+    expect(verdictPanelShown('ended', 0)).toBe(true);
+  });
+
+  it('n existe pas hors de la revelation', () => {
+    expect(verdictPanelShown('choice', 10_000)).toBe(false);
+    expect(verdictPanelShown('recharge', 10_000)).toBe(false);
+  });
+
+  it('laisse le temps de le lire avant la manche suivante', () => {
+    expect(BALANCE.phases.revealMs - VERDICT_PANEL_AT_MS).toBeGreaterThanOrEqual(2_000);
   });
 });

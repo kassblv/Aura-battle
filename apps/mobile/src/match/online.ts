@@ -1,4 +1,4 @@
-import type { Choice, Seat } from '@aura/rules';
+import { BALANCE, type Choice, type Seat } from '@aura/rules';
 import type { RechargeTap } from '@aura/rules';
 import type { ServerMessage } from '@aura/protocol';
 import type { GameClient } from '../net/client.js';
@@ -212,6 +212,16 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
     state = {
       ...state,
       phase: 'reveal',
+      /*
+        `round:result` ne porte pas d echeance, et la revelation peut partir
+        AVANT celle du choix : le serveur revele des que les deux ont verrouille.
+        Garder l echeance du choix faisait croire a l ecran que la revelation
+        venait de commencer, du debut a la fin — le verdict, qui attend la fin
+        du choc, ne s affichait jamais. La duree est la meme regle des deux
+        cotes (`@aura/rules`), et l instant de reception est le debut a une
+        latence pres : c est une horloge d animation, pas un arbitrage.
+      */
+      phaseEndsAtMs: client.now() + BALANCE.phases.revealMs,
       round: data.round,
       roundsWon: data.roundsWon,
       lastRound: data,

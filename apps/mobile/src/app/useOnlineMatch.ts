@@ -238,6 +238,9 @@ export function useOnlineMatch(
           showOutcome:
             state.phase === 'ended' || (state.phase === 'reveal' && intoPhase >= VERDICT_AFTER_MS),
         });
+        // Le choc des auras : voir `useMatch`, meme oubli, meme remede. Un
+        // nouveau match n a pas de `lastRound`, donc rien d ancien ne rejoue.
+        arena.round.current = seen.lastRound;
       }
 
       /**

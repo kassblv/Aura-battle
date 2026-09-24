@@ -1,3 +1,4 @@
+import { BALANCE } from '@aura/rules';
 import { PROTOCOL_VERSION } from '@aura/protocol';
 import { describe, expect, it } from 'vitest';
 import { createGameClient, type Transport } from '../net/client.js';
@@ -197,6 +198,33 @@ describe('createOnlineMatch', () => {
     expect(match.state.phase).toBe('reveal');
     expect(match.state.lastRound?.winner).toBe('a');
     expect(match.state.roundsWon).toEqual({ a: 1, b: 0 });
+  });
+
+  it('fait partir la revelation a la reception du resultat, pas a l echeance du choix', () => {
+    /*
+      Quand les deux joueurs verrouillent tot, le serveur revele sans attendre
+      la fin du choix. `round:result` ne porte pas d'echeance : garder celle
+      du choix faisait croire a l'ecran que la revelation venait a peine de
+      commencer, pendant toute sa duree — et le panneau de verdict, qui attend
+      la fin du choc, ne s'affichait jamais.
+    */
+    const { match, emit, at } = harness();
+    emit('choice:start', {
+      matchId: MATCH,
+      round: 1,
+      endsAt: 520_000,
+      meter: { period: 1300, zone: 0.4, perfect: 0.09, center: 0.5 },
+    });
+    at(4_000);
+    emit('round:result', {
+      matchId: MATCH,
+      round: 1,
+      sides: { a: side('calme', 2), b: side('hype', 1) },
+      winner: 'a',
+      roundsWon: { a: 1, b: 0 },
+      timeline: { revealFirst: 'a' },
+    });
+    expect(match.state.phaseEndsAtMs).toBe(4_000 + BALANCE.phases.revealMs);
   });
 
   it('termine le match', () => {

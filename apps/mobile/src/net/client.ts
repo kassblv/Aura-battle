@@ -46,6 +46,8 @@ type Listener<N extends ServerMessageName> = (data: ServerMessage<N>) => void;
 export interface GameClient {
   readonly connection: Connection;
   readonly clock: SyncedClock;
+  /** Heure locale du client, la meme que celle de `clock` : `performance.now()` par defaut. */
+  readonly now: () => number;
   /** Messages jetes faute de forme ou de nom connu. */
   readonly droppedMessages: number;
   on<N extends ServerMessageName>(name: N, listener: Listener<N>): () => void;
@@ -165,6 +167,7 @@ export function createGameClient(
   return {
     connection,
     clock,
+    now,
 
     get droppedMessages(): number {
       return dropped;
