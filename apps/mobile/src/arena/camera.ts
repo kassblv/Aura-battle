@@ -76,6 +76,18 @@ const MAX_PREVIEW_DISTANCE = 7;
 /** Le plan rapproche part juste sous le bassin. */
 const BUST_BOTTOM_MARGIN = 0.06;
 
+/**
+ * Orbite de repos de la vitrine, en radians, vers la poitrine du personnage.
+ *
+ * Le combattant de gauche est tourne pour faire face a son adversaire : vu
+ * de l axe de la salle, il ne montre que 29 degres de poitrine, donc un
+ * profil. C est juste en duel, ou deux personnages se regardent ; seul a
+ * l accueil, ce profil ecrasait les bras sur le buste et cachait la tenue
+ * qu on vient admirer. 0,45 le ramene a un vrai trois-quarts. Le doigt du
+ * joueur s ajoute a ce repos, il ne le remplace pas.
+ */
+export const SHOWCASE_ORBIT = 0.45;
+
 /** La camera ne descend jamais dans la plateforme, ni ne survole la scene. */
 const MIN_EYE_Y = 0.35;
 const MAX_EYE_ABOVE_SUBJECT = 0.9;
@@ -133,7 +145,7 @@ export function previewFraming(input: PreviewFramingInput): CameraFraming {
     lookX: input.worldX,
     lookY,
     distance: distanceForHeight(height, bust ? BUST_FILL : BODY_FILL, bounds.radius),
-    orbit: input.orbit ?? 0,
+    orbit: SHOWCASE_ORBIT + (input.orbit ?? 0),
     // A hauteur du milieu du sujet : on inspecte un geste, on ne le domine pas.
     eyeY: clamp(lookY + (input.tilt ?? 0), MIN_EYE_Y, top + MAX_EYE_ABOVE_SUBJECT),
   };

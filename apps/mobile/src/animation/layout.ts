@@ -46,7 +46,7 @@ export const DEPTH = 0.12;
  * un peu plus au large que les coudes donne au buste une ligne d epaules
  * horizontale, au lieu d un V qui descend du cou vers les bras.
  */
-export const SHOULDER_SPAN = 0.122;
+export const SHOULDER_SPAN = 0.15;
 
 /** Hauteur de l epaule sous l articulation du cou, en metres. */
 export const SHOULDER_DROP = 0.019;
@@ -75,11 +75,18 @@ export const YOKE_DEPTH = 0.064;
 /** Demi-epaisseur verticale de cette meme trapeze. */
 export const YOKE_THICKNESS = 0.044;
 
-/** Ecartement du coude, en part de `DEPTH`. */
-const ELBOW = 1.05;
+/**
+ * Ecartement du coude, en part de `DEPTH`.
+ *
+ * Il se mesure contre le buste, pas contre l axe : le coude doit tomber hors
+ * du flanc, contour compris (`rig.ts`, buste de 12,5 cm de demi-largeur). A
+ * 1,05, il s y enfoncait de trois centimetres et le bras disparaissait dans
+ * le corps — « les bras sont trop colles ».
+ */
+const ELBOW = 1.55;
 
-/** Ecartement de la main, en part de `DEPTH`. */
-const HAND = 0.95;
+/** Ecartement de la main, en part de `DEPTH` : un peu en dedans du coude. */
+const HAND = 1.4;
 
 /** Ecartement des mains quand les bras passent devant le corps. */
 const HAND_CROSSED = 0.4;

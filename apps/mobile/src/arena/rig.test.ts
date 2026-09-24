@@ -4,6 +4,7 @@ import { loadAnimation, OUTFITS, SKIN_TONES, type Animation } from '@aura/conten
 import {
   Box3,
   type BufferGeometry,
+  type Color,
   type CylinderGeometry,
   type Group,
   type Material,
@@ -118,6 +119,25 @@ describe('habillage', () => {
     const near = materialOf(rig.parts.upperArmRight.children[0]).color;
     const far = materialOf(rig.parts.upperArmLeft.children[0]).color;
     expect(far.getHex()).toBeLessThan(near.getHex());
+    rig.dispose();
+  });
+
+  /*
+    La tenue offerte est noire, sur une nuit violette : mesure faite, le buste
+    rendait plus sombre que la foule derriere lui. Le liseré le detoure, dans
+    la couleur d aura du joueur.
+  */
+  it('detoure le personnage dans sa couleur d aura', () => {
+    const rig = build();
+    rig.dress({ ...LOOK, aura: '#4fe3ff' });
+    const torso = materialOf(rig.parts.torso.children[0]);
+    const shader = {
+      uniforms: {} as Record<string, { value: unknown }>,
+      fragmentShader: '#include <opaque_fragment>',
+      vertexShader: '',
+    };
+    torso.onBeforeCompile(shader as never, undefined as never);
+    expect((shader.uniforms.rimColor?.value as Color).getHexString()).toBe('4fe3ff');
     rig.dispose();
   });
 
@@ -400,6 +420,42 @@ describe('bras et epaules', () => {
     // Et une ligne d epaules qui les relie au buste, sinon ce sont deux
     // billes posees de part et d autre d un tronc etroit.
     expect(rig.parts.shoulderYoke.scale.y).toBeCloseTo(span, 6);
+    rig.dispose();
+  });
+
+  /*
+    « Les bras sont trop colles. » Le buste etait plus profond (26 cm) que
+    large (19 cm) — un tronc de profil — et les coudes, a 12,6 cm de l axe,
+    s enfoncaient de trois centimetres dans ses flancs : le bras disparaissait
+    dans le buste, surtout de trois quarts.
+  */
+  it('donne un buste plus large que profond', () => {
+    const rig = build();
+    const anim = shippedAnimations().find((a) => a.id === 'anim.calme.t1.stride')!;
+    rig.pose(samplePose(anim, 0), anim, 0, 1 / 60);
+    expect(rig.parts.torso.scale.z).toBeGreaterThan(rig.parts.torso.scale.x);
+    rig.dispose();
+  });
+
+  it('decolle du buste un bras qui pend, contour compris', () => {
+    const rig = build();
+    const fautes: string[] = [];
+    for (const id of ['anim.calme.t1.stride', 'anim.calme.t1.pocket', 'anim.hype.t2.goal']) {
+      const anim = shippedAnimations().find((a) => a.id === id)!;
+      for (let step = 0; step < 8; step++) {
+        const t = (anim.loop.duration * step) / 8;
+        rig.pose(samplePose(anim, t), anim, t, 1 / 60);
+        const torso = rig.parts.torso;
+        for (const elbow of [rig.parts.elbowLeft, rig.parts.elbowRight]) {
+          // Seul un coude a hauteur du buste peut s y enfoncer.
+          if (elbow.position.y > torso.position.y + torso.scale.y / 2) continue;
+          const outline = elbow.scale.x * 1.17;
+          const gap = Math.abs(elbow.position.z - torso.position.z) - outline - torso.scale.z;
+          if (gap <= 0) fautes.push(`${id} t=${t.toFixed(2)} : ${(gap * 100).toFixed(1)} cm`);
+        }
+      }
+    }
+    expect(fautes).toEqual([]);
     rig.dispose();
   });
 

@@ -29,6 +29,7 @@ import {
 } from '../animation/layout.js';
 import type { Pose } from '../animation/pose.js';
 import { createHand, type Hand, type HandSpec } from './hands.js';
+import { createRimUniforms, withRim } from './rim.js';
 
 /**
  * Le combattant (port de `buildRig` / `rigLook` / `updateRig` du prototype).
@@ -213,6 +214,15 @@ export interface FighterRig {
  */
 const OUTLINE_COLOR = 0x0d0819;
 
+/**
+ * Force du liseré, dans la couleur d aura du porteur (`rim.ts`).
+ *
+ * Assez pour detacher une tenue noire de la nuit du fond, pas assez pour
+ * qu on lise un deuxieme contour. La couleur est un cosmetique deja public :
+ * elle ne dit rien du coup joue.
+ */
+const RIM_STRENGTH = 0.34;
+
 export function createFighterRig(resources: RigResources, placement: RigPlacement): FighterRig {
   const { gradientMap } = resources;
   const geometries: { dispose(): void }[] = [];
@@ -221,11 +231,13 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
   const outline = new MeshBasicMaterial({ color: OUTLINE_COLOR, side: BackSide });
   materials.push(outline);
 
+  const rim = createRimUniforms('#ffffff', RIM_STRENGTH);
   const cache = new Map<string, MeshToonMaterial>();
   const toon = (hex: string): MeshToonMaterial => {
     let material = cache.get(hex);
     if (material === undefined) {
       material = new MeshToonMaterial({ color: new Color(hex), gradientMap });
+      withRim(material, rim, 'fighter-rim');
       cache.set(hex, material);
       materials.push(material);
     }
@@ -351,6 +363,7 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
   }
 
   const hoodMaterial = new MeshToonMaterial({ color: 0xffffff, gradientMap });
+  withRim(hoodMaterial, rim, 'fighter-rim');
   materials.push(hoodMaterial);
   const hood = new Mesh(shapes.hood, hoodMaterial);
   hood.scale.setScalar(0.185);
@@ -554,6 +567,7 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
       for (const spike of spikes.children) if (spike instanceof Mesh) spike.material = hair;
       hoodMaterial.color.set(outfit.jacket);
       auraMaterial.color.set(look.aura);
+      rim.rimColor.value.set(look.aura);
 
       cap.visible = hairId !== 'capuche';
       spikes.visible = hairId === 'pics';
@@ -643,9 +657,11 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
 
       v.a.set(hip.x, hip.y - 0.03, hip.z);
       v.b.set(neck.x, neck.y + 0.01, neck.z);
-      // Un buste un peu plus large qu au prototype : le tronc n a plus a
-      // rattraper tout seul une ligne d epaules qui n existait pas.
-      setBone(parts.torso, v.a, v.b, 0.13, 0.095);
+      // Plus large (z) que profond (x), comme un torse. L inverse — 26 cm
+      // de profondeur pour 19 de large — faisait lire un profil meme de
+      // trois quarts, et avalait les bras qui pendaient le long des flancs.
+      // Les ecartements de `animation/layout` se mesurent contre ces valeurs.
+      setBone(parts.torso, v.a, v.b, 0.105, 0.125);
 
       v.a.set(skull.x * 0.6 + neck.x * 0.4, skull.y - 0.1, skull.z * 0.6 + neck.z * 0.4);
       setBone(parts.neck, neck, v.a, LIMB_RADIUS.neck);
@@ -716,7 +732,7 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
         tie.position
           .copy(centre)
           .addScaledVector(v.upward, height * 0.12)
-          .addScaledVector(v.forward, 0.127);
+          .addScaledVector(v.forward, 0.102);
         tie.quaternion.copy(quaternion);
         tie.scale.set(0.012, 0.13, 0.03);
       }
@@ -724,7 +740,7 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
         shirt.position
           .copy(centre)
           .addScaledVector(v.upward, height * 0.34)
-          .addScaledVector(v.forward, 0.12);
+          .addScaledVector(v.forward, 0.096);
         shirt.quaternion.copy(quaternion);
         shirt.scale.set(0.01, 0.08, 0.065);
       }
@@ -732,14 +748,14 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
         zip.position
           .copy(centre)
           .addScaledVector(v.upward, height * 0.1)
-          .addScaledVector(v.forward, 0.124);
+          .addScaledVector(v.forward, 0.1);
         zip.quaternion.copy(quaternion);
         zip.scale.set(0.006, height * 0.7, 0.008);
       }
       if (belt.visible) {
         belt.position.copy(centre).addScaledVector(v.upward, -height * 0.36);
         belt.quaternion.copy(quaternion);
-        belt.scale.set(0.128, 0.04, 0.088);
+        belt.scale.set(0.1, 0.04, 0.118);
       }
 
       // --- visage

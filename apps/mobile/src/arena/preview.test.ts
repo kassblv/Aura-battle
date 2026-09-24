@@ -8,7 +8,13 @@ import {
   type AnimationBounds,
 } from '../animation/bounds.js';
 import { ANIMATIONS } from '../content/animations.js';
-import { ArenaCameraRig, createArenaCamera, distanceForHeight, previewFraming } from './camera.js';
+import {
+  ArenaCameraRig,
+  createArenaCamera,
+  distanceForHeight,
+  previewFraming,
+  SHOWCASE_ORBIT,
+} from './camera.js';
 
 /**
  * Le cadrage de la vitrine : un mème doit se lire en entier.
@@ -123,10 +129,24 @@ describe('previewFraming', () => {
     expect(bust.lookY).toBeGreaterThan(bounds.hipY);
   });
 
-  it('transmet l orbite demandee par le joueur', () => {
+  it('ajoute l orbite demandee par le joueur a un trois-quarts de repos', () => {
     const bounds = boundsOf('anim.hype.t0.dab');
-    expect(previewFraming({ worldX: 0, bounds, orbit: 1.2 }).orbit).toBeCloseTo(1.2, 10);
-    expect(previewFraming({ worldX: 0, bounds }).orbit).toBe(0);
+    expect(previewFraming({ worldX: 0, bounds, orbit: 1.2 }).orbit).toBeCloseTo(
+      SHOWCASE_ORBIT + 1.2,
+      10,
+    );
+    expect(previewFraming({ worldX: 0, bounds }).orbit).toBe(SHOWCASE_ORBIT);
+  });
+
+  it('montre la poitrine au repos, pas le profil du duel', () => {
+    // Le combattant de gauche regarde vers +x, tourne de 0,5 rad vers la
+    // salle : sa poitrine pointe a 1,07 rad de l axe de la camera. Un
+    // trois-quarts la laisse entre 25 et 50 degres du regard.
+    const chest = Math.atan2(Math.cos(0.5), Math.sin(0.5));
+    const away =
+      chest - previewFraming({ worldX: 0, bounds: boundsOf('anim.calme.t1.stride') }).orbit;
+    expect(away).toBeGreaterThan((25 * Math.PI) / 180);
+    expect(away).toBeLessThan((50 * Math.PI) / 180);
   });
 
   it('eleve la camera avec l inclinaison, sans jamais passer sous la plateforme', () => {
@@ -270,9 +290,12 @@ describe('ArenaCameraRig et les rotations rapides', () => {
 
   it('fait vraiment le tour : dos, profil, face', () => {
     const bounds = boundsOf('anim.calme.t0.crossed');
-    const back = settle(previewFraming({ worldX: 0, bounds, orbit: Math.PI }));
-    const side = settle(previewFraming({ worldX: 0, bounds, orbit: Math.PI / 2 }));
-    const front = settle(previewFraming({ worldX: 0, bounds, orbit: 0 }));
+    // Angles absolus autour de la salle : on retire le trois-quarts de repos.
+    const at = (angle: number) =>
+      settle(previewFraming({ worldX: 0, bounds, orbit: angle - SHOWCASE_ORBIT }));
+    const back = at(Math.PI);
+    const side = at(Math.PI / 2);
+    const front = at(0);
     expect(back.position.z).toBeLessThan(0);
     expect(front.position.z).toBeGreaterThan(0);
     expect(Math.abs(side.position.z)).toBeLessThan(0.05);
