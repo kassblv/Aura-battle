@@ -8,6 +8,7 @@ import { RecoveryError, RecoveryService } from '../application/recovery.js';
 import { SessionService } from '../application/session.js';
 import { PasswordHasherBusyError } from '../domain/ports.js';
 import type { PasswordHasher, PlayerRecord } from '../domain/ports.js';
+import { hashSecret } from '../domain/credentials.js';
 import { MemoryAttemptLimiter } from './memory-attempt-limiter.js';
 import { AuthController } from './auth.controller.js';
 
@@ -29,6 +30,11 @@ const BUSY = 'serveur tres occupe';
 
 let app: NestFastifyApplication;
 const identities = memoryEmailIdentities(players);
+/** Le secret d'appareil du joueur `pN` : chaque joueur a deja le sien. */
+const deviceOf = (n: number): string => String(n).padStart(64, '0');
+for (let n = 0; n < players.length; n++) {
+  identities.devices.set(hashSecret(deviceOf(n)), `p${String(n)}`);
+}
 const opened: string[] = [];
 
 beforeAll(async () => {
@@ -52,7 +58,6 @@ beforeAll(async () => {
           ? Promise.resolve({ player: players[3]!, issuedAt: new Date(0) })
           : Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
     },
-    refreshTokens: { revokeAllForPlayer: () => Promise.resolve() },
     clock: { now: () => new Date(24 * 60 * 60_000) },
     traceKey: 'une-cle-de-test-assez-longue',
     log: { warn: () => undefined },
@@ -134,7 +139,7 @@ describe('POST /auth/email/link', () => {
   it('rattache, puis rend l adresse masquee et jamais le hache', async () => {
     const reply = await call('POST', '/auth/email/link', {
       token: 'jwt.p0',
-      body: { email: 'Zoe@Exemple.fr', password: GOOD },
+      body: { deviceSecret: deviceOf(0), email: 'Zoe@Exemple.fr', password: GOOD },
     });
     expect(reply.statusCode).toBe(201);
     expect(reply.json<Record<string, unknown>>()).toEqual({
@@ -154,11 +159,11 @@ describe('POST /auth/email/link', () => {
   it('refuse une adresse prise par un autre, en 409 generique', async () => {
     await call('POST', '/auth/email/link', {
       token: 'jwt.p1',
-      body: { email: 'prise@exemple.fr', password: GOOD },
+      body: { deviceSecret: deviceOf(1), email: 'prise@exemple.fr', password: GOOD },
     });
     const reply = await call('POST', '/auth/email/link', {
       token: 'jwt.p2',
-      body: { email: 'prise@exemple.fr', password: GOOD },
+      body: { deviceSecret: deviceOf(2), email: 'prise@exemple.fr', password: GOOD },
     });
     expect(reply.statusCode).toBe(409);
     expect(reply.json<Record<string, unknown>>().code).toBe('EMAIL_UNAVAILABLE');
@@ -168,14 +173,14 @@ describe('POST /auth/email/link', () => {
   it('dit pourquoi un mot de passe est refuse', async () => {
     const common = await call('POST', '/auth/email/link', {
       token: 'jwt.p5',
-      body: { email: 'cinq@exemple.fr', password: 'motdepasse' },
+      body: { deviceSecret: deviceOf(5), email: 'cinq@exemple.fr', password: 'motdepasse' },
     });
     expect(common.statusCode).toBe(400);
     expect(common.json<Record<string, unknown>>().code).toBe('PASSWORD_TOO_COMMON');
 
     const short = await call('POST', '/auth/email/link', {
       token: 'jwt.p5',
-      body: { email: 'cinq@exemple.fr', password: 'court' },
+      body: { deviceSecret: deviceOf(5), email: 'cinq@exemple.fr', password: 'court' },
     });
     expect(short.statusCode).toBe(400);
     expect(short.json<Record<string, unknown>>().code).toBe('INVALID_PAYLOAD');
@@ -186,7 +191,7 @@ describe('POST /auth/email/login', () => {
   beforeAll(async () => {
     await call('POST', '/auth/email/link', {
       token: 'jwt.p3',
-      body: { email: 'trois@exemple.fr', password: GOOD },
+      body: { deviceSecret: deviceOf(3), email: 'trois@exemple.fr', password: GOOD },
     });
   });
 
@@ -218,7 +223,7 @@ describe('POST /auth/email/login', () => {
   it('ferme une adresse apres cinq echecs, en 429', async () => {
     await call('POST', '/auth/email/link', {
       token: 'jwt.p6',
-      body: { email: 'six@exemple.fr', password: GOOD },
+      body: { deviceSecret: deviceOf(6), email: 'six@exemple.fr', password: GOOD },
     });
     for (let i = 0; i < LIMITS.loginPerEmail; i++) {
       await call('POST', '/auth/email/login', {
@@ -266,7 +271,7 @@ describe('POST /auth/email/password', () => {
   beforeAll(async () => {
     await call('POST', '/auth/email/link', {
       token: 'jwt.p4',
-      body: { email: 'quatre@exemple.fr', password: GOOD },
+      body: { deviceSecret: deviceOf(4), email: 'quatre@exemple.fr', password: GOOD },
     });
   });
 
@@ -275,8 +280,9 @@ describe('POST /auth/email/password', () => {
       token: 'jwt.p4',
       body: { currentPassword: GOOD, newPassword: 'nouvelle phrase' },
     });
+    // Une session fraiche : l'ancienne vient d'etre invalidee avec le reste.
     expect(reply.statusCode).toBe(200);
-    expect(reply.json<Record<string, unknown>>()).toEqual({ changed: true });
+    expect(reply.json<Record<string, unknown>>().accessToken).toBe('jwt.p4');
   });
 
   it('refuse une preuve fausse', async () => {
@@ -326,7 +332,7 @@ describe('POST /auth/recovery', () => {
   it('exige le mot de passe quand une adresse est rattachee', async () => {
     await call('POST', '/auth/email/link', {
       token: 'jwt.p10',
-      body: { email: 'dix@exemple.fr', password: GOOD },
+      body: { deviceSecret: deviceOf(10), email: 'dix@exemple.fr', password: GOOD },
     });
     const refused = await call('POST', '/auth/recovery', { token: 'jwt.p10' });
     expect(refused.statusCode).toBe(403);
@@ -346,9 +352,17 @@ describe('POST /auth/recovery', () => {
     expect(ok.json<Record<string, unknown>>().code).toMatch(/^AURA-/);
   });
 
-  it('reste ouverte a la seule session sans adresse, meme sans corps', async () => {
-    const reply = await call('POST', '/auth/recovery', { token: 'jwt.p11' });
-    expect(reply.statusCode).toBe(201);
+  /* Seconde relecture (B) : sans adresse, un jeton vole ne suffit plus. */
+  it('exige la preuve d un appareil du joueur sur un compte sans adresse', async () => {
+    const refused = await call('POST', '/auth/recovery', { token: 'jwt.p11' });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json<Record<string, unknown>>().code).toBe('DEVICE_PROOF_REQUIRED');
+
+    const ok = await call('POST', '/auth/recovery', {
+      token: 'jwt.p11',
+      body: { deviceSecret: deviceOf(11) },
+    });
+    expect(ok.statusCode).toBe(201);
   });
 });
 
@@ -356,7 +370,7 @@ describe('plafond global du hachage', () => {
   it('repond 503 BUSY plutot que d empiler', async () => {
     const reply = await call('POST', '/auth/email/link', {
       token: 'jwt.p12',
-      body: { email: 'douze@exemple.fr', password: BUSY },
+      body: { deviceSecret: deviceOf(12), email: 'douze@exemple.fr', password: BUSY },
     });
     expect(reply.statusCode).toBe(503);
     expect(reply.json<Record<string, unknown>>().code).toBe('BUSY');

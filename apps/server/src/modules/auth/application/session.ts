@@ -141,9 +141,32 @@ export class SessionService {
       throw new SessionError('INVALID_REFRESH_TOKEN');
     }
 
-    const session = await this.issue(player);
-    await this.deps.refreshTokens.markRotated(stored.id, hashSecret(session.refreshToken), now);
-    return session;
+    /*
+      Consommer et remplacer en un seul geste atomique (ADR 0013). Lire puis
+      marquer laissait une fenetre : deux renouvellements concurrents
+      reussissaient tous deux, et un changement de mot de passe survenu entre
+      la lecture et l'ecriture laissait naitre un jeton neuf apres la
+      revocation — l'intrus chasse restait dedans.
+    */
+    const replacement = generateRefreshToken();
+    const outcome = await this.deps.refreshTokens.rotate({
+      id: stored.id,
+      playerId: player.id,
+      createdAt: stored.createdAt,
+      replacedByHash: hashSecret(replacement),
+      expiresAt: this.refreshExpiry(now),
+      at: now,
+    });
+    if (outcome === 'REUSED') {
+      await this.deps.refreshTokens.revokeAllForPlayer(stored.playerId, now);
+      throw new SessionError('REFRESH_TOKEN_REUSED');
+    }
+    if (outcome === 'STALE') {
+      // Le mot de passe a change depuis : ce jeton appartient a une session
+      // que le changement devait fermer.
+      throw new SessionError('INVALID_REFRESH_TOKEN');
+    }
+    return this.sessionFor(player, replacement);
   }
 
   /**
@@ -194,15 +217,24 @@ export class SessionService {
     readonly id: string;
     readonly displayName: string;
   }): Promise<Session> {
-    const now = this.deps.clock.now();
     const refreshToken = generateRefreshToken();
-
     await this.deps.refreshTokens.create({
       playerId: player.id,
       tokenHash: hashSecret(refreshToken),
-      expiresAt: new Date(now.getTime() + this.deps.refreshTtlSeconds * 1_000),
+      expiresAt: this.refreshExpiry(this.deps.clock.now()),
     });
+    return this.sessionFor(player, refreshToken);
+  }
 
+  private refreshExpiry(now: Date): Date {
+    return new Date(now.getTime() + this.deps.refreshTtlSeconds * 1_000);
+  }
+
+  /** Le couple de jetons, une fois le jeton de rafraichissement range. */
+  private async sessionFor(
+    player: { readonly id: string; readonly displayName: string },
+    refreshToken: string,
+  ): Promise<Session> {
     return {
       accessToken: await this.deps.signer.sign({ playerId: player.id }),
       refreshToken,

@@ -29,6 +29,7 @@ export interface RefreshTokenRecord {
   readonly id: string;
   readonly playerId: string;
   readonly tokenHash: string;
+  readonly createdAt: Date;
   readonly expiresAt: Date;
   readonly revokedAt: Date | null;
   readonly replacedBy: string | null;
@@ -148,13 +149,22 @@ export interface EmailIdentityRepository {
    * Changer de mot de passe, c'est souvent chasser quelqu'un : un appareil
    * reste rattache tant que sa ligne `DEVICE` existe, et son secret rouvrirait
    * le compte au prochain lancement. Les deux ecritures vont ensemble, dans
-   * une transaction. Rend `false` si le joueur n'a pas d'adresse.
+   * une transaction. Dans la meme transaction : `credentialsChangedAt` pose
+   * a `at` (les jetons d'acces anterieurs deviennent inutilisables) et tous
+   * les jetons de rafraichissement revoques. Rend `false` si le joueur n'a pas
+   * d'adresse.
    */
   setPasswordHash(
     playerId: string,
     secretHash: string,
     keepDeviceHash: string | null,
+    at: Date,
   ): Promise<boolean>;
+  /**
+   * Le joueur de cet appareil, ou `null`. Sert de preuve de possession : un
+   * compte sans adresse n'a pas d'autre secret que ses appareils.
+   */
+  findByDeviceHash(deviceHash: string): Promise<PlayerRecord | null>;
 }
 
 /**
@@ -205,6 +215,8 @@ export interface AttemptKey {
 export interface AttemptLimiter {
   /** Compte une tentative sur chaque cle ; rend `false` si l'une depasse sa limite. */
   attempt(keys: readonly AttemptKey[]): Promise<boolean>;
+  /** Valeur courante d'un compteur, sans le toucher (0 s'il n'existe pas). */
+  peek(key: string): Promise<number>;
   /** Remet un compteur a zero : son proprietaire a fait la preuve attendue. */
   reset(key: string): Promise<void>;
   /** Rend une tentative : elle a reussi, elle ne doit pas peser sur les autres. */
@@ -218,8 +230,27 @@ export interface RefreshTokenRepository {
     readonly tokenHash: string;
     readonly expiresAt: Date;
   }): Promise<RefreshTokenRecord>;
-  /** Marque un jeton comme consomme et note son remplacant. */
-  markRotated(id: string, replacedByHash: string, at: Date): Promise<void>;
+  /**
+   * Consomme un jeton et cree son remplacant, **atomiquement**.
+   *
+   * - `REUSED` : le jeton n'etait plus vivant au moment de le consommer (un
+   *   autre appel l'a consomme, ou il a ete revoque entre la lecture et
+   *   l'ecriture). La consommation est conditionnelle, donc deux appels
+   *   concurrents ne peuvent pas la reussir tous les deux.
+   * - `STALE` : le mot de passe a change apres la creation de ce jeton. La
+   *   lecture de `credentialsChangedAt` et la creation du remplacant se font
+   *   sous verrou de la ligne du joueur : un changement de mot de passe
+   *   concurrent passe soit avant (et on refuse), soit apres (et il revoque le
+   *   remplacant).
+   */
+  rotate(input: {
+    readonly id: string;
+    readonly playerId: string;
+    readonly createdAt: Date;
+    readonly replacedByHash: string;
+    readonly expiresAt: Date;
+    readonly at: Date;
+  }): Promise<'ROTATED' | 'REUSED' | 'STALE'>;
   /** Revoque tous les jetons vivants d'un joueur. */
   revokeAllForPlayer(playerId: string, at: Date): Promise<void>;
 }
@@ -232,4 +263,14 @@ export interface AccessTokenSigner {
 /** L'horloge est un port : le temps est une entree, pas une globale. */
 export interface Clock {
   now(): Date;
+}
+
+/**
+ * L'instant du dernier changement de mot de passe d'un joueur.
+ *
+ * Un jeton d'acces emis avant est refuse partout ou on le verifie : c'est ce
+ * qui empeche l'intrus chasse de se reinstaller avec le jeton qu'il detenait.
+ */
+export interface CredentialsChangeReader {
+  credentialsChangedAt(playerId: string): Promise<Date | null>;
 }

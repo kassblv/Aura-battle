@@ -166,7 +166,12 @@ export class AuthController {
     // Des qu'une adresse est rattachee, le mot de passe est exige : sinon une
     // session volee remplacerait le code du joueur par le sien (ADR 0013).
     await this.emailCall(() =>
-      this.email.authorizeRecoveryIssue(playerId, parsed.data.currentPassword, ip),
+      this.email.authorizeRecoveryIssue(
+        playerId,
+        parsed.data.currentPassword,
+        ip,
+        parsed.data.deviceSecret,
+      ),
     );
     try {
       return { code: await this.recovery.issue(playerId) };
@@ -285,7 +290,13 @@ export class AuthController {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
     return this.emailCall(() =>
-      this.email.link(playerId, parsed.data.email, parsed.data.password, ip),
+      this.email.link(
+        playerId,
+        parsed.data.email,
+        parsed.data.password,
+        ip,
+        parsed.data.deviceSecret,
+      ),
     );
   }
 
@@ -325,7 +336,7 @@ export class AuthController {
     @Headers('authorization') authorization: string | undefined,
     @Body() body: unknown,
     @Ip() ip: string | undefined,
-  ): Promise<{ readonly changed: true }> {
+  ): Promise<SessionResponse> {
     const playerId = await this.requirePlayer(authorization);
     const parsed = parseAuthEmailPasswordRequest(body);
     if (!parsed.success) {
@@ -338,7 +349,13 @@ export class AuthController {
     await this.emailCall(() =>
       this.email.changePassword(playerId, proof, newPassword, ip, deviceSecret),
     );
-    return { changed: true };
+    /*
+      Une session fraiche, par le chemin habituel. Le changement vient de
+      revoquer tous les jetons de rafraichissement et d'invalider tout jeton
+      d'acces anterieur — y compris ceux de l'appareil qui l'a demande. Sans
+      celle-ci, il serait deconnecte a l'instant ou il reprend son compte.
+    */
+    return this.toResponse(() => this.sessions.openForPlayer(playerId));
   }
 
   /**
@@ -379,6 +396,7 @@ export class AuthController {
         case 'EMAIL_NOT_LINKED':
           throw new ConflictException({ code, message: code });
         case 'PASSWORD_REQUIRED':
+        case 'DEVICE_PROOF_REQUIRED':
         case 'RECOVERY_CODE_TOO_RECENT':
           throw new ForbiddenException({ code, message: code });
         case 'PASSWORD_TOO_SHORT':

@@ -61,6 +61,10 @@ export class RedisAttemptLimiter implements AttemptLimiter {
     return blocked === 0;
   }
 
+  async peek(key: string): Promise<number> {
+    return Number((await this.client.get(PREFIX + key)) ?? 0);
+  }
+
   async reset(key: string): Promise<void> {
     await this.client.del(PREFIX + key);
   }

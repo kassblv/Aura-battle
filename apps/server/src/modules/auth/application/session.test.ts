@@ -98,6 +98,7 @@ class FakeRefreshTokens implements RefreshTokenRepository {
       id: `rt_${String(this.next++)}`,
       playerId: input.playerId,
       tokenHash: input.tokenHash,
+      createdAt: new Date(0),
       expiresAt: input.expiresAt,
       revokedAt: null,
       replacedBy: null,
@@ -106,12 +107,32 @@ class FakeRefreshTokens implements RefreshTokenRepository {
     return Promise.resolve(row);
   }
 
-  markRotated(id: string, replacedByHash: string, at: Date): Promise<void> {
-    const row = this.rows.get(id);
-    if (row !== undefined) {
-      this.rows.set(id, { ...row, replacedBy: replacedByHash, revokedAt: at });
+  /** Changement de mot de passe a simuler, comme `Player.credentialsChangedAt`. */
+  credentialsChangedAt: Date | null = null;
+
+  async rotate(input: {
+    id: string;
+    playerId: string;
+    createdAt: Date;
+    replacedByHash: string;
+    expiresAt: Date;
+    at: Date;
+  }): Promise<'ROTATED' | 'REUSED' | 'STALE'> {
+    const row = this.rows.get(input.id);
+    if (row?.revokedAt !== null || row.replacedBy !== null) return 'REUSED';
+    this.rows.set(input.id, { ...row, replacedBy: input.replacedByHash, revokedAt: input.at });
+    if (
+      this.credentialsChangedAt !== null &&
+      this.credentialsChangedAt.getTime() > input.createdAt.getTime()
+    ) {
+      return 'STALE';
     }
-    return Promise.resolve();
+    await this.create({
+      playerId: input.playerId,
+      tokenHash: input.replacedByHash,
+      expiresAt: input.expiresAt,
+    });
+    return 'ROTATED';
   }
 
   revokeAllForPlayer(playerId: string, at: Date): Promise<void> {
@@ -280,6 +301,13 @@ describe('refresh — renouveler une session', () => {
 
     // La session du voleur comme celle de la victime sont coupees.
     await expect(service.refresh(renouvelee.refreshToken)).rejects.toThrow(SessionError);
+  });
+
+  /* Relecture de securite (C) : un jeton cree avant un changement de mot de passe. */
+  it('refuse de renouveler un jeton anterieur a un changement de mot de passe', async () => {
+    const ouverte = await service.authenticateDevice(generateDeviceSecret());
+    refreshTokens.credentialsChangedAt = new Date(1);
+    await expect(service.refresh(ouverte.refreshToken)).rejects.toThrow(/INVALID_REFRESH_TOKEN/);
   });
 
   it('permet plusieurs renouvellements successifs', async () => {

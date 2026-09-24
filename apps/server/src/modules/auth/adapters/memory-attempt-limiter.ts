@@ -46,6 +46,10 @@ export class MemoryAttemptLimiter implements AttemptLimiter {
     return Promise.resolve(allowed);
   }
 
+  peek(key: string): Promise<number> {
+    return Promise.resolve(this.live(key)?.count ?? 0);
+  }
+
   reset(key: string): Promise<void> {
     this.counters.delete(key);
     return Promise.resolve();

@@ -12,6 +12,8 @@ import { isCompatibleProtocol, parseHandshake, type ErrorCode } from '@aura/prot
 /** Ce qu'un jeton d'acces contient une fois verifie. */
 export interface VerifiedToken {
   readonly sub: string;
+  /** Instant d'emission, en SECONDES (claim JWT `iat`), s'il est present. */
+  readonly iat?: number;
 }
 
 /** Port de verification : le module decide si c'est un JWT, un stub ou autre. */

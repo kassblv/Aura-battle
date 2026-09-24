@@ -10,6 +10,8 @@ const ALICE: PlayerRecord = { id: 'p-alice', displayName: 'Alice' };
 const BOB: PlayerRecord = { id: 'p-bob', displayName: 'Bob' };
 const GOOD = 'aura du dimanche';
 const IP = '198.51.100.1';
+const ALICE_DEVICE = 'a'.repeat(64);
+const BOB_DEVICE = 'c'.repeat(64);
 
 function setup() {
   const repo = memoryEmailIdentities([ALICE, BOB]);
@@ -22,7 +24,9 @@ function setup() {
   const recoveryCodes = new Map<string, { player: PlayerRecord; issuedAt: Date }>([
     ['AURA-BOB', { player: BOB, issuedAt: new Date(0) }],
   ]);
-  const revoked: string[] = [];
+  // Chaque joueur a deja son appareil, comme en vrai : c'est lui qui ouvre la session.
+  repo.devices.set(hashSecret(ALICE_DEVICE), ALICE.id);
+  repo.devices.set(hashSecret(BOB_DEVICE), BOB.id);
   const service = new EmailAuthService({
     identities: repo.port,
     hasher,
@@ -35,12 +39,6 @@ function setup() {
           : Promise.resolve(found);
       },
     },
-    refreshTokens: {
-      revokeAllForPlayer: (playerId) => {
-        revoked.push(playerId);
-        return Promise.resolve();
-      },
-    },
     clock: { now: () => new Date(now) },
     traceKey: 'une-cle-de-test-assez-longue',
     log: { warn: (message) => warnings.push(message) },
@@ -50,7 +48,8 @@ function setup() {
     calls,
     warnings,
     service,
-    revoked,
+    /** Joueurs dont le changement de mot de passe a tout revoque. */
+    revoked: () => [...repo.credentialsChangedAt.keys()],
     /** Delivre un code a l'instant present, comme `POST /auth/recovery`. */
     issueCode: (code: string, player: PlayerRecord) => {
       recoveryCodes.set(code, { player, issuedAt: new Date(now) });
@@ -73,7 +72,7 @@ async function reasonOf(promise: Promise<unknown>): Promise<string> {
 describe('link', () => {
   it('rattache l adresse normalisee et ne range que le hache', async () => {
     const { repo, service } = setup();
-    const status = await service.link(ALICE.id, ' Alice@Gmail.com ', GOOD, '1.2.3.4');
+    const status = await service.link(ALICE.id, ' Alice@Gmail.com ', GOOD, '1.2.3.4', ALICE_DEVICE);
 
     expect(status).toEqual({ linked: true, maskedEmail: 'a•••@gmail.com' });
     expect(repo.rows).toEqual([
@@ -83,28 +82,30 @@ describe('link', () => {
 
   it('refuse un second rattachement : on change le mot de passe, pas l adresse', async () => {
     const { service } = setup();
-    await service.link(ALICE.id, 'alice@gmail.com', GOOD, '1.2.3.4');
-    expect(await reasonOf(service.link(ALICE.id, 'autre@gmail.com', GOOD, '1.2.3.4'))).toBe(
-      'EMAIL_ALREADY_LINKED',
-    );
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, '1.2.3.4', ALICE_DEVICE);
+    expect(
+      await reasonOf(service.link(ALICE.id, 'autre@gmail.com', GOOD, '1.2.3.4', ALICE_DEVICE)),
+    ).toBe('EMAIL_ALREADY_LINKED');
   });
 
   it('refuse une adresse deja prise par un autre joueur, sans dire par qui', async () => {
     const { service } = setup();
-    await service.link(ALICE.id, 'alice@gmail.com', GOOD, '1.2.3.4');
-    expect(await reasonOf(service.link(BOB.id, 'ALICE@gmail.com', GOOD, '1.2.3.4'))).toBe(
-      'EMAIL_UNAVAILABLE',
-    );
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, '1.2.3.4', ALICE_DEVICE);
+    expect(
+      await reasonOf(service.link(BOB.id, 'ALICE@gmail.com', GOOD, '1.2.3.4', BOB_DEVICE)),
+    ).toBe('EMAIL_UNAVAILABLE');
   });
 
   it('applique la politique : trop courant, ou egal a l adresse', async () => {
     const { repo, service } = setup();
-    expect(await reasonOf(service.link(ALICE.id, 'alice@gmail.com', 'azertyuiop', IP))).toBe(
-      'PASSWORD_TOO_COMMON',
-    );
-    expect(await reasonOf(service.link(ALICE.id, 'alice@gmail.com', 'Alice@Gmail.com', IP))).toBe(
-      'PASSWORD_MATCHES_EMAIL',
-    );
+    expect(
+      await reasonOf(service.link(ALICE.id, 'alice@gmail.com', 'azertyuiop', IP, ALICE_DEVICE)),
+    ).toBe('PASSWORD_TOO_COMMON');
+    expect(
+      await reasonOf(
+        service.link(ALICE.id, 'alice@gmail.com', 'Alice@Gmail.com', IP, ALICE_DEVICE),
+      ),
+    ).toBe('PASSWORD_MATCHES_EMAIL');
     expect(repo.rows).toEqual([]);
   });
 
@@ -115,13 +116,15 @@ describe('link', () => {
   */
   it('borne les essais de rattachement par joueur', async () => {
     const { service } = setup();
-    await service.link(ALICE.id, 'alice@gmail.com', GOOD, '198.51.100.2');
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, '198.51.100.2', ALICE_DEVICE);
     for (let i = 0; i < LIMITS.linkPerPlayer; i++) {
-      await reasonOf(service.link(BOB.id, 'alice@gmail.com', GOOD, `10.0.0.${String(i)}`));
+      await reasonOf(
+        service.link(BOB.id, 'alice@gmail.com', GOOD, `10.0.0.${String(i)}`, BOB_DEVICE),
+      );
     }
-    expect(await reasonOf(service.link(BOB.id, 'bob@gmail.com', GOOD, '198.51.100.5'))).toBe(
-      'TOO_MANY_ATTEMPTS',
-    );
+    expect(
+      await reasonOf(service.link(BOB.id, 'bob@gmail.com', GOOD, '198.51.100.5', BOB_DEVICE)),
+    ).toBe('TOO_MANY_ATTEMPTS');
   });
 
   it('refuse un joueur qui n existe plus', async () => {
@@ -135,7 +138,7 @@ describe('link', () => {
 describe('login', () => {
   async function linked() {
     const context = setup();
-    await context.service.link(ALICE.id, 'alice@gmail.com', GOOD, '198.51.100.3');
+    await context.service.link(ALICE.id, 'alice@gmail.com', GOOD, '198.51.100.3', ALICE_DEVICE);
     context.calls.verify = 0;
     context.calls.verifiedAgainst.length = 0;
     return context;
@@ -238,8 +241,8 @@ describe('login', () => {
 describe('changePassword', () => {
   async function linked() {
     const context = setup();
-    await context.service.link(ALICE.id, 'alice@gmail.com', GOOD, IP);
-    await context.service.link(BOB.id, 'bob@gmail.com', GOOD, IP);
+    await context.service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
+    await context.service.link(BOB.id, 'bob@gmail.com', GOOD, IP, BOB_DEVICE);
     return context;
   }
 
@@ -325,7 +328,7 @@ describe('status', () => {
   it('dit si une adresse est rattachee, masquee', async () => {
     const { service } = setup();
     await expect(service.status(ALICE.id)).resolves.toEqual({ linked: false, maskedEmail: null });
-    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP);
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
     await expect(service.status(ALICE.id)).resolves.toEqual({
       linked: true,
       maskedEmail: 'a•••@gmail.com',
@@ -341,7 +344,7 @@ describe('status', () => {
 describe('une session seule ne prend pas le compte', () => {
   async function linked() {
     const context = setup();
-    await context.service.link(ALICE.id, 'alice@gmail.com', GOOD, IP);
+    await context.service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
     return context;
   }
 
@@ -381,9 +384,75 @@ describe('une session seule ne prend pas le compte', () => {
     await expect(service.authorizeRecoveryIssue(ALICE.id, GOOD, IP)).resolves.toBeUndefined();
   });
 
-  it('laisse un compte sans adresse demander un code avec sa seule session', async () => {
+  /*
+    Seconde relecture (B) : sur un compte sans adresse, un jeton vole ne suffit
+    plus. Il faut le secret d'un appareil deja rattache a CE joueur.
+  */
+  it('exige la preuve d un appareil du joueur sur un compte sans adresse', async () => {
     const { service } = setup();
-    await expect(service.authorizeRecoveryIssue(BOB.id, undefined, IP)).resolves.toBeUndefined();
+    await expect(
+      service.authorizeRecoveryIssue(BOB.id, undefined, IP, BOB_DEVICE),
+    ).resolves.toBeUndefined();
+    expect(await reasonOf(service.authorizeRecoveryIssue(BOB.id, undefined, IP))).toBe(
+      'DEVICE_PROOF_REQUIRED',
+    );
+    expect(
+      await reasonOf(service.authorizeRecoveryIssue(BOB.id, undefined, IP, ALICE_DEVICE)),
+    ).toBe('DEVICE_PROOF_REQUIRED');
+  });
+
+  it('exige la preuve d un appareil du joueur pour rattacher une adresse', async () => {
+    const { service } = setup();
+    expect(await reasonOf(service.link(BOB.id, 'intrus@gmail.com', GOOD, IP))).toBe(
+      'DEVICE_PROOF_REQUIRED',
+    );
+    expect(await reasonOf(service.link(BOB.id, 'intrus@gmail.com', GOOD, IP, ALICE_DEVICE))).toBe(
+      'DEVICE_PROOF_REQUIRED',
+    );
+    expect(await reasonOf(service.link(BOB.id, 'intrus@gmail.com', GOOD, IP, 'd'.repeat(64)))).toBe(
+      'DEVICE_PROOF_REQUIRED',
+    );
+  });
+
+  /*
+    Seconde relecture (D) : un intrus qui rate expres ne remplit que son
+    propre compteur ; le proprietaire, depuis son appareil, peut toujours
+    changer son mot de passe pour le chasser.
+  */
+  it('ne laisse pas un intrus bloquer le proprietaire en ratant expres', async () => {
+    const { service } = setup();
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
+    for (let i = 0; i < LIMITS.passwordPerPlayer + 2; i++) {
+      await reasonOf(
+        service.changePassword(
+          ALICE.id,
+          { currentPassword: 'faux' },
+          'prise de controle',
+          '203.0.113.9',
+        ),
+      );
+    }
+    await service.changePassword(
+      ALICE.id,
+      { currentPassword: GOOD },
+      'phrase du proprietaire',
+      IP,
+      ALICE_DEVICE,
+    );
+    await expect(service.login('alice@gmail.com', 'phrase du proprietaire', IP)).resolves.toBe(
+      ALICE.id,
+    );
+  });
+
+  it('ne compte pas les preuves reussies', async () => {
+    const { service } = setup();
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
+    for (let i = 0; i < LIMITS.passwordPerPlayer + 1; i++) {
+      await service.authorizeRecoveryIssue(ALICE.id, GOOD, IP, ALICE_DEVICE);
+    }
+    await expect(
+      service.authorizeRecoveryIssue(ALICE.id, GOOD, IP, ALICE_DEVICE),
+    ).resolves.toBeUndefined();
   });
 
   it('borne les essais de mot de passe a la demande de code', async () => {
@@ -401,7 +470,7 @@ describe('une session seule ne prend pas le compte', () => {
 describe('changer de mot de passe revoque le reste', () => {
   it('revoque les sessions et detache les autres appareils, sauf celui qui demande', async () => {
     const { service, repo, revoked } = setup();
-    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP);
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
     const mine = 'a'.repeat(64);
     const intruder = 'b'.repeat(64);
     repo.devices.set(hashSecret(mine), ALICE.id);
@@ -410,28 +479,27 @@ describe('changer de mot de passe revoque le reste', () => {
 
     await service.changePassword(ALICE.id, { currentPassword: GOOD }, 'nouvelle phrase', IP, mine);
 
-    expect(revoked).toEqual([ALICE.id]);
+    expect(revoked()).toEqual([ALICE.id]);
     expect(repo.devices.get(hashSecret(mine))).toBe(ALICE.id);
     expect(repo.devices.has(hashSecret(intruder))).toBe(false);
     // Les appareils d'un autre joueur ne sont pas touches.
-    expect(repo.devices.get(hashSecret('c'.repeat(64)))).toBe(BOB.id);
+    expect(repo.devices.get(hashSecret(BOB_DEVICE))).toBe(BOB.id);
   });
 
   it('detache tous les appareils quand le demandeur ne dit pas lequel il est', async () => {
     const { service, repo } = setup();
-    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP);
-    repo.devices.set(hashSecret('a'.repeat(64)), ALICE.id);
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
     await service.changePassword(ALICE.id, { currentPassword: GOOD }, 'nouvelle phrase', IP);
-    expect(repo.devices.size).toBe(0);
+    expect([...repo.devices.values()]).toEqual([BOB.id]);
   });
 
   it('ne revoque rien quand la preuve est refusee', async () => {
     const { service, revoked } = setup();
-    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP);
+    await service.link(ALICE.id, 'alice@gmail.com', GOOD, IP, ALICE_DEVICE);
     await reasonOf(
       service.changePassword(ALICE.id, { currentPassword: 'faux' }, 'nouvelle ok', IP),
     );
-    expect(revoked).toEqual([]);
+    expect(revoked()).toEqual([]);
   });
 });
 
@@ -461,8 +529,8 @@ describe('adresse IP', () => {
 describe('longueur apres normalisation', () => {
   it('refuse un mot de passe de huit unites mais quatre caracteres', async () => {
     const { service } = setup();
-    expect(await reasonOf(service.link(ALICE.id, 'alice@gmail.com', '😀😀😀😀', IP))).toBe(
-      'PASSWORD_TOO_SHORT',
-    );
+    expect(
+      await reasonOf(service.link(ALICE.id, 'alice@gmail.com', '😀😀😀😀', IP, ALICE_DEVICE)),
+    ).toBe('PASSWORD_TOO_SHORT');
   });
 });

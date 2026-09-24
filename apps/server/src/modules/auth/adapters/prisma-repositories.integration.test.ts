@@ -5,10 +5,11 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { FreshAccessTokenVerifier } from '../application/fresh-token.js';
 import { SessionService } from '../application/session.js';
 import { generateDeviceSecret, hashSecret } from '../domain/credentials.js';
 import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
-import { PrismaPlayerRepository } from './prisma-repositories.js';
+import { PrismaPlayerRepository, PrismaRefreshTokenRepository } from './prisma-repositories.js';
 
 /**
  * Test d'integration : c'est la **contrainte d'unicite de Postgres** qui doit
@@ -350,9 +351,9 @@ describe.skipIf(!reachable)('identite email, contre une vraie base', () => {
     await repository.linkEmailIdentity(player.id, email, '$argon2id$ancien');
     await repository.setRecoveryIdentity(player.id, `hash_recovery_${randomUUID()}`);
 
-    await expect(repository.setPasswordHash(player.id, '$argon2id$nouveau', null)).resolves.toBe(
-      true,
-    );
+    await expect(
+      repository.setPasswordHash(player.id, '$argon2id$nouveau', null, new Date()),
+    ).resolves.toBe(true);
     await expect(repository.findByEmail(email)).resolves.toEqual({
       playerId: player.id,
       email,
@@ -369,9 +370,9 @@ describe.skipIf(!reachable)('identite email, contre une vraie base', () => {
 
   it('rend faux quand le joueur n a pas d adresse', async () => {
     const player = await newPlayer();
-    await expect(buildRepository().setPasswordHash(player.id, '$argon2id$x', null)).resolves.toBe(
-      false,
-    );
+    await expect(
+      buildRepository().setPasswordHash(player.id, '$argon2id$x', null, new Date()),
+    ).resolves.toBe(false);
   });
 });
 
@@ -402,7 +403,7 @@ describe.skipIf(!reachable)('changer de mot de passe detache les appareils', () 
     await repository.setRecoveryIdentity(player.id, `hash_recovery_${randomUUID()}`);
 
     await expect(
-      repository.setPasswordHash(player.id, '$argon2id$b', hashSecret(mine)),
+      repository.setPasswordHash(player.id, '$argon2id$b', hashSecret(mine), new Date()),
     ).resolves.toBe(true);
 
     const sessions = new SessionService({
@@ -410,8 +411,14 @@ describe.skipIf(!reachable)('changer de mot de passe detache les appareils', () 
       refreshTokens: {
         findByHash: () => Promise.resolve(null),
         create: (input) =>
-          Promise.resolve({ id: 'r', ...input, revokedAt: null, replacedBy: null }),
-        markRotated: () => Promise.resolve(),
+          Promise.resolve({
+            id: 'r',
+            ...input,
+            createdAt: new Date(),
+            revokedAt: null,
+            replacedBy: null,
+          }),
+        rotate: () => Promise.resolve('ROTATED' as const),
         revokeAllForPlayer: () => Promise.resolve(),
       },
       signer: { sign: () => Promise.resolve('jwt') },
@@ -431,5 +438,106 @@ describe.skipIf(!reachable)('changer de mot de passe detache les appareils', () 
     expect(
       await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'RECOVERY' } }),
     ).toBe(1);
+  });
+});
+
+/*
+  Seconde relecture (A et C), contre une vraie base : apres un changement de
+  mot de passe, l'intrus ne peut plus rien faire de ce qu'il detenait.
+*/
+describe.skipIf(!reachable)('l intrus ne se reinstalle pas apres un changement', () => {
+  async function victim() {
+    const players = buildRepository();
+    const deviceHash = newDeviceHash();
+    const player = await players.createWithDeviceIdentity({ deviceHash, displayName: 'Victime' });
+    await players.linkEmailIdentity(player.id, `test_${randomUUID()}@exemple.test`, '$argon2id$a');
+    return { players, player, deviceHash };
+  }
+
+  it('pose credentialsChangedAt : un jeton d acces anterieur est refuse', async () => {
+    const { players, player, deviceHash } = await victim();
+    await expect(players.credentialsChangedAt(player.id)).resolves.toBeNull();
+
+    const at = new Date();
+    await players.setPasswordHash(player.id, '$argon2id$b', deviceHash, at);
+    await expect(players.credentialsChangedAt(player.id)).resolves.toEqual(at);
+
+    const inner = {
+      verify: (token: string) => Promise.resolve({ sub: player.id, iat: Number(token) }),
+    };
+    const fresh = new FreshAccessTokenVerifier(inner, players);
+    const second = Math.floor(at.getTime() / 1_000);
+    // Le jeton de l'intrus, emis avant : refuse, donc `device/link` aussi.
+    await expect(fresh.verify(String(second - 60))).rejects.toThrow('CREDENTIALS_CHANGED');
+    // Celui que la route delivre a l'appareil qui a change : accepte.
+    await expect(fresh.verify(String(second))).resolves.toMatchObject({ sub: player.id });
+  });
+
+  it('revoque les jetons de rafraichissement dans la meme transaction', async () => {
+    const { players, player, deviceHash } = await victim();
+    const tokens = new PrismaRefreshTokenRepository(prisma as never);
+    const before = await tokens.create({
+      playerId: player.id,
+      tokenHash: `test_${randomUUID()}`,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+
+    await players.setPasswordHash(player.id, '$argon2id$b', deviceHash, new Date());
+    expect((await tokens.findByHash(before.tokenHash))?.revokedAt).not.toBeNull();
+  });
+
+  /*
+    C : un jeton cree avant le changement, meme s'il avait echappe a la
+    revocation, ne se renouvelle plus.
+  */
+  it('refuse de renouveler un jeton anterieur au changement', async () => {
+    const { players, player, deviceHash } = await victim();
+    const tokens = new PrismaRefreshTokenRepository(prisma as never);
+    const stored = await tokens.create({
+      playerId: player.id,
+      tokenHash: `test_${randomUUID()}`,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await players.setPasswordHash(player.id, '$argon2id$b', deviceHash, new Date(Date.now() + 5));
+    // On le remet vivant, comme s'il avait echappe a la revocation.
+    await prisma!.refreshToken.update({ where: { id: stored.id }, data: { revokedAt: null } });
+
+    await expect(
+      tokens.rotate({
+        id: stored.id,
+        playerId: player.id,
+        createdAt: stored.createdAt,
+        replacedByHash: `test_${randomUUID()}`,
+        expiresAt: new Date(Date.now() + 60_000),
+        at: new Date(),
+      }),
+    ).resolves.toBe('STALE');
+  });
+
+  /* C : de deux renouvellements concurrents du meme jeton, un seul reussit. */
+  it('ne laisse qu un renouvellement concurrent consommer le jeton', async () => {
+    const { player } = await victim();
+    const tokens = new PrismaRefreshTokenRepository(prisma as never);
+    const stored = await tokens.create({
+      playerId: player.id,
+      tokenHash: `test_${randomUUID()}`,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await Promise.all(Array.from({ length: 6 }, () => prisma!.$queryRaw`select 1 as x`));
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        tokens.rotate({
+          id: stored.id,
+          playerId: player.id,
+          createdAt: stored.createdAt,
+          replacedByHash: `test_${randomUUID()}`,
+          expiresAt: new Date(Date.now() + 60_000),
+          at: new Date(),
+        }),
+      ),
+    );
+    expect(outcomes.filter((o) => o === 'ROTATED')).toHaveLength(1);
+    expect(outcomes.filter((o) => o === 'REUSED')).toHaveLength(5);
   });
 });

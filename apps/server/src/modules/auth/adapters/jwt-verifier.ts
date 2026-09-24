@@ -14,7 +14,12 @@ export class JwtAccessTokenVerifier implements AccessTokenVerifier {
   constructor(@Inject(JwtService) private readonly jwt: JwtService) {}
 
   async verify(token: string): Promise<VerifiedToken> {
-    const payload = await this.jwt.verifyAsync<{ sub?: unknown }>(token);
-    return { sub: typeof payload.sub === 'string' ? payload.sub : '' };
+    const payload = await this.jwt.verifyAsync<{ sub?: unknown; iat?: unknown }>(token);
+    return {
+      sub: typeof payload.sub === 'string' ? payload.sub : '',
+      // `iat` est pose par la bibliotheque a la signature ; sans lui, le jeton
+      // ne peut pas prouver qu'il est posterieur a un changement de mot de passe.
+      ...(typeof payload.iat === 'number' ? { iat: payload.iat } : {}),
+    };
   }
 }

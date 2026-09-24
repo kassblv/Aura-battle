@@ -17,6 +17,7 @@ import {
 } from './adapters/prisma-repositories.js';
 import { RedisAttemptLimiter } from './adapters/redis-attempt-limiter.js';
 import { EmailAuthService, LIMITS } from './application/email.js';
+import { FreshAccessTokenVerifier } from './application/fresh-token.js';
 import { ProfileService } from './application/profile.js';
 import { RecoveryService } from './application/recovery.js';
 import { SessionService } from './application/session.js';
@@ -46,10 +47,22 @@ import { SocketAuthenticator } from './application/socket-auth.js';
   providers: [
     SystemClock,
     JwtAccessTokenVerifier,
+    /*
+      Le verificateur partage refuse tout jeton anterieur au dernier
+      changement de mot de passe (ADR 0013). Le handshake Socket.IO et toutes
+      les routes authentifiees — celles de l'inventaire et des defis comprises
+      — passent par lui : aucune ne peut oublier le controle.
+    */
+    {
+      provide: FreshAccessTokenVerifier,
+      inject: [JwtAccessTokenVerifier, PrismaPlayerRepository],
+      useFactory: (verifier: JwtAccessTokenVerifier, players: PrismaPlayerRepository) =>
+        new FreshAccessTokenVerifier(verifier, players),
+    },
     {
       provide: SocketAuthenticator,
-      inject: [JwtAccessTokenVerifier],
-      useFactory: (verifier: JwtAccessTokenVerifier) => new SocketAuthenticator(verifier),
+      inject: [FreshAccessTokenVerifier],
+      useFactory: (verifier: FreshAccessTokenVerifier) => new SocketAuthenticator(verifier),
     },
     {
       provide: PrismaService,
@@ -72,7 +85,6 @@ import { SocketAuthenticator } from './application/socket-auth.js';
       provide: EmailAuthService,
       inject: [
         PrismaPlayerRepository,
-        PrismaRefreshTokenRepository,
         RecoveryService,
         RedisService,
         SystemClock,
@@ -81,7 +93,6 @@ import { SocketAuthenticator } from './application/socket-auth.js';
       ],
       useFactory: (
         players: PrismaPlayerRepository,
-        refreshTokens: PrismaRefreshTokenRepository,
         recovery: RecoveryService,
         redis: RedisService,
         clock: SystemClock,
@@ -99,7 +110,6 @@ import { SocketAuthenticator } from './application/socket-auth.js';
           }),
           limiter: new RedisAttemptLimiter(redis.client, LIMITS.windowMs),
           recovery,
-          refreshTokens,
           clock,
           // La cle du serveur, deja secrete et deja requise : le HMAC prefixe
           // son message (`email-attempts:`), donc aucune signature de jeton ne
@@ -112,8 +122,8 @@ import { SocketAuthenticator } from './application/socket-auth.js';
     // JWT. Remplacer la verification ne demanderait de toucher qu'ici.
     {
       provide: 'ACCESS_TOKEN_VERIFIER',
-      inject: [JwtAccessTokenVerifier],
-      useFactory: (verifier: JwtAccessTokenVerifier) => verifier,
+      inject: [FreshAccessTokenVerifier],
+      useFactory: (verifier: FreshAccessTokenVerifier) => verifier,
     },
     {
       provide: JwtAccessTokenSigner,

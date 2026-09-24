@@ -18,7 +18,6 @@ import type {
   EmailIdentityRepository,
   PasswordHasher,
   PlayerRecord,
-  RefreshTokenRepository,
 } from '../domain/ports.js';
 import { RecoveryError } from './recovery.js';
 
@@ -45,6 +44,7 @@ export type EmailAuthFailure =
   | 'PASSWORD_TOO_COMMON'
   | 'PASSWORD_MATCHES_EMAIL'
   | 'PASSWORD_REQUIRED'
+  | 'DEVICE_PROOF_REQUIRED'
   | 'RECOVERY_CODE_TOO_RECENT'
   | 'NO_CLIENT_ADDRESS'
   | 'TOO_MANY_ATTEMPTS';
@@ -66,9 +66,10 @@ export class EmailAuthError extends Error {
  *   milliers d'adresses. Une connexion reussie rend sa tentative.
  * - **10 rattachements par joueur, 20 par IP** : « cette adresse est deja
  *   prise » est une information, et un compte invite se cree en un appel.
- * - **5 preuves de mot de passe par joueur, 20 par IP** (changement de mot de
- *   passe, demande de code) : une session volee ne doit pas devenir un banc
- *   d'essai de l'ancien mot de passe, qui sert peut-etre ailleurs.
+ * - **5 echecs de preuve de mot de passe par joueur et par appareil, 20
+ *   preuves par IP** (changement de mot de passe, demande de code) : une
+ *   session volee ne doit pas devenir un banc d'essai de l'ancien mot de
+ *   passe, qui sert peut-etre ailleurs.
  *
  * Bloquer une adresse bloque aussi son proprietaire, quinze minutes. C'est le
  * prix, et il est faible ici : son appareil reste connecte par son secret, et
@@ -108,8 +109,6 @@ export interface EmailAuthDependencies {
   readonly recovery: {
     prove(code: string): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date }>;
   };
-  /** Changer de mot de passe revoque toutes les sessions. */
-  readonly refreshTokens: Pick<RefreshTokenRepository, 'revokeAllForPlayer'>;
   readonly clock: Clock;
   /** Cle du HMAC qui cache les adresses dans Redis et dans les journaux. */
   readonly traceKey: string;
@@ -165,6 +164,7 @@ export class EmailAuthService {
     rawEmail: string,
     password: string,
     ip: string | undefined,
+    deviceSecret?: string,
   ): Promise<EmailStatusResponse> {
     const email = normalizeEmail(rawEmail);
     this.enforcePolicy(password, email);
@@ -180,6 +180,12 @@ export class EmailAuthService {
 
     const player = await this.deps.identities.findById(playerId);
     if (player === null) throw new EmailAuthError('UNKNOWN_PLAYER');
+    // Un compte sans adresse n'a que ses appareils pour secret : rattacher une
+    // adresse exige d'en prouver un, sinon un jeton vole suffirait a poser
+    // l'adresse et le mot de passe de l'intrus, puis a chasser le joueur.
+    if ((await this.ownedDevice(playerId, deviceSecret)) === null) {
+      throw new EmailAuthError('DEVICE_PROOF_REQUIRED');
+    }
     if ((await this.deps.identities.findEmailOf(playerId)) !== null) {
       throw new EmailAuthError('EMAIL_ALREADY_LINKED');
     }
@@ -263,56 +269,105 @@ export class EmailAuthService {
     if (identity === null) throw new EmailAuthError('EMAIL_NOT_LINKED');
     this.enforcePolicy(newPassword, identity.email);
 
-    const byPlayer = await this.attemptProof(playerId, ip, 'changement de mot de passe');
-    await this.checkProof(playerId, identity.secretHash, proof);
+    const device = await this.ownedDevice(playerId, deviceSecret);
+    await this.proveWithLimits(playerId, device, ip, identity.secretHash, proof, 'mot de passe');
 
     const secretHash = await this.deps.hasher.hash(preparePassword(newPassword));
-    const keep = deviceSecret === undefined ? null : hashSecret(deviceSecret);
-    if (!(await this.deps.identities.setPasswordHash(playerId, secretHash, keep))) {
+    if (
+      !(await this.deps.identities.setPasswordHash(
+        playerId,
+        secretHash,
+        device,
+        this.deps.clock.now(),
+      ))
+    ) {
       throw new EmailAuthError('EMAIL_NOT_LINKED');
     }
-    await this.deps.refreshTokens.revokeAllForPlayer(playerId, this.deps.clock.now());
-    await this.deps.limiter.reset(byPlayer);
   }
 
   /**
    * Autorise, ou refuse, la delivrance d'un nouveau code de recuperation.
    *
-   * Sans adresse rattachee, la session suffit : il n'existe aucun secret plus
-   * fort a exiger. Avec une adresse, l'ancien mot de passe est exige — sinon
-   * un intrus muni d'une session remplacerait le code du joueur par le sien,
-   * puis s'en servirait pour changer le mot de passe.
+   * - Avec une adresse, l'ancien mot de passe est exige : sinon un intrus muni
+   *   d'une session remplacerait le code du joueur par le sien, puis s'en
+   *   servirait pour changer le mot de passe.
+   * - Sans adresse, la preuve d'un appareil DEJA rattache a ce joueur est
+   *   exigee (`deviceSecret`) : un jeton vole ne suffit plus, il faut le
+   *   secret que seul l'appareil du joueur detient.
    */
   async authorizeRecoveryIssue(
     playerId: string,
     currentPassword: string | undefined,
     ip: string | undefined,
+    deviceSecret?: string,
   ): Promise<void> {
     const identity = await this.deps.identities.findEmailOf(playerId);
-    if (identity === null) return;
+    const device = await this.ownedDevice(playerId, deviceSecret);
+    if (identity === null) {
+      if (device === null) throw new EmailAuthError('DEVICE_PROOF_REQUIRED');
+      return;
+    }
     if (currentPassword === undefined) throw new EmailAuthError('PASSWORD_REQUIRED');
-
-    const byPlayer = await this.attemptProof(playerId, ip, 'demande de code');
-    await this.checkProof(playerId, identity.secretHash, { currentPassword });
-    await this.deps.limiter.reset(byPlayer);
+    await this.proveWithLimits(
+      playerId,
+      device,
+      ip,
+      identity.secretHash,
+      { currentPassword },
+      'demande de code',
+    );
   }
 
-  /** Compte une preuve de mot de passe, par joueur et par IP ; rend la cle du joueur. */
-  private async attemptProof(
+  /**
+   * L'empreinte de cet appareil s'il appartient bien a CE joueur, sinon `null`.
+   *
+   * Un secret d'appareil fait 256 bits : le deviner n'est pas une attaque, et
+   * sa preuve n'a donc pas besoin de limite de tentatives.
+   */
+  private async ownedDevice(
     playerId: string,
+    deviceSecret: string | undefined,
+  ): Promise<string | null> {
+    if (deviceSecret === undefined) return null;
+    const hash = hashSecret(deviceSecret);
+    const owner = await this.deps.identities.findByDeviceHash(hash);
+    return owner?.id === playerId ? hash : null;
+  }
+
+  /**
+   * Verifie une preuve de mot de passe sous deux limites.
+   *
+   * - **Par IP**, chaque tentative compte.
+   * - **Par joueur ET par appareil**, seuls les ECHECS comptent. Un intrus qui
+   *   rate expres cinq fois ne remplit que son propre compteur — celui de son
+   *   appareil, ou celui des requetes sans appareil prouve — et le proprietaire,
+   *   depuis le sien, reste libre de changer son mot de passe pour le chasser.
+   */
+  private async proveWithLimits(
+    playerId: string,
+    device: string | null,
     ip: string | undefined,
+    secretHash: string,
+    proof: PasswordProof,
     what: string,
-  ): Promise<string> {
-    const byPlayer = `password:player:${playerId}`;
-    const allowed = await this.deps.limiter.attempt([
-      { key: byPlayer, limit: LIMITS.passwordPerPlayer },
+  ): Promise<void> {
+    const failures = `password:player:${playerId}:${device ?? 'sans-appareil'}`;
+    const byIp = await this.deps.limiter.attempt([
       { key: ipKey('password', ip), limit: LIMITS.passwordPerIp },
     ]);
-    if (!allowed) {
+    if (!byIp || (await this.deps.limiter.peek(failures)) >= LIMITS.passwordPerPlayer) {
       this.deps.log.warn(`${what} bloque : trop de tentatives`);
       throw new EmailAuthError('TOO_MANY_ATTEMPTS');
     }
-    return byPlayer;
+    try {
+      await this.checkProof(playerId, secretHash, proof);
+    } catch (cause) {
+      if (cause instanceof EmailAuthError) {
+        await this.deps.limiter.attempt([{ key: failures, limit: LIMITS.passwordPerPlayer }]);
+      }
+      throw cause;
+    }
+    await this.deps.limiter.reset(failures);
   }
 
   private async checkProof(

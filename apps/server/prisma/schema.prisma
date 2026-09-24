@@ -18,18 +18,23 @@ datasource db {
 
 /// Un joueur. Cree sans inscription : le premier lancement suffit.
 model Player {
-  id           String    @id @default(uuid())
-  displayName  String
-  createdAt    DateTime  @default(now())
-  lastSeenAt   DateTime  @default(now())
-  softCurrency Int       @default(0)
-  hardCurrency Int       @default(0)
+  id                   String    @id @default(uuid())
+  displayName          String
+  createdAt            DateTime  @default(now())
+  lastSeenAt           DateTime  @default(now())
+  softCurrency         Int       @default(0)
+  hardCurrency         Int       @default(0)
   /// Experience cumulee. Le niveau s'en DEDUIT (`levelFor`, @aura/rules) au
   /// lieu d'etre stocke a cote : deux colonnes qui decrivent la meme chose
   /// finissent par se contredire, et c'est toujours celle qu'on n'a pas mise a
   /// jour qui s'affiche.
-  xp           Int       @default(0)
-  bannedUntil  DateTime?
+  xp                   Int       @default(0)
+  bannedUntil          DateTime?
+  /// Dernier changement de mot de passe. Tout jeton d'acces emis AVANT est
+  /// refuse, et un jeton de rafraichissement cree avant ne se renouvelle plus :
+  /// sans cela, l'intrus chasse garderait son jeton d'acces jusqu'a quinze
+  /// minutes, assez pour rattacher un nouvel appareil et revenir (ADR 0013).
+  credentialsChangedAt DateTime?
 
   identities    AuthIdentity[]
   refreshTokens RefreshToken[]

@@ -63,6 +63,17 @@ export function describeAttemptLimiterContract(
       await close();
     });
 
+    it('lit un compteur sans le toucher', async () => {
+      const { limiter, close } = await open(60_000);
+      const key = newKey();
+      await expect(limiter.peek(key)).resolves.toBe(0);
+      await limiter.attempt([{ key, limit: 5 }]);
+      await limiter.attempt([{ key, limit: 5 }]);
+      await expect(limiter.peek(key)).resolves.toBe(2);
+      await expect(limiter.peek(key)).resolves.toBe(2);
+      await close();
+    });
+
     it('remet un compteur a zero', async () => {
       const { limiter, close } = await open(60_000);
       const key = newKey();

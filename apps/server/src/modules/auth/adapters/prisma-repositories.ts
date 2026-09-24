@@ -3,6 +3,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
 import type {
+  CredentialsChangeReader,
   EmailIdentityRecord,
   EmailIdentityRepository,
   PlayerRecord,
@@ -22,7 +23,11 @@ import type {
 
 @Injectable()
 export class PrismaPlayerRepository
-  implements PlayerRepository, RecoveryIdentityRepository, EmailIdentityRepository
+  implements
+    PlayerRepository,
+    RecoveryIdentityRepository,
+    EmailIdentityRepository,
+    CredentialsChangeReader
 {
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir auth.controller.ts).
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -165,6 +170,7 @@ export class PrismaPlayerRepository
     playerId: string,
     secretHash: string,
     keepDeviceHash: string | null,
+    at: Date,
   ): Promise<boolean> {
     return this.prisma.$transaction(async (tx) => {
       const { count } = await tx.authIdentity.updateMany({
@@ -179,8 +185,23 @@ export class PrismaPlayerRepository
           ...(keepDeviceHash === null ? {} : { subject: { not: keepDeviceHash } }),
         },
       });
+      // Meme transaction que la revocation : un renouvellement concurrent lit
+      // cette ligne `FOR SHARE` et ne peut donc pas s'intercaler (voir `rotate`).
+      await tx.player.update({ where: { id: playerId }, data: { credentialsChangedAt: at } });
+      await tx.refreshToken.updateMany({
+        where: { playerId, revokedAt: null },
+        data: { revokedAt: at },
+      });
       return true;
     });
+  }
+
+  async credentialsChangedAt(playerId: string): Promise<Date | null> {
+    const player = await this.prisma.player.findUnique({
+      where: { id: playerId },
+      select: { credentialsChangedAt: true },
+    });
+    return player?.credentialsChangedAt ?? null;
   }
 
   /**
@@ -271,6 +292,7 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
         id: true,
         playerId: true,
         tokenHash: true,
+        createdAt: true,
         expiresAt: true,
         revokedAt: true,
         replacedBy: true,
@@ -289,6 +311,7 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
         id: true,
         playerId: true,
         tokenHash: true,
+        createdAt: true,
         expiresAt: true,
         revokedAt: true,
         replacedBy: true,
@@ -296,10 +319,44 @@ export class PrismaRefreshTokenRepository implements RefreshTokenRepository {
     });
   }
 
-  async markRotated(id: string, replacedByHash: string, at: Date): Promise<void> {
-    await this.prisma.refreshToken.update({
-      where: { id },
-      data: { replacedBy: replacedByHash, revokedAt: at },
+  /**
+   * Consomme et remplace, dans une transaction (ADR 0013).
+   *
+   * La consommation est un `updateMany` CONDITIONNEL (encore vivant) : de deux
+   * appels concurrents, un seul compte une ligne. La ligne du joueur est lue
+   * `FOR SHARE` : un changement de mot de passe, qui la modifie, attend la fin
+   * de cette transaction ou la fait attendre — il passe donc soit avant (et
+   * le jeton est `STALE`), soit apres (et sa revocation atteint le remplacant).
+   */
+  async rotate(input: {
+    readonly id: string;
+    readonly playerId: string;
+    readonly createdAt: Date;
+    readonly replacedByHash: string;
+    readonly expiresAt: Date;
+    readonly at: Date;
+  }): Promise<'ROTATED' | 'REUSED' | 'STALE'> {
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.$queryRaw<{ credentialsChangedAt: Date | null }[]>`
+        SELECT "credentialsChangedAt" FROM "Player" WHERE id = ${input.playerId} FOR SHARE`;
+      const { count } = await tx.refreshToken.updateMany({
+        where: { id: input.id, revokedAt: null, replacedBy: null },
+        data: { replacedBy: input.replacedByHash, revokedAt: input.at },
+      });
+      if (count !== 1) return 'REUSED' as const;
+
+      const changedAt = rows[0]?.credentialsChangedAt ?? null;
+      if (changedAt !== null && changedAt.getTime() > input.createdAt.getTime()) {
+        return 'STALE' as const;
+      }
+      await tx.refreshToken.create({
+        data: {
+          playerId: input.playerId,
+          tokenHash: input.replacedByHash,
+          expiresAt: input.expiresAt,
+        },
+      });
+      return 'ROTATED' as const;
     });
   }
 
