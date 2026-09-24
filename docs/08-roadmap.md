@@ -179,7 +179,13 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - Protocole 2.0.0 : le choix désigne une pose, et le serveur vérifie qu'elle est offerte ou possédée.
   - Simulation : chaque famille entre 49,5 et 50,6 % de victoires.
   - Six poses nouvelles : Roulade, Biceps contractés, Pompes, Planche, Poirier, Drapeau humain.
-- [ ] **Chantier n°2 — écran de choix** : des cartes de pose (nom, silhouette, famille, puissance, coût) à la place des boutons de famille et du bouton « danse suivante ».
+- [x] **Chantier n°2 — écran de choix** (2026-09-24). Spec : `docs/superpowers/specs/2026-09-24-main-de-cartes-design.md`.
+  - Une main de cartes en éventail avec un pictogramme par pose, sous cinq onglets de famille.
+  - Les variantes empilées se retournent d'un toucher.
+  - La **carte brillante ✨** : une case tirée par joueur et par manche, ×1,2, secrète jusqu'à la révélation.
+  - Chaque geste a son effet, son son et sa vibration : distribution, soulèvement, retournement, tremblement, écrasement.
+  - La caméra de choix cadre les combattants au-dessus de la main. Mesuré sur six formats d'écran.
+  - Protocole 2.1.0.
 - [ ] **Chantier n°3 — révélation** : le nom des deux poses, la mise en scène du contre (qui bat qui, et pourquoi), la caméra.
 - [ ] **Chantier n°4 — animations 3D** : des poses plus fluides et plus spectaculaires, et des variantes pour Acrobatie et Prouesse.
 - [ ] **Chantier n°5 — vestiaire et boutique** : parcourir, essayer et acheter des poses ; les jetons (monnaie dure) pour débloquer plus vite, sans jamais vendre de puissance (règle d'or n°3).

@@ -197,6 +197,17 @@ Ce qui en découle pour l'écriture :
   parce qu'il va vite : `ease: true` plus une part de boucle large sur la pose
   tenue.
 
+## Pictogramme (`icon`)
+
+Chaque pose de mouvement porte un **pictogramme** (`"icon"`, un emoji). C'est
+l'illustration de sa carte dans la main de choix (chantier n°2).
+- Il est **obligatoire** : `loadAnimation` refuse une pose sans pictogramme.
+- Il est unique au sein d'une famille : un test le vérifie.
+- Il est facultatif pour une animation système.
+
+Choisir un pictogramme qui montre le **geste**, pas la personne qui l'a rendu
+célèbre, selon la même règle que pour les noms.
+
 ## Poses au sol, à l'envers et en boule (mesuré en écrivant Acrobatie et Prouesse)
 
 Les six poses du 2026-09-24 (Roulade, Biceps contractés, Pompes, Planche,

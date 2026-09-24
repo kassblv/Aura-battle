@@ -60,7 +60,7 @@ CREATED ─────────────────────▶ ROUND
 | `match:found` | `{ matchId, seat: 'left' \| 'right', opponent: { displayName, league, cosmetics }, protocolVersion, rulesVersion, contentVersion, ghost: boolean }` |
 | `round:intro` | `{ matchId, round, endsAt, roundsWon, energy, ult }` |
 | `recharge:start` | `{ matchId, round, startsAt, endsAt, orbs: OrbSpec[] }` — séquence identique pour les deux joueurs |
-| `choice:start` | `{ matchId, round, endsAt, meter: { period, zone, perfect, center }, energy, ult }` — `energy` et `ult` du destinataire uniquement |
+| `choice:start` | `{ matchId, round, endsAt, meter: { period, zone, perfect, center }, energy, ult, shiny? }` — `energy`, `ult` et `shiny` (sa case brillante) du destinataire uniquement |
 | `opponent:locked` | `{ matchId, round }` |
 | `intent:shown` | `{ matchId, round, seat, style }` |
 | `round:result` | voir ci-dessous |
@@ -111,6 +111,9 @@ C'est le **premier** message qui contient les choix de l'adversaire.
 
 - `PROTOCOL_VERSION` (semver) dans `@aura/protocol`. Major différent ⇒ `error { code: 'CLIENT_OUTDATED' }` et écran de mise à jour.
 - **2.0.0** (2026-09-24) : `choice:lock.move` remplacé par `poseId`, familles passées de 3 à 5 (ADR 0014). Un client 1.x est renvoyé sur l'écran de mise à jour dès la connexion.
+- **2.1.0** (2026-09-24) : la carte brillante. Deux champs sont ajoutés, facultatifs et donc compatibles :
+  - `choice:start.shiny: { style, tier }`, la case du **destinataire** seulement ;
+  - `round:result.sides.*.shiny: boolean`.
 - La charge d'authentification du handshake est elle aussi décrite par un schéma : `handshakeAuthSchema` = `{ token, protocolVersion }`, strict et borné. C'est le seul point d'entrée dont un abus précède toute vérification métier.
 - `rulesVersion` et `contentVersion` sont envoyés dans `match:found`. Le serveur ne mélange jamais deux versions de règles dans un même match.
 
