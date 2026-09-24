@@ -5,6 +5,10 @@ describe('PROTOCOL_VERSION', () => {
   it('est un semver', () => {
     expect(PROTOCOL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
+
+  it('est en 2.0.0 : le choix designe une pose', () => {
+    expect(PROTOCOL_VERSION).toBe('2.0.0');
+  });
 });
 
 describe('majorOf', () => {
@@ -22,11 +26,13 @@ describe('majorOf', () => {
 describe('isCompatibleProtocol', () => {
   it('accepte la meme version majeure', () => {
     expect(isCompatibleProtocol(PROTOCOL_VERSION)).toBe(true);
-    expect(isCompatibleProtocol('1.9.3')).toBe(true);
+    expect(isCompatibleProtocol('2.9.3')).toBe(true);
   });
 
   it('refuse une version majeure differente', () => {
-    expect(isCompatibleProtocol('2.0.0')).toBe(false);
+    // Un client 1.x enverrait `move`, que le serveur refuse desormais.
+    expect(isCompatibleProtocol('1.3.0')).toBe(false);
+    expect(isCompatibleProtocol('3.0.0')).toBe(false);
     expect(isCompatibleProtocol('0.9.0')).toBe(false);
   });
 

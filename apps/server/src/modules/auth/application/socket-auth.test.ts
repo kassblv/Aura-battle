@@ -44,13 +44,13 @@ describe('SocketAuthenticator — le handshake est la premiere barriere', () => 
   });
 
   it('refuse un client d une version majeure differente', async () => {
-    const result = await authenticator.authenticate(handshake({ protocolVersion: '2.0.0' }));
+    const result = await authenticator.authenticate(handshake({ protocolVersion: '1.3.0' }));
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('CLIENT_OUTDATED');
   });
 
   it('accepte une version mineure differente, qui reste compatible', async () => {
-    const result = await authenticator.authenticate(handshake({ protocolVersion: '1.9.3' }));
+    const result = await authenticator.authenticate(handshake({ protocolVersion: '2.9.3' }));
     expect(result.ok).toBe(true);
   });
 
@@ -59,7 +59,7 @@ describe('SocketAuthenticator — le handshake est la premiere barriere', () => 
     // pas « reconnecte-toi » : sinon il boucle sur une reconnexion inutile.
     const result = await authenticator.authenticate({
       token: 'jwt.faux',
-      protocolVersion: '2.0.0',
+      protocolVersion: '1.3.0',
     });
     expect(result.ok).toBe(false);
     if (!result.ok) expect(result.code).toBe('CLIENT_OUTDATED');

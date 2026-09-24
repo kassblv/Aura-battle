@@ -29,7 +29,15 @@
   serveur 1.2 ne les envoie pas et le client retombe sur la meme. Pas de
   rupture majeure.
 */
-export const PROTOCOL_VERSION = '1.3.0';
+/*
+  2.0.0 — le choix designe une POSE, et les familles passent de trois a cinq.
+
+  `choice:lock.move` est remplace par `poseId`. Un client 1.x enverrait un champ
+  que le serveur refuse : il est renvoye sur l'ecran de mise a jour des la
+  connexion (`CLIENT_OUTDATED`) plutot que de perdre chaque verrouillage en
+  silence.
+*/
+export const PROTOCOL_VERSION = '2.0.0';
 
 const MAJOR = /^(\d+)\./;
 

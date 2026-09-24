@@ -53,37 +53,37 @@ describe('identifiants — pas d injection de journal ni de collision de cle', (
   });
 
   /**
-   * Le client n'envoie plus aucun identifiant de contenu.
+   * La pose est le SEUL identifiant de contenu venu du client.
    *
-   * C'etait la derniere surface ou il en fournissait un — celui que le serveur
-   * irait chercher dans le catalogue, donc celui ou une traversee de chemin
-   * qui passerait la validation irait lire ce qu'elle veut sur le disque. Le
-   * schema le refusait deja ; il refuse maintenant le champ entier, ce qui est
-   * plus fort : il n'y a plus de chaine a valider, donc plus rien a rater.
+   * Depuis la 2.0.0, le choix designe une pose : c'est une intention (« je
+   * joue la roue »), et le serveur la resout lui-meme — mouvement deduit du
+   * catalogue, possession verifiee en base. Tout le reste de l'apparence
+   * reste interdit : un `cosmetic` fourni par le client est refuse en entier.
    *
-   * Le meme controle vaut toujours cote SORTANT, ou `round:result` porte
-   * encore un cosmetique — emis par le serveur, mais valide a l'emission.
+   * La pose finit cherchee dans le catalogue : son format est donc borne au
+   * schema des identifiants de contenu, et une traversee de chemin ne passe
+   * pas la validation.
    */
-  it('n accepte plus aucun identifiant de contenu venu du client', () => {
+  it('n accepte que la pose comme identifiant de contenu venu du client', () => {
     const choix = {
       matchId: 'm_01',
       round: 1,
       seq: 1,
-      move: { style: 'hype', tier: 2 },
+      poseId: 'anim.hype.t2.floss',
       amp: 1,
       ult: false,
       timing: { chargeAt: 0, tapAt: 400 },
     };
     expect(parseClientMessage('choice:lock', choix).success).toBe(true);
-    for (const animationId of ['anim.hype.t2.floss', '../../etc/passwd']) {
-      expect(
-        parseClientMessage('choice:lock', {
-          ...choix,
-          cosmetic: { animationId, effectId: 'fx.glow' },
-        }).success,
-        animationId,
-      ).toBe(false);
+    for (const poseId of ['../../etc/passwd', 'anim/hype', 'ANIM.HYPE.T2.FLOSS', 'a'.repeat(121)]) {
+      expect(parseClientMessage('choice:lock', { ...choix, poseId }).success, poseId).toBe(false);
     }
+    expect(
+      parseClientMessage('choice:lock', {
+        ...choix,
+        cosmetic: { animationId: 'anim.hype.t2.floss', effectId: 'fx.glow' },
+      }).success,
+    ).toBe(false);
   });
 });
 
@@ -174,7 +174,7 @@ describe('timing — la charge reste dans la phase de choix', () => {
     matchId: 'm_01',
     round: 1,
     seq: 9,
-    move: { style: 'provoc', tier: 2 },
+    poseId: 'anim.provoc.t2.mewing',
     amp: 1,
     ult: false,
     timing,

@@ -17,7 +17,7 @@ const validLock = {
   matchId: 'm_01',
   round: 1,
   seq: 9,
-  move: { style: 'provoc', tier: 2 },
+  poseId: 'anim.provoc.t2.mewing',
   amp: 1,
   ult: false,
   timing: { chargeAt: 3_100, tapAt: 4_012 },
@@ -154,15 +154,24 @@ describe('choice:lock', () => {
     ).toBe(false);
   });
 
-  it('refuse un style ou un palier inconnu', () => {
+  /*
+    2.0.0 : le client dit la POSE, jamais le mouvement. Envoyer les deux
+    laisserait un client mentir sur l'un ou l'autre ; le serveur deduit
+    famille et palier du catalogue.
+  */
+  it('refuse l ancien champ move, meme accompagne d une pose', () => {
+    const { poseId: _ignored, ...sansPose } = validLock;
+    const ancien = { ...sansPose, move: { style: 'provoc', tier: 2 } };
+    expect(parseClientMessage('choice:lock', ancien).success).toBe(false);
     expect(
-      parseClientMessage('choice:lock', { ...validLock, move: { style: 'chill', tier: 2 } })
+      parseClientMessage('choice:lock', { ...validLock, move: { style: 'provoc', tier: 2 } })
         .success,
     ).toBe(false);
-    expect(
-      parseClientMessage('choice:lock', { ...validLock, move: { style: 'provoc', tier: 5 } })
-        .success,
-    ).toBe(false);
+  });
+
+  it('exige une pose', () => {
+    const { poseId: _ignored, ...sansPose } = validLock;
+    expect(parseClientMessage('choice:lock', sansPose).success).toBe(false);
   });
 
   it('refuse un amplificateur hors bornes', () => {

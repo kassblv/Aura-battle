@@ -3,7 +3,7 @@ import { z } from 'zod';
 import {
   amplifierSchema,
   matchIdSchema,
-  moveSchema,
+  contentIdSchema,
   roundSchema,
   seqSchema,
   styleSchema,
@@ -112,7 +112,13 @@ export const CLIENT_MESSAGES = {
     matchId: matchIdSchema,
     round: roundSchema,
     seq: seqSchema,
-    move: moveSchema,
+    /**
+     * La pose jouee (2.0.0). Le client ne dit que CA : famille et palier s'en
+     * deduisent cote serveur (`moveOfAnimation`), qui verifie aussi la
+     * possession. Envoyer les deux laisserait un client mentir sur l'un ou
+     * l'autre.
+     */
+    poseId: contentIdSchema,
     amp: amplifierSchema,
     ult: z.boolean(),
     /*
