@@ -142,9 +142,11 @@ poses : une pose est du contenu.
 
 ### Serveur
 
-- Au verrouillage, le serveur vérifie la **possession** de la pose : une pose
-  payante non possédée est refusée avec `NOT_OWNED`. Les poses gratuites sont
-  possédées par tous (`isOffered`).
+- Au verrouillage, le serveur vérifie la pose. Un identifiant qui n'est pas une
+  pose est refusé (`INVALID_PAYLOAD`) et compté au seul siège fautif. Une pose
+  payante **non possédée** joue la pose offerte de sa case et vaut un simple
+  avertissement (`COSMETIC_NOT_OWNED`) : un achat ne doit jamais coûter une
+  manche (révisé après la relecture sécurité, voir ADR 0014).
 - Le choix par défaut suit la règle du §1.
 - La révélation montre la pose verrouillée (`cosmetic.animationId` de
   `round:result`), ou la pose gratuite de la case pour un fantôme ou un choix
@@ -180,7 +182,8 @@ colonne `hardCurrency` existante).
       dans les seuils de `docs/09-testing.md`.
 - [ ] `protocol` 2.0.0 : schémas testés, un client 1.x est refusé proprement.
 - [ ] `match` e2e :
-      - une pose non possédée est refusée ;
+      - un identifiant qui n'est pas une pose est refusé, une pose non
+        possédée joue la pose offerte de sa case ;
       - rien du choix ne sort avant `round:result` ;
       - la pose par défaut est appliquée à l'échéance ;
       - `round:result` porte la pose et le mouvement.

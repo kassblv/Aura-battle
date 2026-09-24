@@ -34,9 +34,19 @@ score.
    l'attente, et une pose achetable n'est jamais plus forte que la pose offerte
    de sa case.
 5. **Protocole 2.0.0.** `choice:lock` envoie une `poseId` au lieu de `move`. Le
-   serveur en déduit le mouvement (`moveOfAnimation`) et vérifie qu'elle est
-   offerte ou possédée. Une pose refusée est imputée au seul siège fautif et lui
-   vaut une erreur rejouable.
+   serveur en déduit le mouvement (`moveOfAnimation`), puis :
+   - un identifiant qui n'est **pas une pose** est refusé (`INVALID_PAYLOAD`,
+     non rejouable) et compté au seul siège fautif : un client honnête n'en
+     envoie jamais ;
+   - une pose valide mais **ni offerte ni possédée** verrouille quand même son
+     mouvement, avec la **pose offerte de la case**, et le joueur reçoit un
+     simple avertissement (`COSMETIC_NOT_OWNED`), sans suspicion. La refuser
+     ferait d'un achat cosmétique un désavantage de jeu (règle d'or n°3) : il
+     suffit d'un inventaire indisponible à la connexion pour qu'un joueur
+     honnête joue une pose achetée que le match ne lui connaît pas.
+6. **Choix par défaut :** un siège qui ne verrouille pas joue le palier 0 de la
+   famille tirée par la graine, et c'est cette famille — pas une famille de
+   repli fixe — que la révélation et la trace de fantôme nomment.
 
 ## Conséquences
 

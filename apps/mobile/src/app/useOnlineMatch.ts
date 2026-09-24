@@ -1,3 +1,4 @@
+import { onlineErrorText } from './onlineErrors.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { Choice, RechargeTap } from '@aura/rules';
 import { createGameClient, type GameClient } from '../net/client.js';
@@ -180,7 +181,8 @@ export function useOnlineMatch(
       setInviteCode(data.code);
     });
     const offError = client.on('error', (data) => {
-      setError(data.message);
+      const text = onlineErrorText(data.code, data.message);
+      if (text !== null) setError(text);
       // Un refus d entree en file laisse le joueur devant un compte a rebours
       // qui ne mene nulle part : on referme la recherche avec le message.
       if (data.code === 'ALREADY_IN_QUEUE' || data.code === 'ALREADY_IN_MATCH') setQueue(null);
