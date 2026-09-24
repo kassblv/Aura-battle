@@ -6,6 +6,8 @@ import {
   ForbiddenException,
   Get,
   Headers,
+  HttpException,
+  HttpStatus,
   Inject,
   NotFoundException,
   Post,
@@ -20,12 +22,14 @@ import {
 } from '@aura/protocol';
 import { readBearer } from '../../auth/application/bearer.js';
 import type { AccessTokenVerifier } from '../../auth/application/socket-auth.js';
-import type { LoadoutData, PlayerInventory } from '../domain/ports.js';
+import { SystemClock } from '../../../shared/clock.js';
+import type { Clock, LoadoutData, PlayerInventory } from '../domain/ports.js';
 import {
   InventoryError,
   InventoryService,
   type InventoryFailure,
 } from '../application/inventory.js';
+import { InventoryRateLimit, type InventoryRoute } from '../application/inventory-rate-limit.js';
 
 /**
  * Routes de l'inventaire (jalon M8).
@@ -38,6 +42,12 @@ import {
  * Le jeton est lu ici plutot que par une garde globale, comme dans
  * `auth.controller.ts` : la garde y fermerait aussi les routes qu'on appelle
  * justement sans jeton.
+ *
+ * Les deux ecritures sont limitees en debit PAR JOUEUR (`InventoryRateLimit`),
+ * apres l'authentification et avant tout le reste : un corps invalide ou un
+ * achat refuse coute un jeton comme les autres, sinon la boucle passerait par
+ * la. Le refus est un 429 `RATE_LIMITED`, le code que la socket de match
+ * emploie deja.
  */
 
 /** Ce que chaque refus du domaine vaut en HTTP. */
@@ -84,6 +94,8 @@ export class InventoryController {
   constructor(
     @Inject(InventoryService) private readonly inventory: InventoryService,
     @Inject('ACCESS_TOKEN_VERIFIER') private readonly verifier: AccessTokenVerifier,
+    @Inject(InventoryRateLimit) private readonly rateLimit: InventoryRateLimit,
+    @Inject(SystemClock) private readonly clock: Clock,
   ) {}
 
   @Get()
@@ -104,6 +116,7 @@ export class InventoryController {
     @Body() body: unknown,
   ): Promise<InventoryState> {
     const playerId = await this.requirePlayer(authorization);
+    this.throttle('buy', playerId);
     const parsed = parseInventoryBuyRequest(body);
     if (!parsed.success) {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
@@ -121,12 +134,27 @@ export class InventoryController {
     @Body() body: unknown,
   ): Promise<InventoryState> {
     const playerId = await this.requirePlayer(authorization);
+    this.throttle('loadout', playerId);
     const parsed = parseInventoryEquipRequest(body);
     if (!parsed.success) {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
 
     return toState(await this.run(() => this.inventory.equip(playerId, toLoadout(parsed.data))));
+  }
+
+  /**
+   * Refuse en 429 le joueur qui a epuise son seau sur cette route.
+   *
+   * Le code, pas une phrase : c'est le client qui choisit les mots. Le temps
+   * vient de l'horloge du serveur, jamais de la requete.
+   */
+  private throttle(route: InventoryRoute, playerId: string): void {
+    if (this.rateLimit.allow(route, playerId, this.clock.now().getTime())) return;
+    throw new HttpException(
+      { code: 'RATE_LIMITED', message: 'RATE_LIMITED' },
+      HttpStatus.TOO_MANY_REQUESTS,
+    );
   }
 
   private async requirePlayer(authorization: string | undefined): Promise<string> {

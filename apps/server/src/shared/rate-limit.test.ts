@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { TokenBucket } from './rate-limit.js';
+import { KeyedTokenBuckets, TokenBucket } from './rate-limit.js';
 
 describe('TokenBucket — limite de debit par socket', () => {
   it('laisse passer jusqu a la capacite', () => {
@@ -74,5 +74,52 @@ describe('TokenBucket — reglages du protocole', () => {
       if (!bucket.tryConsume(0)) refuse += 1;
     }
     expect(refuse).toBe(170);
+  });
+});
+
+describe('KeyedTokenBuckets — un seau par cle', () => {
+  const OPTIONS = { capacity: 2, refillPerSecond: 1 };
+
+  it('compte chaque cle a part', () => {
+    const buckets = new KeyedTokenBuckets(OPTIONS);
+    expect(buckets.tryConsume('a', 0)).toBe(true);
+    expect(buckets.tryConsume('a', 0)).toBe(true);
+    expect(buckets.tryConsume('a', 0)).toBe(false);
+    // L'epuisement de l'un ne coute rien a l'autre.
+    expect(buckets.tryConsume('b', 0)).toBe(true);
+  });
+
+  it('recharge chaque seau avec le temps', () => {
+    const buckets = new KeyedTokenBuckets(OPTIONS);
+    buckets.tryConsume('a', 0);
+    buckets.tryConsume('a', 0);
+    expect(buckets.tryConsume('a', 999)).toBe(false);
+    expect(buckets.tryConsume('a', 1_000)).toBe(true);
+  });
+
+  /*
+    Une cle par joueur, et des comptes invites qui se creent a volonte : sans
+    purge, la table grandirait sans fin. Un seau PLEIN vaut un seau absent —
+    le retirer ne change aucune decision future.
+  */
+  it('oublie les seaux pleins au-dela du seuil, sans rien perdre', () => {
+    const buckets = new KeyedTokenBuckets({ ...OPTIONS, sweepAbove: 3 });
+    for (const key of ['a', 'b', 'c']) buckets.tryConsume(key, 0);
+    expect(buckets.size).toBe(3);
+
+    // Deux secondes plus tard, a, b et c sont pleins : la purge les retire.
+    buckets.tryConsume('d', 2_000);
+    buckets.tryConsume('d', 2_000);
+    expect(buckets.size).toBe(1);
+    // `d` n'est pas plein : il reste, et son etat avec.
+    expect(buckets.tryConsume('d', 2_000)).toBe(false);
+  });
+
+  it('garde un seau entame, meme au-dela du seuil', () => {
+    const buckets = new KeyedTokenBuckets({ ...OPTIONS, sweepAbove: 1 });
+    buckets.tryConsume('a', 0);
+    buckets.tryConsume('a', 0);
+    buckets.tryConsume('b', 100);
+    expect(buckets.tryConsume('a', 100)).toBe(false);
   });
 });

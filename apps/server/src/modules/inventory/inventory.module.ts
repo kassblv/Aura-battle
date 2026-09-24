@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { AuthModule } from '../auth/auth.module.js';
 import { SystemClock } from '../../shared/clock.js';
 import { InventoryService } from './application/inventory.js';
+import { InventoryRateLimit } from './application/inventory-rate-limit.js';
 import { InventoryController } from './adapters/inventory.controller.js';
 import { PrismaInventoryRepository } from './adapters/prisma-inventory.repository.js';
 import { INVENTORY_CHANGES, type InventoryChanges } from './domain/ports.js';
@@ -33,6 +34,9 @@ import { MatchModule } from '../match/match.module.js';
       ) => new InventoryService({ inventory, clock, changes }),
     },
     SystemClock,
+    // Un seul exemplaire pour le processus : les seaux vivent en memoire, et
+    // deux exemplaires doubleraient la limite.
+    { provide: InventoryRateLimit, useFactory: () => new InventoryRateLimit() },
   ],
 })
 export class InventoryModule {}
