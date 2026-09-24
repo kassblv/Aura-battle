@@ -5,6 +5,8 @@ import { Prisma, PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { loadConfig } from '../../../shared/config.js';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { SessionService } from '../application/session.js';
+import { generateDeviceSecret, hashSecret } from '../domain/credentials.js';
 import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
 import { PrismaPlayerRepository } from './prisma-repositories.js';
 
@@ -348,7 +350,9 @@ describe.skipIf(!reachable)('identite email, contre une vraie base', () => {
     await repository.linkEmailIdentity(player.id, email, '$argon2id$ancien');
     await repository.setRecoveryIdentity(player.id, `hash_recovery_${randomUUID()}`);
 
-    await expect(repository.setPasswordHash(player.id, '$argon2id$nouveau')).resolves.toBe(true);
+    await expect(repository.setPasswordHash(player.id, '$argon2id$nouveau', null)).resolves.toBe(
+      true,
+    );
     await expect(repository.findByEmail(email)).resolves.toEqual({
       playerId: player.id,
       email,
@@ -365,6 +369,67 @@ describe.skipIf(!reachable)('identite email, contre une vraie base', () => {
 
   it('rend faux quand le joueur n a pas d adresse', async () => {
     const player = await newPlayer();
-    await expect(buildRepository().setPasswordHash(player.id, '$argon2id$x')).resolves.toBe(false);
+    await expect(buildRepository().setPasswordHash(player.id, '$argon2id$x', null)).resolves.toBe(
+      false,
+    );
+  });
+});
+
+/*
+  Relecture de securite, point 2, contre une vraie base : un appareil rattache
+  avant le changement de mot de passe ne rouvre plus le compte. C'est le
+  chemin complet — la ligne DEVICE supprimee, puis `authenticateDevice` avec
+  l'ancien secret, qui ne retrouve plus le joueur.
+*/
+describe.skipIf(!reachable)('changer de mot de passe detache les appareils', () => {
+  it('un appareil rattache avant le changement ne rouvre plus le compte', async () => {
+    const repository = buildRepository();
+    const mine = generateDeviceSecret();
+    const intruder = generateDeviceSecret();
+    created.add(hashSecret(mine));
+    created.add(hashSecret(intruder));
+
+    const player = await repository.createWithDeviceIdentity({
+      deviceHash: hashSecret(mine),
+      displayName: 'Victime',
+    });
+    await repository.linkDeviceIdentity(player.id, hashSecret(intruder));
+    await repository.linkEmailIdentity(
+      player.id,
+      `test_${randomUUID()}@exemple.test`,
+      '$argon2id$a',
+    );
+    await repository.setRecoveryIdentity(player.id, `hash_recovery_${randomUUID()}`);
+
+    await expect(
+      repository.setPasswordHash(player.id, '$argon2id$b', hashSecret(mine)),
+    ).resolves.toBe(true);
+
+    const sessions = new SessionService({
+      players: repository,
+      refreshTokens: {
+        findByHash: () => Promise.resolve(null),
+        create: (input) =>
+          Promise.resolve({ id: 'r', ...input, revokedAt: null, replacedBy: null }),
+        markRotated: () => Promise.resolve(),
+        revokeAllForPlayer: () => Promise.resolve(),
+      },
+      signer: { sign: () => Promise.resolve('jwt') },
+      clock: { now: () => new Date() },
+      accessTtlSeconds: 900,
+      refreshTtlSeconds: 3_600,
+    });
+
+    // L'appareil qui a change le mot de passe rouvre toujours le compte...
+    expect((await sessions.authenticateDevice(mine)).player.id).toBe(player.id);
+    // ... celui de l'intrus ouvre un compte invite NEUF, plus celui-ci.
+    const reopened = await sessions.authenticateDevice(intruder);
+    expect(reopened.player.id).not.toBe(player.id);
+    await prisma!.player.delete({ where: { id: reopened.player.id } });
+
+    // Le code de recuperation, lui, reste : c'est la porte de secours.
+    expect(
+      await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'RECOVERY' } }),
+    ).toBe(1);
   });
 });

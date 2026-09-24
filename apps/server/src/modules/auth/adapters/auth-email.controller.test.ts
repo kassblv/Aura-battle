@@ -6,7 +6,8 @@ import { fakePasswordHasher, memoryEmailIdentities } from '../application/email-
 import { ProfileService } from '../application/profile.js';
 import { RecoveryError, RecoveryService } from '../application/recovery.js';
 import { SessionService } from '../application/session.js';
-import type { PlayerRecord } from '../domain/ports.js';
+import { PasswordHasherBusyError } from '../domain/ports.js';
+import type { PasswordHasher, PlayerRecord } from '../domain/ports.js';
 import { MemoryAttemptLimiter } from './memory-attempt-limiter.js';
 import { AuthController } from './auth.controller.js';
 
@@ -24,23 +25,36 @@ const players: PlayerRecord[] = Array.from({ length: 40 }, (_, i) => ({
   displayName: `Joueur ${String(i)}`,
 }));
 const GOOD = 'aura du dimanche';
+const BUSY = 'serveur tres occupe';
 
 let app: NestFastifyApplication;
 const identities = memoryEmailIdentities(players);
 const opened: string[] = [];
 
 beforeAll(async () => {
-  const { hasher } = fakePasswordHasher();
+  const fake = fakePasswordHasher();
+  // Un mot de passe convenu fait repondre le plafond global « occupe ».
+  const hasher: PasswordHasher = {
+    hash: (password) =>
+      password === BUSY
+        ? Promise.reject(new PasswordHasherBusyError())
+        : fake.hasher.hash(password),
+    verify: (hash, password) => fake.hasher.verify(hash, password),
+  };
   const email = new EmailAuthService({
     identities: identities.port,
     hasher,
     limiter: new MemoryAttemptLimiter({ windowMs: LIMITS.windowMs, now: () => 0 }),
     recovery: {
-      claim: (code) =>
+      // Delivre a l'epoque : assez ancien pour servir de preuve.
+      prove: (code) =>
         code === 'AURA-P3'
-          ? Promise.resolve(players[3]!)
+          ? Promise.resolve({ player: players[3]!, issuedAt: new Date(0) })
           : Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
     },
+    refreshTokens: { revokeAllForPlayer: () => Promise.resolve() },
+    clock: { now: () => new Date(24 * 60 * 60_000) },
+    traceKey: 'une-cle-de-test-assez-longue',
     log: { warn: () => undefined },
   });
 
@@ -64,7 +78,10 @@ beforeAll(async () => {
         },
       },
       { provide: ProfileService, useValue: {} },
-      { provide: RecoveryService, useValue: {} },
+      {
+        provide: RecoveryService,
+        useValue: { issue: () => Promise.resolve('AURA-0000-0000-0000-0000') },
+      },
       {
         provide: 'ACCESS_TOKEN_VERIFIER',
         useValue: {
@@ -297,5 +314,51 @@ describe('GET /auth/email', () => {
 
   it('exige une session', async () => {
     expect((await call('GET', '/auth/email')).statusCode).toBe(401);
+  });
+});
+
+describe('POST /auth/recovery', () => {
+  /*
+    Relecture de securite : une session seule ne doit plus pouvoir remplacer
+    le code d'un compte qui a une adresse — l'intrus s'en servirait ensuite
+    pour changer le mot de passe.
+  */
+  it('exige le mot de passe quand une adresse est rattachee', async () => {
+    await call('POST', '/auth/email/link', {
+      token: 'jwt.p10',
+      body: { email: 'dix@exemple.fr', password: GOOD },
+    });
+    const refused = await call('POST', '/auth/recovery', { token: 'jwt.p10' });
+    expect(refused.statusCode).toBe(403);
+    expect(refused.json<Record<string, unknown>>().code).toBe('PASSWORD_REQUIRED');
+
+    const wrong = await call('POST', '/auth/recovery', {
+      token: 'jwt.p10',
+      body: { currentPassword: 'faux' },
+    });
+    expect(wrong.statusCode).toBe(401);
+
+    const ok = await call('POST', '/auth/recovery', {
+      token: 'jwt.p10',
+      body: { currentPassword: GOOD },
+    });
+    expect(ok.statusCode).toBe(201);
+    expect(ok.json<Record<string, unknown>>().code).toMatch(/^AURA-/);
+  });
+
+  it('reste ouverte a la seule session sans adresse, meme sans corps', async () => {
+    const reply = await call('POST', '/auth/recovery', { token: 'jwt.p11' });
+    expect(reply.statusCode).toBe(201);
+  });
+});
+
+describe('plafond global du hachage', () => {
+  it('repond 503 BUSY plutot que d empiler', async () => {
+    const reply = await call('POST', '/auth/email/link', {
+      token: 'jwt.p12',
+      body: { email: 'douze@exemple.fr', password: BUSY },
+    });
+    expect(reply.statusCode).toBe(503);
+    expect(reply.json<Record<string, unknown>>().code).toBe('BUSY');
   });
 });

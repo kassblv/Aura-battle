@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Body,
   Controller,
   Get,
@@ -12,6 +13,7 @@ import {
   Ip,
   Patch,
   Post,
+  ServiceUnavailableException,
   UnauthorizedException,
 } from '@nestjs/common';
 import {
@@ -21,6 +23,7 @@ import {
   parseAuthEmailLoginRequest,
   parseAuthEmailPasswordRequest,
   parseAuthRecoveryClaimRequest,
+  parseAuthRecoveryIssueRequest,
   parseAuthRefreshRequest,
   parseAuthRenameRequest,
   type EmailStatusResponse,
@@ -29,6 +32,7 @@ import {
 } from '@aura/protocol';
 import { readBearer } from '../application/bearer.js';
 import { EmailAuthError, EmailAuthService } from '../application/email.js';
+import { PasswordHasherBusyError } from '../domain/ports.js';
 import type { AccessTokenVerifier } from '../application/socket-auth.js';
 import { ProfileError, ProfileService } from '../application/profile.js';
 import { RecoveryError, RecoveryService } from '../application/recovery.js';
@@ -150,8 +154,20 @@ export class AuthController {
   @Post('recovery')
   async issueRecovery(
     @Headers('authorization') authorization: string | undefined,
+    @Body() body: unknown,
+    @Ip() ip: string | undefined,
   ): Promise<RecoveryCodeResponse> {
     const playerId = await this.requirePlayer(authorization);
+    // Sans corps (client d'avant les adresses email) : un objet vide.
+    const parsed = parseAuthRecoveryIssueRequest(body ?? {});
+    if (!parsed.success) {
+      throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
+    }
+    // Des qu'une adresse est rattachee, le mot de passe est exige : sinon une
+    // session volee remplacerait le code du joueur par le sien (ADR 0013).
+    await this.emailCall(() =>
+      this.email.authorizeRecoveryIssue(playerId, parsed.data.currentPassword, ip),
+    );
     try {
       return { code: await this.recovery.issue(playerId) };
     } catch (cause) {
@@ -269,7 +285,7 @@ export class AuthController {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
     return this.emailCall(() =>
-      this.email.link(playerId, parsed.data.email, parsed.data.password, ip ?? ''),
+      this.email.link(playerId, parsed.data.email, parsed.data.password, ip),
     );
   }
 
@@ -290,7 +306,7 @@ export class AuthController {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
     const playerId = await this.emailCall(() =>
-      this.email.login(parsed.data.email, parsed.data.password, ip ?? ''),
+      this.email.login(parsed.data.email, parsed.data.password, ip),
     );
     return this.toResponse(() => this.sessions.openForPlayer(playerId));
   }
@@ -308,17 +324,20 @@ export class AuthController {
   async changePassword(
     @Headers('authorization') authorization: string | undefined,
     @Body() body: unknown,
+    @Ip() ip: string | undefined,
   ): Promise<{ readonly changed: true }> {
     const playerId = await this.requirePlayer(authorization);
     const parsed = parseAuthEmailPasswordRequest(body);
     if (!parsed.success) {
       throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: parsed.error });
     }
-    const { currentPassword, recoveryCode, newPassword } = parsed.data;
+    const { currentPassword, recoveryCode, newPassword, deviceSecret } = parsed.data;
     // Le schema garantit une preuve et une seule.
     const proof =
       currentPassword !== undefined ? { currentPassword } : { recoveryCode: recoveryCode ?? '' };
-    await this.emailCall(() => this.email.changePassword(playerId, proof, newPassword));
+    await this.emailCall(() =>
+      this.email.changePassword(playerId, proof, newPassword, ip, deviceSecret),
+    );
     return { changed: true };
   }
 
@@ -333,6 +352,14 @@ export class AuthController {
     try {
       return await run();
     } catch (cause) {
+      if (cause instanceof PasswordHasherBusyError) {
+        // Le plafond global du hachage est atteint : on refuse vite plutot que
+        // d'empiler des requetes a 19 Mio piece.
+        throw new ServiceUnavailableException({
+          code: 'BUSY',
+          message: 'reessaie dans un instant',
+        });
+      }
       if (!(cause instanceof EmailAuthError)) throw cause;
       const code = cause.reason;
       switch (code) {
@@ -345,10 +372,16 @@ export class AuthController {
           throw new UnauthorizedException({ code, message: 'email ou mot de passe incorrect' });
         case 'UNKNOWN_PLAYER':
           throw new UnauthorizedException({ code: 'UNAUTHORIZED', message: 'session invalide' });
+        case 'NO_CLIENT_ADDRESS':
+          throw new BadRequestException({ code: 'INVALID_PAYLOAD', message: 'adresse inconnue' });
         case 'EMAIL_UNAVAILABLE':
         case 'EMAIL_ALREADY_LINKED':
         case 'EMAIL_NOT_LINKED':
           throw new ConflictException({ code, message: code });
+        case 'PASSWORD_REQUIRED':
+        case 'RECOVERY_CODE_TOO_RECENT':
+          throw new ForbiddenException({ code, message: code });
+        case 'PASSWORD_TOO_SHORT':
         case 'PASSWORD_TOO_COMMON':
         case 'PASSWORD_MATCHES_EMAIL':
           throw new BadRequestException({ code, message: 'mot de passe refuse' });

@@ -8,6 +8,7 @@ import { RedisModule } from '../../shared/redis.module.js';
 import { RedisService } from '../../shared/redis.js';
 import { Argon2PasswordHasher } from './adapters/argon2-password-hasher.js';
 import { AuthController } from './adapters/auth.controller.js';
+import { BoundedPasswordHasher } from './adapters/bounded-password-hasher.js';
 import { JwtAccessTokenSigner } from './adapters/jwt-signer.js';
 import { JwtAccessTokenVerifier } from './adapters/jwt-verifier.js';
 import {
@@ -69,18 +70,41 @@ import { SocketAuthenticator } from './application/socket-auth.js';
     },
     {
       provide: EmailAuthService,
-      inject: [PrismaPlayerRepository, RecoveryService, RedisService, PinoLoggerService],
+      inject: [
+        PrismaPlayerRepository,
+        PrismaRefreshTokenRepository,
+        RecoveryService,
+        RedisService,
+        SystemClock,
+        PinoLoggerService,
+        CONFIG,
+      ],
       useFactory: (
         players: PrismaPlayerRepository,
+        refreshTokens: PrismaRefreshTokenRepository,
         recovery: RecoveryService,
         redis: RedisService,
+        clock: SystemClock,
         logger: PinoLoggerService,
+        config: ServerConfig,
       ) =>
         new EmailAuthService({
           identities: players,
-          hasher: new Argon2PasswordHasher(),
+          // Deux hachages a la fois, trente-deux en attente : au-dela, 503.
+          // Deux fils de 19 Mio laissent la boucle d'evenements et la memoire
+          // du conteneur au jeu, qui en a besoin en plein duel (ADR 0013).
+          hasher: new BoundedPasswordHasher(new Argon2PasswordHasher(), {
+            maxConcurrent: 2,
+            maxQueued: 32,
+          }),
           limiter: new RedisAttemptLimiter(redis.client, LIMITS.windowMs),
           recovery,
+          refreshTokens,
+          clock,
+          // La cle du serveur, deja secrete et deja requise : le HMAC prefixe
+          // son message (`email-attempts:`), donc aucune signature de jeton ne
+          // peut se confondre avec une empreinte d'adresse.
+          traceKey: config.jwtSecret,
           log: { warn: (message) => logger.warn(message, 'EmailAuthService') },
         }),
     },

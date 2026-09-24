@@ -1,8 +1,10 @@
 import { randomBytes } from 'node:crypto';
 import type { EmailStatusResponse } from '@aura/protocol';
 import type { AppLog } from '../../../shared/log-port.js';
+import { hashSecret } from '../domain/credentials.js';
 import {
   emailAttemptKey,
+  ipBucket,
   maskEmail,
   normalizeEmail,
   passwordProblem,
@@ -12,9 +14,11 @@ import { EmailIdentityConflictError } from '../domain/ports.js';
 import type {
   AttemptKey,
   AttemptLimiter,
+  Clock,
   EmailIdentityRepository,
   PasswordHasher,
   PlayerRecord,
+  RefreshTokenRepository,
 } from '../domain/ports.js';
 import { RecoveryError } from './recovery.js';
 
@@ -25,6 +29,10 @@ import { RecoveryError } from './recovery.js';
  * de session**. `login` rend le joueur, et l'appelant ouvre la session par le
  * chemin habituel — un second chemin d'emission de jetons serait un second
  * endroit ou la rotation, l'expiration et la revocation pourraient diverger.
+ *
+ * Des qu'une adresse est rattachee, **le mot de passe est le secret maitre du
+ * compte** (ADR 0013) : une session seule ne suffit plus ni a le changer, ni a
+ * se faire delivrer un code de recuperation qui permettrait de le changer.
  */
 
 export type EmailAuthFailure =
@@ -33,8 +41,12 @@ export type EmailAuthFailure =
   | 'EMAIL_UNAVAILABLE'
   | 'EMAIL_ALREADY_LINKED'
   | 'EMAIL_NOT_LINKED'
+  | 'PASSWORD_TOO_SHORT'
   | 'PASSWORD_TOO_COMMON'
   | 'PASSWORD_MATCHES_EMAIL'
+  | 'PASSWORD_REQUIRED'
+  | 'RECOVERY_CODE_TOO_RECENT'
+  | 'NO_CLIENT_ADDRESS'
   | 'TOO_MANY_ATTEMPTS';
 
 export class EmailAuthError extends Error {
@@ -54,9 +66,9 @@ export class EmailAuthError extends Error {
  *   milliers d'adresses. Une connexion reussie rend sa tentative.
  * - **10 rattachements par joueur, 20 par IP** : « cette adresse est deja
  *   prise » est une information, et un compte invite se cree en un appel.
- * - **5 changements de mot de passe par joueur** : une session volee ne doit
- *   pas devenir un banc d'essai de l'ancien mot de passe, qui sert peut-etre
- *   ailleurs.
+ * - **5 preuves de mot de passe par joueur, 20 par IP** (changement de mot de
+ *   passe, demande de code) : une session volee ne doit pas devenir un banc
+ *   d'essai de l'ancien mot de passe, qui sert peut-etre ailleurs.
  *
  * Bloquer une adresse bloque aussi son proprietaire, quinze minutes. C'est le
  * prix, et il est faible ici : son appareil reste connecte par son secret, et
@@ -69,7 +81,19 @@ export const LIMITS = Object.freeze({
   linkPerPlayer: 10,
   linkPerIp: 20,
   passwordPerPlayer: 5,
+  passwordPerIp: 20,
 });
+
+/**
+ * Age minimal d'un code de recuperation pour servir de preuve.
+ *
+ * Avant qu'un email soit rattache, une session suffisait a se faire delivrer
+ * un code ; un intrus pouvait donc en detenir un tout neuf. Une heure plus
+ * tard, le joueur a eu le temps de voir que son code a change — et le
+ * parcours legitime n'en souffre pas : le « mot de passe oublie » se fait avec
+ * le code NOTE, delivre bien avant.
+ */
+export const RECOVERY_PROOF_MIN_AGE_MS = 60 * 60_000;
 
 /** La preuve qui autorise un changement de mot de passe : l'une ou l'autre. */
 export type PasswordProof =
@@ -81,11 +105,28 @@ export interface EmailAuthDependencies {
   readonly hasher: PasswordHasher;
   readonly limiter: AttemptLimiter;
   /** Le code de recuperation, preuve de secours du mot de passe oublie. */
-  readonly recovery: { claim(code: string): Promise<PlayerRecord> };
+  readonly recovery: {
+    prove(code: string): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date }>;
+  };
+  /** Changer de mot de passe revoque toutes les sessions. */
+  readonly refreshTokens: Pick<RefreshTokenRepository, 'revokeAllForPlayer'>;
+  readonly clock: Clock;
+  /** Cle du HMAC qui cache les adresses dans Redis et dans les journaux. */
+  readonly traceKey: string;
   readonly log: AppLog;
 }
 
-const ipKey = (scope: string, ip: string): string => `${scope}:ip:${ip}`;
+/**
+ * La cle IP d'un compteur, sur le seau normalise (IPv6 par /64).
+ *
+ * Sans adresse lisible on refuse : ranger ces requetes sous une cle commune
+ * laisserait n'importe qui la remplir et bloquer tous les autres.
+ */
+function ipKey(scope: string, ip: string | undefined): string {
+  const bucket = ipBucket(ip);
+  if (bucket === null) throw new EmailAuthError('NO_CLIENT_ADDRESS');
+  return `${scope}:ip:${bucket}`;
+}
 
 export class EmailAuthService {
   /**
@@ -123,7 +164,7 @@ export class EmailAuthService {
     playerId: string,
     rawEmail: string,
     password: string,
-    ip: string,
+    ip: string | undefined,
   ): Promise<EmailStatusResponse> {
     const email = normalizeEmail(rawEmail);
     this.enforcePolicy(password, email);
@@ -168,9 +209,12 @@ export class EmailAuthService {
    * La limite passe **avant** le hachage : c'est la partie chere, et une
    * rafale bloquee ne doit rien couter au processeur.
    */
-  async login(rawEmail: string, password: string, ip: string): Promise<string> {
+  async login(rawEmail: string, password: string, ip: string | undefined): Promise<string> {
     const email = normalizeEmail(rawEmail);
-    const byEmail: AttemptKey = { key: emailAttemptKey(email), limit: LIMITS.loginPerEmail };
+    const byEmail: AttemptKey = {
+      key: emailAttemptKey(email, this.deps.traceKey),
+      limit: LIMITS.loginPerEmail,
+    };
     const byIp: AttemptKey = { key: ipKey('login', ip), limit: LIMITS.loginPerIp };
 
     if (!(await this.deps.limiter.attempt([byEmail, byIp]))) {
@@ -196,56 +240,115 @@ export class EmailAuthService {
   }
 
   /**
-   * Change le mot de passe, sur preuve de l'ancien **ou** du code de
-   * recuperation.
+   * Change le mot de passe, sur preuve de l'ancien **ou** d'un code de
+   * recuperation delivre il y a plus d'une heure.
    *
    * Le code est le chemin du mot de passe oublie : aucun courrier ne part
-   * jamais, et c'est la seule autre preuve que le joueur detient. On ne se
-   * contente pas de la session ouverte : une session, c'est aussi un telephone
-   * deverrouille pose sur une table, et le mot de passe sert peut-etre
-   * ailleurs.
+   * jamais. On ne se contente pas de la session ouverte : une session, c'est
+   * aussi un telephone deverrouille pose sur une table, ou un jeton vole.
+   *
+   * Changer de mot de passe **chasse tout le monde** : toutes les sessions sont
+   * revoquees et tous les appareils detaches, sauf celui qui fait la demande
+   * (`deviceSecret`). C'est le geste de qui pense que quelqu'un d'autre est
+   * entre ; le laisser dedans le rendrait inutile.
    */
-  async changePassword(playerId: string, proof: PasswordProof, newPassword: string): Promise<void> {
+  async changePassword(
+    playerId: string,
+    proof: PasswordProof,
+    newPassword: string,
+    ip: string | undefined,
+    deviceSecret?: string,
+  ): Promise<void> {
     const identity = await this.deps.identities.findEmailOf(playerId);
     if (identity === null) throw new EmailAuthError('EMAIL_NOT_LINKED');
     this.enforcePolicy(newPassword, identity.email);
 
-    const byPlayer = `password:player:${playerId}`;
-    const allowed = await this.deps.limiter.attempt([
-      { key: byPlayer, limit: LIMITS.passwordPerPlayer },
-    ]);
-    if (!allowed) {
-      this.deps.log.warn('changement de mot de passe bloque : trop de tentatives');
-      throw new EmailAuthError('TOO_MANY_ATTEMPTS');
-    }
-
-    if (!(await this.proves(playerId, identity.secretHash, proof))) {
-      this.deps.log.warn('changement de mot de passe refuse : preuve invalide');
-      throw new EmailAuthError('INVALID_CREDENTIALS');
-    }
+    const byPlayer = await this.attemptProof(playerId, ip, 'changement de mot de passe');
+    await this.checkProof(playerId, identity.secretHash, proof);
 
     const secretHash = await this.deps.hasher.hash(preparePassword(newPassword));
-    if (!(await this.deps.identities.setPasswordHash(playerId, secretHash))) {
+    const keep = deviceSecret === undefined ? null : hashSecret(deviceSecret);
+    if (!(await this.deps.identities.setPasswordHash(playerId, secretHash, keep))) {
       throw new EmailAuthError('EMAIL_NOT_LINKED');
     }
+    await this.deps.refreshTokens.revokeAllForPlayer(playerId, this.deps.clock.now());
     await this.deps.limiter.reset(byPlayer);
   }
 
-  private async proves(playerId: string, secretHash: string, proof: PasswordProof) {
-    if (proof.currentPassword !== undefined) {
-      return this.deps.hasher.verify(secretHash, preparePassword(proof.currentPassword));
+  /**
+   * Autorise, ou refuse, la delivrance d'un nouveau code de recuperation.
+   *
+   * Sans adresse rattachee, la session suffit : il n'existe aucun secret plus
+   * fort a exiger. Avec une adresse, l'ancien mot de passe est exige — sinon
+   * un intrus muni d'une session remplacerait le code du joueur par le sien,
+   * puis s'en servirait pour changer le mot de passe.
+   */
+  async authorizeRecoveryIssue(
+    playerId: string,
+    currentPassword: string | undefined,
+    ip: string | undefined,
+  ): Promise<void> {
+    const identity = await this.deps.identities.findEmailOf(playerId);
+    if (identity === null) return;
+    if (currentPassword === undefined) throw new EmailAuthError('PASSWORD_REQUIRED');
+
+    const byPlayer = await this.attemptProof(playerId, ip, 'demande de code');
+    await this.checkProof(playerId, identity.secretHash, { currentPassword });
+    await this.deps.limiter.reset(byPlayer);
+  }
+
+  /** Compte une preuve de mot de passe, par joueur et par IP ; rend la cle du joueur. */
+  private async attemptProof(
+    playerId: string,
+    ip: string | undefined,
+    what: string,
+  ): Promise<string> {
+    const byPlayer = `password:player:${playerId}`;
+    const allowed = await this.deps.limiter.attempt([
+      { key: byPlayer, limit: LIMITS.passwordPerPlayer },
+      { key: ipKey('password', ip), limit: LIMITS.passwordPerIp },
+    ]);
+    if (!allowed) {
+      this.deps.log.warn(`${what} bloque : trop de tentatives`);
+      throw new EmailAuthError('TOO_MANY_ATTEMPTS');
     }
+    return byPlayer;
+  }
+
+  private async checkProof(
+    playerId: string,
+    secretHash: string,
+    proof: PasswordProof,
+  ): Promise<void> {
+    if (proof.currentPassword !== undefined) {
+      if (await this.deps.hasher.verify(secretHash, preparePassword(proof.currentPassword))) return;
+      this.deps.log.warn('preuve de mot de passe refusee');
+      throw new EmailAuthError('INVALID_CREDENTIALS');
+    }
+
+    let proven: { readonly player: PlayerRecord; readonly issuedAt: Date };
     try {
-      // Le code doit ouvrir CE compte : celui d'un autre ne prouve rien ici.
-      return (await this.deps.recovery.claim(proof.recoveryCode)).id === playerId;
+      proven = await this.deps.recovery.prove(proof.recoveryCode);
     } catch (cause) {
-      if (cause instanceof RecoveryError) return false;
-      throw cause;
+      if (!(cause instanceof RecoveryError)) throw cause;
+      this.deps.log.warn('preuve par code de recuperation refusee');
+      throw new EmailAuthError('INVALID_CREDENTIALS');
+    }
+    // Le code doit ouvrir CE compte : celui d'un autre ne prouve rien ici.
+    if (proven.player.id !== playerId) {
+      this.deps.log.warn('preuve par code de recuperation refusee');
+      throw new EmailAuthError('INVALID_CREDENTIALS');
+    }
+    const age = this.deps.clock.now().getTime() - proven.issuedAt.getTime();
+    if (age < RECOVERY_PROOF_MIN_AGE_MS) {
+      this.deps.log.warn('preuve par code de recuperation trop recente');
+      throw new EmailAuthError('RECOVERY_CODE_TOO_RECENT');
     }
   }
 
   private enforcePolicy(password: string, email: string): void {
     const problem = passwordProblem(password, email);
+    if (problem === 'TOO_SHORT') throw new EmailAuthError('PASSWORD_TOO_SHORT');
     if (problem === 'TOO_COMMON') throw new EmailAuthError('PASSWORD_TOO_COMMON');
     if (problem === 'MATCHES_EMAIL') throw new EmailAuthError('PASSWORD_MATCHES_EMAIL');
   }

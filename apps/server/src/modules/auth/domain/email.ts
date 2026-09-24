@@ -1,4 +1,6 @@
-import { createHash } from 'node:crypto';
+import { createHmac } from 'node:crypto';
+import { isIPv4, isIPv6 } from 'node:net';
+import { PASSWORD_MIN } from '@aura/protocol';
 import { COMMON_PASSWORDS } from './common-passwords.js';
 
 /**
@@ -58,7 +60,7 @@ export function preparePassword(password: string): string {
   return password.normalize('NFKC');
 }
 
-export type PasswordProblem = 'TOO_COMMON' | 'MATCHES_EMAIL';
+export type PasswordProblem = 'TOO_SHORT' | 'TOO_COMMON' | 'MATCHES_EMAIL';
 
 const COMMON = new Set(COMMON_PASSWORDS);
 
@@ -71,7 +73,12 @@ const COMMON = new Set(COMMON_PASSWORDS);
  * c'est de refuser les mots de passe qu'elle essaie en premier.
  */
 export function passwordProblem(password: string, email: string): PasswordProblem | null {
-  const candidate = preparePassword(password).toLowerCase();
+  const prepared = preparePassword(password);
+  // Longueur comptee APRES normalisation, en caracteres et non en unites
+  // UTF-16 : c'est ce qui est hache. NFKC peut raccourcir une saisie (une
+  // ligature « ﬁ » devient « fi »), et le protocole, lui, compte avant.
+  if ([...prepared].length < PASSWORD_MIN) return 'TOO_SHORT';
+  const candidate = prepared.toLowerCase();
   const address = normalizeEmail(email);
   const local = address.slice(0, Math.max(0, address.lastIndexOf('@')));
 
@@ -84,14 +91,45 @@ export function passwordProblem(password: string, email: string): PasswordProble
 }
 
 /**
- * Cle du compteur de tentatives pour une adresse.
+ * Cle du compteur de tentatives pour une adresse, et sa trace dans le journal.
  *
- * Une empreinte, jamais l'adresse : ce compteur vit dans Redis, qui n'est pas
- * la base des joueurs et n'a pas a en devenir une copie. SHA-256 sans sel
- * suffit — il ne s'agit pas de cacher l'adresse a qui lit Redis (il pourrait
- * hacher des adresses candidates), mais de ne pas en poser une liste en clair
- * dans un second stockage.
+ * Une empreinte **a cle** (HMAC), jamais l'adresse : ce compteur vit dans
+ * Redis et un fragment finit dans les journaux, qui ne sont pas la base des
+ * joueurs. Un SHA-256 nu se renverserait en hachant des adresses candidates ;
+ * sans la cle du serveur, celui-ci ne se renverse pas.
  */
-export function emailAttemptKey(email: string): string {
-  return `email:${createHash('sha256').update(normalizeEmail(email)).digest('hex')}`;
+export function emailAttemptKey(email: string, key: string): string {
+  const digest = createHmac('sha256', key).update(`email-attempts:${normalizeEmail(email)}`);
+  return `email:${digest.digest('hex')}`;
+}
+
+/**
+ * Le seau d'adresse IP d'un compteur, ou `null` si l'adresse est illisible.
+ *
+ * - `::ffff:a.b.c.d` est une adresse IPv4 vue par une socket IPv6 : c'est la
+ *   meme machine, elle doit tomber dans le meme compteur.
+ * - Une adresse IPv6 compte par **prefixe /64** : un abonne en recoit un
+ *   entier, soit 2^64 adresses. Compter par adresse lui offrirait autant de
+ *   compteurs neufs.
+ * - Sans adresse, on refuse plutot que de ranger tout le monde dans un seul
+ *   compteur vide, que n'importe qui pourrait remplir pour bloquer les autres.
+ */
+export function ipBucket(ip: string | undefined): string | null {
+  if (ip === undefined) return null;
+  const raw = ip.trim().toLowerCase();
+  const mapped = /^::ffff:(\d{1,3}(?:\.\d{1,3}){3})$/.exec(raw);
+  if (mapped?.[1] !== undefined && isIPv4(mapped[1])) return mapped[1];
+  if (isIPv4(raw)) return raw;
+  if (!isIPv6(raw)) return null;
+
+  const [head = '', tail = ''] = raw.split('::');
+  const left = head === '' ? [] : head.split(':');
+  const right = raw.includes('::') ? (tail === '' ? [] : tail.split(':')) : [];
+  const groups = raw.includes('::')
+    ? [...left, ...Array<string>(8 - left.length - right.length).fill('0'), ...right]
+    : left;
+  return `${groups
+    .slice(0, 4)
+    .map((group) => group.replace(/^0+(?=.)/, ''))
+    .join(':')}::/64`;
 }

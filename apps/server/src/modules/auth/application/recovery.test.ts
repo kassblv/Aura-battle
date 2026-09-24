@@ -11,6 +11,7 @@ import type { PlayerRecord } from '../domain/ports.js';
 /** Depot en memoire : le service se teste sans base. */
 function repository(players: PlayerRecord[] = []) {
   const recoveryByPlayer = new Map<string, string>();
+  const issuedAt = new Map<string, Date>();
   const calls = { set: 0 };
   return {
     recoveryByPlayer,
@@ -24,9 +25,19 @@ function repository(players: PlayerRecord[] = []) {
         }
         return Promise.resolve(null);
       },
+      findRecoveryIdentity: (hash: string) => {
+        for (const [playerId, stored] of recoveryByPlayer) {
+          const player = players.find((p) => p.id === playerId);
+          if (stored === hash && player !== undefined) {
+            return Promise.resolve({ player, issuedAt: issuedAt.get(playerId)! });
+          }
+        }
+        return Promise.resolve(null);
+      },
       setRecoveryIdentity: (playerId: string, hash: string) => {
         calls.set++;
         recoveryByPlayer.set(playerId, hash);
+        issuedAt.set(playerId, new Date(1_000 * calls.set));
         return Promise.resolve();
       },
     },
@@ -134,5 +145,22 @@ describe('claim', () => {
     const { repo, service: sut } = service();
     await sut.claim('trop-court').catch(() => undefined);
     expect(repo.calls.set).toBe(0);
+  });
+});
+
+describe('prove', () => {
+  /*
+    L'age du code sert a changer de mot de passe : un code tout juste delivre
+    peut l'avoir ete par un intrus muni d'une session volee.
+  */
+  it('rend le joueur et l instant ou son code a ete delivre', async () => {
+    const { service: sut } = service();
+    const code = await sut.issue(ALICE.id);
+    await expect(sut.prove(code)).resolves.toEqual({ player: ALICE, issuedAt: new Date(1_000) });
+  });
+
+  it('refuse un code inconnu comme claim', async () => {
+    const { service: sut } = service();
+    await expect(sut.prove('AURA-0000-0000-0000-0000')).rejects.toThrow(RecoveryError);
   });
 });

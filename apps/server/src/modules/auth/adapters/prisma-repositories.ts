@@ -69,6 +69,16 @@ export class PrismaPlayerRepository
     return identity?.player ?? null;
   }
 
+  async findRecoveryIdentity(
+    codeHash: string,
+  ): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date } | null> {
+    const identity = await this.prisma.authIdentity.findUnique({
+      where: { provider_subject: { provider: 'RECOVERY', subject: codeHash } },
+      select: { createdAt: true, player: { select: { id: true, displayName: true } } },
+    });
+    return identity === null ? null : { player: identity.player, issuedAt: identity.createdAt };
+  }
+
   /**
    * Pose le code de recuperation du joueur, en remplacant le precedent.
    *
@@ -142,12 +152,35 @@ export class PrismaPlayerRepository
     }
   }
 
-  async setPasswordHash(playerId: string, secretHash: string): Promise<boolean> {
-    const { count } = await this.prisma.authIdentity.updateMany({
-      where: { playerId, provider: 'EMAIL' },
-      data: { secretHash },
+  /**
+   * Nouveau hache, et appareils detaches sauf celui qui fait la demande.
+   *
+   * Une transaction : un mot de passe change dont les appareils de l'intrus
+   * resteraient rattaches serait un changement pour rien, et l'inverse
+   * laisserait le joueur deconnecte partout avec son ancien mot de passe.
+   * `keepDeviceHash` n'est garde que s'il appartient a CE joueur — le filtre
+   * porte sur `playerId`, donc le hache d'un autre ne protege rien.
+   */
+  async setPasswordHash(
+    playerId: string,
+    secretHash: string,
+    keepDeviceHash: string | null,
+  ): Promise<boolean> {
+    return this.prisma.$transaction(async (tx) => {
+      const { count } = await tx.authIdentity.updateMany({
+        where: { playerId, provider: 'EMAIL' },
+        data: { secretHash },
+      });
+      if (count === 0) return false;
+      await tx.authIdentity.deleteMany({
+        where: {
+          playerId,
+          provider: 'DEVICE',
+          ...(keepDeviceHash === null ? {} : { subject: { not: keepDeviceHash } }),
+        },
+      });
+      return true;
     });
-    return count > 0;
   }
 
   /**

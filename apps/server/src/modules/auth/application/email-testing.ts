@@ -38,6 +38,8 @@ export function fakePasswordHasher() {
 /** Depot en memoire, fidele au contrat : une adresse par joueur, un joueur par adresse. */
 export function memoryEmailIdentities(players: readonly PlayerRecord[]) {
   const rows: EmailIdentityRecord[] = [];
+  /** Identites DEVICE : empreinte du secret -> joueur. */
+  const devices = new Map<string, string>();
   const port: EmailIdentityRepository = {
     findById: (id) => Promise.resolve(players.find((p) => p.id === id) ?? null),
     findByEmail: (email) => Promise.resolve(rows.find((r) => r.email === email) ?? null),
@@ -50,12 +52,15 @@ export function memoryEmailIdentities(players: readonly PlayerRecord[]) {
       rows.push({ playerId, email, secretHash });
       return Promise.resolve('LINKED');
     },
-    setPasswordHash: (playerId, secretHash) => {
+    setPasswordHash: (playerId, secretHash, keepDeviceHash) => {
       const index = rows.findIndex((r) => r.playerId === playerId);
       if (index < 0) return Promise.resolve(false);
       rows[index] = { ...rows[index]!, secretHash };
+      for (const [hash, owner] of devices) {
+        if (owner === playerId && hash !== keepDeviceHash) devices.delete(hash);
+      }
       return Promise.resolve(true);
     },
   };
-  return { rows, port };
+  return { rows, devices, port };
 }

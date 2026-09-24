@@ -76,6 +76,15 @@ export interface RecoveryIdentityRepository {
   /** Trouve le joueur portant ce code de recuperation, ou `null`. */
   findByRecoveryHash(codeHash: string): Promise<PlayerRecord | null>;
   /**
+   * Le joueur portant ce code, et l'instant ou le code a ete delivre.
+   *
+   * L'age compte : un code tout juste delivre peut l'avoir ete par un intrus
+   * muni d'une session volee. Seul un code ancien prouve qu'on est le joueur.
+   */
+  findRecoveryIdentity(
+    codeHash: string,
+  ): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date } | null>;
+  /**
    * Pose le code de recuperation de ce joueur, en **remplacant** le precedent.
    *
    * Le remplacement est ce qui rend un code revocable : en redemander un
@@ -132,8 +141,20 @@ export interface EmailIdentityRepository {
     email: string,
     secretHash: string,
   ): Promise<'LINKED' | 'ALREADY_LINKED'>;
-  /** Remplace le hache du mot de passe. Rend `false` si le joueur n'a pas d'adresse. */
-  setPasswordHash(playerId: string, secretHash: string): Promise<boolean>;
+  /**
+   * Remplace le hache du mot de passe **et detache les appareils** du joueur,
+   * sauf `keepDeviceHash` — celui qui fait la demande, s'il est bien a lui.
+   *
+   * Changer de mot de passe, c'est souvent chasser quelqu'un : un appareil
+   * reste rattache tant que sa ligne `DEVICE` existe, et son secret rouvrirait
+   * le compte au prochain lancement. Les deux ecritures vont ensemble, dans
+   * une transaction. Rend `false` si le joueur n'a pas d'adresse.
+   */
+  setPasswordHash(
+    playerId: string,
+    secretHash: string,
+    keepDeviceHash: string | null,
+  ): Promise<boolean>;
 }
 
 /**
@@ -151,6 +172,20 @@ export interface PasswordHasher {
    * distinguerait d'un refus.
    */
   verify(hash: string, password: string): Promise<boolean>;
+}
+
+/**
+ * Trop de hachages en cours : le serveur refuse plutot que d'empiler.
+ *
+ * argon2 coute 19 Mio et des dizaines de millisecondes par appel. Sans
+ * plafond, une rafale sur des adresses et des IP differentes — donc sous
+ * toutes les limites de tentatives — epuiserait la memoire du conteneur.
+ */
+export class PasswordHasherBusyError extends Error {
+  constructor() {
+    super('PASSWORD_HASHER_BUSY');
+    this.name = 'PasswordHasherBusyError';
+  }
 }
 
 /** Un compteur de tentatives et sa limite sur la fenetre. */

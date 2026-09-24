@@ -67,11 +67,22 @@ export class RecoveryService {
    * personne.
    */
   async claim(input: string): Promise<PlayerRecord> {
+    return (await this.prove(input)).player;
+  }
+
+  /**
+   * Comme `claim`, avec l'instant ou le code a ete delivre.
+   *
+   * Sert a changer de mot de passe : un code tout juste delivre ne prouve rien
+   * (une session volee suffisait a l'obtenir avant qu'un email soit rattache),
+   * un code ancien si.
+   */
+  async prove(input: string): Promise<{ readonly player: PlayerRecord; readonly issuedAt: Date }> {
     const canonical = normalizeRecoveryCode(input);
     if (canonical === null) throw new RecoveryError('INVALID_RECOVERY_CODE');
 
-    const player = await this.deps.players.findByRecoveryHash(hashRecoveryCode(canonical));
-    if (player === null) throw new RecoveryError('INVALID_RECOVERY_CODE');
-    return player;
+    const found = await this.deps.players.findRecoveryIdentity(hashRecoveryCode(canonical));
+    if (found === null) throw new RecoveryError('INVALID_RECOVERY_CODE');
+    return found;
   }
 }

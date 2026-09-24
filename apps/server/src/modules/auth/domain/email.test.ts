@@ -1,8 +1,9 @@
 import { emailSchema } from '@aura/protocol';
+import { createHash } from 'node:crypto';
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { COMMON_PASSWORDS } from './common-passwords.js';
-import { emailAttemptKey, maskEmail, normalizeEmail, passwordProblem } from './email.js';
+import { emailAttemptKey, ipBucket, maskEmail, normalizeEmail, passwordProblem } from './email.js';
 
 describe('normalizeEmail', () => {
   it('rogne et met en minuscules', () => {
@@ -46,6 +47,16 @@ describe('maskEmail', () => {
 });
 
 describe('passwordProblem', () => {
+  /*
+    Le protocole compte en unites UTF-16 avant normalisation ; ce qui est
+    hache, c'est la forme NFKC. « ﬁ » (une ligature) compte pour un caractere
+    a la saisie et devient « fi » : c'est la longueur hachee qui compte.
+  */
+  it('compte la longueur apres normalisation, en caracteres', () => {
+    expect(passwordProblem('😀😀😀😀', 'k@gmail.com')).toBe('TOO_SHORT');
+    expect(passwordProblem('aura du soir', 'k@gmail.com')).toBeNull();
+  });
+
   it('accepte une phrase de passe', () => {
     expect(passwordProblem('aura du dimanche soir', 'k@gmail.com')).toBeNull();
   });
@@ -80,17 +91,56 @@ describe('passwordProblem', () => {
 });
 
 describe('emailAttemptKey', () => {
-  /*
-    La cle du compteur de tentatives vit dans Redis, qui n'est pas la base des
-    joueurs : on n'y recopie pas d'adresses. Une empreinte suffit a compter.
-  */
+  const KEY = 'une-cle-serveur-assez-longue';
+
   it('ne contient pas l adresse en clair', () => {
-    const key = emailAttemptKey('kassim@gmail.com');
+    const key = emailAttemptKey('kassim@gmail.com', KEY);
     expect(key).not.toContain('kassim');
     expect(key).not.toContain('gmail');
   });
 
   it('est stable, et identique quelle que soit la saisie', () => {
-    expect(emailAttemptKey(' Kassim@Gmail.com')).toBe(emailAttemptKey('kassim@gmail.com'));
+    expect(emailAttemptKey(' Kassim@Gmail.com', KEY)).toBe(
+      emailAttemptKey('kassim@gmail.com', KEY),
+    );
+  });
+
+  /*
+    Sans cle, l'empreinte d'une adresse se retrouverait en hachant des
+    adresses candidates : un journal fuite deviendrait un annuaire.
+  */
+  it('depend de la cle du serveur, pas seulement de l adresse', () => {
+    expect(emailAttemptKey('kassim@gmail.com', KEY)).not.toBe(
+      emailAttemptKey('kassim@gmail.com', 'une-autre-cle-de-serveur'),
+    );
+    expect(emailAttemptKey('kassim@gmail.com', KEY)).not.toContain(
+      createHash('sha256').update('kassim@gmail.com').digest('hex'),
+    );
+  });
+});
+
+describe('ipBucket', () => {
+  it('garde une adresse IPv4 telle quelle', () => {
+    expect(ipBucket('203.0.113.7')).toBe('203.0.113.7');
+  });
+
+  it('ramene une IPv4 vue en IPv6 a son adresse IPv4', () => {
+    expect(ipBucket('::ffff:203.0.113.7')).toBe('203.0.113.7');
+  });
+
+  /* Un abonne IPv6 recoit un /64 entier : chaque adresse ne vaut pas un compteur. */
+  it('range toute une IPv6 dans son prefixe /64', () => {
+    const a = ipBucket('2001:db8:1234:5678::1');
+    expect(a).toBe('2001:db8:1234:5678::/64');
+    expect(ipBucket('2001:0db8:1234:5678:abcd:ef01:2345:6789')).toBe(a);
+    expect(ipBucket('2001:db8:1234:5679::1')).not.toBe(a);
+    expect(ipBucket('2001:db8::1')).toBe('2001:db8:0:0::/64');
+    expect(ipBucket('::1')).toBe('0:0:0:0::/64');
+  });
+
+  it('refuse une adresse absente ou illisible plutot que de la partager', () => {
+    expect(ipBucket(undefined)).toBeNull();
+    expect(ipBucket('')).toBeNull();
+    expect(ipBucket('pas une ip')).toBeNull();
   });
 });
