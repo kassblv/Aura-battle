@@ -610,10 +610,12 @@ export function App(): JSX.Element {
   */
   const { dismissCompleted } = challenges;
 
+  const { dismissEnded } = online;
   const leaveMatch = useCallback(() => {
     dismissCompleted();
+    dismissEnded();
     setNav((current) => navigate({ ...current, matchRunning: false }, 'home'));
-  }, [dismissCompleted]);
+  }, [dismissCompleted, dismissEnded]);
 
   /*
     Les gestes de fin de match, STABLES.
@@ -628,19 +630,22 @@ export function App(): JSX.Element {
     // En ligne, « rejouer » c est se remettre en file : l adversaire
     // precedent n a aucune raison d etre encore la.
     dismissCompleted();
+    dismissEnded();
     joinQueue(mode);
-  }, [dismissCompleted, joinQueue, mode]);
+  }, [dismissCompleted, dismissEnded, joinQueue, mode]);
   const requeueFromInvite = useCallback(() => {
     // Depuis une invitation aussi, « rejouer » passe par la file : celui qui
     // avait donne le code n a pas forcement envie d'un second duel, et
     // l attendre laisserait le joueur devant rien.
     dismissCompleted();
+    dismissEnded();
     setNav((current) => navigate(current, 'queue'));
     joinQueue(mode);
-  }, [dismissCompleted, joinQueue, mode]);
+  }, [dismissCompleted, dismissEnded, joinQueue, mode]);
   const goHome = useCallback(() => {
+    dismissEnded();
     setNav((current) => navigate(current, 'home'));
-  }, []);
+  }, [dismissEnded]);
 
   return (
     <div className="app">

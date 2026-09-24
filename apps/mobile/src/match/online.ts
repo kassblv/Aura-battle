@@ -94,6 +94,13 @@ export interface OnlineMatch {
    */
   lock(choice: Choice, chargeAtMs: number, tapAtMs: number | null): void;
   forfeit(): void;
+  /**
+   * Oublie un match TERMINE, pour que l ecran suivant reparte de rien.
+   *
+   * Sans effet sur un match en cours : quitter un ecran n est pas abandonner,
+   * et l abandon a son propre geste (`forfeit`).
+   */
+  dismiss(): void;
 }
 
 /**
@@ -326,6 +333,10 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
     forfeit() {
       if (state.matchId === null) return;
       client.send('match:forfeit', { matchId: state.matchId });
+    },
+
+    dismiss() {
+      if (state.phase === 'ended') state = EMPTY_ONLINE_STATE;
     },
   };
 }

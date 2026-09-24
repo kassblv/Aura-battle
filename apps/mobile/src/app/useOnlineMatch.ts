@@ -62,6 +62,14 @@ export interface OnlineSession {
    */
   readonly settled: ServerMessage<'match:end'> | null;
   readonly clearSettled: () => void;
+  /**
+   * Oublie le match termine en quittant son ecran de fin.
+   *
+   * Sans cela la vue restait `ended` jusqu au match suivant : l ecran
+   * d invitation ne revenait jamais, et la recherche d un adversaire
+   * s affichait par-dessus l ecran de defaite fige.
+   */
+  readonly dismissEnded: () => void;
   /** Code d invitation cree par ce joueur, quand il en a demande un. */
   readonly inviteCode: string | null;
   readonly error: string | null;
@@ -346,6 +354,10 @@ export function useOnlineMatch(
     setSettled(null);
   }, []);
 
+  const dismissEnded = useCallback(() => {
+    matchRef.current?.dismiss();
+  }, []);
+
   const createInvite = useCallback(() => {
     setError(null);
     clientRef.current?.send('invite:create', {});
@@ -383,6 +395,7 @@ export function useOnlineMatch(
     preview,
     settled,
     clearSettled,
+    dismissEnded,
     inviteCode,
     error,
     queue,

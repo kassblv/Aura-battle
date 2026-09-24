@@ -287,6 +287,52 @@ describe('createOnlineMatch', () => {
     expect(match.state.phase).toBe('ended');
     expect(match.state.result?.winner).toBe('b');
   });
+
+  /*
+    La regression : apres un duel par code, « Accueil » puis « Code »
+    rouvrait l ecran de defaite du match fini, et l ecran d invitation — le
+    seul d ou l on cree un nouveau code — ne revenait qu en relancant le jeu.
+  */
+  it('congedie un match termine : on repart de rien', () => {
+    const { match, emit } = harness();
+    emit('match:found', {
+      matchId: MATCH,
+      seat: 'a',
+      opponent: { displayName: 'Nova', league: 'Or II', cosmetics: {} },
+      protocolVersion: PROTOCOL_VERSION,
+      rulesVersion: '1.0.0',
+      contentVersion: '1.0.0',
+      ghost: false,
+    });
+    emit('match:end', {
+      matchId: MATCH,
+      winner: 'b',
+      reason: 'rounds',
+      rating: { before: 1200, after: 1185, leagueBefore: 'Or II', leagueAfter: 'Or II' },
+      rewards: { softCurrency: 12, xp: 40, xpTotal: 40 },
+    });
+    match.dismiss();
+    expect(match.state.phase).toBe('idle');
+    expect(match.state.matchId).toBeNull();
+    expect(match.state.opponentName).toBeNull();
+  });
+
+  it('ne congedie JAMAIS un match en cours', () => {
+    // Quitter un ecran n est pas abandonner : l abandon est `forfeit`, un
+    // geste explicite. Effacer un match vivant laisserait le serveur le jouer
+    // sans nous, et l ecran ne saurait plus qu il existe.
+    const { match, emit } = harness();
+    emit('recharge:start', {
+      matchId: MATCH,
+      round: 1,
+      startsAt: 502_000,
+      endsAt: 508_000,
+      orbs: [orb(0)],
+    });
+    match.dismiss();
+    expect(match.state.phase).toBe('recharge');
+    expect(match.state.matchId).toBe(MATCH);
+  });
 });
 
 describe('envois du joueur', () => {
