@@ -481,7 +481,7 @@ describe('manche complete', () => {
     close(host, guest);
   });
 
-  it('refuse une pose payante non possedee et ne le dit qu au seul interesse', async () => {
+  it('joue la pose offerte a la place d une pose payante non possedee', async () => {
     const { host, guest, matchId } = await seatTwoPlayers();
     await host.first('choice:start');
 
@@ -495,10 +495,16 @@ describe('manche complete', () => {
       timing: { chargeAt: 0, tapAt: 400 },
     });
 
-    const error = await host.first<{ code: string }>('error');
-    expect(error.code).toBe('COSMETIC_NOT_OWNED');
-    expect(guest.received.map((m) => m.name)).not.toContain('opponent:locked');
+    const warning = await host.first<{ code: string }>('error');
+    expect(warning.code).toBe('COSMETIC_NOT_OWNED');
+    // Le verrouillage a eu lieu : la manche n'est pas perdue pour un cosmetique.
+    await guest.first('opponent:locked');
     expect(guest.received.map((m) => m.name)).not.toContain('error');
+    lock(guest, matchId, 1, 0);
+
+    const result = await host.first<ServerMessage<'round:result'>>('round:result');
+    expect(result.sides.a.move).toEqual({ style: 'hype', tier: 2 });
+    expect(result.sides.a.cosmetic.animationId).toBe('anim.hype.t2.fist');
 
     close(host, guest);
   });

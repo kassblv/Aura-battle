@@ -192,6 +192,20 @@ describe('createLogger — les secrets ne partent jamais dans les journaux', () 
     expect(sortie).not.toContain('4012');
   });
 
+  it('masque la pose verrouillee, qui porte famille et palier', () => {
+    // Depuis la 2.0.0, `choice:lock` porte une pose : `anim.provoc.t4.back`
+    // dit la famille ET le palier, c'est-a-dire le choix.
+    const { lines, stream } = capture();
+    createLogger(config, stream).info(
+      { poseId: 'anim.provoc.t4.back', body: { poseId: 'anim.hype.t2.floss', amp: 3, ult: true } },
+      'verrouillage',
+    );
+    const sortie = lines.join('');
+    expect(sortie).not.toContain('provoc');
+    expect(sortie).not.toContain('floss');
+    expect(sortie).not.toContain('"amp":3');
+  });
+
   it('laisse passer ce qui n est pas sensible', () => {
     const { lines, stream } = capture();
     createLogger(config, stream).info({ matchId: 'm_01', round: 2 }, 'manche');

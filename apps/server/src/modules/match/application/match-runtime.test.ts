@@ -1325,20 +1325,47 @@ describe('pose verrouillee', () => {
     expect(result().sides.a.move).toEqual({ style: 'hype', tier: 2 });
   });
 
-  it('refuse une pose payante non possedee, au seul siege fautif', () => {
+  /*
+    Une pose de mouvement valide mais non possedee ne coute PAS la manche :
+    le mouvement est verrouille avec la pose offerte de sa case. Sinon un achat
+    cosmetique deviendrait un desavantage de jeu (regle d'or n°3) — il suffit
+    d'un inventaire indisponible a la connexion pour qu'un joueur honnete joue
+    une pose achetee que le match ne lui connait pas.
+  */
+  it('joue la pose offerte de la case quand la pose demandee n est pas possedee', () => {
     advanceTo('choice');
     runtime.lockPose(MATCH_ID, 'a', { poseId: FLOSS, amplifier: 0, useUltimate: false }, null);
-    // Rien n'est verrouille : l'adversaire n'apprend rien.
-    expect(notifier.to(SEATS.b, 'opponent:locked')).toEqual([]);
-    // Le seul interesse l'apprend, et peut verrouiller autre chose : un client
-    // honnete a l'inventaire perime ne doit pas perdre sa manche en silence.
+    // Le verrouillage a lieu : l'adversaire l'apprend, comme pour tout choix.
+    expect(notifier.to(SEATS.b, 'opponent:locked')).toHaveLength(1);
+    // Le seul interesse est prevenu, sans que ce soit une faute.
     expect(notifier.to(SEATS.a, 'error')).toEqual([
-      { code: 'COSMETIC_NOT_OWNED', message: 'pose non possedee', retryable: true },
+      {
+        code: 'COSMETIC_NOT_OWNED',
+        message: 'pose non possedee, pose offerte jouee',
+        retryable: false,
+      },
     ]);
-    expect(notifier.to(SEATS.b, 'error')).toEqual([]);
-    const saved = record();
-    expect(saved.rejectedEvents.a).toBe(1);
-    expect(saved.rejectedEvents.b).toBe(0);
+    runtime.lockPose(MATCH_ID, 'b', { poseId: FLEX, amplifier: 0, useUltimate: false }, null);
+    expect(result().sides.a.move).toEqual({ style: 'hype', tier: 2 });
+    expect(result().sides.a.cosmetic.animationId).toBe('anim.hype.t2.fist');
+    // Aucune suspicion : un client honnete peut arriver ici.
+    expect(record().rejectedEvents.a).toBe(0);
+  });
+
+  it('garde la premiere pose quand un second verrouillage est refuse', () => {
+    advanceTo('choice');
+    runtime.lockPose(MATCH_ID, 'a', { poseId: WHEEL, amplifier: 0, useUltimate: false }, null);
+    runtime.lockPose(
+      MATCH_ID,
+      'a',
+      { poseId: 'anim.acrobatie.t3.spin', amplifier: 0, useUltimate: false },
+      null,
+    );
+    expect(notifier.to(SEATS.a, 'error').map((e) => (e as { code: string }).code)).toContain(
+      'ALREADY_LOCKED',
+    );
+    runtime.lockPose(MATCH_ID, 'b', { poseId: FLEX, amplifier: 0, useUltimate: false }, null);
+    expect(result().sides.a.cosmetic.animationId).toBe(WHEEL);
   });
 
   it.each(['anim.system.none.victory', 'fx.flames', 'anim.hype.t4.wheel', 'hair.long'])(
@@ -1347,8 +1374,10 @@ describe('pose verrouillee', () => {
       advanceTo('choice');
       runtime.lockPose(MATCH_ID, 'a', { poseId, amplifier: 0, useUltimate: false }, null);
       expect(notifier.to(SEATS.b, 'opponent:locked')).toEqual([]);
+      // Un client honnete n'envoie jamais un identifiant qui n'est pas une
+      // pose : refus definitif, compte comme suspect.
       expect(notifier.to(SEATS.a, 'error')).toEqual([
-        { code: 'INVALID_PAYLOAD', message: 'pose inconnue', retryable: true },
+        { code: 'INVALID_PAYLOAD', message: 'pose inconnue', retryable: false },
       ]);
       expect(record().rejectedEvents.a).toBe(1);
     },

@@ -96,7 +96,7 @@ C'est le **premier** message qui contient les choix de l'adversaire.
 | Donnée | Règle |
 |---|---|
 | `recharge:taps` | Reçu avant `endsAt + 400 ms` ; `t` croissants ; `t ∈ [0, 6000]` ; orbe vivante à `t` selon la séquence ; au plus 12 taps/s ; une orbe ne compte qu'une fois |
-| `choice:lock` | Phase CHOICE, avant `endsAt + 300 ms` ; `poseId` = une pose de mouvement du catalogue (sinon `INVALID_PAYLOAD`), **offerte** (première de sa case) ou **possédée** (sinon `COSMETIC_NOT_OWNED`) — refus rejouable, envoyé au seul siège fautif et compté dans ses événements refusés ; coût ≤ énergie ; `ult` seulement si jauge pleine ; `chargeAt ≥ 0` ; `tapAt − chargeAt ∈ [120, 6000]` ms ; `tapAt` cohérent avec l'heure de réception (écart ≤ RTT mesuré + 250 ms) |
+| `choice:lock` | Phase CHOICE, avant `endsAt + 300 ms` ; `poseId` = une pose de mouvement du catalogue, sinon refus `INVALID_PAYLOAD` au seul siège fautif, compté dans ses événements refusés ; une pose valide mais **ni offerte ni possédée** verrouille quand même son mouvement avec la **pose offerte de la case** et vaut au joueur un simple avertissement `COSMETIC_NOT_OWNED`, sans suspicion — un achat cosmétique ne doit jamais coûter une manche ; coût ≤ énergie ; `ult` seulement si jauge pleine ; `chargeAt ≥ 0` ; `tapAt − chargeAt ∈ [120, 6000]` ms ; `tapAt` cohérent avec l'heure de réception (écart ≤ RTT mesuré + 250 ms) |
 | `intent:show` | Phase CHOICE, avant `choice:lock` du même siège, **une seule annonce par manche et par siège** — sans quoi annoncer toutes les familles garantit le bonus de +10 de jauge d'Ultime de `01-game-design.md` §10 |
 | Tout message | Schéma zod, joueur bien assis dans ce match, `seq` non déjà traité, limite de débit par socket |
 

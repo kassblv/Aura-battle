@@ -691,37 +691,60 @@ export class MatchRuntime {
   /**
    * Verrouille une POSE, l'intention que le client envoie depuis la 2.0.0.
    *
-   * Le mouvement se deduit du catalogue, jamais du client. Une pose inconnue,
-   * ou payante sans avoir ete obtenue, est refusee et imputee au seul siege
-   * fautif (`rejected`, docs/06) : un client honnete n'en envoie jamais. Le
-   * siege n'est alors pas verrouille, et l'adversaire n'en apprend rien.
+   * Le mouvement se deduit du catalogue, jamais du client. Un identifiant qui
+   * n'est pas une pose est refuse et impute au seul siege fautif (`rejected`,
+   * docs/06) : le siege n'est pas verrouille, l'adversaire n'en apprend rien.
+   * Une pose valide mais non possedee verrouille son mouvement avec la pose
+   * offerte de la case, et le joueur est seulement prevenu.
    */
   lockPose(matchId: string, seat: Seat, intent: PoseIntent, timingTapAtMs: number | null): void {
     const match = this.matches.get(matchId);
     if (match === undefined) return;
 
     const move = moveOfAnimation(intent.poseId);
-    const offered = move !== null && defaultAnimationFor(move) === intent.poseId;
-    if (move === null || (!offered && !match.wearing[seat].owned.includes(intent.poseId))) {
+    if (move === null) {
+      // Pas une pose de mouvement : un client honnete n'en envoie jamais. Refus
+      // definitif, impute au seul siege fautif (`rejected`, docs/06).
       match.rejected[seat] += 1;
-      // Au seul interesse, et rejouable : un client honnete a l'inventaire
-      // perime (pose obtenue sur un autre appareil) doit pouvoir verrouiller
-      // autre chose plutot que perdre sa manche en silence.
       this.notifier.send(match.seats[seat], 'error', {
-        code: move === null ? 'INVALID_PAYLOAD' : 'COSMETIC_NOT_OWNED',
-        message: move === null ? 'pose inconnue' : 'pose non possedee',
-        retryable: true,
+        code: 'INVALID_PAYLOAD',
+        message: 'pose inconnue',
+        retryable: false,
       });
       return;
     }
+
+    /*
+      Une pose valide mais non possedee ne coute PAS la manche : on verrouille
+      son mouvement avec la pose offerte de la case. La refuser ferait d'un
+      achat cosmetique un desavantage de jeu (regle d'or n°3) — il suffit d'un
+      inventaire indisponible a la connexion pour qu'un joueur honnete joue une
+      pose achetee que le match ne lui connait pas. Aucune suspicion : c'est un
+      avertissement, pas une faute.
+    */
+    const offered = defaultAnimationFor(move);
+    const owned = intent.poseId === offered || match.wearing[seat].owned.includes(intent.poseId);
+    const poseId = owned ? intent.poseId : offered;
 
     // Posee AVANT le verrouillage : le second siege a verrouiller declenche la
     // resolution de la manche dans le meme appel, et la revelation lit la pose
     // a cet instant-la. Retiree si le moteur refuse le choix.
     const previous = match.poses[seat];
-    match.poses[seat] = { round: match.state.round, poseId: intent.poseId };
+    match.poses[seat] = { round: match.state.round, poseId };
     const choice: Choice = { move, amplifier: intent.amplifier, useUltimate: intent.useUltimate };
-    if (!this.lockChoice(matchId, seat, choice, timingTapAtMs)) match.poses[seat] = previous;
+    if (!this.lockChoice(matchId, seat, choice, timingTapAtMs)) {
+      match.poses[seat] = previous;
+      return;
+    }
+    // Apres l'acceptation seulement : un verrouillage hors phase doit recevoir
+    // `WRONG_PHASE` du moteur, pas un avertissement sur la pose.
+    if (!owned) {
+      this.notifier.send(match.seats[seat], 'error', {
+        code: 'COSMETIC_NOT_OWNED',
+        message: 'pose non possedee, pose offerte jouee',
+        retryable: false,
+      });
+    }
   }
 
   /**

@@ -74,6 +74,12 @@ const REDACTED_PATHS = [
   '*.timing',
   'taps',
   '*.taps',
+  // La pose verrouillee (protocole 2.0.0) dit la famille et le palier : c'est
+  // le choix. L'amplificateur et l'Ultime l'accompagnent dans le meme message.
+  'poseId',
+  '*.poseId',
+  '*.amp',
+  '*.ult',
 ];
 
 /**
