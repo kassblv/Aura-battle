@@ -36,3 +36,11 @@ describe('accountNotice', () => {
     expect(accountNotice('issued')).toMatch(/ancien|annul|remplac/i);
   });
 });
+
+describe('accountNotice replaced', () => {
+  /* Apres un changement de mot de passe, l ancien code est revoque (ADR 0013). */
+  it('dit que l ancien code ne marche plus et qu il faut noter le nouveau', () => {
+    expect(accountNotice('replaced')).toMatch(/ancien code ne marche plus/);
+    expect(accountNotice('replaced')).toMatch(/note/i);
+  });
+});

@@ -6,7 +6,7 @@
  * peut alors verifier qu ils disent bien ce qu ils doivent dire.
  */
 
-export type AccountMoment = 'issued' | 'claim';
+export type AccountMoment = 'issued' | 'replaced' | 'claim';
 
 /**
  * Decoupe un code en groupes lisibles.
@@ -33,6 +33,14 @@ const NOTICES: Readonly<Record<AccountMoment, string>> = Object.freeze({
     geste. Quelqu un qui vient de jouer trente minutes en invite sur cet
     ordinateur doit savoir que ces trente minutes partent.
   */
+  /*
+    Apres un changement de mot de passe : l ancien code est revoque avec le
+    reste, et celui-ci ne sera pas plus reaffiche que les autres. Un seul
+    message, a la place de celui de la delivrance — les deux ensemble
+    debordaient de la colonne.
+  */
+  replaced:
+    'Mot de passe changé. Ton ancien code ne marche plus : note celui-ci, il ne sera plus jamais réaffiché.',
   claim:
     'Attention : la progression de ce navigateur sera abandonnée et remplacée par celle du compte retrouvé.',
 });

@@ -59,7 +59,11 @@ export interface SessionState {
    * le compte invite de ce navigateur est abandonne.
    */
   loginEmail(email: string, password: string): Promise<boolean>;
-  changePassword(proof: PasswordProof, newPassword: string): Promise<boolean>;
+  /**
+   * Change le mot de passe ; rend le code de recuperation NEUF (l ancien est
+   * revoque avec le reste), ou `null` en cas d echec.
+   */
+  changePassword(proof: PasswordProof, newPassword: string): Promise<string | null>;
 }
 
 const MESSAGES: Readonly<Record<string, string>> = {
@@ -308,10 +312,10 @@ export function useSession(): SessionState {
   );
 
   const changePassword = useCallback(
-    async (proof: PasswordProof, newPassword: string): Promise<boolean> => {
+    async (proof: PasswordProof, newPassword: string): Promise<string | null> => {
       if (accessToken === null) {
         setError(MESSAGES.UNREACHABLE ?? null);
-        return false;
+        return null;
       }
       setBusy(true);
       setError(null);
@@ -322,15 +326,14 @@ export function useSession(): SessionState {
           CET appareil : on l adopte, sans quoi le prochain appel echouerait et
           le joueur croirait avoir ete deconnecte par son propre geste.
         */
-        adopt(
-          await requestPasswordChange(serverUrl(), accessToken, proof, newPassword, {
-            deviceSecret: deviceSecret(),
-          }),
-        );
-        return true;
+        const changed = await requestPasswordChange(serverUrl(), accessToken, proof, newPassword, {
+          deviceSecret: deviceSecret(),
+        });
+        adopt(changed);
+        return changed.recoveryCode;
       } catch (cause) {
         setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
-        return false;
+        return null;
       } finally {
         setBusy(false);
       }

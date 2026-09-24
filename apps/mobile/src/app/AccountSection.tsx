@@ -31,7 +31,8 @@ export interface AccountSectionProps {
   readonly email: EmailStatusResponse | null;
   readonly linkEmail: (email: string, password: string) => Promise<boolean>;
   readonly loginEmail: (email: string, password: string) => void;
-  readonly changePassword: (proof: PasswordProof, newPassword: string) => Promise<boolean>;
+  /** Rend le code de recuperation NEUF qui remplace l ancien, ou `null` en cas d echec. */
+  readonly changePassword: (proof: PasswordProof, newPassword: string) => Promise<string | null>;
 }
 
 type View = 'overview' | 'link' | 'change' | 'issue' | 'login-email' | 'login-code';
@@ -59,6 +60,9 @@ export function AccountSection({
   const [view, setView] = useState<View>('overview');
   const [copied, setCopied] = useState(false);
   const [done, setDone] = useState<string | null>(null);
+  // Le code delivre par un changement de mot de passe : plus recent que `code`.
+  const [freshCode, setFreshCode] = useState<string | null>(null);
+  const shownCode = freshCode ?? code;
   const [address, setAddress] = useState('');
   const [password, setPassword] = useState('');
   const [confirm, setConfirm] = useState('');
@@ -133,10 +137,13 @@ export function AccountSection({
         const proof: PasswordProof = forgot
           ? { recoveryCode: entry }
           : { currentPassword: current };
-        void changePassword(proof, password).then((ok) => {
-          if (ok) {
+        void changePassword(proof, password).then((fresh) => {
+          if (fresh !== null) {
             open('overview');
-            setDone('Mot de passe changé.');
+            // Le code neuf s'affiche comme a la delivrance : l'ancien vient de
+            // tomber avec le mot de passe, et celui-ci ne sera plus reaffiche.
+            setFreshCode(fresh);
+            setCopied(false);
           }
         });
       }
@@ -335,7 +342,7 @@ export function AccountSection({
           >
             <b>Changer le mot de passe</b>
             {/* Le code affiche prend la place : sans cela la colonne deborde. */}
-            {code === null && <small>Email : {email.maskedEmail}</small>}
+            {shownCode === null && <small>Email : {email.maskedEmail}</small>}
           </button>
         ) : (
           <button
@@ -351,12 +358,14 @@ export function AccountSection({
           </button>
         )}
 
-        {code === null ? (
+        {shownCode === null ? (
           <button
             type="button"
             className="choice"
             onClick={() => {
               // Avec un email, une session seule ne suffit plus (ADR 0013).
+              // Un code redemande remplace aussi celui du changement de mot de passe.
+              setFreshCode(null);
               if (email?.linked === true) open('issue');
               else issue();
             }}
@@ -375,7 +384,7 @@ export function AccountSection({
               arrive du premier coup.
             */}
             <p className="code" aria-label="Ton code de récupération">
-              {groupsOf(code).map((group) => (
+              {groupsOf(shownCode).map((group) => (
                 <span key={group} className="code__group">
                   {group}
                 </span>
@@ -385,7 +394,7 @@ export function AccountSection({
               type="button"
               className="choice"
               onClick={() => {
-                void navigator.clipboard?.writeText(code).then(
+                void navigator.clipboard?.writeText(shownCode).then(
                   () => {
                     setCopied(true);
                   },
@@ -401,7 +410,9 @@ export function AccountSection({
                   la colonne debordait de 13 px une fois le code affiche. */}
               <b>{copied ? 'Copié' : 'Copier le code'}</b>
             </button>
-            <p className="sheet__note sheet__note--warn">{accountNotice('issued')}</p>
+            <p className="sheet__note sheet__note--warn">
+              {accountNotice(freshCode === null ? 'issued' : 'replaced')}
+            </p>
           </>
         )}
 

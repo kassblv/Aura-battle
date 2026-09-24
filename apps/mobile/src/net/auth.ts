@@ -4,10 +4,12 @@ import {
   emailSchema,
   emailStatusResponseSchema,
   newPasswordSchema,
+  passwordChangeResponseSchema,
   recoveryCodeResponseSchema,
   sessionResponseSchema,
   type AuthErrorCode,
   type EmailStatusResponse,
+  type PasswordChangeResponse,
   type SessionResponse,
 } from '@aura/protocol';
 
@@ -335,10 +337,11 @@ export async function changePassword(
   proof: PasswordProof,
   newPassword: string,
   options: AuthOptions & { readonly deviceSecret?: string } = {},
-): Promise<SessionResponse> {
+): Promise<PasswordChangeResponse> {
   // Le secret de CET appareil : le serveur detache tous les autres, c est ce
   // qui chasse un intrus, et garde celui qui prouve qu il fait la demande.
-  // Il rend une session FRAICHE : l ancienne vient d etre invalidee.
+  // Il rend une session FRAICHE — l ancienne vient d etre invalidee — et un
+  // code de recuperation NEUF : l ancien est revoque avec le reste.
   const body = await send(
     endpoint(baseUrl, '/auth/email/password'),
     {
@@ -352,7 +355,7 @@ export async function changePassword(
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
-  const parsed = sessionResponseSchema.safeParse(body);
+  const parsed = passwordChangeResponseSchema.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }

@@ -295,7 +295,7 @@ describe('email et mot de passe', () => {
   });
 
   it('change le mot de passe avec l ancien, ou avec le code de recuperation', async () => {
-    const fetcher = ok(session);
+    const fetcher = ok({ ...session, recoveryCode: 'AURA-NEUF' });
     await changePassword('http://srv', 'acc', { currentPassword: 'ancien' }, password, {
       fetcher,
     });
@@ -333,14 +333,14 @@ describe('preuves durcies', () => {
   });
 
   it('joint le secret de l appareil a un changement de mot de passe', async () => {
-    const fetcher = ok(session);
+    const fetcher = ok({ ...session, recoveryCode: 'AURA-NEUF' });
     await expect(
       changePassword('http://srv', 'acc', { currentPassword: 'ancien' }, 'aura du soir', {
         fetcher,
         deviceSecret: 'a'.repeat(64),
       }),
       // Une session fraiche : l ancienne vient d etre invalidee par le serveur.
-    ).resolves.toMatchObject({ accessToken: 'acc' });
+    ).resolves.toMatchObject({ accessToken: 'acc', recoveryCode: 'AURA-NEUF' });
     expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toEqual({
       currentPassword: 'ancien',
       newPassword: 'aura du soir',
@@ -375,6 +375,20 @@ describe('preuve d appareil', () => {
       { currentPassword: 'ancien' },
       'aura du soir',
       { fetcher: ok({ changed: true }) },
+    ).catch((error: unknown) => error);
+    expect((thrown as AuthError).reason).toBe('MALFORMED');
+  });
+});
+
+describe('code neuf au changement de mot de passe', () => {
+  /* Quatrieme relecture (B2) : sans le code neuf, la reponse n'est pas celle attendue. */
+  it('refuse une reponse de changement sans code de recuperation', async () => {
+    const thrown = await changePassword(
+      'http://srv',
+      'acc',
+      { currentPassword: 'ancien' },
+      'aura du soir',
+      { fetcher: ok(session) },
     ).catch((error: unknown) => error);
     expect((thrown as AuthError).reason).toBe('MALFORMED');
   });
