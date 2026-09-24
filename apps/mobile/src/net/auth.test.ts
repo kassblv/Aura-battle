@@ -242,7 +242,7 @@ describe('email et mot de passe', () => {
   it('rattache une adresse avec le jeton, et lit l etat masque', async () => {
     const fetcher = ok({ linked: true, maskedEmail: 'k•••@gmail.com' });
     await expect(
-      linkEmail('http://srv', 'acc', 'k@gmail.com', password, { fetcher }),
+      linkEmail('http://srv', 'acc', 'k@gmail.com', password, 'a'.repeat(64), { fetcher }),
     ).resolves.toEqual({ linked: true, maskedEmail: 'k•••@gmail.com' });
     const [url, init] = fetcher.mock.calls[0] ?? [];
     expect(url).toBe('http://srv/auth/email/link');
@@ -252,7 +252,9 @@ describe('email et mot de passe', () => {
   it('refuse un mot de passe trop court avant l aller-retour', async () => {
     const fetcher = ok({});
     expect(
-      await reasonOf(linkEmail('http://srv', 'acc', 'k@gmail.com', 'court', { fetcher })),
+      await reasonOf(
+        linkEmail('http://srv', 'acc', 'k@gmail.com', 'court', 'a'.repeat(64), { fetcher }),
+      ),
     ).toBe('PASSWORD_TOO_SHORT');
     expect(fetcher).not.toHaveBeenCalled();
   });
@@ -260,7 +262,7 @@ describe('email et mot de passe', () => {
   it('rapporte une adresse deja prise', async () => {
     expect(
       await reasonOf(
-        linkEmail('http://srv', 'acc', 'k@gmail.com', password, {
+        linkEmail('http://srv', 'acc', 'k@gmail.com', password, 'a'.repeat(64), {
           fetcher: fails(409, { code: 'EMAIL_UNAVAILABLE' }),
         }),
       ),
@@ -287,7 +289,7 @@ describe('email et mot de passe', () => {
   });
 
   it('change le mot de passe avec l ancien, ou avec le code de recuperation', async () => {
-    const fetcher = ok({ changed: true });
+    const fetcher = ok(session);
     await changePassword('http://srv', 'acc', { currentPassword: 'ancien' }, password, {
       fetcher,
     });
@@ -325,15 +327,49 @@ describe('preuves durcies', () => {
   });
 
   it('joint le secret de l appareil a un changement de mot de passe', async () => {
-    const fetcher = ok({ changed: true });
-    await changePassword('http://srv', 'acc', { currentPassword: 'ancien' }, 'aura du soir', {
-      fetcher,
-      deviceSecret: 'a'.repeat(64),
-    });
+    const fetcher = ok(session);
+    await expect(
+      changePassword('http://srv', 'acc', { currentPassword: 'ancien' }, 'aura du soir', {
+        fetcher,
+        deviceSecret: 'a'.repeat(64),
+      }),
+      // Une session fraiche : l ancienne vient d etre invalidee par le serveur.
+    ).resolves.toMatchObject({ accessToken: 'acc' });
     expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toEqual({
       currentPassword: 'ancien',
       newPassword: 'aura du soir',
       deviceSecret: 'a'.repeat(64),
     });
+  });
+});
+
+describe('preuve d appareil', () => {
+  it('joint le secret de l appareil au rattachement d un email', async () => {
+    const fetcher = ok({ linked: true, maskedEmail: 'k•••@gmail.com' });
+    await linkEmail('http://srv', 'acc', 'k@gmail.com', 'aura du soir', 'b'.repeat(64), {
+      fetcher,
+    });
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toMatchObject({
+      deviceSecret: 'b'.repeat(64),
+    });
+  });
+
+  it('joint le secret de l appareil a une demande de code', async () => {
+    const fetcher = ok({ code: 'AURA-7K2M-94PX-QTJD-3HVN' });
+    await issueRecoveryCode('http://srv', 'acc', { fetcher, deviceSecret: 'b'.repeat(64) });
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toEqual({
+      deviceSecret: 'b'.repeat(64),
+    });
+  });
+
+  it('refuse une reponse de changement qui n est pas une session', async () => {
+    const thrown = await changePassword(
+      'http://srv',
+      'acc',
+      { currentPassword: 'ancien' },
+      'aura du soir',
+      { fetcher: ok({ changed: true }) },
+    ).catch((error: unknown) => error);
+    expect((thrown as AuthError).reason).toBe('MALFORMED');
   });
 });

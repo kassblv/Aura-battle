@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   DEVICE_SECRET_KEY,
   deviceSecret,
-  rotateDeviceSecret,
+  joinWithFreshSecret,
   type SecretStore,
 } from './identity.js';
 
@@ -92,25 +92,46 @@ describe('deviceSecret', () => {
   });
 });
 
-describe('rotateDeviceSecret', () => {
+describe('joinWithFreshSecret', () => {
   /*
-    Presenter un code de recuperation abandonne le compte invite de CE
-    navigateur. Son secret appartient encore a l ancien compte : le reutiliser
-    pour rattacher le compte retrouve se heurterait a la contrainte d unicite
-    du serveur. On en tire donc un neuf, qu on rattache ensuite.
+    Presenter un code ou un email abandonne le compte invite de CE navigateur.
+    Son secret appartient encore a l ancien compte : on en tire un neuf, qu on
+    rattache au compte retrouve.
   */
-  it('remplace le secret range par un neuf', () => {
+  it('rattache un secret neuf, puis le range', async () => {
     const keychain = store();
     const first = deviceSecret(keychain);
-    const rotated = rotateDeviceSecret(keychain);
+    const linked: string[] = [];
 
-    expect(rotated).not.toBe(first);
-    expect(rotated).toMatch(/^[0-9a-f]{64}$/);
+    const fresh = await joinWithFreshSecret((secret) => {
+      linked.push(secret);
+      return Promise.resolve();
+    }, keychain);
+
+    expect(fresh).not.toBe(first);
+    expect(linked).toEqual([fresh]);
     // Et c est bien le neuf qui est relu au prochain lancement.
-    expect(deviceSecret(keychain)).toBe(rotated);
+    expect(deviceSecret(keychain)).toBe(fresh);
   });
 
-  it('en tire un meme quand rien n etait range', () => {
-    expect(rotateDeviceSecret(store())).toMatch(/^[0-9a-f]{64}$/);
+  /*
+    Seconde relecture (F) : ranger le neuf avant la reponse du serveur faisait
+    perdre l ancien au moindre echec. Le rechargement ouvrait alors un compte
+    vide de plus.
+  */
+  it('garde l ancien secret tant que le rattachement n a pas reussi', async () => {
+    const keychain = store();
+    const first = deviceSecret(keychain);
+
+    await expect(
+      joinWithFreshSecret(() => Promise.reject(new Error('reseau')), keychain),
+    ).rejects.toThrow('reseau');
+    expect(deviceSecret(keychain)).toBe(first);
+  });
+
+  it('range le secret meme quand rien n etait range', async () => {
+    const keychain = store();
+    const fresh = await joinWithFreshSecret(() => Promise.resolve(), keychain);
+    expect(keychain.map.get(DEVICE_SECRET_KEY)).toBe(fresh);
   });
 });

@@ -13,7 +13,7 @@ import {
   renameProfile,
   type PasswordProof,
 } from '../net/auth.js';
-import { deviceSecret, rotateDeviceSecret } from '../net/identity.js';
+import { deviceSecret, joinWithFreshSecret } from '../net/identity.js';
 import { loadIdentity, saveIdentity, type StoredIdentity } from '../net/session.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 import { emailFailureMessage } from './emailAccount.js';
@@ -174,7 +174,9 @@ export function useSession(): SessionState {
         return await issueRecoveryCode(
           baseUrl,
           accessToken,
-          currentPassword === undefined ? {} : { currentPassword },
+          currentPassword === undefined
+            ? { deviceSecret: deviceSecret() }
+            : { currentPassword, deviceSecret: deviceSecret() },
         );
       } catch (cause) {
         setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
@@ -207,7 +209,7 @@ export function useSession(): SessionState {
         suivant rouvrirait le compte local : le joueur verrait son compte
         revenir, puis disparaitre.
       */
-      await linkDevice(baseUrl, session.accessToken, rotateDeviceSecret());
+      await joinWithFreshSecret((secret) => linkDevice(baseUrl, session.accessToken, secret));
 
       const next = { playerId: session.player.id, displayName: session.player.displayName };
       saveIdentity(next);
@@ -261,7 +263,9 @@ export function useSession(): SessionState {
       setBusy(true);
       setError(null);
       try {
-        setEmail(await requestEmailLink(serverUrl(), accessToken, address, password));
+        setEmail(
+          await requestEmailLink(serverUrl(), accessToken, address, password, deviceSecret()),
+        );
         return true;
       } catch (cause) {
         setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
@@ -291,7 +295,7 @@ export function useSession(): SessionState {
         const session = await loginWithEmail(baseUrl, address, password);
         // Meme rattachement qu apres un code de recuperation, pour la meme
         // raison : sans lui, le rechargement rouvrirait le compte invite local.
-        await linkDevice(baseUrl, session.accessToken, rotateDeviceSecret());
+        await joinWithFreshSecret((secret) => linkDevice(baseUrl, session.accessToken, secret));
         adopt(session);
         return true;
       } catch (cause) {
@@ -313,9 +317,17 @@ export function useSession(): SessionState {
       setBusy(true);
       setError(null);
       try {
-        await requestPasswordChange(serverUrl(), accessToken, proof, newPassword, {
-          deviceSecret: deviceSecret(),
-        });
+        /*
+          Le serveur invalide toutes les sessions, la notre comprise, et detache
+          tous les appareils sauf celui-ci. Il rend une session fraiche pour
+          CET appareil : on l adopte, sans quoi le prochain appel echouerait et
+          le joueur croirait avoir ete deconnecte par son propre geste.
+        */
+        adopt(
+          await requestPasswordChange(serverUrl(), accessToken, proof, newPassword, {
+            deviceSecret: deviceSecret(),
+          }),
+        );
         return true;
       } catch (cause) {
         setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
@@ -324,7 +336,7 @@ export function useSession(): SessionState {
         setBusy(false);
       }
     },
-    [accessToken],
+    [accessToken, adopt],
   );
 
   return {

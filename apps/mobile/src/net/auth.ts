@@ -165,18 +165,24 @@ export async function renameProfile(
 export async function issueRecoveryCode(
   baseUrl: string,
   accessToken: string,
-  options: AuthOptions & { readonly currentPassword?: string } = {},
+  options: AuthOptions & {
+    readonly currentPassword?: string;
+    readonly deviceSecret?: string;
+  } = {},
 ): Promise<string> {
-  // Des qu'un email est rattache, le serveur exige l'ancien mot de passe : une
-  // session seule ne doit pas pouvoir remplacer le code du joueur.
+  // Une session seule ne suffit pas (ADR 0013) : l'ancien mot de passe des
+  // qu'un email est rattache, le secret de cet appareil sinon.
   const body = await send(
     endpoint(baseUrl, '/auth/recovery'),
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify(
-        options.currentPassword === undefined ? {} : { currentPassword: options.currentPassword },
-      ),
+      body: JSON.stringify({
+        ...(options.currentPassword === undefined
+          ? {}
+          : { currentPassword: options.currentPassword }),
+        ...(options.deviceSecret === undefined ? {} : { deviceSecret: options.deviceSecret }),
+      }),
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
@@ -286,6 +292,7 @@ export async function linkEmail(
   accessToken: string,
   email: string,
   password: string,
+  deviceSecret: string,
   options: AuthOptions = {},
 ): Promise<EmailStatusResponse> {
   const body = await send(
@@ -293,7 +300,12 @@ export async function linkEmail(
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ email: checkedEmail(email), password: checkedNewPassword(password) }),
+      // Le secret de cet appareil prouve qu'on n'est pas un simple jeton vole.
+      body: JSON.stringify({
+        email: checkedEmail(email),
+        password: checkedNewPassword(password),
+        deviceSecret,
+      }),
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
@@ -345,10 +357,11 @@ export async function changePassword(
   proof: PasswordProof,
   newPassword: string,
   options: AuthOptions & { readonly deviceSecret?: string } = {},
-): Promise<void> {
+): Promise<SessionResponse> {
   // Le secret de CET appareil : le serveur detache tous les autres, c est ce
   // qui chasse un intrus, et garde celui qui prouve qu il fait la demande.
-  await send(
+  // Il rend une session FRAICHE : l ancienne vient d etre invalidee.
+  const body = await send(
     endpoint(baseUrl, '/auth/email/password'),
     {
       method: 'POST',
@@ -361,4 +374,7 @@ export async function changePassword(
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
+  const parsed = sessionResponseSchema.safeParse(body);
+  if (!parsed.success) throw new AuthError('MALFORMED');
+  return parsed.data;
 }

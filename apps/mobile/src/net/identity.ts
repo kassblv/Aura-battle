@@ -95,19 +95,25 @@ export function deviceSecret(
 }
 
 /**
- * Tire un secret d appareil neuf et remplace celui qui etait range.
+ * Rattache un secret d appareil NEUF au compte retrouve, et ne le range
+ * qu une fois le rattachement confirme.
  *
- * Presenter un code de recuperation **abandonne** le compte invite de ce
+ * Presenter un code ou un email **abandonne** le compte invite de ce
  * navigateur. Son ancien secret appartient encore a ce compte-la : le
- * reutiliser pour rattacher le compte retrouve se heurterait a la contrainte
- * d unicite du serveur, qui refuserait — et le joueur perdrait au rechargement
- * le compte qu il vient de retrouver.
+ * reutiliser se heurterait a la contrainte d unicite du serveur. D ou un neuf.
+ *
+ * L ordre compte. Ranger le neuf AVANT que le serveur l ait accepte faisait
+ * perdre l ancien au moindre echec reseau : le rechargement suivant ouvrait
+ * alors un troisieme compte, vide, et le joueur perdait jusqu a son compte
+ * invite. Tant que `link` n a pas reussi, l ancien secret reste en place.
  */
-export function rotateDeviceSecret(
+export async function joinWithFreshSecret(
+  link: (secret: string) => Promise<void>,
   store: SecretStore = browserStore(),
   randomBytes: RandomBytes = cryptoBytes,
-): string {
+): Promise<string> {
   const secret = toHex(randomBytes(32));
+  await link(secret);
   try {
     store.write(DEVICE_SECRET_KEY, secret);
   } catch {
