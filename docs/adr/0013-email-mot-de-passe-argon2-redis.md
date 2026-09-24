@@ -66,6 +66,36 @@ Une session seule (téléphone déverrouillé, jeton volé) ne suffit plus :
   appareil détaché qui se relance ouvre un compte invité neuf, plus celui-ci.
   Le code de récupération, lui, reste : c'est la porte de secours.
 
+**L'intrus chassé ne revient pas.** Le changement de mot de passe pose
+`Player.credentialsChangedAt` dans la même transaction que la révocation et le
+détachement. Le vérificateur de jetons d'accès partagé — toutes les routes
+authentifiées et le handshake Socket.IO — refuse tout jeton dont l'`iat` est
+antérieur, **à la seconde** (`iat` est en secondes) : le jeton émis dans la
+seconde du changement passe, et c'est justement celui que la route de
+changement rend à l'appareil qui l'a demandé, sous forme de session fraîche.
+Sans cela, l'intrus gardait son jeton d'accès jusqu'à quinze minutes, assez
+pour rattacher un nouvel appareil et revenir. Les sockets déjà ouvertes ne
+sont pas coupées : elles perdent leur jeton à la reconnexion suivante.
+
+**Le renouvellement ne court plus contre la révocation.** Il consomme son jeton
+par une mise à jour conditionnelle (encore vivant, sinon `REUSED`) et crée le
+remplaçant dans la même transaction, après avoir lu `credentialsChangedAt` sous
+verrou partagé de la ligne du joueur : un changement de mot de passe concurrent
+passe soit avant (le jeton est refusé), soit après (sa révocation atteint le
+remplaçant).
+
+**Sans adresse, la preuve d'un appareil.** Sur un compte invité, rattacher une
+adresse ou délivrer un code exige le secret d'un appareil déjà rattaché à ce
+joueur (`deviceSecret`). Un jeton volé ne suffit donc plus à poser l'adresse et
+le mot de passe d'un intrus. Les parcours légitimes ont ce secret : l'écran de
+bienvenue tourne sur l'appareil qui a ouvert le compte, et un compte retrouvé
+par code sur un appareil neuf vient d'y rattacher son nouveau secret.
+
+**Seuls les échecs de preuve comptent par joueur, et par appareil.** Un intrus
+qui rate exprès ne remplit que son propre compteur (celui de son appareil, ou
+celui des requêtes sans appareil prouvé) : le propriétaire, depuis le sien,
+reste libre de changer son mot de passe pour le chasser.
+
 Variante écartée : exiger que la session ait été ouverte par un code depuis
 moins de dix minutes. Il faudrait marquer les jetons d'accès, et un code
 fraîchement délivré par un intrus passerait quand même.
@@ -94,10 +124,12 @@ c'est ce qui est haché.
 - **Un tiers peut bloquer un compte** quinze minutes en ratant six fois son
   adresse. Le prix est faible : l'appareil du joueur reste ouvert par son
   secret, et le code de récupération ouvre toujours son compte.
-- **Un compte sans adresse n'a qu'un facteur : la session.** Qui la détient
-  peut rattacher un email, délivrer un code ; c'est la nature d'un compte
-  invité, et c'est pour cela que le rattachement d'une adresse est proposé
-  dès l'écran de bienvenue.
+- **Un compte sans adresse n'a qu'un facteur : ses appareils.** Qui détient le
+  secret d'un appareil détient le compte ; c'est la nature d'un compte invité,
+  et c'est pour cela que le rattachement d'une adresse est proposé dès l'écran
+  de bienvenue. Un simple jeton volé, lui, ne suffit plus.
+- Chaque requête authentifiée lit `credentialsChangedAt` : une lecture par
+  clé primaire, le prix d'un contrôle qu'aucune route ne peut oublier.
 - **L'adresse n'est pas vérifiée**, donc elle est **réservable** : quelqu'un
   peut rattacher l'adresse d'un autre à son propre compte, et le vrai
   propriétaire lira « adresse déjà utilisée ». Il faudra une procédure de
