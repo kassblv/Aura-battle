@@ -1,10 +1,23 @@
-import { AURA_COLORS, HAIRSTYLES, OUTFITS, SKIN_TONES } from '@aura/content';
+import {
+  animationIdsFor,
+  AURA_COLORS,
+  defaultAnimationFor,
+  HAIRSTYLES,
+  OUTFITS,
+  SKIN_TONES,
+} from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import {
   danceFor,
+  danceOptions,
   defaultLook,
+  effectItems,
+  isWorn,
+  itemInfo,
+  ownsItem,
   equip,
   equipDance,
+  equipSignature,
   isOwned,
   priceOf,
   wardrobeSections,
@@ -159,5 +172,116 @@ describe('danses equipees', () => {
   it('ignore un identifiant qui n est pas une danse du catalogue', () => {
     const before = wardrobe();
     expect(equipDance(before, 'anim.nawak')).toBe(before);
+  });
+});
+
+describe('danceOptions', () => {
+  const HYPE_T2 = { style: 'hype', tier: 2 } as const;
+
+  it('propose l offerte et ce qui est possede, pas le reste', () => {
+    const options = danceOptions(
+      { look: defaultLook(), owned: new Set(['anim.hype.t2.floss']) },
+      HYPE_T2,
+    );
+    const ids = options.choices.map((card) => card.animationId);
+    expect(ids[0]).toBe(defaultAnimationFor(HYPE_T2));
+    expect(ids).toContain('anim.hype.t2.floss');
+    expect(ids.every((id) => animationIdsFor(HYPE_T2).includes(id))).toBe(true);
+    expect(ids.length).toBeLessThan(animationIdsFor(HYPE_T2).length);
+  });
+
+  it('designe celle qui est equipee, ou l offerte par defaut', () => {
+    const owned = new Set(['anim.hype.t2.floss']);
+    expect(danceOptions({ look: defaultLook(), owned }, HYPE_T2).current).toBe(
+      defaultAnimationFor(HYPE_T2),
+    );
+    const look = { ...defaultLook(), dances: { 'hype.t2': 'anim.hype.t2.floss' } };
+    expect(danceOptions({ look, owned }, HYPE_T2).current).toBe('anim.hype.t2.floss');
+  });
+
+  it('donne la suivante en bouclant', () => {
+    const owned = new Set(['anim.hype.t2.floss']);
+    const first = danceOptions({ look: defaultLook(), owned }, HYPE_T2);
+    expect(first.next).toBe('anim.hype.t2.floss');
+    const look = { ...defaultLook(), dances: { 'hype.t2': 'anim.hype.t2.floss' } };
+    expect(danceOptions({ look, owned }, HYPE_T2).next).toBe(first.current);
+  });
+
+  it('compte les danses a acheter pour ce mouvement', () => {
+    const options = danceOptions({ look: defaultLook(), owned: new Set() }, HYPE_T2);
+    expect(options.forSale).toBe(animationIdsFor(HYPE_T2).length - 1);
+  });
+});
+
+describe('equipSignature', () => {
+  const wardrobe = (owned: readonly string[] = []): Wardrobe => ({
+    look: defaultLook(),
+    owned: new Set(owned),
+  });
+
+  it('fait d une danse possedee la signature, et la danse de son mouvement', () => {
+    const next = equipSignature(wardrobe(['anim.calme.t3.moonwalk']), 'anim.calme.t3.moonwalk');
+    expect(next.look.signature).toBe('anim.calme.t3.moonwalk');
+    expect(next.look.dances['calme.t3']).toBe('anim.calme.t3.moonwalk');
+  });
+
+  it('refuse une danse qu on ne possede pas', () => {
+    const before = wardrobe();
+    expect(equipSignature(before, 'anim.calme.t3.moonwalk')).toBe(before);
+  });
+});
+
+describe('isWorn', () => {
+  /*
+    La couleur d'aura se porte par sa VALEUR : comparer l'identifiant au
+    hexadecimal ne marquait jamais aucune couleur comme portee.
+  */
+  it('reconnait la couleur d aura portee', () => {
+    const violet = AURA_COLORS.find((c) => c.id === 'color.violet')!;
+    const look = { ...defaultLook(), aura: violet.hex };
+    expect(isWorn(look, 'aura', 'color.violet')).toBe(true);
+    expect(isWorn(look, 'aura', 'color.gold')).toBe(false);
+  });
+
+  it('reconnait la tenue portee', () => {
+    expect(isWorn(defaultLook(), 'outfit', defaultLook().outfit)).toBe(true);
+  });
+});
+
+describe('effectItems', () => {
+  it('liste les huit effets, niveau et prix compris', () => {
+    const items = effectItems({ look: defaultLook(), owned: new Set() });
+    expect(items).toHaveLength(8);
+    expect(items.find((item) => item.id === 'fx.flames')).toMatchObject({
+      level: 1,
+      price: 400,
+      owned: false,
+    });
+  });
+
+  it('tient les effets offerts pour possedes, et les achetes aussi', () => {
+    const items = effectItems({ look: defaultLook(), owned: new Set(['fx.dark']) });
+    expect(items.find((item) => item.id === 'fx.glow')?.owned).toBe(true);
+    expect(items.find((item) => item.id === 'fx.dark')?.owned).toBe(true);
+    expect(items.find((item) => item.id === 'fx.shock')?.owned).toBe(false);
+  });
+});
+
+describe('ownsItem et itemInfo', () => {
+  const nobody: Wardrobe = { look: defaultLook(), owned: new Set() };
+
+  it('nomme et chiffre un article de chaque rayon', () => {
+    expect(itemInfo('fx.flames')).toEqual({ name: 'Flammes', price: 400 });
+    expect(itemInfo('color.violet')?.price).toBe(80);
+    expect(itemInfo('anim.calme.t3.moonwalk')?.price).toBeGreaterThan(0);
+    expect(itemInfo('inconnu')).toBeNull();
+  });
+
+  it('tient pour possede ce qui est offert, et seulement ca', () => {
+    expect(ownsItem(nobody, 'fx.glow')).toBe(true);
+    expect(ownsItem(nobody, 'fx.flames')).toBe(false);
+    expect(ownsItem(nobody, defaultAnimationFor({ style: 'hype', tier: 2 }))).toBe(true);
+    expect(ownsItem(nobody, 'anim.calme.t3.moonwalk')).toBe(false);
+    expect(ownsItem({ ...nobody, owned: new Set(['fx.flames']) }, 'fx.flames')).toBe(true);
   });
 });

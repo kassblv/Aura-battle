@@ -56,6 +56,7 @@ function state(phase: OnlinePhase, over: Partial<OnlineState> = {}): OnlineState
     seat: 'a',
     opponentName: 'Nova',
     opponentIsGhost: false,
+    opponentCosmetics: {},
     phase,
     round: 1,
     phaseEndsAtMs: 0,
@@ -171,6 +172,49 @@ describe('presentOnline', () => {
     });
     expect(scene.fighters.a.animationId).toBe('anim.system.none.victory');
     expect(scene.fighters.b.animationId).toBe('anim.system.none.stagger');
+  });
+
+  /*
+    La danse signature : le vainqueur rejoue SON meme, et les deux joueurs le
+    voient — c'est l'apparence de chaque rig qui la porte, annoncee par le
+    serveur pour l'adversaire.
+  */
+  it('fait danser au vainqueur sa danse signature', () => {
+    const signed = {
+      a: { ...looks.a, signature: 'anim.calme.t3.moonwalk' },
+      b: { ...looks.b, signature: 'anim.hype.t2.floss' },
+    };
+    const scene = presentOnline(state('reveal', { lastRound: ROUND }), signed, {
+      showOutcome: true,
+    });
+    expect(scene.fighters.a.animationId).toBe('anim.calme.t3.moonwalk');
+    expect(scene.fighters.b.animationId).toBe('anim.system.none.stagger');
+  });
+
+  it('montre la signature de l adversaire quand c est lui qui gagne', () => {
+    const signed = { a: looks.a, b: { ...looks.b, signature: 'anim.hype.t2.floss' } };
+    const scene = presentOnline(state('reveal', { seat: 'b', lastRound: ROUND }), signed, {
+      showOutcome: true,
+    });
+    // ROUND est gagne par le siege A : l'adversaire de ce joueur, rig de droite.
+    expect(scene.fighters.b.animationId).toBe('anim.hype.t2.floss');
+    expect(scene.fighters.a.animationId).toBe('anim.system.none.stagger');
+  });
+
+  it('retombe sur la victoire du jeu pour une signature inconnue', () => {
+    const signed = { a: { ...looks.a, signature: 'anim.futur.t9.x' }, b: looks.b };
+    const scene = presentOnline(state('reveal', { lastRound: ROUND }), signed, {
+      showOutcome: true,
+    });
+    expect(scene.fighters.a.animationId).toBe('anim.system.none.victory');
+  });
+
+  it('danse la signature a la fin du match aussi', () => {
+    const signed = { a: { ...looks.a, signature: 'anim.calme.t3.moonwalk' }, b: looks.b };
+    const scene = presentOnline(state('ended', { lastRound: ROUND }), signed, {
+      showOutcome: true,
+    });
+    expect(scene.fighters.a.animationId).toBe('anim.calme.t3.moonwalk');
   });
 
   it('laisse les deux debout quand la manche est nulle', () => {

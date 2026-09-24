@@ -70,3 +70,19 @@ export function animationFor(move: Move, skinId?: string): Animation {
 export function systemAnimation(slug: string): Animation {
   return require(systemAnimationId(slug));
 }
+
+/**
+ * Ce que danse un vainqueur : sa signature, ou la pose de victoire du jeu.
+ *
+ * La signature est un cosmetique annonce par le serveur (ou le vestiaire, pour
+ * soi-meme) ; ce client doit encore savoir la jouer. Une animation inconnue,
+ * ou une animation systeme glissee a sa place, retombe sur la victoire : une
+ * fin de manche ne doit jamais rester sans pose.
+ */
+export function victoryAnimation(signatureId?: string): Animation {
+  if (signatureId !== undefined) {
+    const dance = ANIMATIONS.get(signatureId);
+    if (dance !== undefined && dance.move.style !== 'system') return dance;
+  }
+  return systemAnimation('victory');
+}

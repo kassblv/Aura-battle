@@ -3,6 +3,9 @@ import type { RechargeTap } from '@aura/rules';
 import type { ServerMessage } from '@aura/protocol';
 import type { GameClient } from '../net/client.js';
 
+/** Ce que le serveur dit de l apparence de l adversaire. */
+export type OpponentCosmetics = ServerMessage<'match:found'>['opponent']['cosmetics'];
+
 /**
  * Le match en ligne, tel que le client le connait.
  *
@@ -46,6 +49,14 @@ export interface OnlineState {
    * qui decredibilise tout le reste de ce que l ecran affiche.
    */
   readonly opponentIsGhost: boolean;
+  /**
+   * L apparence publique de l adversaire : tenue, coiffure, couleur, danse
+   * signature. Annoncee a l ouverture, figee pour le match.
+   *
+   * Ni ses danses par mouvement ni ses effets : ceux-la ne se montrent qu avec
+   * le coup joue, dans `round:result`.
+   */
+  readonly opponentCosmetics: OpponentCosmetics;
   readonly phase: OnlinePhase;
   readonly round: number;
   /** Fin de la phase, **en heure locale**. */
@@ -105,6 +116,7 @@ export const EMPTY_ONLINE_STATE: OnlineState = {
   seat: null,
   opponentName: null,
   opponentIsGhost: false,
+  opponentCosmetics: {},
   phase: 'idle',
   round: 1,
   phaseEndsAtMs: 0,
@@ -143,6 +155,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       seat: data.seat,
       opponentName: data.opponent.displayName,
       opponentIsGhost: data.ghost,
+      opponentCosmetics: data.opponent.cosmetics,
     };
   });
 
@@ -257,6 +270,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       opponentName: data.opponent?.displayName ?? state.opponentName,
       // Une reprise ne doit pas faire disparaitre l avertissement.
       opponentIsGhost: state.opponentIsGhost,
+      opponentCosmetics: data.opponent?.cosmetics ?? state.opponentCosmetics,
       phase: data.phase,
       round: data.round,
       phaseEndsAtMs: toLocal(data.endsAt),

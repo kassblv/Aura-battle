@@ -1,5 +1,14 @@
-import { AURA_COLORS, danceKey, HAIRSTYLES, OUTFITS, SKIN_TONES, type Move } from '@aura/content';
-import { memeGallery } from './memes.js';
+import {
+  AURA_COLORS,
+  AURA_EFFECTS,
+  danceKey,
+  HAIRSTYLES,
+  OUTFITS,
+  SKIN_TONES,
+  type AmplifierLevel,
+  type Move,
+} from '@aura/content';
+import { memeGallery, type MemeCard } from './memes.js';
 
 /**
  * Le vestiaire : ce que le joueur porte, et ce qu il a le droit de porter.
@@ -38,6 +47,15 @@ export interface Look {
    * le transporte maintenant.
    */
   readonly auraEffect?: string;
+  /**
+   * La danse signature : jouee a la victoire, d une manche comme du match, et
+   * vue par l adversaire.
+   *
+   * Un emplacement a part, pas une entree de `dances` : on la rejoue quand on
+   * gagne, quel que soit le coup qui a gagne. Absente : la pose de victoire du
+   * jeu.
+   */
+  readonly signature?: string;
 }
 
 /**
@@ -184,6 +202,60 @@ export function equipDance(wardrobe: Wardrobe, animationId: string): Wardrobe {
 }
 
 /**
+ * Fait d une danse la signature du joueur.
+ *
+ * Meme garde que `equipDance` : une danse de mouvement, offerte ou possedee.
+ * Elle devient aussi la danse de SON mouvement — la galerie de l accueil
+ * equipait deja ainsi, et le joueur qui la choisit veut la voir quand il joue
+ * ce coup-la, pas seulement quand il gagne.
+ */
+export function equipSignature(wardrobe: Wardrobe, animationId: string): Wardrobe {
+  const withDance = equipDance(wardrobe, animationId);
+  const card = danceIndex.get(animationId);
+  if (card === undefined || (!card.free && !wardrobe.owned.has(animationId))) return wardrobe;
+  if (withDance.look.signature === animationId) return withDance;
+  return { ...withDance, look: { ...withDance.look, signature: animationId } };
+}
+
+/** Ce que le joueur peut danser pour un mouvement, et ce qu il danse. */
+export interface DanceOptions {
+  /** L offerte d abord, puis celles possedees, dans l ordre du catalogue. */
+  readonly choices: readonly MemeCard[];
+  /** La danse equipee pour ce mouvement, ou l offerte. */
+  readonly current: string;
+  /** Celle qui vient apres, en bouclant : un seul geste pour changer en plein choix. */
+  readonly next: string;
+  /** Danses de ce mouvement encore a acheter : de quoi pointer vers la boutique. */
+  readonly forSale: number;
+}
+
+/**
+ * Les danses d un mouvement, vues du panneau de choix ou du vestiaire.
+ *
+ * On ne propose que ce qui se porte : l offerte et ce qui est possede. Le
+ * reste se compte, pour dire qu il existe, mais ne s equipe pas — le serveur
+ * le refuserait de toute facon.
+ */
+export function danceOptions(wardrobe: Wardrobe, move: Move): DanceOptions {
+  const all = memeGallery().filter((card) => card.style === move.style && card.tier === move.tier);
+  const choices = all.filter((card) => card.free || wardrobe.owned.has(card.animationId));
+  const equipped = danceFor(wardrobe.look, move);
+  const fallback = choices[0]?.animationId ?? '';
+  const current =
+    equipped !== undefined && choices.some((card) => card.animationId === equipped)
+      ? equipped
+      : fallback;
+  const index = choices.findIndex((card) => card.animationId === current);
+  const next = choices[(index + 1) % Math.max(1, choices.length)]?.animationId ?? current;
+  return { choices, current, next, forSale: all.length - choices.length };
+}
+
+/** Vrai si cet identifiant est une danse de mouvement du catalogue. */
+export function isDance(animationId: string): boolean {
+  return danceIndex.has(animationId);
+}
+
+/**
  * La couleur d aura est portee par sa valeur, pas par son identifiant : le rig
  * a besoin d un hexadecimal, et le catalogue en est la seule source.
  */
@@ -195,4 +267,63 @@ export function equip(wardrobe: Wardrobe, slot: LookSlot, id: string): Wardrobe 
   const value = valueOf(slot, id);
   if (wardrobe.look[slot] === value) return wardrobe;
   return { ...wardrobe, look: { ...wardrobe.look, [slot]: value } };
+}
+
+/** Cet objet est-il celui que le joueur porte dans cet emplacement ? */
+export function isWorn(look: Look, slot: LookSlot, id: string): boolean {
+  // La couleur se porte par sa valeur : comparer l identifiant au hexadecimal
+  // ne marquait jamais aucune couleur comme portee.
+  return look[slot] === valueOf(slot, id);
+}
+
+/** Un effet d aura, tel que le vestiaire le montre. */
+export interface EffectItem {
+  readonly id: string;
+  readonly name: string;
+  /** Le niveau d amplificateur qu il habille : il n apparait que la. */
+  readonly level: AmplifierLevel;
+  readonly price: number;
+  /** Offert ou achete. Posseder un effet, c est le porter a son niveau. */
+  readonly owned: boolean;
+}
+
+/**
+ * Les huit effets d aura, pour le vestiaire.
+ *
+ * Il n y a rien a « equiper » : un effet habille UN niveau d amplificateur, et
+ * le serveur le montre des qu on le possede et qu on joue ce niveau (docs/01
+ * §3). Le vestiaire les montre donc pour les ESSAYER, et dire ou les trouver.
+ */
+export function effectItems(wardrobe: Wardrobe): readonly EffectItem[] {
+  return AURA_EFFECTS.map((effect) => ({
+    id: effect.id,
+    name: effect.name.fr,
+    level: effect.level,
+    price: effect.price,
+    owned: effect.price === 0 || wardrobe.owned.has(effect.id),
+  }));
+}
+
+/** Nom et prix de n importe quel article : tenue, couleur, effet ou danse. */
+export function itemInfo(id: string): { readonly name: string; readonly price: number } | null {
+  const item = itemIndex.get(id);
+  if (item !== undefined) return { name: item.name, price: item.price };
+  const effect = AURA_EFFECTS.find((candidate) => candidate.id === id);
+  if (effect !== undefined) return { name: effect.name.fr, price: effect.price };
+  const dance = danceIndex.get(id);
+  return dance === undefined ? null : { name: dance.name, price: dance.price };
+}
+
+/**
+ * Le joueur a-t-il cet article, quel qu en soit le rayon ?
+ *
+ * Ce qui est offert appartient a tout le monde : la premiere danse de chaque
+ * mouvement, les effets de base, les tenues a zero.
+ */
+export function ownsItem(wardrobe: Wardrobe, id: string): boolean {
+  if (wardrobe.owned.has(id)) return true;
+  const info = itemInfo(id);
+  if (info === null) return false;
+  const dance = danceIndex.get(id);
+  return dance === undefined ? info.price === 0 : dance.free;
 }

@@ -1,6 +1,7 @@
-import { AURA_COLORS } from '@aura/content';
+import { AURA_COLORS, HAIRSTYLES, OUTFITS } from '@aura/content';
 import type { LoadoutPayload } from '@aura/protocol';
-import type { Look } from './wardrobe.js';
+import type { OpponentCosmetics } from '../match/online.js';
+import { isDance, type Look } from './wardrobe.js';
 
 /**
  * La traduction entre ce que le serveur range et ce que le rendu consomme.
@@ -26,6 +27,7 @@ export function loadoutFromLook(look: Look): LoadoutPayload {
     ...(auraColor === undefined ? {} : { auraColor }),
     ...(look.auraEffect === undefined ? {} : { auraEffect: look.auraEffect }),
     ...(Object.keys(look.dances).length === 0 ? {} : { dances: look.dances }),
+    ...(look.signature === undefined ? {} : { signature: look.signature }),
   };
   /*
     La teinte de peau n est pas un cosmetique : ni identifiant, ni prix, ni
@@ -55,6 +57,7 @@ export function lookFromLoadout(
   const hair = kept(loadout.hair, () => true);
   const auraId = kept(loadout.auraColor, (id) => HEX_BY_ID.has(id));
   const auraEffect = kept(loadout.auraEffect, () => true);
+  const signature = kept(loadout.signature, isDance);
 
   const dances: Record<string, string> = {};
   for (const [move, animation] of Object.entries(loadout.dances ?? {})) {
@@ -70,6 +73,39 @@ export function lookFromLoadout(
     skin: fallback.skin,
     aura: auraId === undefined ? fallback.aura : (HEX_BY_ID.get(auraId) ?? fallback.aura),
     ...(auraEffect === undefined ? {} : { auraEffect }),
+    ...(signature === undefined ? {} : { signature }),
     dances,
+  };
+}
+
+const OUTFIT_IDS = new Set(OUTFITS.map((outfit) => outfit.id));
+const HAIR_IDS = new Set(HAIRSTYLES.map((hair) => hair.id));
+
+/**
+ * L apparence de l adversaire, a partir de ce que le serveur annonce.
+ *
+ * La possession n est pas rejouee ici : c est le serveur qui l a verifiee, et
+ * le client ne connait pas l inventaire d un autre. En revanche, **ce client**
+ * doit savoir dessiner ce qu on lui annonce — un identifiant venu d un
+ * catalogue plus recent retombe sur le repli plutot que de dessiner un trou.
+ *
+ * Les danses par mouvement et les effets n y sont pas : ils arrivent avec le
+ * coup joue, dans `round:result`.
+ */
+export function lookFromCosmetics(cosmetics: OpponentCosmetics, fallback: Look): Look {
+  const outfit =
+    cosmetics.outfit !== undefined && OUTFIT_IDS.has(cosmetics.outfit) ? cosmetics.outfit : null;
+  const hair = cosmetics.hair !== undefined && HAIR_IDS.has(cosmetics.hair) ? cosmetics.hair : null;
+  const aura = cosmetics.auraColor === undefined ? undefined : HEX_BY_ID.get(cosmetics.auraColor);
+  const signature =
+    cosmetics.signature !== undefined && isDance(cosmetics.signature)
+      ? cosmetics.signature
+      : undefined;
+  return {
+    ...fallback,
+    outfit: outfit ?? fallback.outfit,
+    hair: hair ?? fallback.hair,
+    aura: aura ?? fallback.aura,
+    ...(signature === undefined ? {} : { signature }),
   };
 }

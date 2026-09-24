@@ -90,6 +90,19 @@ describe('present', () => {
     expect(scene.fighters[loser].animationId).toBe('anim.system.none.stagger');
   });
 
+  it('fait danser au vainqueur sa danse signature', () => {
+    const match = solo('verdict');
+    runTo(match, 'reveal');
+    const winner = match.state.history.at(-1)?.winner;
+    if (winner === null || winner === undefined) return;
+    const signed = {
+      a: { ...looks.a, signature: 'anim.calme.t3.moonwalk' },
+      b: { ...looks.b, signature: 'anim.calme.t3.moonwalk' },
+    };
+    const scene = present(match.state, signed, { showOutcome: true });
+    expect(scene.fighters[winner].animationId).toBe('anim.calme.t3.moonwalk');
+  });
+
   it('habille chaque siege de son apparence', () => {
     const scene = present(solo().state, looks);
     expect(scene.fighters.a.look.outfit).toBe(looks.a.outfit);

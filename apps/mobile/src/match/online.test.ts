@@ -81,6 +81,54 @@ describe('createOnlineMatch', () => {
     expect(match.state.opponentName).toBe('Nova');
   });
 
+  /*
+    L'apparence de l'adversaire : sa tenue, sa couleur, sa danse signature.
+    Le client en ligne dessinait en face une tenue ecrite en dur.
+  */
+  it('retient l apparence annoncee de l adversaire', () => {
+    const { match, emit } = harness();
+    const cosmetics = {
+      outfit: 'outfit.kimono',
+      auraColor: 'color.violet',
+      signature: 'anim.calme.t3.moonwalk',
+    };
+    emit('match:found', {
+      matchId: MATCH,
+      seat: 'a',
+      opponent: { displayName: 'Nova', league: 'Or II', cosmetics },
+      protocolVersion: PROTOCOL_VERSION,
+      rulesVersion: '1.0.0',
+      contentVersion: '1.0.0',
+      ghost: false,
+    });
+    expect(match.state.opponentCosmetics).toEqual(cosmetics);
+  });
+
+  it('garde l apparence adverse a travers une reprise qui la rappelle', () => {
+    const { match, emit } = harness();
+    emit('match:state', {
+      matchId: MATCH,
+      seat: 'b',
+      phase: 'recharge',
+      round: 2,
+      endsAt: 512_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 6,
+      ult: 0,
+      opponentLocked: false,
+      opponent: {
+        displayName: 'Nova',
+        league: 'Or II',
+        cosmetics: { hair: 'hair.long', signature: 'anim.hype.t2.floss' },
+      },
+      history: [],
+    });
+    expect(match.state.opponentCosmetics).toEqual({
+      hair: 'hair.long',
+      signature: 'anim.hype.t2.floss',
+    });
+  });
+
   /**
    * Les echeances arrivent en heure serveur. Les afficher telles quelles
    * donnerait un compte a rebours faux de tout le decalage d horloge — des

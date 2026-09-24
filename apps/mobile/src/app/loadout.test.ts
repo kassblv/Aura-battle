@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { AURA_COLORS } from '@aura/content';
 import { defaultLook, type Look } from './wardrobe.js';
-import { lookFromLoadout, loadoutFromLook } from './loadout.js';
+import { lookFromCosmetics, lookFromLoadout, loadoutFromLook } from './loadout.js';
 
 const GRATUIT = AURA_COLORS.find((c) => c.price === 0)!;
 const PAYANT = AURA_COLORS.find((c) => c.price > 0)!;
@@ -143,5 +143,72 @@ describe('lookFromLoadout', () => {
   it('accepte la couleur gratuite sans qu elle soit listee', () => {
     const look = lookFromLoadout({ auraColor: GRATUIT.id }, possede(GRATUIT.id), defaultLook());
     expect(look.aura).toBe(GRATUIT.hex);
+  });
+});
+
+describe('la danse signature', () => {
+  it('part au serveur avec le reste', () => {
+    const look: Look = { ...defaultLook(), signature: 'anim.hype.t2.floss' };
+    expect(loadoutFromLook(look).signature).toBe('anim.hype.t2.floss');
+  });
+
+  it('revient du serveur si elle est possedee', () => {
+    const look = lookFromLoadout(
+      { signature: 'anim.hype.t2.floss' },
+      possede('anim.hype.t2.floss'),
+      defaultLook(),
+    );
+    expect(look.signature).toBe('anim.hype.t2.floss');
+  });
+
+  it('disparait si elle ne l est plus', () => {
+    const look = lookFromLoadout({ signature: 'anim.hype.t2.floss' }, possede(), defaultLook());
+    expect(look.signature).toBeUndefined();
+  });
+});
+
+/*
+  L'adversaire en ligne portait une tenue ecrite en dur dans le client. Le
+  serveur annonce maintenant son apparence publique ; on la traduit comme la
+  sienne — sauf la possession, que le serveur a deja verifiee.
+*/
+describe('lookFromCosmetics', () => {
+  const fallback: Look = { ...defaultLook(), outfit: 'outfit.rouge', hair: 'hair.pics' };
+
+  it('habille l adversaire de ce que le serveur annonce', () => {
+    const look = lookFromCosmetics(
+      {
+        outfit: 'outfit.kimono',
+        hair: 'hair.long',
+        auraColor: PAYANT.id,
+        signature: 'anim.calme.t3.moonwalk',
+      },
+      fallback,
+    );
+    expect(look).toMatchObject({
+      outfit: 'outfit.kimono',
+      hair: 'hair.long',
+      aura: PAYANT.hex,
+      signature: 'anim.calme.t3.moonwalk',
+    });
+  });
+
+  it('garde le repli pour ce qui n est pas annonce', () => {
+    expect(lookFromCosmetics({}, fallback)).toEqual(fallback);
+  });
+
+  it('ignore un identifiant que ce client ne connait pas', () => {
+    const look = lookFromCosmetics(
+      { outfit: 'outfit.futur', auraColor: 'color.futur', signature: 'anim.futur.t9.x' },
+      fallback,
+    );
+    expect(look.outfit).toBe('outfit.rouge');
+    expect(look.aura).toBe(fallback.aura);
+    expect(look.signature).toBeUndefined();
+  });
+
+  it('n accepte pas une animation systeme en signature', () => {
+    const look = lookFromCosmetics({ signature: 'anim.system.none.victory' }, fallback);
+    expect(look.signature).toBeUndefined();
   });
 });

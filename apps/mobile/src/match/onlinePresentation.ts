@@ -1,5 +1,5 @@
 import type { Seat } from '@aura/rules';
-import { animationFor, systemAnimation } from '../content/animations.js';
+import { animationFor, systemAnimation, victoryAnimation } from '../content/animations.js';
 import type { Look } from '../app/wardrobe.js';
 import type { OnlinePhase, OnlineState } from './online.js';
 import type { FighterPresentation, Presentation, PresentOptions } from './presentation.js';
@@ -71,7 +71,11 @@ export function presentOnline(
     const seat = seatOfRig[rig];
 
     if (options.showOutcome === true && round.winner !== null) {
-      return systemAnimation(round.winner === seat ? 'victory' : 'stagger').id;
+      // Le vainqueur rejoue sa danse signature, portee par l apparence de SON
+      // rig : la sienne vient du vestiaire, celle d en face de `match:found`.
+      return round.winner === seat
+        ? victoryAnimation(looks[rig].signature).id
+        : systemAnimation('stagger').id;
     }
 
     const side = round.sides[seat];

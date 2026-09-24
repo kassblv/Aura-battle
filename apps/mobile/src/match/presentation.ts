@@ -1,6 +1,6 @@
 import type { MatchState, Seat } from '@aura/rules';
 import { effectForLevel } from '@aura/content';
-import { animationFor, systemAnimation } from '../content/animations.js';
+import { animationFor, systemAnimation, victoryAnimation } from '../content/animations.js';
 import type { Look } from '../app/wardrobe.js';
 
 /**
@@ -29,6 +29,13 @@ export interface FighterPresentation {
    * viennent du meme message, celui ou les deux choix deviennent publics.
    */
   readonly auraEffectId?: string;
+  /**
+   * Le joueur regarde son propre choix : son aura s allume pour qu on la voie.
+   *
+   * Pose par `withChoicePreview`, sur le rig du joueur local seulement, et
+   * sans rien dire du choix — voir `AuraDrive.preview`.
+   */
+  readonly auraPreview?: boolean;
 }
 
 export interface Presentation {
@@ -86,7 +93,7 @@ export function present(
     if (!revealing) return systemAnimation(CHARGE).id;
 
     if (options.showOutcome === true && lastRound !== undefined) {
-      if (lastRound.winner === seat) return systemAnimation('victory').id;
+      if (lastRound.winner === seat) return victoryAnimation(looks[seat].signature).id;
       if (lastRound.winner !== null) return systemAnimation('stagger').id;
     }
 
