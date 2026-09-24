@@ -322,8 +322,8 @@ export function useOnlineMatch(
     tap: useCallback((taps: readonly RechargeTap[]) => {
       matchRef.current?.tap(taps);
     }, []),
-    lock: useCallback((choice: Choice, chargeAtMs: number, tapAtMs: number) => {
-      matchRef.current?.lock(choice, chargeAtMs, tapAtMs);
+    lock: useCallback((choice: Choice, chargeAtMs: number, tapAtMs: number, poseId: string) => {
+      matchRef.current?.lock(choice, poseId, chargeAtMs, tapAtMs);
       // Le serveur tranche : on ne sait pas encore s il accepte, et pretendre
       // le contraire afficherait un verrouillage qui n a pas eu lieu.
       return true;

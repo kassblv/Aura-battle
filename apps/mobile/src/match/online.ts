@@ -92,7 +92,7 @@ export interface OnlineMatch {
    * veut les deux : c est leur ecart qui rend un timing plausible, et un tap
    * qui suivrait l armement de moins de 120 ms ne peut pas etre un geste.
    */
-  lock(choice: Choice, chargeAtMs: number, tapAtMs: number | null): void;
+  lock(choice: Choice, poseId: string, chargeAtMs: number, tapAtMs: number | null): void;
   forfeit(): void;
   /**
    * Oublie un match TERMINE, pour que l ecran suivant reparte de rien.
@@ -317,13 +317,15 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       state = { ...state, sentTaps: [...state.sentTaps, ...taps] };
     },
 
-    lock(choice, chargeAtMs, tapAtMs) {
+    lock(choice, poseId, chargeAtMs, tapAtMs) {
       if (state.matchId === null) return;
       client.send('choice:lock', {
         matchId: state.matchId,
         round: state.round,
         seq: seq++,
-        move: choice.move,
+        // La pose seulement (2.0.0) : le serveur en deduit le mouvement. Le
+        // `choice.move` local ne sert qu'a l'apercu, il ne part jamais.
+        poseId,
         amp: choice.amplifier,
         ult: choice.useUltimate,
         timing: { chargeAt: chargeAtMs, tapAt: tapAtMs },

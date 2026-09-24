@@ -207,6 +207,19 @@ describe('danceOptions', () => {
     expect(danceOptions({ look, owned }, HYPE_T2).next).toBe(first.current);
   });
 
+  /*
+    La roue est passee de Hype 4 a Acrobatie 2 : son ancien identifiant peut
+    rester dans une presélection enregistree. Le jouer serait envoyer au
+    serveur une pose qu'il refuse — le joueur perdrait sa manche.
+  */
+  it('ne presente jamais une pose presélectionnee qui a change de case', () => {
+    const owned = new Set(['anim.hype.t4.wheel']);
+    const look = { ...defaultLook(), dances: { 'hype.t4': 'anim.hype.t4.wheel' } };
+    const view = danceOptions({ look, owned }, { style: 'hype', tier: 4 });
+    expect(view.current).toBe('anim.hype.t4.boat');
+    expect(view.choices.map((card) => card.animationId)).not.toContain('anim.hype.t4.wheel');
+  });
+
   it('compte les danses a acheter pour ce mouvement', () => {
     const options = danceOptions({ look: defaultLook(), owned: new Set() }, HYPE_T2);
     expect(options.forSale).toBe(animationIdsFor(HYPE_T2).length - 1);

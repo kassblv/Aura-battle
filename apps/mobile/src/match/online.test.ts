@@ -423,8 +423,40 @@ describe('envois du joueur', () => {
   it('ne verrouille rien tant qu aucun match n est ouvert', () => {
     const { match, sent } = harness();
     const before = sent.length;
-    match.lock({ move: { style: 'calme', tier: 1 }, amplifier: 0, useUltimate: false }, 0, 500);
+    match.lock(
+      { move: { style: 'calme', tier: 1 }, amplifier: 0, useUltimate: false },
+      'anim.calme.t1.pocket',
+      0,
+      500,
+    );
     expect(sent).toHaveLength(before);
+  });
+
+  /*
+    2.0.0 : le client dit la POSE, jamais le mouvement. Le serveur en deduit
+    famille et palier, et verifie qu'elle est offerte ou possedee.
+  */
+  it('verrouille en envoyant la pose, pas le mouvement', () => {
+    const { match, emit, sent } = harness();
+    emit('match:found', {
+      matchId: MATCH,
+      seat: 'a',
+      opponent: { displayName: 'Nova', league: 'Or II', cosmetics: {} },
+      protocolVersion: PROTOCOL_VERSION,
+      rulesVersion: '1.0.0',
+      contentVersion: '1.0.0',
+      ghost: false,
+    });
+    match.lock(
+      { move: { style: 'acrobatie', tier: 2 }, amplifier: 1, useUltimate: false },
+      'anim.acrobatie.t2.wheel',
+      100,
+      700,
+    );
+    const lock = sent.find((m) => m.name === 'choice:lock')?.payload as Record<string, unknown>;
+    expect(lock.poseId).toBe('anim.acrobatie.t2.wheel');
+    expect(lock.amp).toBe(1);
+    expect(lock).not.toHaveProperty('move');
   });
 });
 

@@ -1,4 +1,12 @@
-import { AMPLIFIER_LEVELS, amplifierName, styleIcon, styleName, tierName, TIERS } from '@aura/content';
+import {
+  AMPLIFIER_LEVELS,
+  amplifierName,
+  defaultAnimationFor,
+  styleIcon,
+  styleName,
+  tierName,
+  TIERS,
+} from '@aura/content';
 import {
   BALANCE,
   type AmplifierLevel,
@@ -83,7 +91,11 @@ export interface MatchActions {
    * celle dessinee, et, la phase de choix durant quinze secondes contre six a
    * `maxChargeMs`, transformerait tout verrouillage tardif en rate.
    */
-  lock(choice: Choice, chargeAtMs: number, tapAtMs: number): boolean;
+  /**
+   * `poseId` est la pose jouee, celle que le serveur verifie et revele. Le
+   * solo l'ignore : il joue deja la pose presélectionnee de la case.
+   */
+  lock(choice: Choice, chargeAtMs: number, tapAtMs: number, poseId: string): boolean;
 }
 
 export type { MeterZonesView };
@@ -403,8 +415,13 @@ function MatchScreenBody({
     // Le delai minimal se juge a l instant de l appui, pas au dernier rendu :
     // c est le meme ecart que le serveur recalculera.
     if (at - chargeAt.current < MIN_CHARGE_MS) return;
-    const choice: Choice = { move: { style, tier }, amplifier, useUltimate: ultimate };
-    if (actions.lock(choice, chargeAt.current, at)) setLocked(true);
+    const move = { style, tier };
+    const choice: Choice = { move, amplifier, useUltimate: ultimate };
+    // La pose presélectionnee de la case, sinon l'offerte. `danceOptions` rend
+    // une chaine vide quand la case n'a aucun choix : le serveur la refuserait.
+    const preselected = danceView?.current ?? '';
+    const poseId = preselected === '' ? defaultAnimationFor(move) : preselected;
+    if (actions.lock(choice, chargeAt.current, at, poseId)) setLocked(true);
   };
 
   return (
