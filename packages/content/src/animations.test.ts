@@ -135,9 +135,22 @@ describe('non-regression : les valeurs correspondent au prototype', () => {
     }
   });
 
+  /**
+   * Retravaillees depuis le portage, a la demande du joueur : quatre images
+   * cles ne suffisaient pas a lire le geste (le floss sans contretemps du
+   * bassin, la toupie a la tete figee). Leur premiere image et leur duree
+   * restent celles du prototype — seules des images s'ajoutent entre elles.
+   * Une danse ne rejoint cette liste que par une decision, pas pour faire
+   * passer un test.
+   */
+  const REWORKED: ReadonlySet<string> = new Set(['floss', 'spin']);
+
   it('reproduit le nombre d images de chaque animation portee', () => {
     for (const slug of ported()) {
-      expect(animations.get(slug)!.frames, slug).toHaveLength(prototype.APOSE[slug]!.frames.length);
+      const frames = animations.get(slug)!.frames.length;
+      const source = prototype.APOSE[slug]!.frames.length;
+      if (REWORKED.has(slug)) expect(frames, slug).toBeGreaterThan(source);
+      else expect(frames, slug).toBe(source);
     }
   });
 
