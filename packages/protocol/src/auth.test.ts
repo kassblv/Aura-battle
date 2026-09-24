@@ -8,6 +8,15 @@ import {
   recoveryCodeResponseSchema,
   parseAuthRenameRequest,
   sessionResponseSchema,
+  AUTH_ERROR_CODES,
+  EMAIL_MAX,
+  PASSWORD_MAX,
+  PASSWORD_MIN,
+  emailSchema,
+  emailStatusResponseSchema,
+  parseAuthEmailLinkRequest,
+  parseAuthEmailLoginRequest,
+  parseAuthEmailPasswordRequest,
 } from './auth.js';
 
 const secret = 'a'.repeat(64);
@@ -175,6 +184,133 @@ describe('code de recuperation', () => {
     // Surtout pas le hache : il n'a aucune raison de sortir du serveur.
     expect(recoveryCodeResponseSchema.safeParse({ code: 'AURA-7K2M', hash: 'abc' }).success).toBe(
       false,
+    );
+  });
+});
+
+describe('email et mot de passe', () => {
+  const password = 'une phrase de passe';
+
+  /*
+    Le schema NORMALISE : c'est la meme chaine qui arrive au serveur, qu'on
+    l'ait tapee avec une majuscule de clavier de telephone ou un espace colle.
+    Sinon « Kassim@Gmail.com » et « kassim@gmail.com » seraient deux comptes.
+  */
+  it('rogne et met l adresse en minuscules', () => {
+    expect(emailSchema.parse('  Kassim@Gmail.COM ')).toBe('kassim@gmail.com');
+  });
+
+  it('refuse ce qui n est pas une adresse', () => {
+    for (const email of ['', 'kassim', 'kassim@', '@gmail.com', 'kassim gmail.com']) {
+      expect(emailSchema.safeParse(email).success).toBe(false);
+    }
+  });
+
+  it('borne la longueur de l adresse', () => {
+    const long = `${'a'.repeat(EMAIL_MAX)}@x.fr`;
+    expect(emailSchema.safeParse(long).success).toBe(false);
+  });
+
+  it('borne le mot de passe choisi des deux cotes', () => {
+    const at = (length: number) =>
+      parseAuthEmailLinkRequest({ email: 'k@gmail.com', password: 'x'.repeat(length) }).success;
+    expect(at(PASSWORD_MIN - 1)).toBe(false);
+    expect(at(PASSWORD_MIN)).toBe(true);
+    expect(at(PASSWORD_MAX)).toBe(true);
+    // Le plafond n'est pas cosmetique : le hachage coute du temps de calcul
+    // proportionnel a l'entree, et un megaoctet par tentative est un deni de
+    // service a peu de frais.
+    expect(at(PASSWORD_MAX + 1)).toBe(false);
+  });
+
+  it('ne rogne pas un mot de passe : l espace en fait partie', () => {
+    const parsed = parseAuthEmailLinkRequest({ email: 'k@gmail.com', password: `  ${password}  ` });
+    expect(parsed.success && parsed.data.password).toBe(`  ${password}  `);
+  });
+
+  /*
+    La connexion n'applique PAS la politique de choix, seulement le plafond.
+    Le jour ou la longueur minimale monte, un joueur doit encore pouvoir
+    entrer avec le mot de passe qu'il a choisi avant.
+  */
+  it('laisse passer a la connexion un mot de passe court choisi sous une ancienne regle', () => {
+    expect(parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: 'court' }).success).toBe(
+      true,
+    );
+    expect(
+      parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: 'x'.repeat(PASSWORD_MAX + 1) })
+        .success,
+    ).toBe(false);
+    expect(parseAuthEmailLoginRequest({ email: 'k@gmail.com', password: '' }).success).toBe(false);
+  });
+
+  it('refuse un champ inconnu', () => {
+    expect(
+      parseAuthEmailLoginRequest({ email: 'k@gmail.com', password, deviceSecret: 'a' }).success,
+    ).toBe(false);
+  });
+
+  describe('changement de mot de passe', () => {
+    it('accepte l ancien mot de passe comme preuve', () => {
+      expect(
+        parseAuthEmailPasswordRequest({ currentPassword: 'ancien', newPassword: password }).success,
+      ).toBe(true);
+    });
+
+    it('accepte un code de recuperation comme preuve', () => {
+      expect(
+        parseAuthEmailPasswordRequest({
+          recoveryCode: 'AURA-7K2M-94PX-QTJD-3HVN',
+          newPassword: password,
+        }).success,
+      ).toBe(true);
+    });
+
+    it('exige une et une seule preuve', () => {
+      expect(parseAuthEmailPasswordRequest({ newPassword: password }).success).toBe(false);
+      expect(
+        parseAuthEmailPasswordRequest({
+          currentPassword: 'ancien',
+          recoveryCode: 'AURA-7K2M-94PX-QTJD-3HVN',
+          newPassword: password,
+        }).success,
+      ).toBe(false);
+    });
+
+    it('applique la politique au nouveau mot de passe', () => {
+      expect(
+        parseAuthEmailPasswordRequest({ currentPassword: 'ancien', newPassword: 'court' }).success,
+      ).toBe(false);
+    });
+  });
+
+  it('decrit l etat du rattachement sans jamais l adresse en clair ni le hache', () => {
+    expect(
+      emailStatusResponseSchema.safeParse({ linked: true, maskedEmail: 'k•••@gmail.com' }).success,
+    ).toBe(true);
+    expect(emailStatusResponseSchema.safeParse({ linked: false, maskedEmail: null }).success).toBe(
+      true,
+    );
+    expect(
+      emailStatusResponseSchema.safeParse({
+        linked: true,
+        maskedEmail: 'k•••@gmail.com',
+        secretHash: '$argon2id$',
+      }).success,
+    ).toBe(false);
+  });
+
+  it('nomme les refus que le client sait expliquer', () => {
+    expect(AUTH_ERROR_CODES).toEqual(
+      expect.arrayContaining([
+        'INVALID_CREDENTIALS',
+        'EMAIL_UNAVAILABLE',
+        'EMAIL_ALREADY_LINKED',
+        'EMAIL_NOT_LINKED',
+        'PASSWORD_TOO_COMMON',
+        'PASSWORD_MATCHES_EMAIL',
+        'TOO_MANY_ATTEMPTS',
+      ]),
     );
   });
 });

@@ -112,6 +112,118 @@ export const recoveryCodeResponseSchema = z.strictObject({
   code: z.string().min(1).max(64),
 });
 
+/**
+ * Email et mot de passe : retrouver son compte depuis un autre appareil.
+ *
+ * L'adresse est un **identifiant**, pas un canal : le serveur n'envoie aucun
+ * courrier et ne la verifie pas. Un mot de passe oublie se rattrape par le code
+ * de recuperation, qui reste la preuve de secours.
+ *
+ * Le schema porte les **formes** — adresse lisible, longueur du mot de passe.
+ * La regle metier (mots de passe trop courants, egal a l'adresse) vit cote
+ * serveur : c'est la qu'est la liste, et elle n'a rien a faire dans le client.
+ */
+export const EMAIL_MAX = 254;
+export const PASSWORD_MIN = 8;
+/**
+ * Plafond du mot de passe. Pas une coquetterie : le hachage coute un temps de
+ * calcul qui depend de l'entree, et sans borne un client envoie un megaoctet
+ * par tentative.
+ */
+export const PASSWORD_MAX = 128;
+
+/**
+ * Adresse, rognee et en minuscules **avant** d'etre verifiee.
+ *
+ * Normaliser ici, c'est garantir que le client et le serveur parlent de la
+ * meme chaine : sinon « Kassim@Gmail.com » et « kassim@gmail.com » ouvriraient
+ * deux comptes, et le joueur ne retrouverait pas le sien selon la facon dont
+ * son clavier a pose la majuscule.
+ */
+export const emailSchema = z
+  .string()
+  .trim()
+  .toLowerCase()
+  .pipe(z.email('adresse email invalide').max(EMAIL_MAX));
+
+/**
+ * Mot de passe **choisi** : la politique de longueur s'applique.
+ *
+ * Jamais rogne : un espace fait partie du mot de passe, et le retirer en
+ * silence changerait le secret que le joueur croit avoir choisi.
+ */
+export const newPasswordSchema = z
+  .string()
+  .min(PASSWORD_MIN, 'au moins 8 caracteres')
+  .max(PASSWORD_MAX, '128 caracteres au maximum');
+
+/**
+ * Mot de passe **presente** : seulement borne.
+ *
+ * La politique de choix peut se durcir un jour ; un joueur doit encore entrer
+ * avec le mot de passe qu'il avait choisi sous l'ancienne regle.
+ */
+export const presentedPasswordSchema = z.string().min(1).max(PASSWORD_MAX);
+
+export const authEmailLinkRequestSchema = z.strictObject({
+  email: emailSchema,
+  password: newPasswordSchema,
+});
+
+export const authEmailLoginRequestSchema = z.strictObject({
+  email: emailSchema,
+  password: presentedPasswordSchema,
+});
+
+/**
+ * Changer son mot de passe : une preuve, et une seule.
+ *
+ * L'ancien mot de passe, ou le code de recuperation — c'est le chemin du mot
+ * de passe oublie, puisqu'aucun courrier ne part jamais. Les deux a la fois
+ * sont refuses : une requete ambigue dit seulement qu'un client ne sait pas ce
+ * qu'il fait.
+ */
+export const authEmailPasswordRequestSchema = z
+  .strictObject({
+    currentPassword: presentedPasswordSchema.optional(),
+    recoveryCode: recoveryCodeInputSchema.optional(),
+    newPassword: newPasswordSchema,
+  })
+  .refine(
+    (body) => (body.currentPassword === undefined) !== (body.recoveryCode === undefined),
+    'une preuve et une seule : ancien mot de passe ou code de recuperation',
+  );
+
+/**
+ * Ce que le client sait de l'adresse rattachee : si elle existe, et sa forme
+ * **masquee** (`k•••@gmail.com`). Assez pour que le joueur reconnaisse la
+ * sienne, pas assez pour qu'un ecran photographie la publie. `strictObject` :
+ * le hache n'a aucune raison de sortir, et un schema ferme l'en empeche.
+ */
+export const emailStatusResponseSchema = z.strictObject({
+  linked: z.boolean(),
+  maskedEmail: z.string().min(1).max(EMAIL_MAX).nullable(),
+});
+
+/**
+ * Les refus que le client sait expliquer, dans le champ `code` du corps.
+ *
+ * `INVALID_CREDENTIALS` est **un seul** code pour « adresse inconnue » et
+ * « mauvais mot de passe » : deux reponses distinctes diraient a qui essaie
+ * des adresses lesquelles ont un compte.
+ */
+export const AUTH_ERROR_CODES = [
+  'INVALID_CREDENTIALS',
+  'EMAIL_UNAVAILABLE',
+  'EMAIL_ALREADY_LINKED',
+  'EMAIL_NOT_LINKED',
+  'PASSWORD_TOO_COMMON',
+  'PASSWORD_MATCHES_EMAIL',
+  'TOO_MANY_ATTEMPTS',
+] as const;
+
+export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];
+
 export type AuthDeviceRequest = z.infer<typeof authDeviceRequestSchema>;
 export type AuthRecoveryClaimRequest = z.infer<typeof authRecoveryClaimRequestSchema>;
 export type AuthDeviceLinkRequest = z.infer<typeof authDeviceLinkRequestSchema>;
@@ -119,6 +231,10 @@ export type RecoveryCodeResponse = z.infer<typeof recoveryCodeResponseSchema>;
 export type AuthRefreshRequest = z.infer<typeof authRefreshRequestSchema>;
 export type AuthRenameRequest = z.infer<typeof authRenameRequestSchema>;
 export type SessionResponse = z.infer<typeof sessionResponseSchema>;
+export type AuthEmailLinkRequest = z.infer<typeof authEmailLinkRequestSchema>;
+export type AuthEmailLoginRequest = z.infer<typeof authEmailLoginRequestSchema>;
+export type AuthEmailPasswordRequest = z.infer<typeof authEmailPasswordRequestSchema>;
+export type EmailStatusResponse = z.infer<typeof emailStatusResponseSchema>;
 
 export function parseAuthDeviceRequest(payload: unknown): ParseResult<AuthDeviceRequest> {
   const parsed = authDeviceRequestSchema.safeParse(payload);
@@ -144,5 +260,22 @@ export function parseAuthRecoveryClaimRequest(
 
 export function parseAuthDeviceLinkRequest(payload: unknown): ParseResult<AuthDeviceLinkRequest> {
   const parsed = authDeviceLinkRequestSchema.safeParse(payload);
+  return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
+}
+
+export function parseAuthEmailLinkRequest(payload: unknown): ParseResult<AuthEmailLinkRequest> {
+  const parsed = authEmailLinkRequestSchema.safeParse(payload);
+  return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
+}
+
+export function parseAuthEmailLoginRequest(payload: unknown): ParseResult<AuthEmailLoginRequest> {
+  const parsed = authEmailLoginRequestSchema.safeParse(payload);
+  return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
+}
+
+export function parseAuthEmailPasswordRequest(
+  payload: unknown,
+): ParseResult<AuthEmailPasswordRequest> {
+  const parsed = authEmailPasswordRequestSchema.safeParse(payload);
   return parsed.success ? toParseResult(parsed) : parseFailure(parsed.error);
 }
