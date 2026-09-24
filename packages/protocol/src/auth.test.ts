@@ -214,7 +214,11 @@ describe('email et mot de passe', () => {
 
   it('borne le mot de passe choisi des deux cotes', () => {
     const at = (length: number) =>
-      parseAuthEmailLinkRequest({ email: 'k@gmail.com', password: 'x'.repeat(length) }).success;
+      parseAuthEmailLinkRequest({
+        email: 'k@gmail.com',
+        password: 'x'.repeat(length),
+        deviceSecret: secret,
+      }).success;
     expect(at(PASSWORD_MIN - 1)).toBe(false);
     expect(at(PASSWORD_MIN)).toBe(true);
     expect(at(PASSWORD_MAX)).toBe(true);
@@ -225,7 +229,11 @@ describe('email et mot de passe', () => {
   });
 
   it('ne rogne pas un mot de passe : l espace en fait partie', () => {
-    const parsed = parseAuthEmailLinkRequest({ email: 'k@gmail.com', password: `  ${password}  ` });
+    const parsed = parseAuthEmailLinkRequest({
+      email: 'k@gmail.com',
+      password: `  ${password}  `,
+      deviceSecret: secret,
+    });
     expect(parsed.success && parsed.data.password).toBe(`  ${password}  `);
   });
 
@@ -350,5 +358,22 @@ describe('durcissement des preuves', () => {
         'BUSY',
       ]),
     );
+  });
+});
+
+describe('preuve d appareil', () => {
+  it('exige le secret de l appareil pour rattacher une adresse', () => {
+    const body = { email: 'k@gmail.com', password: 'une phrase de passe' };
+    expect(parseAuthEmailLinkRequest(body).success).toBe(false);
+    expect(parseAuthEmailLinkRequest({ ...body, deviceSecret: secret }).success).toBe(true);
+  });
+
+  it('accepte le secret de l appareil avec une demande de code', () => {
+    expect(parseAuthRecoveryIssueRequest({ deviceSecret: secret }).success).toBe(true);
+    expect(parseAuthRecoveryIssueRequest({ deviceSecret: 'court' }).success).toBe(false);
+  });
+
+  it('nomme le refus', () => {
+    expect(AUTH_ERROR_CODES).toContain('DEVICE_PROOF_REQUIRED');
   });
 });

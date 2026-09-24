@@ -168,6 +168,12 @@ export const presentedPasswordSchema = z.string().min(1).max(PASSWORD_MAX);
 export const authEmailLinkRequestSchema = z.strictObject({
   email: emailSchema,
   password: newPasswordSchema,
+  /**
+   * Le secret de l'appareil qui rattache. Un compte sans adresse n'a que ses
+   * appareils pour secret : sans cette preuve, un jeton vole suffirait a poser
+   * l'adresse et le mot de passe d'un intrus (ADR 0013).
+   */
+  deviceSecret: deviceSecretSchema,
 });
 
 export const authEmailLoginRequestSchema = z.strictObject({
@@ -205,10 +211,13 @@ export const authEmailPasswordRequestSchema = z
  *
  * Des qu'une adresse est rattachee, l'ancien mot de passe est exige : sinon une
  * session volee suffirait a remplacer le code du joueur, puis a s'en servir
- * pour changer son mot de passe. Sans adresse, le corps reste vide.
+ * pour changer son mot de passe. Sans adresse, c'est le secret d'un appareil
+ * du joueur qui est exige.
  */
 export const authRecoveryIssueRequestSchema = z.strictObject({
   currentPassword: presentedPasswordSchema.optional(),
+  /** Exige sur un compte sans adresse : la preuve d'un appareil du joueur. */
+  deviceSecret: deviceSecretSchema.optional(),
 });
 
 /**
@@ -241,6 +250,8 @@ export const AUTH_ERROR_CODES = [
   'RECOVERY_CODE_TOO_RECENT',
   /** L'ancien mot de passe est exige pour ce geste. */
   'PASSWORD_REQUIRED',
+  /** Le secret d'un appareil deja rattache a ce joueur est exige. */
+  'DEVICE_PROOF_REQUIRED',
   'TOO_MANY_ATTEMPTS',
   /** Trop de hachages en cours : reessayer dans un instant. */
   'BUSY',
