@@ -5,6 +5,7 @@ import {
   type CatalogueEntry,
   type PurchaseRefusal,
 } from '../domain/purchase.js';
+import { KeyedSerializer } from '../../../shared/keyed-serializer.js';
 import { fitsDanceSlot, fitsLookSlot, fitsSignature, lookEntries } from '../domain/slots.js';
 import type {
   Clock,
@@ -43,6 +44,22 @@ export class InventoryService {
   constructor(private readonly deps: InventoryDependencies) {}
 
   /**
+   * Les ecritures d'un meme joueur, l'une apres l'autre.
+   *
+   * Chaque ecriture lit l'inventaire, ecrit, puis previent le match avec
+   * l'etat obtenu. Deux ecritures simultanees — deux touchers rapides au
+   * vestiaire, un achat suivi d'un equipement — le faisaient sans ordre : le
+   * match pouvait finir sur l'avant-dernier loadout, ou perdre de
+   * `ownedEffects` l'effet tout juste achete, parce que l'equipement avait lu
+   * avant l'achat. En file, chaque ecriture lit ce que la precedente a ecrit,
+   * et le dernier signal recu par le match est celui de la derniere ecriture.
+   *
+   * Un exemplaire par service, donc par processus (ADR 0012). Les lectures
+   * n'y passent pas : elles ne previennent personne.
+   */
+  private readonly writes = new KeyedSerializer();
+
+  /**
    * Ce que le joueur possede, les objets offerts compris.
    *
    * **Ce qui est offert appartient a tout le monde** (`isOffered` : rarete
@@ -71,7 +88,11 @@ export class InventoryService {
    * Rendu plutot que relu : la bourse vient de la transaction du debit, la
    * liste des possessions de la lecture qui a servi a juger l'achat.
    */
-  async buy(playerId: string, itemId: string): Promise<PlayerInventory> {
+  buy(playerId: string, itemId: string): Promise<PlayerInventory> {
+    return this.writes.run(playerId, () => this.buyNow(playerId, itemId));
+  }
+
+  private async buyNow(playerId: string, itemId: string): Promise<PlayerInventory> {
     const { inventory, catalogue } = await this.load(playerId);
 
     const item = catalogue.find((entry) => entry.id === itemId);
@@ -128,7 +149,11 @@ export class InventoryService {
    * Rend l'inventaire enregistre : c'est la reponse de la route, et le signal
    * au match. Une seule lecture pour les trois.
    */
-  async equip(playerId: string, data: LoadoutData): Promise<PlayerInventory> {
+  equip(playerId: string, data: LoadoutData): Promise<PlayerInventory> {
+    return this.writes.run(playerId, () => this.equipNow(playerId, data));
+  }
+
+  private async equipNow(playerId: string, data: LoadoutData): Promise<PlayerInventory> {
     const { inventory, catalogue } = await this.load(playerId);
     const owned = new Set(inventory.owned);
 

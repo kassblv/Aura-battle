@@ -368,6 +368,104 @@ describe('une seule lecture par ecriture', () => {
   });
 });
 
+/** Une porte qu'on ouvre a la main, pour choisir l'ordre des fins. */
+function gate(): { opened: Promise<void>; open: () => void } {
+  let open!: () => void;
+  const opened = new Promise<void>((done) => {
+    open = done;
+  });
+  return { opened, open };
+}
+
+/** Laisse s'ecouler toutes les microtaches en attente. */
+const settle = () => new Promise((done) => setImmediate(done));
+
+/*
+  Deux ecritures simultanees du meme joueur — deux touchers rapides au
+  vestiaire, ou un achat suivi d'un equipement. Sans ordre, chacune lisait,
+  ecrivait et prevenait le match a son rythme : le match pouvait garder
+  l'avant-dernier loadout, ou perdre de `ownedEffects` l'effet tout juste
+  achete.
+*/
+describe('ecritures concurrentes d un meme joueur', () => {
+  /** Un depot dont la PREMIERE ecriture de loadout traine. */
+  function slowFirstWrite() {
+    const repo = repository({ owned: ['color.violet'] });
+    const setLoadout = repo.port.setLoadout.bind(repo.port);
+    const slow = gate();
+    let calls = 0;
+    repo.port.setLoadout = async (playerId, data) => {
+      calls += 1;
+      if (calls === 1) await slow.opened;
+      return setLoadout(playerId, data);
+    };
+    return { repo, release: slow.open };
+  }
+
+  it('previent le match dans l ordre : le dernier etat notifie est la derniere ecriture', async () => {
+    const { repo, release } = slowFirstWrite();
+    const notified: InventorySnapshot[] = [];
+    const inventory = service(repo, (_playerId, snapshot) => notified.push(snapshot));
+
+    const first = inventory.equip('p-1', { auraColor: 'color.violet' });
+    const second = inventory.equip('p-1', { auraColor: 'color.gold' });
+    await settle();
+    release();
+    await Promise.all([first, second]);
+
+    expect(notified.map((snapshot) => snapshot.loadout)).toEqual([
+      { auraColor: 'color.violet' },
+      { auraColor: 'color.gold' },
+    ]);
+    expect(repo.state.loadout).toEqual({ auraColor: 'color.gold' });
+  });
+
+  it('un equipement lance pendant un achat voit l effet achete', async () => {
+    const repo = repository();
+    const grant = repo.port.grant.bind(repo.port);
+    const slow = gate();
+    repo.port.grant = async (playerId, itemId, spend) => {
+      await slow.opened;
+      return grant(playerId, itemId, spend);
+    };
+    const notified: InventorySnapshot[] = [];
+    const inventory = service(repo, (_playerId, snapshot) => notified.push(snapshot));
+
+    const bought = inventory.buy('p-1', 'fx.galaxy');
+    const equipped = inventory.equip('p-1', { auraEffect: 'fx.galaxy' });
+    await settle();
+    slow.open();
+
+    await bought;
+    // Sans ordre, l'equipement lisait l'inventaire avant l'achat : NOT_OWNED.
+    await expect(equipped).resolves.toMatchObject({ loadout: { auraEffect: 'fx.galaxy' } });
+    const last = notified.at(-1);
+    expect(last?.owned).toContain('fx.galaxy');
+    expect(last?.loadout).toEqual({ auraEffect: 'fx.galaxy' });
+  });
+
+  it('un refus ne bloque pas l ecriture suivante du joueur', async () => {
+    const inventory = service(repository());
+
+    const refused = inventory.equip('p-1', { auraEffect: 'fx.galaxy' });
+    const accepted = inventory.equip('p-1', { auraColor: 'color.gold' });
+
+    await expect(refused).rejects.toMatchObject({ reason: 'NOT_OWNED' });
+    await expect(accepted).resolves.toMatchObject({ loadout: { auraColor: 'color.gold' } });
+  });
+
+  it('ne fait pas attendre un joueur derriere un autre', async () => {
+    const { repo, release } = slowFirstWrite();
+    const inventory = service(repo);
+
+    const blocked = inventory.equip('p-1', { auraColor: 'color.violet' });
+    await settle();
+    await expect(inventory.equip('p-2', { auraColor: 'color.gold' })).resolves.toBeDefined();
+    release();
+    await blocked;
+  });
+});
+
 describe('InventoryError', () => {
   it('porte sa raison', () => {
     expect(new InventoryError('UNKNOWN_ITEM').reason).toBe('UNKNOWN_ITEM');
