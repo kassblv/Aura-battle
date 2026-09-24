@@ -39,7 +39,7 @@ Schéma : `docs/content/animation.schema.json` (à copier dans `packages/content
 - `lift` (≤ 0, saut), `rot` (rotation du corps, rad), `hy` (rotation de la tête, rad), `pitch` (salto, rad) : optionnels, 0 par défaut. Les angles sont interpolés par le plus court chemin.
 - Interpolation Catmull-Rom en boucle, `ease: true` pour marquer des arrêts nets. `weights` = durée relative de chaque segment.
 - Mains : `[[forme, paume], [forme, paume]]` pour [arrière, avant]. Formes : `relax, fist, open, point, L, peace`. Paumes : `in, up, down, fwd, back`.
-- Expressions : `neutral, smug, sad, angry, hurt`.
+- Expressions : `neutral, smug, sad, angry, hurt, joy` (`joy` : yeux plisses, bouche ouverte — la victoire).
 
 ### Cadrage de prévisualisation (`framing`)
 

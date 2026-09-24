@@ -37,7 +37,7 @@ export type JointName = (typeof JOINT_NAMES)[number];
 /** Position d'une articulation dans le plan de l'animation, en centimetres. */
 export type Joint2D = readonly [number, number];
 
-export type Expression = 'neutral' | 'smug' | 'sad' | 'angry' | 'hurt';
+export type Expression = 'neutral' | 'smug' | 'sad' | 'angry' | 'hurt' | 'joy';
 export type HandShape = string;
 export type HandFacing = string;
 

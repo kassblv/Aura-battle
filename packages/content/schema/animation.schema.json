@@ -187,7 +187,7 @@
           "maximum": 0
         },
         "expression": {
-          "enum": ["neutral", "smug", "sad", "angry", "hurt"]
+          "enum": ["neutral", "smug", "sad", "angry", "hurt", "joy"]
         }
       }
     },

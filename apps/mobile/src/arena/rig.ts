@@ -775,8 +775,10 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
       const expression = flags.expression ?? 'neutral';
       const blink = elapsed % 4.2 < 0.12 ? 0.2 : 1;
       const shut = expression === 'hurt';
+      // La joie plisse les yeux : deux traits, lisibles de loin comme un sourire.
+      const squint = expression === 'sad' ? 0.6 : expression === 'joy' ? 0.4 : 1;
       for (const eye of eyes) {
-        eye.scale.y = 0.022 * blink * (expression === 'sad' ? 0.6 : 1);
+        eye.scale.y = 0.022 * blink * squint;
         eye.visible = !shut;
       }
       const [browLeft, browRight] =
@@ -786,10 +788,20 @@ export function createFighterRig(resources: RigResources, placement: RigPlacemen
             ? [-0.45, 0.45]
             : expression === 'smug'
               ? [0.25, -0.08]
-              : [-0.1, 0.1];
+              : expression === 'joy'
+                ? [-0.3, 0.3]
+                : [-0.1, 0.1];
       if (brows[0] !== undefined) brows[0].rotation.x = browLeft;
       if (brows[1] !== undefined) brows[1].rotation.x = browRight;
       mouth.rotation.x = expression === 'smug' ? 0.35 : expression === 'sad' ? -0.3 : 0;
+      /*
+        La bouche s ouvre pour les deux moments qui comptent : la joie du
+        vainqueur, le souffle coupe de celui qui encaisse. Un trait de
+        9 millimetres ne se lisait pas au cadrage du duel — la tete y fait une
+        trentaine de pixels, et gagner avait le meme visage que charger.
+      */
+      const open = expression === 'joy' ? 2.6 : expression === 'hurt' ? 2.2 : 1;
+      mouth.scale.set(0.01, 0.009 * open, expression === 'hurt' ? 0.034 : 0.05);
 
       /**
        * Elevation.
