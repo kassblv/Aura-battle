@@ -1287,7 +1287,7 @@ body {
   font-size: 15px;
   font-weight: 700;
   letter-spacing: 0.08em;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border-radius: 9px;
   background: var(--chip-deep);
   border: 1px solid var(--line);

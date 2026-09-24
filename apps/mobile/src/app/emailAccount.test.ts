@@ -70,6 +70,10 @@ describe('emailFailureMessage', () => {
       'EMAIL_NOT_LINKED',
       'PASSWORD_TOO_COMMON',
       'PASSWORD_MATCHES_EMAIL',
+      'PASSWORD_TOO_SHORT',
+      'PASSWORD_REQUIRED',
+      'RECOVERY_CODE_TOO_RECENT',
+      'BUSY',
       'UNREACHABLE',
     ]) {
       expect(emailFailureMessage(code)).not.toBe(emailFailureMessage('???'));

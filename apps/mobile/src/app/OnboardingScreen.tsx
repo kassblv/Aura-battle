@@ -155,6 +155,7 @@ export function OnboardingScreen({
 
             <form
               className="onboard__form onboard__col"
+              method="post"
               onSubmit={(event) => {
                 event.preventDefault();
                 if (!canRestore) return;
@@ -248,6 +249,7 @@ export function OnboardingScreen({
       <div className="onboard__panel onboard__panel--wide">
         <form
           className="onboard__cols"
+          method="post"
           onSubmit={(event) => {
             event.preventDefault();
             if (ready) void welcome();

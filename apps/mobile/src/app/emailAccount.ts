@@ -63,6 +63,10 @@ const FAILURES: Readonly<Record<string, string>> = Object.freeze({
   PASSWORD_TOO_COMMON: 'Ce mot de passe est trop courant. Choisis-en un moins évident.',
   PASSWORD_MATCHES_EMAIL: 'Ton mot de passe ne doit pas être ton adresse.',
   PASSWORD_TOO_SHORT: `Au moins ${String(PASSWORD_MIN)} caractères.`,
+  PASSWORD_REQUIRED: 'Entre ton mot de passe actuel pour continuer.',
+  RECOVERY_CODE_TOO_RECENT:
+    'Ce code a moins d’une heure : il ne suffit pas encore. Utilise ton mot de passe actuel, ou réessaie plus tard.',
+  BUSY: 'Le serveur est très sollicité. Réessaie dans un instant.',
   INVALID_EMAIL: 'Cette adresse email n’a pas l’air complète.',
   UNREACHABLE: 'Pas de réseau. Réessaie dans un instant.',
   UNAUTHORIZED: 'Ta session a expiré. Relance le jeu.',

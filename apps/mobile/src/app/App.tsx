@@ -777,8 +777,8 @@ export function App(): JSX.Element {
               busy: session.busy,
               error: session.error,
               code: recoveryCode,
-              issue: () => {
-                void session.issueRecovery().then(setRecoveryCode);
+              issue: (currentPassword) => {
+                void session.issueRecovery(currentPassword).then(setRecoveryCode);
               },
               claim: (code) => {
                 void session.claimRecovery(code).then((ok) => {

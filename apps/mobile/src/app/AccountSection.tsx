@@ -1,5 +1,5 @@
 import type { EmailStatusResponse } from '@aura/protocol';
-import { useState, type FormEvent, type JSX } from 'react';
+import { useEffect, useState, type FormEvent, type JSX } from 'react';
 import type { PasswordProof } from '../net/auth.js';
 import { accountNotice, groupsOf } from './account.js';
 import { FORGOT_PASSWORD_HINT, emailFormProblem } from './emailAccount.js';
@@ -24,7 +24,8 @@ export interface AccountSectionProps {
   readonly error: string | null;
   /** Le code fraichement delivre, tant que l ecran est ouvert. */
   readonly code: string | null;
-  readonly issue: () => void;
+  /** Demande un code ; l ancien mot de passe est exige des qu un email est rattache. */
+  readonly issue: (currentPassword?: string) => void;
   readonly claim: (code: string) => void;
   /** L adresse rattachee, masquee ; `null` tant qu on ne sait pas. */
   readonly email: EmailStatusResponse | null;
@@ -33,11 +34,12 @@ export interface AccountSectionProps {
   readonly changePassword: (proof: PasswordProof, newPassword: string) => Promise<boolean>;
 }
 
-type View = 'overview' | 'link' | 'change' | 'login-email' | 'login-code';
+type View = 'overview' | 'link' | 'change' | 'issue' | 'login-email' | 'login-code';
 
 const TITLES: Readonly<Record<Exclude<View, 'overview'>, string>> = {
   link: 'Se connecter avec un email',
   change: 'Changer le mot de passe',
+  issue: 'Nouveau code de récupération',
   'login-email': 'Rejoindre mon compte',
   'login-code': 'Rejoindre mon compte',
 };
@@ -76,6 +78,11 @@ export function AccountSection({
     setView(next);
   };
 
+  // Le code est arrive : le formulaire qui l a demande n a plus rien a dire.
+  useEffect(() => {
+    if (view === 'issue' && code !== null) setView('overview');
+  }, [view, code]);
+
   if (!online) {
     return (
       <div className="sheet__col">
@@ -88,7 +95,7 @@ export function AccountSection({
   if (view !== 'overview') {
     const mode = view === 'link' ? 'link' : view === 'change' ? 'change' : 'login';
     const problem =
-      view === 'login-code'
+      view === 'login-code' || view === 'issue'
         ? null
         : emailFormProblem(mode, {
             email: view === 'change' ? '' : address,
@@ -96,21 +103,24 @@ export function AccountSection({
             ...(view === 'login-email' ? {} : { confirm }),
           });
     const filled =
-      view === 'login-code'
-        ? entry.trim().length > 0
-        : view === 'login-email'
-          ? address.trim().length > 0 && password.length > 0
-          : view === 'link'
-            ? address.trim().length > 0 && password.length > 0 && confirm.length > 0
-            : (forgot ? entry.trim().length > 0 : current.length > 0) &&
-              password.length > 0 &&
-              confirm.length > 0;
+      view === 'issue'
+        ? current.length > 0
+        : view === 'login-code'
+          ? entry.trim().length > 0
+          : view === 'login-email'
+            ? address.trim().length > 0 && password.length > 0
+            : view === 'link'
+              ? address.trim().length > 0 && password.length > 0 && confirm.length > 0
+              : (forgot ? entry.trim().length > 0 : current.length > 0) &&
+                password.length > 0 &&
+                confirm.length > 0;
     const ready = filled && problem === null && !busy;
 
     const submit = (event: FormEvent): void => {
       event.preventDefault();
       if (!ready) return;
-      if (view === 'login-code') claim(entry);
+      if (view === 'issue') issue(current);
+      else if (view === 'login-code') claim(entry);
       else if (view === 'login-email') loginEmail(address, password);
       else if (view === 'link') {
         void linkEmail(address, password).then((ok) => {
@@ -135,7 +145,7 @@ export function AccountSection({
     return (
       <div className="sheet__col account__wide">
         <h3>{TITLES[view]}</h3>
-        <form className="account__form" onSubmit={submit}>
+        <form className="account__form" method="post" onSubmit={submit}>
           <div className="account__fields">
             {(view === 'link' || view === 'login-email') && (
               <label className="account__field account__field--plain">
@@ -156,8 +166,8 @@ export function AccountSection({
               </label>
             )}
 
-            {view === 'change' &&
-              (forgot ? (
+            {(view === 'change' || view === 'issue') &&
+              (forgot && view === 'change' ? (
                 <label className="account__field">
                   <span>Ton code de récupération</span>
                   <input
@@ -188,7 +198,7 @@ export function AccountSection({
                 </label>
               ))}
 
-            {view === 'login-code' ? (
+            {view === 'issue' ? null : view === 'login-code' ? (
               <label className="account__field">
                 <span>Ton code</span>
                 <input
@@ -242,6 +252,12 @@ export function AccountSection({
                 Ton email sert d’identifiant : on ne t’écrira jamais. {FORGOT_PASSWORD_HINT}
               </p>
             )}
+            {view === 'issue' && (
+              <p className="sheet__note sheet__note--warn">
+                Ton compte a un email : ton mot de passe prouve que c’est bien toi. Le nouveau code
+                annulera l’ancien.
+              </p>
+            )}
             {view === 'change' && (
               <p className="sheet__note">
                 {forgot
@@ -266,9 +282,11 @@ export function AccountSection({
                 <b>
                   {busy
                     ? 'Un instant…'
-                    : view === 'link' || view === 'change'
-                      ? 'Valider'
-                      : 'Rejoindre'}
+                    : view === 'issue'
+                      ? 'Obtenir le code'
+                      : view === 'link' || view === 'change'
+                        ? 'Valider'
+                        : 'Rejoindre'}
                 </b>
               </button>
               {view === 'change' ? (
@@ -316,7 +334,8 @@ export function AccountSection({
             disabled={busy}
           >
             <b>Changer le mot de passe</b>
-            <small>Email : {email.maskedEmail}</small>
+            {/* Le code affiche prend la place : sans cela la colonne deborde. */}
+            {code === null && <small>Email : {email.maskedEmail}</small>}
           </button>
         ) : (
           <button
@@ -333,7 +352,16 @@ export function AccountSection({
         )}
 
         {code === null ? (
-          <button type="button" className="choice" onClick={issue} disabled={busy}>
+          <button
+            type="button"
+            className="choice"
+            onClick={() => {
+              // Avec un email, une session seule ne suffit plus (ADR 0013).
+              if (email?.linked === true) open('issue');
+              else issue();
+            }}
+            disabled={busy}
+          >
             <b>Code de récupération</b>
             <small>Un code à noter, qui rouvre ce compte sur n’importe quel appareil.</small>
           </button>
@@ -369,8 +397,9 @@ export function AccountSection({
                 );
               }}
             >
-              <b>{copied ? 'Copié' : 'Copier'}</b>
-              <small>Colle-le dans tes notes.</small>
+              {/* Sans sous-titre : la note juste dessous dit deja quoi en faire, et
+                  la colonne debordait de 13 px une fois le code affiche. */}
+              <b>{copied ? 'Copié' : 'Copier le code'}</b>
             </button>
             <p className="sheet__note sheet__note--warn">{accountNotice('issued')}</p>
           </>

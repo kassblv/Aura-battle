@@ -305,3 +305,35 @@ describe('email et mot de passe', () => {
     expect(fetcher.mock.calls[0]?.[0]).toBe('http://srv/auth/email/password');
   });
 });
+
+describe('preuves durcies', () => {
+  it('envoie l ancien mot de passe avec une demande de code, dans le corps', async () => {
+    const fetcher = ok({ code: 'AURA-7K2M-94PX-QTJD-3HVN' });
+    await issueRecoveryCode('http://srv', 'acc', { fetcher, currentPassword: 'ancien' });
+    await issueRecoveryCode('http://srv', 'acc', { fetcher });
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toEqual({
+      currentPassword: 'ancien',
+    });
+    expect(JSON.parse(fetcher.mock.calls[1]?.[1]?.body as string)).toEqual({});
+  });
+
+  it('dit que le mot de passe est exige', async () => {
+    const thrown = await issueRecoveryCode('http://srv', 'acc', {
+      fetcher: fails(403, { code: 'PASSWORD_REQUIRED' }),
+    }).catch((error: unknown) => error);
+    expect((thrown as AuthError).reason).toBe('PASSWORD_REQUIRED');
+  });
+
+  it('joint le secret de l appareil a un changement de mot de passe', async () => {
+    const fetcher = ok({ changed: true });
+    await changePassword('http://srv', 'acc', { currentPassword: 'ancien' }, 'aura du soir', {
+      fetcher,
+      deviceSecret: 'a'.repeat(64),
+    });
+    expect(JSON.parse(fetcher.mock.calls[0]?.[1]?.body as string)).toEqual({
+      currentPassword: 'ancien',
+      newPassword: 'aura du soir',
+      deviceSecret: 'a'.repeat(64),
+    });
+  });
+});

@@ -165,13 +165,18 @@ export async function renameProfile(
 export async function issueRecoveryCode(
   baseUrl: string,
   accessToken: string,
-  options: AuthOptions = {},
+  options: AuthOptions & { readonly currentPassword?: string } = {},
 ): Promise<string> {
+  // Des qu'un email est rattache, le serveur exige l'ancien mot de passe : une
+  // session seule ne doit pas pouvoir remplacer le code du joueur.
   const body = await send(
     endpoint(baseUrl, '/auth/recovery'),
     {
       method: 'POST',
-      headers: { authorization: `Bearer ${accessToken}` },
+      headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
+      body: JSON.stringify(
+        options.currentPassword === undefined ? {} : { currentPassword: options.currentPassword },
+      ),
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
@@ -339,14 +344,20 @@ export async function changePassword(
   accessToken: string,
   proof: PasswordProof,
   newPassword: string,
-  options: AuthOptions = {},
+  options: AuthOptions & { readonly deviceSecret?: string } = {},
 ): Promise<void> {
+  // Le secret de CET appareil : le serveur detache tous les autres, c est ce
+  // qui chasse un intrus, et garde celui qui prouve qu il fait la demande.
   await send(
     endpoint(baseUrl, '/auth/email/password'),
     {
       method: 'POST',
       headers: { 'content-type': 'application/json', authorization: `Bearer ${accessToken}` },
-      body: JSON.stringify({ ...proof, newPassword: checkedNewPassword(newPassword) }),
+      body: JSON.stringify({
+        ...proof,
+        newPassword: checkedNewPassword(newPassword),
+        ...(options.deviceSecret === undefined ? {} : { deviceSecret: options.deviceSecret }),
+      }),
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );

@@ -37,8 +37,11 @@ export interface SessionState {
   readonly error: string | null;
   readonly busy: boolean;
   rename(displayName: string): Promise<boolean>;
-  /** Delivre un code de recuperation pour ce compte. */
-  issueRecovery(): Promise<string | null>;
+  /**
+   * Delivre un code de recuperation pour ce compte. L ancien mot de passe est
+   * exige des qu un email est rattache.
+   */
+  issueRecovery(currentPassword?: string): Promise<string | null>;
   /**
    * Presente un code et rejoint le compte qu il designe.
    *
@@ -154,30 +157,34 @@ export function useSession(): SessionState {
     [accessToken],
   );
 
-  const issueRecovery = useCallback(async (): Promise<string | null> => {
-    if (accessToken === null) {
-      setError(MESSAGES.UNREACHABLE ?? null);
-      return null;
-    }
-    setBusy(true);
-    setError(null);
-    try {
-      const baseUrl = resolveServerUrl(
-        import.meta.env.VITE_SERVER_URL,
-        window.location.hostname,
-        currentPageLocation(),
-      );
-      return await issueRecoveryCode(baseUrl, accessToken);
-    } catch (cause) {
-      setError(
-        (cause instanceof AuthError ? MESSAGES[cause.reason] : undefined) ??
-          'Impossible d’obtenir un code pour le moment.',
-      );
-      return null;
-    } finally {
-      setBusy(false);
-    }
-  }, [accessToken]);
+  const issueRecovery = useCallback(
+    async (currentPassword?: string): Promise<string | null> => {
+      if (accessToken === null) {
+        setError(MESSAGES.UNREACHABLE ?? null);
+        return null;
+      }
+      setBusy(true);
+      setError(null);
+      try {
+        const baseUrl = resolveServerUrl(
+          import.meta.env.VITE_SERVER_URL,
+          window.location.hostname,
+          currentPageLocation(),
+        );
+        return await issueRecoveryCode(
+          baseUrl,
+          accessToken,
+          currentPassword === undefined ? {} : { currentPassword },
+        );
+      } catch (cause) {
+        setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
+        return null;
+      } finally {
+        setBusy(false);
+      }
+    },
+    [accessToken],
+  );
 
   const claimRecovery = useCallback(async (code: string): Promise<boolean> => {
     setBusy(true);
@@ -306,7 +313,9 @@ export function useSession(): SessionState {
       setBusy(true);
       setError(null);
       try {
-        await requestPasswordChange(serverUrl(), accessToken, proof, newPassword);
+        await requestPasswordChange(serverUrl(), accessToken, proof, newPassword, {
+          deviceSecret: deviceSecret(),
+        });
         return true;
       } catch (cause) {
         setError(emailFailureMessage(cause instanceof AuthError ? cause.reason : ''));
