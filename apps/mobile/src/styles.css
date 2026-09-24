@@ -421,10 +421,14 @@ body {
 .home__left {
   flex: none;
   min-width: 0;
+  /* Plafond : la clairiere dit jusqu'ou la grappe PEUT aller, pas jusqu'ou
+     elle doit s'etirer. Pleine largeur, le rail occupait 357 px sur 844 et
+     ses onglets pesaient plus lourd que le personnage qu'ils encadrent. */
+  max-width: 320px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: 6px;
 }
 
 /*
@@ -434,8 +438,8 @@ body {
   clairiere, soit 66 px chacun — moins que la largeur du mot « Classement ».
   Un onglet de jeu se reconnait a sa taille autant qu'a son icone ; cinq
   languettes serrees ne sont plus des onglets. Sur deux rangees, chacun
-  retrouve 115 px, la taille qu'il a dans les jeux dont on s'inspire, et le
-  pave entier reste dans l'arc du pouce gauche.
+  retrouve une centaine de pixels, assez pour « Classement », et le pave
+  entier reste dans l'arc du pouce gauche.
 
   La derniere rangee n'en porte que deux, et c'est voulu : un vide dans un
   coin se lit comme de la place, une grille etiree se lit comme une erreur.
@@ -444,7 +448,7 @@ body {
   flex: none;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 6px;
 }
 
 .rail__btn {
@@ -456,9 +460,11 @@ body {
   /* La grille decide de la largeur ; le minimum ne sert plus qu'a garantir la
      cible tactile si la grappe est rognee sur un ecran etroit. */
   min-width: var(--touch);
-  min-height: 74px;
-  padding: 9px 10px;
-  border-radius: 18px;
+  /* 58 et non 74 : a 74, deux rangees et la galerie prenaient 218 px sur
+     390 — plus de la moitie de la hauteur pour des menus secondaires. */
+  min-height: 58px;
+  padding: 7px 8px;
+  border-radius: 16px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -501,7 +507,7 @@ body {
 }
 
 .rail__icon {
-  font-size: 22px;
+  font-size: 18px;
   line-height: 1;
 }
 
@@ -565,18 +571,19 @@ body {
 /*
   L'action : arc du pouce droit, et le plus gros element de l'ecran.
 
-  « Le plus gros » se mesure : le bouton de duel fait 349x104, un onglet du
-  rail 115x74. Cinq fois l'aire. C'est la proportion qu'ont les jeux dont on
-  s'inspire entre leur bouton de jeu et leurs onglets, et elle n'est pas
-  decorative — c'est elle qui fait qu'on n'a jamais a chercher par ou
-  commencer.
+  « Le plus gros » se mesure : le bouton de duel fait 280x76, un onglet du
+  rail environ 100x58. Plus de trois fois l'aire. C'est cette proportion,
+  pas la taille absolue, qui fait qu'on n'a jamais a chercher par ou
+  commencer — a 349x104, le bouton criait par-dessus l'arene.
 */
 .launch {
   flex: none;
+  /* Meme logique que `.home__left` : la clairiere est un maximum. */
+  max-width: 280px;
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 8px;
+  gap: 6px;
   text-align: center;
 }
 
@@ -658,15 +665,15 @@ body {
   font: inherit;
   font-family: var(--display);
   font-weight: 400;
-  font-size: clamp(26px, 4.2vw, 38px);
+  font-size: clamp(22px, 3.4vw, 30px);
   letter-spacing: 0.02em;
   border: 0;
   cursor: pointer;
   /* Toute la largeur de la grappe : c'est le bouton, pas un bouton. */
   width: 100%;
-  min-height: 104px;
+  min-height: 76px;
   padding: 0 20px;
-  border-radius: 22px;
+  border-radius: 20px;
   color: var(--accent-ink);
   background: var(--accent);
   box-shadow:
@@ -1570,11 +1577,11 @@ body {
 .memes__arrow {
   flex: none;
   /* Cible tactile : l'ADR 0008 impose 46 px, et une fleche qu'on rate fait
-     defiler la galerie deux fois plus lentement qu'elle ne devrait. Ici 54,
-     parce que parcourir le catalogue est le deuxieme geste de cet ecran et
-     qu'il se fait en rafale — on appuie dix fois, pas une. */
-  width: 54px;
-  height: 54px;
+     defiler la galerie deux fois plus lentement qu'elle ne devrait. 48 : un
+     peu au-dessus du plancher, parce que parcourir le catalogue se fait en
+     rafale — on appuie dix fois, pas une. */
+  width: 48px;
+  height: 48px;
   border-radius: 14px;
   border: 1px solid var(--hud-line);
   background: var(--hud);
@@ -1599,8 +1606,8 @@ body {
     Le mème porte l'identite du joueur : c'est ce qu'il montre quand il gagne.
     La commande qui le choisit etait la plus petite chose de l'accueil.
   */
-  min-height: 54px;
-  padding: 6px 14px;
+  min-height: 48px;
+  padding: 4px 12px;
   color: var(--ink);
   font: inherit;
   cursor: pointer;
