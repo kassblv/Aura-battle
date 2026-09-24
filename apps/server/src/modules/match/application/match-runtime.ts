@@ -382,6 +382,27 @@ export class MatchRuntime {
    * changer. On compare au dernier numero vu plutot que de tenir la liste de
    * tous les numeros — le protocole garantit qu'ils croissent.
    */
+  /**
+   * Une action de joueur (taps, verrouillage) est-elle a traiter ?
+   *
+   * Elle doit viser la manche EN COURS, puis porter un seq neuf — dans cet
+   * ordre, pour qu'une action refusee pour sa manche ne consomme pas son
+   * numero. Le seq est garde pour tout le match : sans ce premier filtre, un
+   * verrouillage reste dans le tampon de Socket.IO pendant une coupure, et
+   * vide a la reconnexion, verrouillait la manche SUIVANTE a la place du
+   * joueur.
+   *
+   * Pas de compteur de suspicion ici : un message d'une manche passee est le
+   * symptome ordinaire d'une coupure, et `docs/06` sanctionne un joueur
+   * automatiquement sur ces compteurs.
+   */
+  acceptAction(matchId: string, seat: Seat, round: number, seq: number): boolean {
+    const match = this.matches.get(matchId);
+    if (match === undefined) return false;
+    if (round !== match.state.round) return false;
+    return this.acceptSeq(matchId, seat, seq);
+  }
+
   acceptSeq(matchId: string, seat: Seat, seq: number): boolean {
     const match = this.matches.get(matchId);
     if (match === undefined) return false;

@@ -612,6 +612,20 @@ describe('idempotence — un renvoi ne doit pas compter deux fois', () => {
     expect(runtime.acceptSeq(MATCH_ID, 'b', 1)).toBe(true);
   });
 
+  it('refuse une action qui vise une autre manche que la manche en cours', () => {
+    /*
+      Le seq est garde pour tout le match, pas par manche. Un verrouillage reste
+      dans le tampon de Socket.IO pendant une coupure, et il est vide a la
+      reconnexion : si elle tombe dans la phase de choix de la manche suivante,
+      son seq, plus grand, passait. L'ancien choix verrouillait alors une manche
+      a laquelle le joueur n'avait pas encore repondu, et en payait l'energie.
+    */
+    expect(runtime.acceptAction(MATCH_ID, 'a', 2, 5)).toBe(false);
+    // Refusee pour sa manche, l'action ne consomme pas son numero.
+    expect(runtime.acceptAction(MATCH_ID, 'a', 1, 5)).toBe(true);
+    expect(runtime.acceptAction(MATCH_ID, 'a', 1, 5)).toBe(false);
+  });
+
   it('refuse tout seq sur un match inconnu', () => {
     expect(runtime.acceptSeq('inexistant', 'a', 1)).toBe(false);
   });

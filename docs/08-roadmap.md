@@ -171,6 +171,7 @@ joignable depuis un téléphone rend tout le reste vérifiable.
 
 ### M7 — Anti-triche et robustesse
 - [ ] Contrôles de cohérence temporelle et plafonds (voir `06-anti-cheat.md`)
+- [ ] **Numérotation des actions après une horloge reculée.** Le client numérote ses actions depuis l'heure murale (le serveur retient le dernier `seq` pour tout le match) : si l'horloge de l'appareil recule entre deux sessions d'un même match — recalage à la sortie de veille, second appareil en retard —, les taps et le verrouillage restants sont jetés **en silence**. Correctif prévu : `match:state` renvoie au joueur son propre dernier `seq`, et le client reprend à `max(Date.now(), lastSeq + 1)`. Les actions visant une autre manche que la manche en cours sont, elles, déjà refusées.
 - [ ] Job de détection statistique + `SuspicionFlag` + sanctions progressives
 - [x] Test de charge : 500 matchs simultanés sur un nœud, p95 de traitement d'un message < 20 ms — **0,50 ms** mesurée (`apps/server/bench`, relevés dans `docs/09-testing.md`, ADR 0011)
 - [ ] Multi-nœuds : adaptateur Redis, sessions collantes, reprise d'un match après redémarrage d'un nœud (instantané de fin de manche)
