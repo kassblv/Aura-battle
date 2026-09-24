@@ -55,14 +55,14 @@ describe('createCrowd', () => {
   it('dessine chaque partie du corps en une seule fois', () => {
     const crowd = build();
     const meshes = instancesOf(crowd);
-    // Buste, tete, deux bras, telephone, halo d ecran : six appels de dessin
-    // pour deux cent dix personnes, la ou deux cent dix groupes en
+    // Buste, tete, coiffure, deux bras, telephone, halo d ecran : sept appels
+    // de dessin pour deux cent dix personnes, la ou deux cent dix groupes en
     // couteraient des milliers.
-    expect(meshes).toHaveLength(6);
+    expect(meshes).toHaveLength(7);
     expect(meshes.map((m) => m.name).sort()).toEqual(
-      ['armLeft', 'armRight', 'body', 'head', 'phone', 'screen'].sort(),
+      ['armLeft', 'armRight', 'body', 'hair', 'head', 'phone', 'screen'].sort(),
     );
-    for (const name of ['body', 'head', 'armLeft', 'armRight']) {
+    for (const name of ['body', 'head', 'hair', 'armLeft', 'armRight']) {
       expect(part(crowd, name).count).toBe(CROWD_SIZE);
     }
     crowd.dispose();
@@ -76,7 +76,7 @@ describe('createCrowd', () => {
   it('loge le premier plan dans les memes instances que la tribune', () => {
     const crowd = build();
     expect(part(crowd, 'body').count).toBe(CROWD_SIZE);
-    expect(instancesOf(crowd)).toHaveLength(6);
+    expect(instancesOf(crowd)).toHaveLength(7);
     crowd.dispose();
   });
 
@@ -91,9 +91,43 @@ describe('createCrowd', () => {
     crowd.dispose();
   });
 
+  it('donne une carrure a chacun, et une coiffure a ceux qui en ont une', () => {
+    const crowd = build();
+    const seats = buildSeats(seeded(7));
+    crowd.update(0, 0.3);
+    const body = part(crowd, 'body');
+    const widths = seats.map((_, i) => scaleAt(body, i) / seats[i]!.scale);
+    expect(Math.max(...widths) - Math.min(...widths)).toBeGreaterThan(0.25);
+
+    const hair = part(crowd, 'hair');
+    seats.forEach((seat, i) => {
+      if (seat.ring) return;
+      if (seat.headWear === 'bald') expect(scaleAt(hair, i)).toBe(0);
+      else expect(scaleAt(hair, i)).toBeGreaterThan(0.9);
+    });
+    crowd.dispose();
+  });
+
+  it('fait hocher les tetes', () => {
+    const crowd = build();
+    const head = part(crowd, 'head');
+    const tilt = (): Quaternion => {
+      const matrix = new Matrix4();
+      head.getMatrixAt(RING_SIZE + 3, matrix);
+      const rotation = new Quaternion();
+      matrix.decompose(new Vector3(), rotation, new Vector3());
+      return rotation;
+    };
+    crowd.update(0.1, 0.8);
+    const before = tilt();
+    crowd.update(0.5, 0.8);
+    expect(before.angleTo(tilt())).toBeGreaterThan(0.02);
+    crowd.dispose();
+  });
+
   it('donne une couleur propre a chaque spectateur et a chaque ecran', () => {
     const crowd = build();
-    for (const name of ['body', 'head', 'armLeft', 'armRight', 'screen']) {
+    for (const name of ['body', 'head', 'hair', 'armLeft', 'armRight', 'screen']) {
       expect(part(crowd, name).instanceColor).not.toBeNull();
     }
     crowd.dispose();
@@ -178,8 +212,9 @@ describe('createCrowd', () => {
     const index = seats.findIndex((s) => s.ring);
     const stand = seats.findIndex((s) => !s.ring);
     crowd.update(0, 0.3);
-    expect(scaleAt(part(crowd, 'body'), index)).toBeGreaterThan(1.2);
-    expect(scaleAt(part(crowd, 'body'), stand)).toBeCloseTo(1, 6);
+    // La tete porte l echelle seule ; le buste y ajoute la carrure.
+    expect(scaleAt(part(crowd, 'head'), index)).toBeGreaterThan(1.2);
+    expect(scaleAt(part(crowd, 'head'), stand)).toBeCloseTo(1, 6);
     expect(seats.filter((s) => s.ring)).toHaveLength(RING_SIZE);
     crowd.dispose();
   });

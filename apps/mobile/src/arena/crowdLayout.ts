@@ -71,6 +71,40 @@ const FILMING_SHARE = 0.46;
 /** Distance de la camera au repos (`camera.ts`), vers laquelle les ecrans rayonnent. */
 const CAMERA_REST_Z = 4.7;
 
+/**
+ * Les teintes de vetement d une foule de rue, en TSL.
+ *
+ * Le portage initial tirait toute la foule dans une seule bande violette : deux
+ * cent dix silhouettes de la meme couleur que le decor, qu on ne distinguait
+ * plus les unes des autres ni du fond. Une vraie foule porte de tout. La
+ * variete est dans la TEINTE ; la VALEUR reste basse, et c est elle qui garde
+ * la foule derriere le sujet.
+ */
+const CLOTH_HUES = [0.0, 0.05, 0.11, 0.3, 0.46, 0.56, 0.64, 0.74, 0.86, 0.93] as const;
+
+/**
+ * Part des spectateurs en couleur vive.
+ *
+ * Quelques sweats fluo accrochent l oeil et font lire la foule comme des
+ * personnes plutot que comme un motif. Au-dela d une sur huit, c est la foule
+ * qui devient le sujet.
+ */
+const BRIGHT_SHARE = 0.08;
+
+/**
+ * Ce qu un spectateur porte sur la tete, qui fait sa silhouette.
+ *
+ * `short` et `volume` sont des cheveux, `beanie` un bonnet de couleur, `bald`
+ * rien du tout : quatre contours de tete, pour un seul appel de dessin.
+ */
+export type HeadWear = 'short' | 'volume' | 'beanie' | 'bald';
+
+/** Carrure d un spectateur : largeur et hauteur relatives a `scale`. */
+export interface Build {
+  readonly width: number;
+  readonly height: number;
+}
+
 /** Teinte d un vetement, en TSL : `crowd.ts` la pose sur une couleur. */
 export interface Hsl {
   readonly h: number;
@@ -98,6 +132,17 @@ export interface CrowdSeat {
    */
   readonly eagerness: number;
   readonly cloth: Hsl;
+  /**
+   * Carrure : large ou fluet, grand ou petit.
+   *
+   * Deux cent dix gelules de la meme taille se lisent comme un motif, pas
+   * comme une foule. C est la difference de silhouette, bien plus que de
+   * couleur, qui dit qu il y a des gens differents.
+   */
+  readonly build: Build;
+  readonly headWear: HeadWear;
+  /** Teinte des cheveux ou du bonnet, en TSL. */
+  readonly headTone: Hsl;
   readonly skin: string;
   /** Vrai s il tient son telephone braque sur le duel. */
   readonly filming: boolean;
@@ -142,6 +187,13 @@ export interface SeatMotion {
   readonly screen: number;
   /** Eclat d objectif en cours, entre 0 et 1 : il grossit le halo. */
   readonly flash: number;
+  /**
+   * Hochement de tete, en radians.
+   *
+   * Une tete soudee au buste fait un mannequin. Le hochement suit le meme
+   * temps que le rebond du corps, et s ample avec la ferveur.
+   */
+  readonly nod: number;
 }
 
 /**
@@ -201,7 +253,10 @@ export function buildSeats(rng: () => number, size = CROWD_SIZE): readonly Crowd
         ring: true,
       }),
       // Contre-jour : de pres et de dos, on ne lit qu une masse sombre.
-      cloth: { h: 0.68 + rng() * 0.08, s: 0.3, l: 0.018 + rng() * 0.022 },
+      cloth: { h: 0.68 + rng() * 0.08, s: 0.3, l: 0.014 + rng() * 0.018 },
+      // Des carrures plus serrees qu aux gradins : le premier cercle doit
+      // rester plus grand que les marches, c est ce qui le met devant.
+      build: { width: 0.94 + rng() * 0.16, height: 0.95 + rng() * 0.1 },
     });
   }
 
@@ -236,6 +291,7 @@ function seat(input: {
   const { x, z, y, scale, rng, ring } = input;
   const radius = Math.hypot(x, z);
   const warmScreen = rng() < 0.22;
+  const headWear = pickHeadWear(rng());
 
   return {
     x,
@@ -247,10 +303,13 @@ function seat(input: {
     speed: 1.9 + rng() * 1.6,
     lean: (rng() - 0.5) * 0.24,
     eagerness: rng(),
-    // Sombre et peu sature : la foule est un fond, pas un sujet. Le portage
-    // initial la peignait aussi claire que les combattants, et deux cent dix
-    // taches violettes disputaient le regard aux deux seules choses a lire.
-    cloth: { h: 0.66 + rng() * 0.16, s: 0.22 + rng() * 0.24, l: 0.055 + rng() * 0.06 },
+    // Sombre : la foule est un fond, pas un sujet. Le portage initial la
+    // peignait aussi claire que les combattants, et deux cent dix taches
+    // violettes disputaient le regard aux deux seules choses a lire.
+    cloth: clothOf(rng),
+    build: { width: 0.8 + rng() * 0.42, height: 0.86 + rng() * 0.28 },
+    headWear,
+    headTone: headToneOf(headWear, rng),
     skin: SKIN_TONES[Math.floor(rng() * SKIN_TONES.length)] ?? '#f3cfae',
     filming: rng() < FILMING_SHARE,
     facing: Math.atan2(-x, -z),
@@ -262,6 +321,28 @@ function seat(input: {
     flashPhase: rng(),
     ring,
   };
+}
+
+function clothOf(rng: () => number): Hsl {
+  const hue = CLOTH_HUES[Math.floor(rng() * CLOTH_HUES.length)] ?? 0.64;
+  const h = (hue + (rng() - 0.5) * 0.04 + 1) % 1;
+  if (rng() < BRIGHT_SHARE) return { h, s: 0.62 + rng() * 0.2, l: 0.13 + rng() * 0.04 };
+  return { h, s: 0.26 + rng() * 0.26, l: 0.036 + rng() * 0.044 };
+}
+
+function pickHeadWear(roll: number): HeadWear {
+  if (roll < 0.46) return 'short';
+  if (roll < 0.68) return 'volume';
+  if (roll < 0.88) return 'beanie';
+  return 'bald';
+}
+
+function headToneOf(wear: HeadWear, rng: () => number): Hsl {
+  // Un bonnet se porte comme un vetement : meme regle de valeur basse.
+  if (wear === 'beanie') return clothOf(rng);
+  // Quelques teintures, pour le reste des bruns et des noirs.
+  if (rng() < 0.1) return { h: rng(), s: 0.6, l: 0.15 };
+  return { h: 0.05 + rng() * 0.05, s: 0.3 + rng() * 0.25, l: 0.02 + rng() * 0.06 };
 }
 
 /** Ce que fait un spectateur a cet instant. Fonction pure. */
@@ -287,6 +368,7 @@ export function seatMotion(seat: CrowdSeat, elapsed: number, hype: number): Seat
   const shimmer = 0.6 + 0.12 * Math.sin(elapsed * 2.3 + seat.flashPhase * Math.PI * 2);
 
   return {
+    nod: Math.sin((elapsed * seat.speed + seat.phase) * 2) * (0.05 + h * 0.14 * zeal),
     y: seat.y + Math.abs(wave) * (0.03 + h * 0.19 * zeal) * seat.scale,
     lean: seat.lean + wave * 0.06,
     raiseLeft: raise,

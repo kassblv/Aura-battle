@@ -58,6 +58,34 @@ describe('buildSeats — la tribune', () => {
   });
 });
 
+describe('buildSeats — une foule de gens differents', () => {
+  /*
+    Le portage initial tirait tous les manteaux dans une seule bande violette,
+    tous a la meme taille : deux cent dix fois la meme gelule, qu on lisait
+    comme un motif de fond et non comme des gens.
+  */
+  it('habille la tribune de teintes variees', () => {
+    const buckets = new Set(stands.map((s) => Math.floor(s.cloth.h * 8)));
+    expect(buckets.size).toBeGreaterThanOrEqual(6);
+  });
+
+  it('garde la tribune sombre, a quelques couleurs vives pres', () => {
+    const bright = stands.filter((s) => s.cloth.l > 0.11).length / stands.length;
+    expect(bright).toBeGreaterThan(0.03);
+    expect(bright).toBeLessThan(0.15);
+    for (const seat of stands) expect(seat.cloth.l).toBeLessThan(0.18);
+  });
+
+  it('varie les carrures et les coiffures', () => {
+    const widths = stands.map((s) => s.build.width);
+    const heights = stands.map((s) => s.build.height);
+    expect(Math.max(...widths) - Math.min(...widths)).toBeGreaterThan(0.3);
+    expect(Math.max(...heights) - Math.min(...heights)).toBeGreaterThan(0.2);
+    const wears = new Set(stands.map((s) => s.headWear));
+    expect(wears).toEqual(new Set(['short', 'volume', 'beanie', 'bald']));
+  });
+});
+
 describe('buildSeats — le premier cercle', () => {
   /**
    * Part de demi-largeur d image occupee par un point, camera au repos.
@@ -199,6 +227,20 @@ describe('seatMotion', () => {
       seatMotion(twin(far.radius), sameTime, 1).y,
       3,
     );
+  });
+
+  it('hoche la tete plus fort quand la salle s enflamme', () => {
+    const seat = at(RING_SIZE + 2);
+    const amplitude = (hype: number): number => {
+      let most = 0;
+      for (let step = 0; step < 120; step++) {
+        most = Math.max(most, Math.abs(seatMotion(seat, step * 0.03, hype).nod));
+      }
+      return most;
+    };
+    expect(amplitude(0)).toBeGreaterThan(0.02);
+    expect(amplitude(1)).toBeGreaterThan(amplitude(0) * 1.5);
+    expect(amplitude(1)).toBeLessThan(0.3);
   });
 
   it('ne fait pas reagir tout le monde pareil', () => {

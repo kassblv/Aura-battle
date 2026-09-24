@@ -16,7 +16,8 @@ import {
   type Texture,
   Vector3,
 } from 'three';
-import { RING_SIZE, buildSeats, seatMotion, type CrowdSeat } from './crowdLayout.js';
+import { RING_SIZE, buildSeats, seatMotion, type CrowdSeat, type HeadWear } from './crowdLayout.js';
+import { createRimUniforms, withRim } from './rim.js';
 
 /**
  * Le public qui entoure le duel.
@@ -24,7 +25,7 @@ import { RING_SIZE, buildSeats, seatMotion, type CrowdSeat } from './crowdLayout
  * Un spectateur n est pas une gelule : il a une tete, un buste, deux bras qui
  * bougent separement, et — pour pres de la moitie d entre eux — un telephone
  * braque sur les combattants. Chaque partie du corps vit dans son propre
- * `InstancedMesh` : six appels de dessin pour deux cent dix personnes, la ou
+ * `InstancedMesh` : sept appels de dessin pour deux cent dix personnes, la ou
  * deux cent dix groupes en couteraient des milliers. Les bras ont leurs
  * propres instances parce qu une matrice d instance ne peut pas animer un
  * sous-objet.
@@ -61,6 +62,32 @@ const FACE_LIGHT = 0.16;
  */
 const SCREEN_GLOW_W = 0.2;
 const SCREEN_GLOW_H = 0.34;
+
+/**
+ * Liseré de la foule (`rim.ts`), dans la teinte froide des projecteurs.
+ *
+ * Sans lui, les spectateurs d un meme rang se fondent en une seule masse
+ * floue : meme valeur, meme brouillard. Un trait de lumiere sur le haut de
+ * chaque tete et de chaque epaule les separe sans eclaircir la foule — la
+ * valeur moyenne reste sous celle des combattants. Il monte avec la ferveur :
+ * la salle s allume quand il se passe quelque chose.
+ */
+const RIM_COLOR = '#8f7bff';
+const RIM_CALM = 0.13;
+const RIM_ROUSED = 0.42;
+
+/**
+ * Forme de chaque coiffure, posee sur la meme calotte.
+ *
+ * Echelle (largeur, hauteur) et hauteur du centre au-dessus de celui de la
+ * tete, en metres a l echelle 1. `bald` ne dessine rien.
+ */
+const HEAD_WEAR: Readonly<Record<HeadWear, readonly [number, number, number]>> = {
+  short: [1.04, 0.72, 0.008],
+  volume: [1.22, 1.12, 0.0],
+  beanie: [1.06, 1.22, 0.014],
+  bald: [0, 0, 0],
+};
 
 export interface CrowdResources {
   readonly gradientMap: Texture;
@@ -105,6 +132,9 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
   const geometries = {
     body: new CapsuleGeometry(0.16, 0.3, 3, 8),
     head: new SphereGeometry(0.125, 12, 9),
+    // Une calotte, pas une sphere : posee sur la tete, elle en change le
+    // contour sans la cacher.
+    hair: new SphereGeometry(0.125, 10, 4, 0, Math.PI * 2, 0, Math.PI * 0.55),
     arm: new CapsuleGeometry(0.045, 0.26, 2, 6),
     phone: new BoxGeometry(0.075, 0.145, 0.012),
     screen: new PlaneGeometry(SCREEN_GLOW_W, SCREEN_GLOW_H),
@@ -112,6 +142,9 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
 
   const cloth = new MeshToonMaterial({ color: 0xffffff, gradientMap });
   const skin = new MeshToonMaterial({ color: 0xffffff, gradientMap });
+  const hair = new MeshToonMaterial({ color: 0xffffff, gradientMap });
+  const rim = createRimUniforms(RIM_COLOR, RIM_CALM);
+  for (const material of [cloth, skin, hair]) withRim(material, rim, 'crowd-rim');
   // Le dos d un telephone ne renvoie rien : c est une decoupe noire sur la
   // foule, et c est le halo qui porte la lecture.
   const shell = new MeshBasicMaterial({ color: 0x0b0a14 });
@@ -129,6 +162,7 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
   const parts = {
     body: new InstancedMesh(geometries.body, cloth, seats.length),
     head: new InstancedMesh(geometries.head, skin, seats.length),
+    hair: new InstancedMesh(geometries.hair, hair, seats.length),
     armLeft: new InstancedMesh(geometries.arm, cloth, seats.length),
     armRight: new InstancedMesh(geometries.arm, cloth, seats.length),
     phone: new InstancedMesh(geometries.phone, shell, filming.length),
@@ -161,6 +195,9 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
       meme pas de visage a montrer : ils prennent la couleur de leur manteau.
     */
     parts.head.setColorAt(i, seat.ring ? tint : tint.set(seat.skin).multiplyScalar(FACE_LIGHT));
+    // Le premier cercle reste une masse : sa coiffure prend son manteau.
+    if (!seat.ring) tint.setHSL(seat.headTone.h, seat.headTone.s, seat.headTone.l);
+    parts.hair.setColorAt(i, tint);
   });
   filming.forEach((seatIndex, i) => {
     const seat = seats[seatIndex];
@@ -206,7 +243,7 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
       if (next === visible) return;
       visible = next;
 
-      for (const mesh of [parts.body, parts.head, parts.armLeft, parts.armRight]) {
+      for (const mesh of [parts.body, parts.head, parts.hair, parts.armLeft, parts.armRight]) {
         mesh.count = visible;
       }
       /*
@@ -231,6 +268,7 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
       lastElapsed = elapsed;
       lastHype = hype;
       lastShowcase = showcase;
+      rim.rimStrength.value = RIM_CALM + (RIM_ROUSED - RIM_CALM) * Math.min(1, Math.max(0, hype));
 
       for (let i = 0; i < visible; i++) {
         const seat = seats[i];
@@ -240,6 +278,7 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
         if (seat.ring && showcase) {
           parts.body.setMatrixAt(i, hidden);
           parts.head.setMatrixAt(i, hidden);
+          parts.hair.setMatrixAt(i, hidden);
           parts.armLeft.setMatrixAt(i, hidden);
           parts.armRight.setMatrixAt(i, hidden);
           if (slot !== undefined) {
@@ -251,18 +290,42 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
 
         const motion = seatMotion(seat, elapsed, hype);
         const s = seat.scale;
-        scale.setScalar(s);
+        const { width, height } = seat.build;
 
         euler.set(0, 0, motion.lean);
         rotation.setFromEuler(euler);
 
         position.set(seat.x, motion.y, seat.z);
+        scale.set(s * width, s * height, s * width);
         matrix.compose(position, rotation, scale);
         parts.body.setMatrixAt(i, matrix);
 
-        position.set(seat.x, motion.y + 0.33 * s, seat.z);
+        /*
+          La tete regarde le centre et hoche.
+
+          Une sphere nue ne montrerait ni l un ni l autre ; c est la coiffure,
+          asymetrique, qui les rend visibles. Les deux partagent donc la meme
+          rotation.
+        */
+        const neckY = motion.y + 0.33 * s * height;
+        euler.set(motion.nod, seat.facing, motion.lean, 'YXZ');
+        rotation.setFromEuler(euler);
+        position.set(seat.x, neckY, seat.z);
+        scale.setScalar(s);
         matrix.compose(position, rotation, scale);
         parts.head.setMatrixAt(i, matrix);
+
+        const [wearWidth, wearHeight, wearLift] = HEAD_WEAR[seat.headWear];
+        if (wearWidth === 0) parts.hair.setMatrixAt(i, hidden);
+        else {
+          position.set(seat.x, neckY + wearLift * s, seat.z);
+          scale.set(s * wearWidth, s * wearHeight, s * wearWidth);
+          matrix.compose(position, rotation, scale);
+          parts.hair.setMatrixAt(i, matrix);
+          scale.setScalar(s);
+        }
+        euler.set(0, 0, motion.lean, 'XYZ');
+        rotation.setFromEuler(euler);
 
         /*
           Le bras pend au repos et monte avec la ferveur.
@@ -316,6 +379,7 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
       for (const geometry of Object.values(geometries)) geometry.dispose();
       cloth.dispose();
       skin.dispose();
+      hair.dispose();
       shell.dispose();
       screen.dispose();
       for (const mesh of Object.values(parts)) mesh.dispose();
@@ -335,8 +399,8 @@ export function createCrowd(resources: CrowdResources, rng: () => number = Math.
     euler.set(0, 0, -side * swing);
     rotation.setFromEuler(euler);
     position.set(
-      seat.x + side * (0.17 + raise * 0.03) * s,
-      bodyY + (0.1 + raise * 0.22) * s,
+      seat.x + side * shoulderOffset(seat, raise),
+      bodyY + (0.1 + raise * 0.22) * s * seat.build.height,
       seat.z + 0.05 * s,
     );
     matrix.compose(position, rotation, scale);
@@ -351,11 +415,16 @@ export function armSwing(raise: number): number {
 
 const HAND = new Vector3();
 
+/** Ecart de l epaule a l axe du corps : il suit la carrure. */
+function shoulderOffset(seat: CrowdSeat, raise: number): number {
+  return (0.17 * seat.build.width + raise * 0.03) * seat.scale;
+}
+
 /** Position de la main droite, ou se tient le telephone. */
 function handAt(seat: CrowdSeat, bodyY: number, raise: number, swing: number, s: number): Vector3 {
   return HAND.set(
-    seat.x + (0.17 + raise * 0.03) * s + Math.sin(swing) * ARM_REACH * s,
-    bodyY + (0.1 + raise * 0.22) * s + Math.cos(swing) * ARM_REACH * s,
+    seat.x + shoulderOffset(seat, raise) + Math.sin(swing) * ARM_REACH * s,
+    bodyY + (0.1 + raise * 0.22) * s * seat.build.height + Math.cos(swing) * ARM_REACH * s,
     seat.z + 0.05 * s,
   );
 }
