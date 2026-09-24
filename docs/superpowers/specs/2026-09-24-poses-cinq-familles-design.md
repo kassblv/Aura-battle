@@ -40,8 +40,11 @@ deux boutons de famille de plus, et la pose choisie via le sélecteur existant.
 > achetable n'est jamais plus forte qu'une pose gratuite : le kit gratuit
 > répond à tout.
 
-Vérifiée, pas seulement écrite : un scénario de simulation oppose un joueur au
-kit gratuit à un joueur qui possède tout, et doit rester à 50 % ± 2 points.
+Vérifiée par construction, et testée : le moteur ne reçoit jamais de pose,
+seulement une famille et un palier, donc le score ne peut pas dépendre de ce
+qu'on possède. Un test de contenu garantit que chaque case a une pose gratuite.
+Une simulation « kit gratuit contre collection complète » donnerait 50 % par
+construction et ne prouverait rien, d'où ces deux tests à sa place.
 Mise à jour de `CLAUDE.md` et nouvel ADR.
 
 ## 1. Règles : la roue des cinq familles
@@ -122,7 +125,6 @@ poses : une pose est du contenu.
   `Record<Style, readonly Style[]>`.
 - La résolution des contres de `round.ts` lit la liste.
 - L'IA solo et le simulateur jouent les cinq familles.
-- Nouveau scénario de simulation `free-kit-vs-full`.
 
 ### `@aura/protocol` 2.0.0 (changement cassant)
 
@@ -131,7 +133,10 @@ poses : une pose est du contenu.
 - `round:result` révèle, pour chaque siège, la `poseId` **et** le `move`
   déduit. Rien n'est envoyé avant (règle d'or n°4).
 - `styleSchema` passe à cinq valeurs.
-- `loadout` perd `dances` (une danse par mouvement) ; `signature` reste.
+- `loadout.dances` change de rôle : ce n'est plus la danse jouée à la
+  révélation, mais la **pose présélectionnée** de chaque case (Vestiaire,
+  bouton « pose suivante »). Le serveur ne s'en sert plus pour la révélation.
+  `signature` reste.
 - La poignée de main refuse un client 1.x avec un message « mets à jour le
   jeu ».
 
@@ -141,8 +146,11 @@ poses : une pose est du contenu.
   payante non possédée est refusée avec `NOT_OWNED`. Les poses gratuites sont
   possédées par tous (`isOffered`).
 - Le choix par défaut suit la règle du §1.
-- Le loadout est une colonne JSON : aucune migration Prisma. La lecture ignore
-  une ancienne clé `dances`.
+- La révélation montre la pose verrouillée (`cosmetic.animationId` de
+  `round:result`), ou la pose gratuite de la case pour un fantôme ou un choix
+  par défaut. Le chemin « danse équipée par mouvement » du module `match`
+  (`SeatWearing.dances`, `refreshDances`) disparaît.
+- Le loadout est une colonne JSON : aucune migration Prisma.
 - **Fantômes** : les enregistrements en trois styles restent valides tels quels
   et rejouent la pose gratuite de leur case. Acrobatie et Prouesse n'y
   apparaissent qu'au fil des nouveaux enregistrements. C'est une limite
@@ -169,7 +177,7 @@ colonne `hardCurrency` existante).
       bat exactement deux autres, perd contre exactement deux, et aucune paire
       n'est à la fois gagnante et perdante.
 - [ ] `pnpm sim --matches 10000 --strategy all` : taux de victoire par famille
-      dans les seuils de `docs/09-testing.md` ; `free-kit-vs-full` à 50 % ± 2.
+      dans les seuils de `docs/09-testing.md`.
 - [ ] `protocol` 2.0.0 : schémas testés, un client 1.x est refusé proprement.
 - [ ] `match` e2e :
       - une pose non possédée est refusée ;
