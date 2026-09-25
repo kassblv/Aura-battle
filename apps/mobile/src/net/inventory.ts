@@ -1,5 +1,13 @@
-import { inventoryStateSchema, type InventoryState, type LoadoutPayload } from '@aura/protocol';
+import {
+  lenient,
+  inventoryStateSchema,
+  type InventoryState,
+  type LoadoutPayload,
+} from '@aura/protocol';
 import { AuthError, type AuthOptions, type Fetcher } from './auth.js';
+
+/** Reponses lues en ignorant les champs ajoutes par un serveur plus recent. */
+const inventoryStateReply = lenient(inventoryStateSchema);
 
 /**
  * Les appels HTTP de l inventaire.
@@ -77,7 +85,7 @@ async function call(url: string, init: RequestInit, fetcher: Fetcher): Promise<I
     de connexion Wi-Fi avec un code 200, et on rangerait du HTML a la place
     d un inventaire — la panne n apparaitrait qu au premier achat.
   */
-  const parsed = inventoryStateSchema.safeParse(body);
+  const parsed = inventoryStateReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }

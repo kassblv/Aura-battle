@@ -53,6 +53,13 @@ describe('authenticateDevice', () => {
     expect(String(fetcher.mock.calls[0]?.[0])).not.toContain(secret);
   });
 
+  it('ignore un champ que ce client ne connait pas encore', async () => {
+    const futur = { ...session, scope: 'play', player: { ...session.player, avatar: 'x' } };
+    await expect(authenticateDevice('http://srv', secret, { fetcher: ok(futur) })).resolves.toEqual(
+      session,
+    );
+  });
+
   it('refuse une reponse qui n a pas la forme attendue', async () => {
     // Un mandataire captif rend du HTML avec un code 200 : sans validation, on
     // rangerait une page de connexion Wi-Fi a la place d une session.
@@ -284,14 +291,18 @@ describe('email et mot de passe', () => {
     expect(fetcher.mock.calls[0]?.[1]?.method).toBe('GET');
   });
 
-  it('refuse un etat qui porterait autre chose que l adresse masquee', async () => {
-    expect(
-      await reasonOf(
-        fetchEmailStatus('http://srv', 'acc', {
-          fetcher: ok({ linked: true, maskedEmail: 'k•••@gmail.com', secretHash: 'x' }),
-        }),
-      ),
-    ).toBe('MALFORMED');
+  /*
+    Le client ignore les champs qu'il ne connait pas (compatibilite avec un
+    serveur plus recent) — mais il ne les GARDE pas : rien d'autre que l'adresse
+    masquee n'atteint l'ecran ni la memoire. La barriere contre l'envoi, elle,
+    est au serveur (`auth-email.controller.test.ts`, egalite exacte).
+  */
+  it('ne garde rien d autre que l adresse masquee', async () => {
+    await expect(
+      fetchEmailStatus('http://srv', 'acc', {
+        fetcher: ok({ linked: true, maskedEmail: 'k•••@gmail.com', secretHash: 'x' }),
+      }),
+    ).resolves.toStrictEqual({ linked: true, maskedEmail: 'k•••@gmail.com' });
   });
 
   it('change le mot de passe avec l ancien, ou avec le code de recuperation', async () => {

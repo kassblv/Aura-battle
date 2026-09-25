@@ -36,6 +36,17 @@ describe('readLeaderboard', () => {
     ).resolves.toMatchObject({ me: null });
   });
 
+  it('ignore un champ que ce client ne connait pas encore', async () => {
+    const futur = {
+      ...classement,
+      season: 2,
+      top: classement.top.map((row) => ({ ...row, streak: 4 })),
+    };
+    await expect(readLeaderboard('http://srv', 'jeton', { fetcher: ok(futur) })).resolves.toEqual(
+      classement,
+    );
+  });
+
   it('refuse une reponse qui n a pas la forme attendue', async () => {
     await expect(
       readLeaderboard('http://srv', 'jeton', { fetcher: ok({ top: 'beaucoup' }) }),

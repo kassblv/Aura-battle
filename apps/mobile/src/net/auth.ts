@@ -1,4 +1,5 @@
 import {
+  lenient,
   AUTH_ERROR_CODES,
   displayNameSchema,
   emailSchema,
@@ -12,6 +13,12 @@ import {
   type PasswordChangeResponse,
   type SessionResponse,
 } from '@aura/protocol';
+
+/** Reponses lues en ignorant les champs ajoutes par un serveur plus recent. */
+const emailStatusResponseReply = lenient(emailStatusResponseSchema);
+const passwordChangeResponseReply = lenient(passwordChangeResponseSchema);
+const recoveryCodeResponseReply = lenient(recoveryCodeResponseSchema);
+const sessionResponseReply = lenient(sessionResponseSchema);
 
 /**
  * Les appels HTTP d authentification.
@@ -114,7 +121,7 @@ export async function authenticateDevice(
    * sans ce controle, on rangerait du HTML a la place d une session, et la
    * panne n apparaitrait qu a la premiere utilisation du jeton.
    */
-  const parsed = sessionResponseSchema.safeParse(body);
+  const parsed = sessionResponseReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }
@@ -189,7 +196,7 @@ export async function issueRecoveryCode(
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
 
-  const parsed = recoveryCodeResponseSchema.safeParse(body);
+  const parsed = recoveryCodeResponseReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data.code;
 }
@@ -219,7 +226,7 @@ export async function claimRecoveryCode(
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
 
-  const parsed = sessionResponseSchema.safeParse(body);
+  const parsed = sessionResponseReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }
@@ -240,7 +247,7 @@ export async function fetchEmailStatus(
     { method: 'GET', headers: { authorization: `Bearer ${accessToken}` } },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
-  const parsed = emailStatusResponseSchema.safeParse(body);
+  const parsed = emailStatusResponseReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }
@@ -287,7 +294,7 @@ export async function linkEmail(
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
-  const parsed = emailStatusResponseSchema.safeParse(body);
+  const parsed = emailStatusResponseReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }
@@ -316,7 +323,7 @@ export async function loginWithEmail(
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
-  const parsed = sessionResponseSchema.safeParse(body);
+  const parsed = sessionResponseReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }
@@ -355,7 +362,7 @@ export async function changePassword(
     },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
-  const parsed = passwordChangeResponseSchema.safeParse(body);
+  const parsed = passwordChangeResponseReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }

@@ -24,6 +24,13 @@ describe('readInventory', () => {
     expect((call?.[1]?.headers as Record<string, string>).authorization).toBe('Bearer jeton');
   });
 
+  it('ignore un champ que ce client ne connait pas encore', async () => {
+    const futur = { ...state, gems: 1, wallet: { ...state.wallet, event: 5 } };
+    await expect(readInventory('http://srv', 'jeton', { fetcher: ok(futur) })).resolves.toEqual(
+      state,
+    );
+  });
+
   /*
     La reponse est validee meme venant de notre serveur : un mandataire captif
     rend une page de connexion Wi-Fi avec un code 200, et on rangerait du HTML

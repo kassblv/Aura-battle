@@ -16,28 +16,37 @@ import { z } from 'zod';
  * feuille, rendue telle quelle. Les verifications (`max`, `refine`) sont
  * recopiees sur la forme reconstruite.
  */
-export function lenient(schema: z.ZodType): z.ZodType {
+export function lenient<T extends z.ZodType>(schema: T): z.ZodType<z.output<T>> {
+  return loosen(schema) as z.ZodType<z.output<T>>;
+}
+
+/**
+ * Les reponses HTTP sont concernees de la meme facon : le client les lit avec
+ * `lenient(schema)`. Les sous-schemas partages avec les REQUETES (le loadout)
+ * restent stricts la ou le serveur les analyse.
+ */
+function loosen(schema: z.ZodType): z.ZodType {
   const def = (schema as z.ZodObject)._zod.def as unknown as LenientDef;
   const checks = def.checks ?? [];
   switch (def.type) {
     case 'object': {
       const shape = Object.fromEntries(
-        Object.entries(def.shape).map(([key, value]) => [key, lenient(value)]),
+        Object.entries(def.shape).map(([key, value]) => [key, loosen(value)]),
       );
       return z.object(shape).check(...checks);
     }
     case 'array':
-      return z.array(lenient(def.element)).check(...checks);
+      return z.array(loosen(def.element)).check(...checks);
     case 'record':
-      return z.record(def.keyType, lenient(def.valueType)).check(...checks);
+      return z.record(def.keyType, loosen(def.valueType)).check(...checks);
     case 'union':
-      return z.union(def.options.map(lenient) as [z.ZodType, z.ZodType]).check(...checks);
+      return z.union(def.options.map((option) => loosen(option)) as [z.ZodType, z.ZodType]).check(...checks);
     case 'optional':
-      return lenient(def.innerType).optional();
+      return loosen(def.innerType).optional();
     case 'nullable':
-      return lenient(def.innerType).nullable();
+      return loosen(def.innerType).nullable();
     case 'default':
-      return lenient(def.innerType).default(def.defaultValue);
+      return loosen(def.innerType).default(def.defaultValue);
     default:
       return schema;
   }

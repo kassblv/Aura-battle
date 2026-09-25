@@ -38,6 +38,12 @@ describe('readSeason', () => {
     await expect(readSeason('http://srv', 'jeton', { fetcher: ok(empty) })).resolves.toEqual(empty);
   });
 
+  // Un champ AJOUTE par un serveur plus recent ne doit pas casser l ecran.
+  it('ignore un champ que ce client ne connait pas encore', async () => {
+    const futur = { ...state, bonus: 3, season: { ...state.season, theme: 'aurore' } };
+    await expect(readSeason('http://srv', 'jeton', { fetcher: ok(futur) })).resolves.toEqual(state);
+  });
+
   // Une page de portail Wi-Fi avec un code 200 ne doit pas passer pour un passe.
   it('refuse une reponse qui n a pas la forme attendue', async () => {
     await expect(

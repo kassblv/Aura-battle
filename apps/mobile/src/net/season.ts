@@ -1,6 +1,9 @@
-import { seasonStateSchema, type SeasonState } from '@aura/protocol';
+import { lenient, seasonStateSchema, type SeasonState } from '@aura/protocol';
 import type { SeasonTrack } from '@aura/content';
 import { AuthError, type AuthOptions, type Fetcher } from './auth.js';
+
+/** Reponses lues en ignorant les champs ajoutes par un serveur plus recent. */
+const seasonStateReply = lenient(seasonStateSchema);
 
 /**
  * Les appels HTTP du passe de saison.
@@ -78,7 +81,7 @@ async function call(url: string, init: RequestInit, fetcher: Fetcher): Promise<S
 
   // Un mandataire captif rend du HTML avec un code 200 : on ne le range pas
   // a la place d un passe.
-  const parsed = seasonStateSchema.safeParse(body);
+  const parsed = seasonStateReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }

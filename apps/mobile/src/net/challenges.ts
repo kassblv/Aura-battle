@@ -1,4 +1,5 @@
 import {
+  lenient,
   challengeClaimSchema,
   dailyChallengesSchema,
   type ChallengeClaim,
@@ -6,6 +7,10 @@ import {
   type DailyChallenges,
 } from '@aura/protocol';
 import { AuthError, type AuthOptions, type Fetcher } from './auth.js';
+
+/** Reponses lues en ignorant les champs ajoutes par un serveur plus recent. */
+const challengeClaimReply = lenient(challengeClaimSchema);
+const dailyChallengesReply = lenient(dailyChallengesSchema);
 
 /**
  * Les appels HTTP des defis quotidiens.
@@ -80,8 +85,7 @@ export async function readChallenges(
     de connexion Wi-Fi avec un code 200, et on afficherait du HTML a la place
     de trois defis.
   */
-  const parsed: { success: boolean; data?: DailyChallenges } =
-    dailyChallengesSchema.safeParse(body);
+  const parsed: { success: boolean; data?: DailyChallenges } = dailyChallengesReply.safeParse(body);
   if (!parsed.success || parsed.data === undefined) throw new AuthError('MALFORMED');
   return parsed.data.challenges;
 }
@@ -109,7 +113,7 @@ export async function claimChallenge(
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
 
-  const parsed = challengeClaimSchema.safeParse(body);
+  const parsed = challengeClaimReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }

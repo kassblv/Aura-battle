@@ -1,5 +1,8 @@
-import { leaderboardSchema, type LeaderboardPayload } from '@aura/protocol';
+import { lenient, leaderboardSchema, type LeaderboardPayload } from '@aura/protocol';
 import { AuthError, type AuthOptions } from './auth.js';
+
+/** Reponses lues en ignorant les champs ajoutes par un serveur plus recent. */
+const leaderboardReply = lenient(leaderboardSchema);
 
 /**
  * La lecture du classement general.
@@ -34,7 +37,7 @@ export async function readLeaderboard(
     throw new AuthError('MALFORMED');
   }
 
-  const parsed = leaderboardSchema.safeParse(body);
+  const parsed = leaderboardReply.safeParse(body);
   if (!parsed.success) throw new AuthError('MALFORMED');
   return parsed.data;
 }
