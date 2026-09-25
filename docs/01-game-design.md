@@ -250,6 +250,7 @@ Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de c
   contredire, et c'est toujours celle qu'on a oublié de mettre à jour qui
   s'affiche.
 
+- **Événements de la semaine** (partie rapide seulement ; le classé reste la référence). Une semaine sur deux, une variante de règles déclarée en donnée (`RULE_VARIANTS`, `@aura/rules`), tournant chaque lundi (UTC) : **Semaine brillante** (brillante ×1,5), **Contres tranchants** (contre ×1,6), **Ultime express** (jauge d'Ultime à 60). Jamais d'énergie en plus : mesuré, elle rendait « toujours le plus gros » dominant (`docs/balance/2026-09-25-evenements.md`).
 - **Changement de saison : on repart plus bas, jamais de zéro.** Au premier match de la saison, les LP de la précédente sont divisés par deux, le MMR se resserre de 20 % vers 1 000, et cinq matchs de placement se rouvrent (`docs/05`, `seasonCarryOver`). Repartir de zéro effacerait la raison de revenir ; ne rien réinitialiser figerait le haut du classement.
 - **Passe de saison.** Un horizon daté : 30 paliers de 100 XP de saison
   (`SEASON_PASS`, `@aura/content`). L'**XP de saison** est l'expérience de chaque

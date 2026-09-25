@@ -281,6 +281,7 @@ function applyRoundResult(
   state: MatchState,
   inputs: Readonly<Record<Seat, RoundSeatInput>>,
   result: RoundResult,
+  config: BalanceConfig,
 ): MatchState {
   const updated = { ...state.seats };
 
@@ -292,7 +293,8 @@ function applyRoundResult(
       ...before,
       ultimateGauge: Math.min(
         before.ultimateGauge + outcome.ultimateGain,
-        BALANCE.ultimate.gaugeMax,
+        // Le plafond de la config du MATCH : une variante peut le changer.
+        config.ultimate.gaugeMax,
       ),
       roundsWon: before.roundsWon + (result.winner === seat ? 1 : 0),
       totalScore: before.totalScore + outcome.score,
@@ -332,7 +334,7 @@ function resolveCurrentRound(state: MatchState, atMs: number, config: BalanceCon
 
   const inputs = { a: inputFor('a'), b: inputFor('b') };
   const result = resolveRound(inputs, config);
-  const applied = applyRoundResult(state, inputs, result);
+  const applied = applyRoundResult(state, inputs, result, config);
   const entered = enterPhase(applied, 'reveal', atMs, config.phases.revealMs);
 
   return {

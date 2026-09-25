@@ -26,3 +26,4 @@ export * from './ai/profiles.js';
 export * from './sim/strategies.js';
 export * from './sim/simulate.js';
 export * from './sim/skill.js';
+export * from './variants.js';

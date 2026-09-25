@@ -530,6 +530,42 @@ describe('invariants du match', () => {
     );
   });
 
+  /*
+    Une variante de regles (chantier n°7) passe SA config au moteur : aucune
+    valeur ne doit venir de la config globale. La jauge d'Ultime lisait
+    `BALANCE.ultimate.gaugeMax` au lieu de celle du match.
+  */
+  it('borne la jauge au plafond de la config du match, pas a la globale', () => {
+    // Le plafond ne mord qu'en CUMUL : la perte d'une manche rapporte deja au
+    // plus `gaugeMax` ; c'est a la seconde que 5 + 5 depassait le plafond de 5.
+    const config = { ...BALANCE, ultimate: { ...BALANCE.ultimate, gaugeMax: 5 } };
+    const step = (state: MatchState, event: MatchEvent): MatchStep => reduce(state, event, config);
+    let current = createMatch('graine', { config });
+    for (let round = 1; round <= 2; round += 1) {
+      while (current.state.phase !== 'choice')
+        current = step(current.state, timeout(current.state));
+      const at = current.state.phaseEndsAtMs - 1_000;
+      // a joue fort, b joue le palier 0 : b perd la manche et gagne de la jauge.
+      current = step(current.state, {
+        type: 'CHOICE_LOCKED',
+        seat: 'a',
+        choice: choice(2),
+        timingTapAtMs: null,
+        atMs: at,
+      });
+      current = step(current.state, {
+        type: 'CHOICE_LOCKED',
+        seat: 'b',
+        choice: choice(0),
+        timingTapAtMs: null,
+        atMs: at,
+      });
+      while (current.state.history.length < round)
+        current = step(current.state, timeout(current.state));
+    }
+    expect(current.state.seats.b.ultimateGauge).toBeLessThanOrEqual(5);
+  });
+
   it('ne depasse jamais trois manches', () => {
     fc.assert(
       fc.property(fc.array(eventArb, { maxLength: 60 }), (events) => {
