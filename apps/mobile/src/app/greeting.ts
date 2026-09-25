@@ -6,7 +6,7 @@ import { browserStore, type ProgressStore } from './persist.js';
  * Nomme ou remis a plus tard, il ne se represente pas au lancement suivant :
  * un jeu qui redemande la meme chose a chaque ouverture apprend a son joueur
  * a fermer la fenetre sans lire. Le souvenir est propre a l'appareil — le
- * nom, lui, vit sur le serveur, et se change dans le profil.
+ * nom, lui, vit sur le serveur, et se change dans le profil (`NameEditor`).
  *
  * Un stockage bloque (navigation privee) leve au lieu de rendre `null` : on
  * absorbe, et le pire qui arrive est qu'on redemande.

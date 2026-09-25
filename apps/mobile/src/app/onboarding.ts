@@ -55,6 +55,27 @@ export function nameHint(input: string): string | null {
   return 'Lettres, chiffres, espace, tiret, point ou souligné — et une lettre ou un chiffre pour commencer.';
 }
 
+/** Ce que le profil peut faire du nom saisi. */
+export interface RenameStep {
+  readonly ready: boolean;
+  /** Le nom a envoyer, sans ses espaces de bord. */
+  readonly name: string;
+  readonly problem: string | null;
+}
+
+/**
+ * Le changement de nom depuis le profil.
+ *
+ * Apres « Plus tard », l'accueil ne revient plus : c'est donc le seul chemin
+ * pour quitter le nom de secours. Memes regles que l'accueil (`nameHint`), et
+ * rien a valider tant que le nom n'a pas change.
+ */
+export function renameStep(input: string, current: string): RenameStep {
+  const name = input.trim();
+  const problem = nameHint(input);
+  return { ready: name.length > 0 && problem === null && name !== current.trim(), name, problem };
+}
+
 /** Le formulaire de bienvenue : un nom, et des identifiants facultatifs. */
 export interface WelcomeForm {
   readonly name: string;

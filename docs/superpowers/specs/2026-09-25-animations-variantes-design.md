@@ -54,4 +54,4 @@ sur les recommandations », « continue jusqu'au bout ») ; relisible après cou
   Grand écart sauté, Salto avant, Pompes claquées, Chaise invisible, Équerre) ;
   Saut groupé, Vrille, Squats et Squat sur une jambe ne sont passés que par les tests.
 - [x] lint, typecheck et tests verts.
-- [ ] Relecture finale.
+- [x] Relecture finale (opus) : un point important — plus aucun moyen de choisir un nom après « Plus tard » — corrigé par « Changer de nom » dans le profil.

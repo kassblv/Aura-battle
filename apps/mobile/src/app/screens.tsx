@@ -1,4 +1,5 @@
 import { styleIcon, tierName } from '@aura/content';
+import { NameEditor, type NameEditorProps } from './NameEditor.js';
 import { levelFor } from '@aura/rules';
 import type { JSX } from 'react';
 import type { MemeCard } from './memes.js';
@@ -372,9 +373,11 @@ export function HomeScreen({
 export interface ProfileProps {
   readonly profile: PlayerProfile;
   readonly onClose: () => void;
+  /** Absent hors ligne : sans serveur, le nom ne peut pas changer. */
+  readonly rename?: Omit<NameEditorProps, 'name'>;
 }
 
-export function ProfileScreen({ profile, onClose }: ProfileProps): JSX.Element {
+export function ProfileScreen({ profile, onClose, rename }: ProfileProps): JSX.Element {
   const stats = summarize(profile);
   const level = levelFor(profile.xp);
   return (
@@ -394,6 +397,7 @@ export function ProfileScreen({ profile, onClose }: ProfileProps): JSX.Element {
           {profile.league} — {profile.lp} / {profile.lpForNextLeague} PL
         </small>
       </p>
+      {rename !== undefined && <NameEditor name={profile.name} {...rename} />}
 
       {/*
         Le niveau et sa barre.

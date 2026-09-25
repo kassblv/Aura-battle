@@ -1,6 +1,12 @@
 import { DISPLAY_NAME_MAX } from '@aura/protocol';
 import { describe, expect, it } from 'vitest';
-import { nameHint, needsOnboarding, welcomeStep, type StoredIdentity } from './onboarding.js';
+import {
+  nameHint,
+  needsOnboarding,
+  renameStep,
+  welcomeStep,
+  type StoredIdentity,
+} from './onboarding.js';
 
 const named = (displayName: string): StoredIdentity => ({ playerId: 'p_1', displayName });
 
@@ -130,5 +136,26 @@ describe('welcomeStep', () => {
     expect(step.rename).toBe('Kassim');
     expect(step.ready).toBe(true);
     expect(welcomeStep({ ...empty, ...creds }, true).ready).toBe(true);
+  });
+});
+
+/*
+  Le changement de nom depuis le profil : apres « Plus tard », c'est le seul
+  chemin qui reste pour quitter « Invite 4417 ».
+*/
+describe('renameStep', () => {
+  it('accepte un nom valide et different', () => {
+    expect(renameStep('Kass', 'Invite 4417')).toEqual({ ready: true, name: 'Kass', problem: null });
+  });
+
+  it('ne valide pas le meme nom, ni un champ vide', () => {
+    expect(renameStep('  Invite 4417 ', 'Invite 4417').ready).toBe(false);
+    expect(renameStep('   ', 'Invite 4417')).toEqual({ ready: false, name: '', problem: null });
+  });
+
+  it('dit ce qui manque a un nom invalide', () => {
+    const step = renameStep('K', 'Invite 4417');
+    expect(step.ready).toBe(false);
+    expect(step.problem).toMatch(/Au moins/);
   });
 });

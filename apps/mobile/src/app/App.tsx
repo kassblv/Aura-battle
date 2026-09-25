@@ -787,6 +787,15 @@ export function App(): JSX.Element {
         {!showOnboarding && nav.screen === 'profile' && (
           <ProfileScreen
             profile={profile}
+            {...(session.phase === 'ready'
+              ? {
+                  rename: {
+                    busy: session.busy,
+                    error: session.error,
+                    onRename: (name: string) => session.rename(name),
+                  },
+                }
+              : {})}
             onClose={() => {
               go('home');
             }}

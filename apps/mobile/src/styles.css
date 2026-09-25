@@ -4087,3 +4087,64 @@ body {
     scale: 0.92;
   }
 }
+
+/* Changer de nom, depuis le profil : seul chemin apres « Plus tard ». */
+.name-editor__open {
+  font: inherit;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--ink);
+  min-height: 46px;
+  padding: 0 14px;
+  margin: 0 0 8px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  cursor: pointer;
+}
+.name-editor {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 8px;
+}
+.name-editor__input {
+  font: inherit;
+  font-size: 15px;
+  color: var(--ink);
+  flex: 1 1 160px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--chip-deep);
+}
+.name-editor__save,
+.name-editor__cancel {
+  font: inherit;
+  font-weight: 800;
+  min-height: 46px;
+  padding: 0 16px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  cursor: pointer;
+}
+.name-editor__save {
+  background: var(--accent);
+  color: var(--accent-ink);
+}
+.name-editor__save:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+.name-editor__cancel {
+  background: var(--chip);
+  color: var(--ink);
+}
+.name-editor__problem {
+  flex-basis: 100%;
+  color: var(--bad-ink);
+  font-size: 12px;
+}

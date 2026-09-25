@@ -197,7 +197,7 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - Dix variantes, une par case d'Acrobatie et de Prouesse : ces deux familles ont enfin quelque chose à débloquer (49 poses, 24 variantes).
   - « Biceps contractés » corrigé : bras et pieds écartés sur l'axe latéral.
   - Une visionneuse de développement : `?pose=<id>`.
-  - Correctif : l'écran « Choisis ton nom » revenait à chaque lancement malgré « Plus tard ».
+  - Correctif : l'écran « Choisis ton nom » revenait à chaque lancement malgré « Plus tard ». Le nom se change désormais depuis le profil (« ✏️ Changer de nom »).
 - [ ] **Chantier n°5 — vestiaire et boutique** : parcourir, essayer et acheter des poses ; les jetons (monnaie dure) pour débloquer plus vite, sans jamais vendre de puissance (règle d'or n°3).
 
 ### M7 — Anti-triche et robustesse
