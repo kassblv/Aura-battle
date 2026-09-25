@@ -207,3 +207,18 @@ describe('SeasonScreen — sans saison', () => {
     expect(render({ error: 'Le serveur a refusé.' })).toContain('role="alert"');
   });
 });
+
+describe('SeasonScreen — fin de saison', () => {
+  // Non reclamees, les recompenses sont perdues au changement de saison.
+  it('previent dans les derniers jours qu il reste des recompenses', () => {
+    const endsAt = new Date(NOW + 2 * 24 * 60 * 60 * 1_000 - 60_000).toISOString();
+    const html = render({ season: state({ tier: 3, season: { number: 1, endsAt } }) });
+    expect(html).toMatch(/class="season__days"[^>]*data-urgent="true"/);
+    expect(html).toContain('perdues à la fin de la saison');
+  });
+
+  it('se tait quand la fin est loin', () => {
+    const html = render({ season: state({ tier: 3 }) });
+    expect(html).not.toContain('perdues à la fin de la saison');
+  });
+});

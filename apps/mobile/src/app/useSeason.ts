@@ -15,6 +15,8 @@ import {
   claimableCount,
   newlyClaimed,
   announcementAfterRead,
+  daysLeft,
+  SEASON_URGENT_DAYS,
   rewardSize,
   visibleAnnouncement,
   type ClaimedCell,
@@ -67,6 +69,8 @@ export interface SeasonHook {
   readonly synced: boolean;
   /** Cases a encaisser : la pastille du rail. */
   readonly claimable: number;
+  /** La saison finit bientot et des recompenses attendent (`SEASON_URGENT_DAYS`). */
+  readonly urgent: boolean;
   readonly celebration: SeasonCelebration | null;
   /**
    * Le palier atteint pendant le dernier match, pour l'ecran de fin.
@@ -257,6 +261,10 @@ export function useSeason(
       error,
       synced,
       claimable: claimableCount(state),
+      urgent:
+        state?.season != null &&
+        daysLeft(state.season.endsAt, Date.now()) <= SEASON_URGENT_DAYS &&
+        claimableCount(state) > 0,
       celebration,
       justReached,
       dismissReached,

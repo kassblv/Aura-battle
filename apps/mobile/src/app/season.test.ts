@@ -305,3 +305,34 @@ describe('annonce de palier', () => {
     expect(visibleAnnouncement(null, 7)).toBeNull();
   });
 });
+
+/*
+  Les recompenses non reclamees sont perdues au changement de saison. Dans
+  les derniers jours, l'ecran et le rail le disent — une seule fois, pas de
+  harcelement : rien d'urgent quand il n'y a rien a prendre.
+*/
+describe('fin de saison', () => {
+  const endsIn = (days: number) =>
+    new Date(NOW + days * 24 * 60 * 60 * 1_000 - 60_000).toISOString();
+
+  it('presse quand il reste des recompenses et au plus trois jours', () => {
+    const view = seasonView(state({ tier: 3, season: { number: 1, endsAt: endsIn(2) } }), NOW);
+    expect(view?.urgent).toBe(true);
+  });
+
+  it('ne presse pas quand il reste du temps, ni quand tout est pris', () => {
+    expect(
+      seasonView(state({ tier: 3, season: { number: 1, endsAt: endsIn(10) } }), NOW)?.urgent,
+    ).toBe(false);
+    expect(
+      seasonView(
+        state({
+          tier: 1,
+          claimed: [{ tier: 1, track: 'free' }],
+          season: { number: 1, endsAt: endsIn(2) },
+        }),
+        NOW,
+      )?.urgent,
+    ).toBe(false);
+  });
+});

@@ -78,6 +78,11 @@ export interface SeasonView {
   readonly premiumShortfall: number;
   /** Cases a encaisser : la pastille du rail et « Tout recuperer (N) ». */
   readonly claimable: number;
+  /**
+   * Des recompenses attendent et la saison finit dans `SEASON_URGENT_DAYS`
+   * jours au plus : non reclamees, elles seront perdues au changement.
+   */
+  readonly urgent: boolean;
   /** Recompenses premium deja atteintes, en attente de l'achat. */
   readonly sealed: number;
   readonly tiers: readonly SeasonTierView[];
@@ -91,6 +96,9 @@ const DAY_MS = 86_400_000;
  * Jours restants, arrondis au-dessus : « 1 jour » tant que la saison n'est pas
  * finie, jamais « 0 jour » avec des heures devant soi.
  */
+/** En dessous, la fin de saison presse : l'ecran et le rail le disent. */
+export const SEASON_URGENT_DAYS = 3;
+
 export function daysLeft(endsAt: string, now: number): number {
   const end = Date.parse(endsAt);
   if (!Number.isFinite(end) || !Number.isFinite(now)) return 0;
@@ -211,9 +219,11 @@ export function seasonView(
     (entry) => entry.free.state === 'claimable' || entry.premium.state === 'claimable',
   );
 
+  const left = daysLeft(state.season.endsAt, now);
   return {
     number: state.season.number,
-    daysLeft: daysLeft(state.season.endsAt, now),
+    daysLeft: left,
+    urgent: left <= SEASON_URGENT_DAYS && claimable > 0,
     tier,
     lastTier,
     xpInto,

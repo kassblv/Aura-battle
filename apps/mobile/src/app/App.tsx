@@ -740,6 +740,7 @@ export function App(): JSX.Element {
               go('challenges');
             }}
             seasonReady={season.claimable}
+            seasonUrgent={season.urgent}
             onSeason={() => {
               // Relu a l'ouverture : l'etat a pu changer sur un autre appareil.
               season.refresh();

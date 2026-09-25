@@ -97,7 +97,7 @@ export function SeasonScreen({
       <header className="season__head">
         <h2>{view === null ? 'Saison' : `Saison ${String(view.number)}`}</h2>
         {view !== null && (
-          <span className="season__days">
+          <span className="season__days" data-urgent={view.urgent}>
             {view.daysLeft > 1
               ? `${String(view.daysLeft)} jours`
               : view.daysLeft === 1
@@ -113,6 +113,18 @@ export function SeasonScreen({
       {error !== null && (
         <p className="season__note season__note--bad" role="alert">
           {error}
+        </p>
+      )}
+
+      {/*
+        La fin de saison presse : non reclamees, les recompenses sont perdues
+        au changement. Dit une fois, ici, et seulement s'il y a quelque chose
+        a prendre.
+      */}
+      {error === null && view?.urgent === true && (
+        <p className="season__note season__note--urgent" role="status">
+          ⏳ {view.claimable} {view.claimable > 1 ? 'récompenses perdues' : 'récompense perdue'} à
+          la fin de la saison : récupère-les !
         </p>
       )}
 

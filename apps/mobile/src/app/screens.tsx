@@ -60,6 +60,8 @@ export interface HomeProps {
   readonly onChallenges: () => void;
   /** Recompenses du passe de saison a recuperer : sa pastille. */
   readonly seasonReady: number;
+  /** La saison finit bientot et des recompenses attendent : la pastille presse. */
+  readonly seasonUrgent?: boolean;
   readonly onSeason: () => void;
   readonly onWardrobe: () => void;
   readonly onShop: () => void;
@@ -103,6 +105,7 @@ export function HomeScreen({
   questsReady,
   onChallenges,
   seasonReady,
+  seasonUrgent = false,
   onSeason,
 }: HomeProps): JSX.Element {
   return (
@@ -331,7 +334,7 @@ export function HomeScreen({
               onClick={onSeason}
               aria-label={
                 seasonReady > 0
-                  ? `Passe de saison, ${String(seasonReady)} récompense${seasonReady > 1 ? 's' : ''} à récupérer`
+                  ? `Passe de saison, ${String(seasonReady)} récompense${seasonReady > 1 ? 's' : ''} à récupérer${seasonUrgent ? ', la saison se termine bientôt' : ''}`
                   : 'Passe de saison'
               }
             >
@@ -342,7 +345,7 @@ export function HomeScreen({
                 Saison
               </span>
               {seasonReady > 0 && (
-                <span className="rail__badge" aria-hidden="true">
+                <span className="rail__badge" aria-hidden="true" data-urgent={seasonUrgent}>
                   {seasonReady}
                 </span>
               )}

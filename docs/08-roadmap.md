@@ -204,7 +204,7 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - [ ] Ouvrir la vente : comptes App Store, Google Play et RevenueCat, produits, clés et secret du webhook (`docs/10-exploitation.md`, « Achat de jetons »).
 
 - [x] **Réinitialisation douce du classement au changement de saison** (2026-09-25, avant la saison 2 du 2026-10-27) : LP divisés par deux, MMR compressé de 20 % vers 1 000, placements rouverts, repris au premier match de la saison (`seasonCarryOver`, `docs/05`).
-- [ ] Prévenir avant la fin de saison qu'il reste des récompenses du passe à réclamer.
+- [x] Prévenir avant la fin de saison qu'il reste des récompenses à réclamer (2026-09-25). Dans les trois derniers jours, s'il y a quelque chose à prendre : compteur de jours rouge et pulsant, une phrase dans l'écran « Saison », et la pastille du rail qui presse.
 
 ### M7 — Anti-triche et robustesse
 - [ ] **Farm d'XP de saison par abandon en invitation** (relevé le 2026-09-25, relecture de sécurité du passe). Une victoire par abandon rapporte 30 XP : deux comptes en invitation remplissent les trente paliers en quelques minutes. Borné par compte et par saison, non transférable. Piste : aucune XP pour un abandon avant la fin de la première manche, ou un plafond en invitation par paire et par jour.

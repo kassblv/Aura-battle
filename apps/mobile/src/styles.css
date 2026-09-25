@@ -4401,6 +4401,25 @@ body {
   font-weight: 700;
 }
 
+/* Fin de saison et recompenses en attente : le compte a rebours se voit. */
+.season__days[data-urgent='true'] {
+  color: var(--accent-ink);
+  background: var(--bad-ink);
+  border-color: var(--bad-ink);
+  animation: season-breathe 1.6s ease-in-out infinite;
+}
+
+.season__note--urgent {
+  color: var(--bad-ink);
+  font-weight: 800;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .season__days[data-urgent='true'] {
+    animation: none !important;
+  }
+}
+
 .season__progress {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -4841,4 +4860,16 @@ body {
   box-shadow: none;
   filter: grayscale(0.5);
   cursor: default;
+}
+
+/* Fin de saison avec des recompenses en attente : la pastille du rail presse. */
+.rail__badge[data-urgent='true'] {
+  background: var(--bad-ink);
+  animation: season-breathe 1.6s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rail__badge[data-urgent='true'] {
+    animation: none !important;
+  }
 }
