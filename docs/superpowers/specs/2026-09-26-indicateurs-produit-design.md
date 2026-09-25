@@ -1,0 +1,84 @@
+# Indicateurs produit — chantier n°8 (M10)
+
+Date : 2026-09-26 · Statut : décidé sur recommandation (« continue jusqu'au
+bout ») ; relisible.
+
+## Pourquoi
+
+`docs/00-vision.md` fixe sept seuils de décision (rétention J1 ≥ 35 %, J7 ≥ 12 %,
+≥ 4 matchs PvP par actif et par jour…). Sans mesure, « le jeu le plus addictif
+possible » reste une opinion. Il faut les lire **dès le premier joueur**.
+
+## Décision : mesure interne, pas de fournisseur
+
+- **Aucun traceur tiers.** Pas de SDK d'analytics, pas de donnée qui quitte nos
+  serveurs, donc pas de bandeau de consentement pour un traceur tiers et rien à
+  choisir chez un fournisseur. Les données restent dans notre Postgres, sous
+  l'identifiant de joueur déjà pseudonyme.
+- **Presque tout se déduit de l'existant** : `Player.createdAt`, `Match`
+  (mode, `startedAt`, `endReason`, `isGhost`), `MatchSeat`. On ne rajoute que ce
+  que le serveur ne garde pas encore :
+  - `MatchSeat.queueWaitMs` : l'attente en file du siège (le serveur la connaît
+    à l'appariement, `enqueuedAtMs`) ;
+  - un **événement client** unique, `clip_shared`, parce que seul le client sait
+    qu'un clip est parti.
+- **Lecture** : `GET /admin/indicators`, même secret que `/admin/status`, et une
+  section du panneau d'administration. Lecture seule.
+
+## Définitions (jours UTC)
+
+- **Match PvP** : mode `RANKED`, `CASUAL` ou `INVITE` (fantômes compris — le
+  joueur joue ; leur part est affichée à côté). `SOLO` n'en est pas un.
+- **Actif le jour D** : a occupé un siège d'un match PvP commencé le jour D.
+- **Rétention J1** : parmi les comptes créés un jour D (D entre J-31 et J-2),
+  la part active le jour D+1. **J7** : même chose à D+7 (D entre J-37 et J-8).
+- **Matchs PvP par actif et par jour** : sur les 7 derniers jours complets,
+  sièges PvP occupés par un joueur réel ÷ somme des actifs quotidiens.
+- **Attente médiane en file classée** : médiane de `queueWaitMs` des sièges
+  `RANKED` des 7 derniers jours.
+- **Part des matchs partagés en clip** : matchs PvP terminés sur 7 jours dont au
+  moins un siège a émis `clip_shared` ÷ matchs PvP terminés sur 7 jours.
+- **Installations issues d'invitations** : parmi les comptes créés sur 30 jours
+  qui ont joué, la part dont le **premier** match PvP est une invitation.
+- **Taux d'abandon** : matchs PvP terminés sur 7 jours avec `endReason`
+  `forfeit` ou `disconnect` ÷ matchs PvP terminés sur 7 jours.
+
+Chaque indicateur rend sa valeur, son **effectif** (`n`) et son seuil ; sous
+20 observations, le panneau écrit « échantillon insuffisant » au lieu de
+colorer un verdict.
+
+## Événement client
+
+- `POST /events`, authentifié, corps strict : `{ kind: 'clip_shared', matchId }`
+  (`@aura/protocol`, 2.5.0).
+- Envoyé après un partage **ou** un téléchargement du clip (sur le web, on
+  télécharge puis on poste à la main). Jamais bloquant, jamais relancé : une
+  mesure perdue vaut mieux qu'un écran qui attend.
+- Le serveur ne l'inscrit que si le joueur **a occupé un siège de ce match**, et
+  une seule fois par (joueur, match, sorte) : la table est bornée par
+  construction, un renvoi est sans effet. Réponse `204` dans tous les cas
+  acceptés, pour ne rien apprendre à qui sonde.
+
+## Architecture
+
+- `@aura/protocol` : `productEventSchema` (2.5.0).
+- Serveur :
+  - module `analytics` : `POST /events` et le dépôt `ProductEvent` ;
+  - `MatchSeat.queueWaitMs` écrit à la création du match depuis la file ;
+  - calcul des indicateurs : requêtes d'agrégat (adaptateur Prisma) et verdict
+    pur (seuils, effectif minimal) ;
+  - `GET /admin/indicators` et la section du panneau.
+- Mobile : `reportClipShared(matchId)` après un partage réussi.
+
+## Critères d'acceptation
+
+- [ ] Chaque définition testée contre Postgres sur un jeu de données construit à
+  la main (valeur ET effectif).
+- [ ] Verdict pur testé : seuil atteint, manqué, échantillon insuffisant.
+- [ ] `POST /events` : siège absent → rien d'inscrit ; renvoi → une seule ligne ;
+  corps inconnu → 400 ; sans jeton → 401.
+- [ ] `queueWaitMs` écrit pour un appariement en file, absent pour une invitation.
+- [ ] Le client envoie l'événement après un partage ou un téléchargement, pas
+  après une annulation ; un échec réseau ne se voit pas.
+- [ ] Panneau vérifié à l'écran ; lint, typecheck, tests ; relecture de sécurité
+  et relecture finale.

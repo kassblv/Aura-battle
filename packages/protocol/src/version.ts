@@ -77,7 +77,11 @@
   de l'en-tete tient : un champ AJOUTE ne casse plus un client plus ancien.
   Un client anterieur a 2.4.1, lui, reste fragile face a toute addition.
 */
-export const PROTOCOL_VERSION = '2.4.1';
+/*
+  2.5.0 — `POST /events` (`productEventSchema`) : la mesure du partage de clip.
+  Route AJOUTEE : un client 2.4 ne l'appelle pas. Pas de rupture.
+*/
+export const PROTOCOL_VERSION = '2.5.0';
 
 const MAJOR = /^(\d+)\./;
 
