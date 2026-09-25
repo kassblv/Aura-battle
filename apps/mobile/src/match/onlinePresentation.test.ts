@@ -57,6 +57,7 @@ function state(phase: OnlinePhase, over: Partial<OnlineState> = {}): OnlineState
     opponentName: 'Nova',
     opponentIsGhost: false,
     opponentCosmetics: {},
+    rulesVariant: null,
     phase,
     round: 1,
     phaseEndsAtMs: 0,

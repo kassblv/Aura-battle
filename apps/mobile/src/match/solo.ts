@@ -1,5 +1,6 @@
 import {
   AI_PROFILES,
+  BALANCE,
   createMatch,
   createRng,
   decideChoice,
@@ -38,6 +39,8 @@ export interface SoloOptions {
 
 export interface SoloMatch {
   readonly state: MatchState;
+  /** Les regles que joue le moteur : l'ecran affiche celles-la. */
+  readonly rules: BalanceConfig;
   /** Effets produits par la derniere avancee, et par elle seule. */
   readonly effects: readonly MatchEffect[];
   /** Fait passer le temps ; les phases echues expirent dans l ordre. */
@@ -134,6 +137,8 @@ export function createSoloMatch(options: SoloOptions): SoloMatch {
     get state(): MatchState {
       return step.state;
     },
+
+    rules: config ?? BALANCE,
 
     get effects(): readonly MatchEffect[] {
       return effects;

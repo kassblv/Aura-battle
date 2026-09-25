@@ -1,3 +1,4 @@
+import { variantConfig } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import {
   CLASH_AT_MS,
@@ -218,5 +219,26 @@ describe('clipLayout : la chronologie suit celle de la revelation', () => {
     const card = layout.cards[0]!.rect;
     const callout = layout.callout!.rect;
     expect(callout.y - (card.y + card.h)).toBeGreaterThanOrEqual(CLIP_BADGE_SPACE);
+  });
+});
+
+describe('clipLayout : les regles du match', () => {
+  const played = (variant: string, over: Partial<RoundView> = {}): ClipLayout => {
+    const view = round(over);
+    return clipLayout({
+      scene: revealScene(view, bare, variantConfig(variant)),
+      outcome: { winner: view.winner, myScore: view.myScore, opponentScore: view.opponentScore },
+      arena: { width: 1688, height: 780 },
+      elapsedMs: VERDICT_PANEL_AT_MS + 1000,
+    });
+  };
+
+  it('ecrit ✨ ×1,5 sur la brillante pendant la Semaine brillante', () => {
+    const mine = played('brillance', { myShiny: true }).cards.find((card) => card.side === 'moi');
+    expect(mine?.badge).toBe('✨ ×1,5');
+  });
+
+  it('ecrit ×1,6 au bandeau du contre pendant Contres tranchants', () => {
+    expect(JSON.stringify(played('contres').callout)).toContain('×1,6');
   });
 });

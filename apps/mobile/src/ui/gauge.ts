@@ -1,4 +1,4 @@
-import { BALANCE, cursorPosition, type GaugeParams } from '@aura/rules';
+import { BALANCE, cursorPosition, type BalanceConfig, type GaugeParams } from '@aura/rules';
 
 /**
  * Geometrie de la jauge de timing.
@@ -56,11 +56,15 @@ export type PartialZones = { readonly [K in keyof MeterZones]?: number | undefin
  * Le centre arrive avec `choice:start` : avant ce message il n'y a rien a
  * dessiner de vrai, et apres il n'y a plus de raison de dessiner autre chose.
  */
-export function resolveZones(partial: PartialZones): MeterZones {
+export function resolveZones(
+  partial: PartialZones,
+  /** Les regles du match : le repli prend SES largeurs, pas celles par defaut. */
+  rules: BalanceConfig = BALANCE,
+): MeterZones {
   return {
     center: partial.center ?? CENTERED_ZONES.center,
-    zoneWidth: partial.zoneWidth ?? CENTERED_ZONES.zoneWidth,
-    perfectWidth: partial.perfectWidth ?? CENTERED_ZONES.perfectWidth,
+    zoneWidth: partial.zoneWidth ?? rules.timing.zoneWidth,
+    perfectWidth: partial.perfectWidth ?? rules.timing.perfectWidth,
   };
 }
 

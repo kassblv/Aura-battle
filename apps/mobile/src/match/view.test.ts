@@ -223,3 +223,26 @@ describe('ce que la revelation raconte (chantier n°3)', () => {
     expect(last.opponentUltimate).toBe(false);
   });
 });
+
+describe('les regles du match dans la vue', () => {
+  const online = (rulesVariant: string | null): OnlineMatch =>
+    ({ state: { ...EMPTY_ONLINE_STATE, rulesVariant } }) as unknown as OnlineMatch;
+
+  it('expose la config et l evenement de la variante en ligne', () => {
+    const view = viewOfOnline(online('ultime'));
+    expect(view.rules.ultimate.gaugeMax).toBe(60);
+    expect(view.event?.name).toBe('Ultime express');
+  });
+
+  it('joue les regles normales sans variante', () => {
+    const view = viewOfOnline(online(null));
+    expect(view.rules).toBe(BALANCE);
+    expect(view.event).toBeNull();
+  });
+
+  it('le solo garde les regles normales et n annonce aucun evenement', () => {
+    const view = viewOfSolo(solo());
+    expect(view.rules).toBe(BALANCE);
+    expect(view.event).toBeNull();
+  });
+});

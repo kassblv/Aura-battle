@@ -1,7 +1,8 @@
-import { BALANCE, type Choice, type Move, type Seat } from '@aura/rules';
+import { type Choice, type Move, type Seat } from '@aura/rules';
 import type { RechargeTap } from '@aura/rules';
 import type { ServerMessage } from '@aura/protocol';
 import type { GameClient } from '../net/client.js';
+import { matchRules } from './rules.js';
 
 /** Ce que le serveur dit de l apparence de l adversaire. */
 export type OpponentCosmetics = ServerMessage<'match:found'>['opponent']['cosmetics'];
@@ -57,6 +58,12 @@ export interface OnlineState {
    * le coup joue, dans `round:result`.
    */
   readonly opponentCosmetics: OpponentCosmetics;
+  /**
+   * L'evenement de la semaine qui regit ce match (`match:found.rulesVariant`,
+   * 2.4.0), ou `null` pour les regles normales. Un identifiant : les valeurs
+   * se relisent dans `@aura/rules`.
+   */
+  readonly rulesVariant: string | null;
   readonly phase: OnlinePhase;
   readonly round: number;
   /** Fin de la phase, **en heure locale**. */
@@ -126,6 +133,7 @@ export const EMPTY_ONLINE_STATE: OnlineState = {
   opponentName: null,
   opponentIsGhost: false,
   opponentCosmetics: {},
+  rulesVariant: null,
   phase: 'idle',
   round: 1,
   phaseEndsAtMs: 0,
@@ -166,6 +174,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       opponentName: data.opponent.displayName,
       opponentIsGhost: data.ghost,
       opponentCosmetics: data.opponent.cosmetics,
+      rulesVariant: data.rulesVariant ?? null,
     };
   });
 
@@ -248,7 +257,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
         cotes (`@aura/rules`), et l instant de reception est le debut a une
         latence pres : c est une horloge d animation, pas un arbitrage.
       */
-      phaseEndsAtMs: client.now() + BALANCE.phases.revealMs,
+      phaseEndsAtMs: client.now() + matchRules(state.rulesVariant).rules.phases.revealMs,
       round: data.round,
       roundsWon: data.roundsWon,
       lastRound: data,
@@ -285,6 +294,13 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       // Une reprise ne doit pas faire disparaitre l avertissement.
       opponentIsGhost: state.opponentIsGhost,
       opponentCosmetics: data.opponent?.cosmetics ?? state.opponentCosmetics,
+      /*
+        L'instantane porte la variante (2.4.1) : c'est elle qui fait foi, y
+        compris apres une application tuee. Un serveur plus ancien ne l'envoie
+        pas : on garde alors celle annoncee a l'ouverture, pour CE match.
+      */
+      rulesVariant:
+        data.rulesVariant ?? (state.matchId === data.matchId ? state.rulesVariant : null),
       phase: data.phase,
       round: data.round,
       phaseEndsAtMs: toLocal(data.endsAt),

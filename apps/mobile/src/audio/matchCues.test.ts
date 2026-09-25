@@ -1,3 +1,4 @@
+import { BALANCE } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import type { MatchView, RoundView } from '../match/view.js';
 import { soundForCue } from './cues.js';
@@ -29,6 +30,8 @@ function round(over: Partial<RoundView> = {}): RoundView {
 
 function view(phase: MatchView['phase'], over: Partial<MatchView> = {}): MatchView {
   return {
+    rules: BALANCE,
+    event: null,
     phase,
     round: 1,
     phaseEndsAtMs: 0,

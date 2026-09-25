@@ -1,8 +1,11 @@
+import { BALANCE } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import type { MatchView } from '../match/view.js';
 import { renderKey, type KeyedView } from './renderKey.js';
 
 const base: MatchView = {
+  rules: BALANCE,
+  event: null,
   phase: 'choice',
   round: 1,
   phaseEndsAtMs: 15_000,
@@ -20,6 +23,12 @@ const base: MatchView = {
 const key = (patch: Partial<KeyedView> = {}): string => renderKey({ ...base, ...patch });
 
 describe('renderKey', () => {
+  it('change quand le match joue un evenement de la semaine', () => {
+    expect(key({ event: { id: 'contres', name: 'Contres tranchants', pitch: '' } })).not.toBe(
+      key(),
+    );
+  });
+
   it('change quand ma case brillante arrive', () => {
     expect(key({ me: { ...base.me, shiny: { style: 'hype', tier: 2 } } })).not.toBe(key());
   });

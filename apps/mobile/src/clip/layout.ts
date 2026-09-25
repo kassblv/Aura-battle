@@ -1,6 +1,6 @@
 import { styleIcon, styleName, tierName } from '@aura/content';
-import { BALANCE } from '@aura/rules';
 import { VERDICT_PANEL_AT_MS } from '../arena/round.js';
+import { multiplierLabel } from '../match/rules.js';
 import type { RevealCallout, RevealCard, RevealScene, Side } from '../app/reveal.js';
 
 /**
@@ -55,7 +55,7 @@ export interface ClipCard {
   readonly icon: string;
   readonly name: string;
   readonly family: string;
-  /** « ✨ ×1,2 » pour une brillante, sinon `null`. */
+  /** « ✨ ×1,2 » pour une brillante (le multiplicateur du match), sinon `null`. */
   readonly badge: string | null;
 }
 
@@ -122,7 +122,7 @@ const CTA_H = 130;
 /** Bas de la bande : au-dessus du verdict et de l appel. */
 const BAND_BOTTOM = CLIP_HEIGHT - MARGIN - CTA_H - GAP - VERDICT_H - GAP;
 
-const mult = (value: number): string => `×${String(value).replace('.', ',')}`;
+const mult = multiplierLabel;
 
 const clamp01 = (value: number): number => Math.min(1, Math.max(0, value));
 
@@ -181,7 +181,7 @@ function cardOf(card: RevealCard, side: Side, elapsedMs: number): ClipCard {
     icon: card.icon,
     name: card.name,
     family: `${styleIcon(card.family)} ${styleName(card.family).fr}`,
-    badge: card.shiny ? `✨ ${mult(BALANCE.shiny.multiplier)}` : null,
+    badge: card.shiny ? `✨ ${mult(card.shinyMultiplier)}` : null,
   };
 }
 

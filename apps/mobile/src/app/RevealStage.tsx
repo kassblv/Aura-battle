@@ -1,7 +1,7 @@
 import { styleIcon, styleName, tierName } from '@aura/content';
-import { BALANCE } from '@aura/rules';
 import { memo, useEffect, useRef, useState, type CSSProperties, type JSX } from 'react';
 import type { AudioCue } from '../audio/cues.js';
+import { multiplierLabel } from '../match/rules.js';
 import type { RevealCallout, RevealCard, RevealScene } from './reveal.js';
 
 /**
@@ -27,7 +27,7 @@ export interface RevealStageProps {
   readonly onCue?: ((cue: AudioCue) => void) | undefined;
 }
 
-const mult = (value: number): string => `×${String(value).replace('.', ',')}`;
+const mult = multiplierLabel;
 
 const at = (ms: number, elapsedMs: number): CSSProperties =>
   ({ '--at': `${String(Math.round(ms - elapsedMs))}ms` }) as CSSProperties;
@@ -60,7 +60,7 @@ function Card({
         </div>
         {card.faceDown && <div className="reveal__back">?</div>}
       </div>
-      {card.shiny && <span className="reveal__burst">✨ {mult(BALANCE.shiny.multiplier)}</span>}
+      {card.shiny && <span className="reveal__burst">✨ {mult(card.shinyMultiplier)}</span>}
     </div>
   );
 }

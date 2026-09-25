@@ -1,7 +1,9 @@
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
-import type { RevealScene } from './reveal.js';
+import { variantConfig } from '@aura/rules';
+import { revealScene, type RevealScene } from './reveal.js';
+import { defaultLook } from './wardrobe.js';
 import { RevealStage } from './RevealStage.js';
 
 const scene = (over: Partial<RevealScene> = {}): RevealScene => ({
@@ -14,6 +16,7 @@ const scene = (over: Partial<RevealScene> = {}): RevealScene => ({
     atMs: 820,
     faceDown: false,
     shiny: true,
+    shinyMultiplier: 1.2,
   },
   theirs: {
     poseId: 'anim.prouesse.t1.pushups',
@@ -24,6 +27,7 @@ const scene = (over: Partial<RevealScene> = {}): RevealScene => ({
     atMs: 120,
     faceDown: true,
     shiny: false,
+    shinyMultiplier: 1.2,
   },
   callout: { kind: 'counter', by: 'moi', winner: 'acrobatie', loser: 'prouesse', multiplier: 1.35 },
   calloutAtMs: 1550,
@@ -78,5 +82,49 @@ describe('RevealStage', () => {
 
   it('se tait sans bandeau', () => {
     expect(render(scene({ callout: null }))).not.toContain('reveal__callout');
+  });
+
+  /*
+    Evenements de la semaine : les nombres du bandeau et du badge viennent des
+    regles du MATCH. Scene construite par `revealScene`, comme a l'ecran.
+  */
+  const played = (variant: string): string =>
+    render(
+      revealScene(
+        {
+          round: 1,
+          winner: 'moi',
+          myScore: 50,
+          opponentScore: 30,
+          myQuality: 'good',
+          myUltimate: false,
+          countered: true,
+          myShiny: true,
+          opponentShiny: false,
+          myMove: { style: 'acrobatie', tier: 2 },
+          opponentMove: { style: 'prouesse', tier: 1 },
+          myPoseId: null,
+          opponentPoseId: null,
+          counteredBy: 'moi',
+          counterBlocked: false,
+          revealFirst: 'adversaire',
+          opponentQuality: 'good',
+          opponentUltimate: false,
+        },
+        { look: defaultLook(), owned: new Set() },
+        variantConfig(variant),
+      ),
+    );
+
+  it('ecrit ×1,6 au contre pendant Contres tranchants', () => {
+    const html = played('contres');
+    expect(html).toContain('×1,6');
+    expect(html).not.toContain('×1,35');
+  });
+
+  it('ecrit ✨ ×1,5 a la brillante pendant la Semaine brillante', () => {
+    const html = played('brillance');
+    expect(html).toContain('✨ ×1,5');
+    expect(html).not.toContain('×1,2');
   });
 });

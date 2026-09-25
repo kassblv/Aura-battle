@@ -15,7 +15,7 @@ import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { ArenaControls } from '../arena/useArena.js';
 import type { AudioControls } from './useAudio.js';
-import type { Seat } from '@aura/rules';
+import { BALANCE, type Seat } from '@aura/rules';
 import type { Look } from './wardrobe.js';
 import type { MatchActions } from './MatchScreen.jsx';
 
@@ -412,6 +412,8 @@ export function useOnlineMatch(
 
 /** Avant toute connexion : rien n est connu, et rien ne doit etre invente. */
 const EMPTY_VIEW: MatchView = {
+  rules: BALANCE,
+  event: null,
   phase: 'idle',
   round: 1,
   phaseEndsAtMs: 0,

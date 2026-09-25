@@ -1,5 +1,6 @@
 import { styleName, tierName, type Style, type Tier } from '@aura/content';
 import { memo, useEffect, useRef, type CSSProperties, type JSX } from 'react';
+import { multiplierLabel } from '../match/rules.js';
 import type { FamilyTab, HandCard } from './hand.js';
 
 /**
@@ -46,7 +47,7 @@ function badgeOf(card: HandCard): string | null {
 function cardLabel(card: HandCard, family: Style): string {
   const cost = card.cost === 0 ? 'gratuit' : `coûte ${String(card.cost)} d’énergie`;
   const extras = [
-    card.shiny ? 'carte brillante, ×1,2' : '',
+    card.shiny ? `carte brillante, ${multiplierLabel(card.shinyMultiplier)}` : '',
     card.affordable ? '' : 'trop chère',
     card.variants.owned > 1 ? 'toucher encore pour changer de pose' : '',
   ].filter((part) => part !== '');

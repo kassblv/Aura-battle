@@ -1,4 +1,4 @@
-import { BALANCE } from '@aura/rules';
+import { BALANCE, variantConfig } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import { CLASH_AT_MS, REVEAL_FIRST_AT_MS, REVEAL_GAP_MS } from '../arena/round.js';
 import type { RoundView } from '../match/view.js';
@@ -130,5 +130,19 @@ describe('revealScene', () => {
     const scene = revealScene(round({ myShiny: true }), bare);
     expect(scene.mine.shiny).toBe(true);
     expect(scene.theirs.shiny).toBe(false);
+  });
+});
+
+describe('revealScene : les regles du match', () => {
+  it('donne au bandeau le multiplicateur de contre du match', () => {
+    expect(revealScene(round(), bare).callout).toMatchObject({ multiplier: 1.35 });
+    const scene = revealScene(round(), bare, variantConfig('contres'));
+    expect(scene.callout).toMatchObject({ kind: 'counter', multiplier: 1.6 });
+  });
+
+  it('donne aux cartes le multiplicateur de brillante du match', () => {
+    const scene = revealScene(round({ myShiny: true }), bare, variantConfig('brillance'));
+    expect(scene.mine.shinyMultiplier).toBe(1.5);
+    expect(scene.theirs.shinyMultiplier).toBe(1.5);
   });
 });

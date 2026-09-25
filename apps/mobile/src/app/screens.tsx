@@ -5,14 +5,15 @@ import type { JSX } from 'react';
 import type { MemeCard } from './memes.js';
 import { leagueProgress, styleShares, summarize, type PlayerProfile } from './profile.js';
 import type { HomeClusters } from '../ui/layout.js';
+import type { MatchEvent } from '../match/rules.js';
 
 /**
  * Les ecrans hors match.
  *
  * Volontairement sans etat : tout ce qui se decide vit dans `navigation.ts`,
  * `wardrobe.ts` et `profile.ts`, qui se testent sans navigateur. Ce fichier ne
- * fait que mettre en forme — c est pour cela qu il n a pas de test a lui, au
- * meme titre que `renderer.ts`.
+ * fait que mettre en forme. Son seul test (`screens.test.tsx`) verifie ce qui
+ * s'affiche ou non selon le mode — l'evenement de la semaine.
  */
 
 const STYLE_COLORS = {
@@ -29,6 +30,11 @@ export interface HomeProps {
   readonly profile: PlayerProfile;
   /** Mode que lancera le gros bouton. */
   readonly mode: 'ranked' | 'casual';
+  /**
+   * L'evenement de la semaine en partie rapide, ou `null`. Une annonce : la
+   * variante du match, c'est le serveur qui la choisit.
+   */
+  readonly weekEvent?: MatchEvent | null;
   readonly onToggleMode: () => void;
   /** Le meme actuellement joue par le personnage au centre. */
   readonly meme: MemeCard;
@@ -87,6 +93,7 @@ export interface HomeProps {
 export function HomeScreen({
   profile,
   mode,
+  weekEvent = null,
   onToggleMode,
   meme,
   onStepMeme,
@@ -355,6 +362,24 @@ export function HomeScreen({
 
         <div className="launch" style={{ width: `${String(clusters.right)}px` }}>
           {/*
+            L'evenement de la semaine, en tete de la grappe de lancement.
+
+            DANS la grappe, pas a cote : il herite de sa largeur, celle que
+            `homeClusters` laisse a droite du personnage, et ne peut donc pas
+            deborder sur lui. Au-dessus du mode parce que la hauteur libre est
+            la : entre la bourse, en haut, et le lancement il reste environ
+            150 px a 844x390, le bandeau en prend une cinquantaine.
+
+            En partie rapide seulement : le classe joue les regles normales, et
+            annoncer un evenement sur un mode qui ne le joue pas serait faux.
+          */}
+          {mode === 'casual' && weekEvent !== null && (
+            <p className="launch__event">
+              <b>⚡ Cette semaine : {weekEvent.name}</b>
+              <small>{weekEvent.pitch}</small>
+            </p>
+          )}
+          {/*
           Le mode se choisit ici, pas dans un menu.
 
           Classé et rapide se jouent exactement pareil — seul compte ce qu'on
@@ -366,7 +391,17 @@ export function HomeScreen({
             className="launch__mode"
             onClick={onToggleMode}
             aria-pressed={mode === 'ranked'}
+            aria-label={
+              mode === 'casual' && weekEvent !== null
+                ? `Partie rapide, événement de la semaine : ${weekEvent.name}. Rien à perdre`
+                : undefined
+            }
           >
+            {mode === 'casual' && weekEvent !== null && (
+              <span className="launch__badge" aria-hidden="true">
+                ⚡
+              </span>
+            )}
             <b>{mode === 'ranked' ? 'Classé' : 'Partie rapide'}</b>
             <small>{mode === 'ranked' ? 'Ta ligue bouge' : 'Rien à perdre'}</small>
           </button>

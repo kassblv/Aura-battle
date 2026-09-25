@@ -615,6 +615,8 @@ body {
 
 /* Le mode est un bouton, pas une etiquette : il se touche pour changer. */
 .launch__mode {
+  /* Porte l'eclair de l'evenement dans son coin. */
+  position: relative;
   margin: 0;
   padding: 5px 14px;
   /* Cible tactile : 46 px, ADR 0008. */
@@ -629,6 +631,61 @@ body {
   cursor: pointer;
   backdrop-filter: blur(9px);
   -webkit-backdrop-filter: blur(9px);
+}
+
+/*
+  L'evenement de la semaine, en tete de la grappe de lancement (partie rapide).
+
+  Pas un bouton : rien a toucher, donc pas de cible tactile a tenir. Opaque
+  comme le HUD, parce qu'il est pose sur l'arene et que du texte fin sur un
+  decor anime n'a pas de contraste garanti. Deux lignes au plus pour la
+  phrase : la hauteur est la ressource rare en paysage.
+*/
+.launch__event {
+  margin: 0;
+  padding: 6px 10px;
+  border-radius: 13px;
+  border: 1px solid var(--gold-ink);
+  background: var(--hud);
+  backdrop-filter: blur(9px);
+  -webkit-backdrop-filter: blur(9px);
+  text-align: left;
+}
+
+.launch__event b {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold-ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.launch__event small {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--ink);
+}
+
+/* L'eclair sur le mode : la partie rapide a un evenement cette semaine. */
+.launch__badge {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  min-width: 20px;
+  height: 20px;
+  border-radius: 999px;
+  background: var(--gold-ink);
+  color: var(--bg);
+  font-size: 11px;
+  line-height: 20px;
+  text-align: center;
 }
 
 /* Classé se distingue d'un coup d'oeil : c'est le mode ou l'on risque. */
@@ -2380,6 +2437,19 @@ body {
   font-weight: 400;
   font-size: 12px;
   white-space: nowrap;
+}
+/* L'evenement de la semaine, sous le numero de manche : il explique pourquoi
+   les nombres du match ne sont pas ceux d'habitude. */
+.hud__event {
+  display: block;
+  font-family: var(--body);
+  font-style: normal;
+  font-weight: 700;
+  font-size: 9px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  text-align: center;
+  color: var(--gold-ink);
 }
 /**
  * Barre d avancement de la phase.

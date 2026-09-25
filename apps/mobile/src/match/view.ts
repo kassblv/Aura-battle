@@ -1,6 +1,13 @@
-import { BALANCE, type Move, type Orb, type RechargeTap, type TimingQuality } from '@aura/rules';
+import {
+  type BalanceConfig,
+  type Move,
+  type Orb,
+  type RechargeTap,
+  type TimingQuality,
+} from '@aura/rules';
 import type { OnlineMatch } from './online.js';
 import type { SoloMatch } from './solo.js';
+import { matchRules, type MatchEvent } from './rules.js';
 import { matchSpoils, type MatchSpoils } from './spoils.js';
 
 /**
@@ -82,6 +89,14 @@ export interface RoundView {
 }
 
 export interface MatchView {
+  /**
+   * Les regles du match (chantier n°7). Tout nombre de regle que l'ecran
+   * montre — couts, energie, jauge d'Ultime, multiplicateurs — se lit ici,
+   * jamais dans `BALANCE` : pendant un evenement, les deux different.
+   */
+  readonly rules: BalanceConfig;
+  /** L'evenement de la semaine qui regit ce match, ou `null` (solo, classe, normal). */
+  readonly event: MatchEvent | null;
   readonly phase: ViewPhase;
   readonly round: number;
   /** Fin de la phase, en heure locale. */
@@ -111,14 +126,22 @@ export interface MatchView {
   } | null;
 }
 
-const DURATIONS: Readonly<Record<ViewPhase, number>> = {
-  idle: 1,
-  intro: BALANCE.phases.introMs,
-  recharge: BALANCE.recharge.durationMs,
-  choice: BALANCE.phases.choiceMs,
-  reveal: BALANCE.phases.revealMs,
-  ended: 1,
-};
+/** Duree d'une phase, selon les regles du match. */
+function durationOf(phase: ViewPhase, rules: BalanceConfig): number {
+  switch (phase) {
+    case 'intro':
+      return rules.phases.introMs;
+    case 'recharge':
+      return rules.recharge.durationMs;
+    case 'choice':
+      return rules.phases.choiceMs;
+    case 'reveal':
+      return rules.phases.revealMs;
+    case 'idle':
+    case 'ended':
+      return 1;
+  }
+}
 
 /** Le dernier mouvement joue par un siege en solo : le moteur le range dans `moves`. */
 function soloMoveOf(state: SoloMatch['state'], seat: 'a' | 'b'): Move {
@@ -131,10 +154,13 @@ export function viewOfSolo(match: SoloMatch): MatchView {
   const last = state.history.at(-1);
 
   return {
+    // Le solo joue la config que son moteur a recue : la normale, sauf test.
+    rules: match.rules,
+    event: null,
     phase: state.phase,
     round: state.round,
     phaseEndsAtMs: state.phaseEndsAtMs,
-    phaseDurationMs: DURATIONS[state.phase],
+    phaseDurationMs: durationOf(state.phase, match.rules),
     me: {
       energy: state.seats.a.energy,
       ultimate: state.seats.a.ultimateGauge,
@@ -197,12 +223,15 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
   const seat = state.seat ?? 'a';
   const other = seat === 'a' ? 'b' : 'a';
   const last = state.lastRound;
+  const { rules, event } = matchRules(state.rulesVariant);
 
   return {
+    rules,
+    event,
     phase: state.phase,
     round: state.round,
     phaseEndsAtMs: state.phaseEndsAtMs,
-    phaseDurationMs: DURATIONS[state.phase],
+    phaseDurationMs: durationOf(state.phase, rules),
     me: {
       energy: state.energy,
       ultimate: state.ultimate,

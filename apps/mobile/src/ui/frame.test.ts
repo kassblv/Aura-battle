@@ -1,4 +1,12 @@
-import { BALANCE, createRng, generateOrbSequence, liveOrbs, type Orb } from '@aura/rules';
+import {
+  BALANCE,
+  RULE_VARIANTS,
+  createRng,
+  generateOrbSequence,
+  liveOrbs,
+  variantConfig,
+  type Orb,
+} from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import { reachable } from '../match/reach.js';
 import { countdownLabel, orbPaint, ORB_SLOTS, phaseClock, progressTransform } from './frame.js';
@@ -159,5 +167,17 @@ describe('orbPaint', () => {
 
     expect(painted?.golden).toBe(true);
     expect(painted?.label).toBe('Orbe dorée');
+  });
+});
+
+describe('ORB_SLOTS', () => {
+  /*
+    Les emplacements sont des boutons montes une fois : une variante qui
+    changerait le nombre d'orbes visibles en laisserait sans bouton.
+  */
+  it('vaut pour chaque evenement de la semaine', () => {
+    for (const variant of RULE_VARIANTS) {
+      expect(variantConfig(variant.id).recharge.visibleOrbs).toBe(ORB_SLOTS);
+    }
   });
 });

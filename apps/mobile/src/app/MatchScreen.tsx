@@ -1,7 +1,7 @@
 import { AMPLIFIER_LEVELS, amplifierName, defaultAnimationFor, tierName } from '@aura/content';
 import {
-  BALANCE,
   type AmplifierLevel,
+  type BalanceConfig,
   type Choice,
   type Move,
   type RechargeTap,
@@ -40,6 +40,7 @@ import { PoseHand } from './PoseHand.js';
 import { ClipShare } from './ClipShare.js';
 import { useRevealClip, type ArenaFrames } from '../clip/useRevealClip.js';
 import { revealScene } from './reveal.js';
+import { multiplierLabel } from '../match/rules.js';
 import { RevealStage } from './RevealStage.js';
 import { scheduleVerdictRender } from './verdictTimer.js';
 import { danceOptions, defaultLook, type Wardrobe } from './wardrobe.js';
@@ -82,9 +83,6 @@ function parseShinyKey(key: string): Move | null {
 }
 
 /** Delai minimal entre l armement de la jauge et l appui (docs/03). */
-/** Jauge pleine : en deca, le serveur refuse l activation (`docs/01` §6). */
-const ULTIMATE_FULL = BALANCE.ultimate.gaugeMax;
-
 const MIN_CHARGE_MS = 120;
 
 export interface MatchActions {
@@ -342,7 +340,7 @@ function MatchScreenBody({
       }
 
       if (current.phase === 'recharge') {
-        const slots = orbPaint(current.taps, current.orbs, phase.inPhaseMs);
+        const slots = orbPaint(current.taps, current.orbs, phase.inPhaseMs, current.rules);
         for (let slot = 0; slot < ORB_SLOTS; slot += 1) {
           const node = orbRefs.current[slot];
           const paintSlot = slots[slot];
@@ -378,7 +376,13 @@ function MatchScreenBody({
     };
   }, []);
 
-  const cap = Math.min(BALANCE.maxRoundCost, view.me.energy ?? BALANCE.maxRoundCost);
+  /*
+    Les regles du MATCH, pas `BALANCE` : pendant un evenement de la semaine,
+    couts, jauge d'Ultime et multiplicateurs different (chantier n°7). Le
+    serveur calcule ; l'ecran doit seulement dire les memes nombres que lui.
+  */
+  const rules = view.rules;
+  const cap = Math.min(rules.maxRoundCost, view.me.energy ?? rules.maxRoundCost);
   const armed = style !== null;
 
   /*
@@ -422,7 +426,7 @@ function MatchScreenBody({
   const shiny = view.me.shiny;
   const shinyKey = shiny === null ? '' : `${shiny.style}.${String(shiny.tier)}`;
   const shinyMove = useMemo(() => parseShinyKey(shinyKey), [shinyKey]);
-  const tabs = useMemo(() => tabsFor(shinyMove), [shinyMove]);
+  const tabs = useMemo(() => tabsFor(shinyMove, rules), [shinyMove, rules]);
   // Au verrouillage, la main revient sur la carte jouee.
   const shownFamily = familyToShow({ locked, style, family });
   const cards = useMemo(
@@ -433,8 +437,9 @@ function MatchScreenBody({
         budget: cap,
         amplifierCost: amplifier,
         shiny: shinyMove,
+        rules,
       }),
-    [shownFamily, wardrobe, cap, amplifier, shinyMove],
+    [shownFamily, wardrobe, cap, amplifier, shinyMove, rules],
   );
 
   /*
@@ -456,8 +461,8 @@ function MatchScreenBody({
   // La revelation : les deux cartes jouees et le bandeau du contre (chantier n°3).
   const lastRound = view.lastRound;
   const scene = useMemo(
-    () => (lastRound === null ? null : revealScene(lastRound, wardrobe)),
-    [lastRound, wardrobe],
+    () => (lastRound === null ? null : revealScene(lastRound, wardrobe, rules)),
+    [lastRound, wardrobe, rules],
   );
 
   // Le clip de la derniere manche gagnee, propose a l'ecran de fin.
@@ -593,10 +598,21 @@ function MatchScreenBody({
       <header className="hud">
         <span className="hud__side">
           <b>Toi</b> <Pips won={view.me.roundsWon} />
-          {view.me.energy !== null && <Energy left={view.me.energy} />}
-          {view.me.ultimate !== null && <UltimeGauge filled={view.me.ultimate} />}
+          {view.me.energy !== null && (
+            <Energy left={view.me.energy} total={rules.match.startingEnergy} />
+          )}
+          {view.me.ultimate !== null && (
+            <UltimeGauge filled={view.me.ultimate} full={rules.ultimate.gaugeMax} />
+          )}
         </span>
-        <span className="hud__round">Manche {view.round}</span>
+        <span className="hud__round">
+          Manche {view.round}
+          {/*
+            L'evenement reste nomme tout le match : c'est lui qui explique
+            qu'un contre vaille ×1,6 ou que l'Ultime soit deja pret.
+          */}
+          {view.event !== null && <em className="hud__event">⚡ {view.event.name}</em>}
+        </span>
         <span className="hud__side hud__side--right">
           <Pips won={view.opponent.roundsWon} />{' '}
           <b>
@@ -606,6 +622,14 @@ function MatchScreenBody({
         </span>
         <i className="hud__timer" ref={timerRef} />
       </header>
+
+      {/*
+        L'intro de la premiere manche annonce l'evenement : c'est l'instant ou
+        rien ne se joue, et le seul ou l'on a le temps de lire sa phrase.
+      */}
+      {view.phase === 'intro' && view.round === 1 && view.event !== null && (
+        <Banner title={`⚡ ${view.event.name}`} sub={view.event.pitch} />
+      )}
 
       {view.phase === 'recharge' && (
         <>
@@ -708,7 +732,9 @@ function MatchScreenBody({
           needleRef={needleRef}
           armed={armed}
           ultimate={ultimate}
-          ultimateReady={(view.me.ultimate ?? 0) >= ULTIMATE_FULL}
+          ultimateReady={(view.me.ultimate ?? 0) >= rules.ultimate.gaugeMax}
+          ultimateMultiplier={rules.ultimate.multiplier}
+          rules={rules}
           onUltimate={toggleUltimate}
           onAmplifier={chooseAmplifier}
           peek={peek}
@@ -748,14 +774,18 @@ function MatchScreenBody({
           <p className="verdict__line">
             <span>Toi</span>
             <b>
-              {view.lastRound.myShiny && <span className="verdict__shiny">✨ ×1,2</span>}
+              {view.lastRound.myShiny && (
+                <span className="verdict__shiny">✨ {multiplierLabel(rules.shiny.multiplier)}</span>
+              )}
               {view.lastRound.myScore}
             </b>
           </p>
           <p className="verdict__line">
             <span>{opponentName}</span>
             <b>
-              {view.lastRound.opponentShiny && <span className="verdict__shiny">✨ ×1,2</span>}
+              {view.lastRound.opponentShiny && (
+                <span className="verdict__shiny">✨ {multiplierLabel(rules.shiny.multiplier)}</span>
+              )}
               {view.lastRound.opponentScore}
             </b>
           </p>
@@ -969,6 +999,8 @@ const ControlBand = memo(function ControlBand({
   armed,
   ultimate,
   ultimateReady,
+  ultimateMultiplier,
+  rules,
   onUltimate,
   onAmplifier,
   peek,
@@ -998,6 +1030,9 @@ const ControlBand = memo(function ControlBand({
   readonly ultimate: boolean;
   /** La jauge est pleine : sans cela le serveur refuserait le choix. */
   readonly ultimateReady: boolean;
+  readonly ultimateMultiplier: number;
+  /** Les regles du match : stables pour tout le match, donc sans cout de memo. */
+  readonly rules: BalanceConfig;
   readonly onUltimate: () => void;
   readonly onAmplifier: (next: AmplifierLevel) => void;
   /** L amplificateur regarde sans pouvoir etre joue, ou `null`. */
@@ -1014,7 +1049,7 @@ const ControlBand = memo(function ControlBand({
   readonly onTab: (family: Style) => void;
   readonly onCard: (card: HandCard) => void;
 }): JSX.Element {
-  const bet = betFor(tier, amplifier, cap);
+  const bet = betFor(tier, amplifier, cap, rules);
   /** Energie qui manque pour jouer l amplificateur regarde. */
   const missing = peek === null ? null : Math.max(1, peek + tier - cap);
   const deniedCard = deniedTier === null ? undefined : cards[deniedTier];
@@ -1045,21 +1080,28 @@ const ControlBand = memo(function ControlBand({
           onClick={onUltimate}
           aria-label={
             ultimateReady
-              ? 'Ultime : ×1,5 et impossible à contrer'
+              ? `Ultime : ${multiplierLabel(ultimateMultiplier)} et impossible à contrer`
               : 'Ultime : jauge pas encore pleine'
           }
         >
           <b>Ultime</b>
-          <small>{ultimateReady ? '×1,5 · incontrable' : 'jauge à remplir'}</small>
+          <small>
+            {ultimateReady
+              ? `${multiplierLabel(ultimateMultiplier)} · incontrable`
+              : 'jauge à remplir'}
+          </small>
         </button>
         <div className={armed ? 'gauge-slot' : 'gauge-slot gauge-slot--empty'}>
           {armed && (
             <Gauge
-              zones={resolveZones({
-                center: meterCenter,
-                zoneWidth: meterZoneWidth,
-                perfectWidth: meterPerfectWidth,
-              })}
+              zones={resolveZones(
+                {
+                  center: meterCenter,
+                  zoneWidth: meterZoneWidth,
+                  perfectWidth: meterPerfectWidth,
+                },
+                rules,
+              )}
               needleRef={needleRef}
             />
           )}
@@ -1086,7 +1128,7 @@ const ControlBand = memo(function ControlBand({
         <div className="band__amps">
           {AMPLIFIER_LEVELS.map((a) => {
             const name = amplifierName(a).fr;
-            const multiplier = BALANCE.amplifierMultiplier[a].toFixed(2).replace('.', ',');
+            const multiplier = rules.amplifierMultiplier[a].toFixed(2).replace('.', ',');
             const affordable = a + tier <= cap;
             return (
               /*
@@ -1131,10 +1173,10 @@ function Pips({ won }: { readonly won: number }): JSX.Element {
   );
 }
 
-function Energy({ left }: { readonly left: number }): JSX.Element {
+function Energy({ left, total }: { readonly left: number; readonly total: number }): JSX.Element {
   return (
     <span className="energy" aria-label={`Énergie ${String(left)}`}>
-      {Array.from({ length: BALANCE.match.startingEnergy }, (_, i) => (
+      {Array.from({ length: total }, (_, i) => (
         <i key={i} className={i >= left ? 'spent' : ''} />
       ))}
     </span>
@@ -1149,8 +1191,15 @@ function Energy({ left }: { readonly left: number }): JSX.Element {
  * decider s il valait la peine d attendre une manche de plus. Une decision qui
  * se prend sans information n en est pas une.
  */
-function UltimeGauge({ filled }: { readonly filled: number }): JSX.Element {
-  const ratio = Math.max(0, Math.min(1, filled / BALANCE.ultimate.gaugeMax));
+function UltimeGauge({
+  filled,
+  full,
+}: {
+  readonly filled: number;
+  /** Jauge pleine selon les regles du match : 60 en Ultime express. */
+  readonly full: number;
+}): JSX.Element {
+  const ratio = Math.max(0, Math.min(1, filled / full));
   const ready = ratio >= 1;
   return (
     <span

@@ -1,5 +1,5 @@
 import { STYLES, styleIcon, type Style, type Tier, TIERS } from '@aura/content';
-import { BALANCE, type Move } from '@aura/rules';
+import { BALANCE, type BalanceConfig, type Move } from '@aura/rules';
 import { poseIcon } from '../content/animations.js';
 import { danceOptions, type Wardrobe } from './wardrobe.js';
 
@@ -22,8 +22,10 @@ export interface HandCard {
   readonly cost: number;
   /** Palier et amplificateur tiennent dans l'energie jouable. */
   readonly affordable: boolean;
-  /** C'est la case brillante du joueur pour cette manche (×1,2). */
+  /** C'est la case brillante du joueur pour cette manche. */
   readonly shiny: boolean;
+  /** Ce que vaut la brillante dans ce match (×1,2, ×1,5 en Semaine brillante). */
+  readonly shinyMultiplier: number;
   readonly variants: {
     /** Rang de la pose montree parmi les possedees. */
     readonly index: number;
@@ -42,9 +44,12 @@ export interface HandInput {
   /** Cout de l'amplificateur choisi, qui se paie avec le palier. */
   readonly amplifierCost: number;
   readonly shiny: Move | null;
+  /** Les regles du match : un evenement change couts et multiplicateurs. */
+  readonly rules?: BalanceConfig;
 }
 
 export function handFor(input: HandInput): readonly HandCard[] {
+  const rules = input.rules ?? BALANCE;
   return TIERS.map((tier): HandCard => {
     const move = { style: input.family, tier };
     const options = danceOptions(input.wardrobe, move);
@@ -53,17 +58,18 @@ export function handFor(input: HandInput): readonly HandCard[] {
       options.choices.findIndex((card) => card.animationId === options.current),
     );
     const shown = options.choices[index];
-    const cost = BALANCE.tierCost[tier];
+    const cost = rules.tierCost[tier];
     return {
       tier,
       poseId: options.current,
       icon: poseIcon(options.current),
       name: shown?.name ?? '',
-      power: BALANCE.tierPower[tier],
+      power: rules.tierPower[tier],
       cost,
       affordable: cost + input.amplifierCost <= input.budget,
       shiny:
         input.shiny !== null && input.shiny.style === input.family && input.shiny.tier === tier,
+      shinyMultiplier: rules.shiny.multiplier,
       variants: { index, owned: options.choices.length, toUnlock: options.forSale },
     };
   });
@@ -82,11 +88,11 @@ export interface FamilyTab {
   readonly shiny: boolean;
 }
 
-export function tabsFor(shiny: Move | null): readonly FamilyTab[] {
+export function tabsFor(shiny: Move | null, rules: BalanceConfig = BALANCE): readonly FamilyTab[] {
   return STYLES.map((family) => ({
     family,
     icon: styleIcon(family),
-    beats: BALANCE.styleBeats[family],
+    beats: rules.styleBeats[family],
     shiny: shiny?.style === family,
   }));
 }

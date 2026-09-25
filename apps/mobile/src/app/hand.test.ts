@@ -1,5 +1,5 @@
 import { defaultAnimationFor } from '@aura/content';
-import { BALANCE } from '@aura/rules';
+import { BALANCE, variantConfig } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import { handFor, nextVariant, tabsFor, type HandInput } from './hand.js';
 import { defaultLook, type Wardrobe } from './wardrobe.js';
@@ -93,5 +93,25 @@ describe('tabsFor', () => {
   it('signale l onglet ou attend la brillante', () => {
     const tabs = tabsFor({ style: 'provoc', tier: 2 });
     expect(tabs.filter((tab) => tab.shiny).map((tab) => tab.family)).toEqual(['provoc']);
+  });
+});
+
+describe('handFor : les regles du match', () => {
+  it('dit ce que vaut la brillante dans ce match', () => {
+    const shiny = { style: 'calme', tier: 2 } as const;
+    expect(handFor(input({ shiny }))[2]?.shinyMultiplier).toBe(1.2);
+    const brillante = handFor(input({ shiny, rules: variantConfig('brillance') }));
+    expect(brillante[2]?.shinyMultiplier).toBe(1.5);
+  });
+
+  it('lit couts et puissances dans les regles du match, pas dans BALANCE', () => {
+    const rules = {
+      ...BALANCE,
+      tierCost: { ...BALANCE.tierCost, 4: 7 },
+      tierPower: { ...BALANCE.tierPower, 4: 99 },
+    };
+    const card = handFor(input({ rules }))[4]!;
+    expect(card.cost).toBe(7);
+    expect(card.power).toBe(99);
   });
 });

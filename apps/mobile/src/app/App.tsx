@@ -61,6 +61,7 @@ import {
 } from '../platform/quality.js';
 import { browserStore, loadProgress, saveProgress } from './persist.js';
 import { HomeScreen, ProfileScreen } from './screens.jsx';
+import { weekEvent } from '../match/rules.js';
 import { WardrobeScreen } from './WardrobeScreen.jsx';
 
 /**
@@ -748,6 +749,7 @@ export function App(): JSX.Element {
             }}
             profile={profile}
             mode={mode}
+            weekEvent={weekEvent(Date.now())}
             onToggleMode={() => {
               setMode((current) => (current === 'ranked' ? 'casual' : 'ranked'));
             }}

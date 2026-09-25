@@ -52,6 +52,8 @@ const tag = (value: number | boolean | string | null | undefined): string =>
 export function renderKey(view: KeyedView): string {
   const last = view.lastRound;
   return [
+    // Les regles changent les nombres affiches : un evenement doit redessiner.
+    view.event?.id ?? '-',
     view.phase,
     view.round,
     view.phaseEndsAtMs,

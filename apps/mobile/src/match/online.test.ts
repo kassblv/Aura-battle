@@ -549,3 +549,70 @@ describe('carte brillante — reprise et nouvelle manche', () => {
     expect(match.state.shiny).toBeNull();
   });
 });
+
+describe('createOnlineMatch : l evenement de la semaine', () => {
+  const found = (rulesVariant?: string): Record<string, unknown> => ({
+    matchId: MATCH,
+    seat: 'a',
+    opponent: { displayName: 'Nova', league: 'Or II', cosmetics: {} },
+    protocolVersion: PROTOCOL_VERSION,
+    rulesVersion: '1.0.0',
+    contentVersion: '1.0.0',
+    ghost: false,
+    ...(rulesVariant === undefined ? {} : { rulesVariant }),
+  });
+
+  it('retient la variante annoncee par match:found', () => {
+    const { match, emit } = harness();
+    emit('match:found', found('ultime'));
+    expect(match.state.rulesVariant).toBe('ultime');
+  });
+
+  it('joue les regles normales quand le serveur n annonce rien', () => {
+    const { match, emit } = harness();
+    emit('match:found', found());
+    expect(match.state.rulesVariant).toBeNull();
+  });
+
+  it('garde la variante a travers une reprise du meme match, pas d un autre', () => {
+    const { match, emit } = harness();
+    emit('match:found', found('contres'));
+    const snapshot = {
+      seat: 'a',
+      phase: 'recharge',
+      round: 2,
+      endsAt: 512_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 6,
+      ult: 0,
+      opponentLocked: false,
+      history: [],
+    };
+    emit('match:state', { matchId: MATCH, ...snapshot });
+    expect(match.state.rulesVariant).toBe('contres');
+    emit('match:state', { matchId: 'm_22222222-2222-4222-8222-222222222222', ...snapshot });
+    expect(match.state.rulesVariant).toBeNull();
+  });
+
+  /*
+    Application tuee puis rouverte : aucun `match:found` n'a ete recu, seul
+    l'instantane est la. Il porte la variante (2.4.1) : l'ecran la reprend.
+  */
+  it('reprend la variante de l instantane apres une application tuee', () => {
+    const { match, emit } = harness();
+    emit('match:state', {
+      matchId: MATCH,
+      seat: 'a',
+      phase: 'choice',
+      round: 2,
+      endsAt: 512_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 6,
+      ult: 0,
+      opponentLocked: false,
+      history: [],
+      rulesVariant: 'ultime',
+    });
+    expect(match.state.rulesVariant).toBe('ultime');
+  });
+});

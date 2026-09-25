@@ -1,4 +1,4 @@
-import { BALANCE, liveOrbs, type Orb, type RechargeTap } from '@aura/rules';
+import { BALANCE, liveOrbs, type BalanceConfig, type Orb, type RechargeTap } from '@aura/rules';
 import { reachable } from '../match/reach.js';
 import { percent } from './gauge.js';
 
@@ -23,7 +23,12 @@ import { percent } from './gauge.js';
  * symptome serait un tremblement, pas une erreur.
  */
 
-/** Emplacements d orbes affiches. Il ne change pas en cours de manche. */
+/**
+ * Emplacements d orbes affiches. Il ne change pas en cours de manche.
+ *
+ * Fixe, meme pendant un evenement : ce sont des boutons montes une fois.
+ * Aucune variante n y touche, et `frame.test.ts` le verifie pour chacune.
+ */
 export const ORB_SLOTS = BALANCE.recharge.visibleOrbs;
 
 /** Ce que l horloge de phase dit a l image courante. */
@@ -121,10 +126,12 @@ export function orbPaint(
   taps: readonly RechargeTap[],
   orbs: readonly Orb[],
   inPhaseMs: number,
+  /** Les regles du match : duree de vie et emplacements des orbes. */
+  rules: BalanceConfig = BALANCE,
 ): readonly OrbPaint[] {
   const slots: OrbPaint[] = Array.from({ length: ORB_SLOTS }, () => EMPTY_SLOT);
 
-  for (const live of liveOrbs(taps, orbs, inPhaseMs)) {
+  for (const live of liveOrbs(taps, orbs, inPhaseMs, rules)) {
     if (live.slot < 0 || live.slot >= ORB_SLOTS) continue;
     const at = reachable(live.orb.x, live.orb.y);
     const golden = live.orb.kind === 'golden';

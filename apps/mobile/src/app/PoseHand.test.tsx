@@ -1,4 +1,4 @@
-import { BALANCE } from '@aura/rules';
+import { BALANCE, variantConfig } from '@aura/rules';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
@@ -71,5 +71,32 @@ describe('PoseHand', () => {
     for (const text of ['🙌', '🌀', '🤸', '🌪️', '🔄', 'Roulade', 'Salto arrière']) {
       expect(html).toContain(text);
     }
+  });
+
+  it('annonce le multiplicateur de brillante du match, ×1,5 en Semaine brillante', () => {
+    const html = renderToStaticMarkup(
+      createElement(PoseHand, {
+        tabs: tabsFor({ style: 'acrobatie', tier: 1 }),
+        family: 'acrobatie',
+        cards: handFor({
+          family: 'acrobatie',
+          wardrobe: { look: defaultLook(), owned: new Set() },
+          budget: BALANCE.maxRoundCost,
+          amplifierCost: 0,
+          shiny: { style: 'acrobatie', tier: 1 },
+          rules: variantConfig('brillance'),
+        }),
+        selectedTier: null,
+        locked: false,
+        chosenFamily: null,
+        dealing: true,
+        denyTick: 0,
+        deniedTier: null,
+        onTab: () => undefined,
+        onCard: () => undefined,
+      }),
+    );
+    expect(html).toContain('carte brillante, ×1,5');
+    expect(html).not.toContain('×1,2');
   });
 });

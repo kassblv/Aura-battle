@@ -1,5 +1,5 @@
 import type { Style, Tier } from '@aura/content';
-import { BALANCE, beats, type Move } from '@aura/rules';
+import { BALANCE, beats, type BalanceConfig, type Move } from '@aura/rules';
 import { CLASH_AT_MS, REVEAL_FIRST_AT_MS, REVEAL_GAP_MS } from '../arena/round.js';
 import { poseIcon } from '../content/animations.js';
 import type { RoundView } from '../match/view.js';
@@ -30,6 +30,8 @@ export interface RevealCard {
   /** Arrive face cachee et se retourne a son instant. */
   readonly faceDown: boolean;
   readonly shiny: boolean;
+  /** Ce que vaut la brillante dans ce match : le badge le dit. */
+  readonly shinyMultiplier: number;
 }
 
 export type RevealCallout =
@@ -60,7 +62,7 @@ function cellPose(move: Move, poseId: string | null): { id: string; name: string
   return { id: card?.animationId ?? '', name: card?.name ?? '' };
 }
 
-function calloutOf(round: RoundView): RevealCallout | null {
+function calloutOf(round: RoundView, rules: BalanceConfig): RevealCallout | null {
   const mine = round.myMove.style;
   const theirs = round.opponentMove.style;
   if (round.counteredBy !== null) {
@@ -70,7 +72,7 @@ function calloutOf(round: RoundView): RevealCallout | null {
       by: round.counteredBy,
       winner: byMe ? mine : theirs,
       loser: byMe ? theirs : mine,
-      multiplier: BALANCE.counter.winnerMultiplier,
+      multiplier: rules.counter.winnerMultiplier,
     };
   }
   if (round.counterBlocked) {
@@ -81,7 +83,12 @@ function calloutOf(round: RoundView): RevealCallout | null {
   return null;
 }
 
-export function revealScene(round: RoundView, wardrobe: Wardrobe): RevealScene {
+export function revealScene(
+  round: RoundView,
+  wardrobe: Wardrobe,
+  /** Les regles du match : pendant un evenement, contre et brillante changent. */
+  rules: BalanceConfig = BALANCE,
+): RevealScene {
   const first = REVEAL_FIRST_AT_MS;
   const second = REVEAL_FIRST_AT_MS + REVEAL_GAP_MS;
   const myFirst = round.revealFirst === 'moi';
@@ -103,6 +110,7 @@ export function revealScene(round: RoundView, wardrobe: Wardrobe): RevealScene {
       atMs: myFirst ? first : second,
       faceDown: false,
       shiny: round.myShiny,
+      shinyMultiplier: rules.shiny.multiplier,
     },
     theirs: {
       poseId: their.id,
@@ -113,8 +121,9 @@ export function revealScene(round: RoundView, wardrobe: Wardrobe): RevealScene {
       atMs: myFirst ? second : first,
       faceDown: true,
       shiny: round.opponentShiny,
+      shinyMultiplier: rules.shiny.multiplier,
     },
-    callout: calloutOf(round),
+    callout: calloutOf(round, rules),
     calloutAtMs: CLASH_AT_MS,
   };
 }
