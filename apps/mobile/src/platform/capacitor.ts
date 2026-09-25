@@ -207,3 +207,42 @@ export async function hideSplash(): Promise<void> {
     // Greffon absent : l ecran s effacera de lui-meme au premier rendu.
   }
 }
+
+/** Partage un fichier par la feuille de partage native. */
+export interface NativeFileSharer {
+  share(blob: Blob, name: string, text: string): Promise<void>;
+}
+
+/**
+ * Le partage de fichier natif, ou `null` hors application.
+ *
+ * `@capacitor/share` ne partage que des adresses `file://` : le fichier passe
+ * d abord par le cache de l application, que le systeme vide de lui-meme. Le
+ * meme nom a chaque fois — un seul clip vit a la fois, le suivant l ecrase.
+ *
+ * `toBase64` est fourni par l appelant : `Filesystem.writeFile` attend du
+ * base64, et la conversion n a rien de natif.
+ */
+export async function loadNativeFileSharer(
+  toBase64: (blob: Blob) => Promise<string>,
+): Promise<NativeFileSharer | null> {
+  if (!isNative()) return null;
+  try {
+    const [{ Filesystem, Directory }, { Share }] = await Promise.all([
+      import('@capacitor/filesystem'),
+      import('@capacitor/share'),
+    ]);
+    return {
+      async share(blob, name, text) {
+        const { uri } = await Filesystem.writeFile({
+          path: name,
+          data: await toBase64(blob),
+          directory: Directory.Cache,
+        });
+        await Share.share({ files: [uri], text });
+      },
+    };
+  } catch {
+    return null;
+  }
+}

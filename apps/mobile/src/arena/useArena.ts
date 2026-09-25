@@ -102,6 +102,18 @@ export interface ArenaControls {
    */
   readonly sidePanel: RefObject<number>;
   /**
+   * S abonne a « image rendue » : appele juste APRES le rendu, dans la meme
+   * image, avec le canvas et l horodatage de `requestAnimationFrame`.
+   *
+   * C est le seul instant ou le canvas WebGL se copie : hors de son image, le
+   * tampon est deja efface et la copie rend du noir (ADR 0017). On n active pas
+   * `preserveDrawingBuffer` pour autant — il coute sur mobile a chaque image,
+   * pour tout le monde. Sans abonne, la boucle ne paie qu un test de taille.
+   *
+   * Stable d un rendu a l autre. Rend la fonction qui desabonne.
+   */
+  readonly onFrame: (listener: ArenaFrameListener) => () => void;
+  /**
    * Ramene le personnage de face dans la vitrine.
    *
    * Appele tout seul quand un duel commence ; expose pour qu un bouton
@@ -109,6 +121,9 @@ export interface ArenaControls {
    */
   resetOrbit(): void;
 }
+
+/** Voir `ArenaControls.onFrame`. `now` est dans le repere de `performance.now()`. */
+export type ArenaFrameListener = (canvas: HTMLCanvasElement, now: number) => void;
 
 export function useArena(
   canvasRef: RefObject<HTMLCanvasElement | null>,
@@ -161,6 +176,8 @@ export function useArena(
   // Cree une seule fois : l angle doit survivre aux rendus de React, pas
   // repartir de zero a chaque fois que l accueil se redessine.
   const orbit = useRef(createOrbitControl());
+  // Un ensemble cree une fois : la boucle le relit sans dependre de React.
+  const frameListeners = useRef(new Set<ArenaFrameListener>());
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -265,6 +282,7 @@ export function useArena(
     canvas.addEventListener('lostpointercapture', onPointerLost);
 
     let frame = 0;
+    const listeners = frameListeners.current;
     let previous = performance.now();
     let wasShowcase = showcase.current;
     let stagedRound: number | null = null;
@@ -537,6 +555,11 @@ export function useArena(
       arena.particles.commit();
 
       renderer.renderer.render(arena.scene, arena.camera);
+
+      // Dans la meme image que le rendu, sinon le tampon est deja efface.
+      if (listeners.size > 0) {
+        for (const listener of listeners) listener(canvas, now);
+      }
     };
 
     frame = requestAnimationFrame(tick);
@@ -570,6 +593,13 @@ export function useArena(
       showcase,
       round,
       sidePanel,
+      onFrame: (listener: ArenaFrameListener): (() => void) => {
+        const listeners = frameListeners.current;
+        listeners.add(listener);
+        return () => {
+          listeners.delete(listener);
+        };
+      },
       resetOrbit(): void {
         orbit.current.reset();
       },

@@ -92,7 +92,14 @@ describe('styles.css', () => {
     const touchVariable = /--touch:\s*(\d+)px/.exec(css);
     expect(Number(touchVariable?.[1]), '--touch dans :root').toBe(TOUCH);
 
-    const interactives = ['.mini', '.ward__item', '.shop__item', '.rail__btn', '.launch__alt'];
+    const interactives = [
+      '.mini',
+      '.ward__item',
+      '.shop__item',
+      '.rail__btn',
+      '.launch__alt',
+      '.clipshare__btn',
+    ];
     for (const selector of interactives) {
       const block = css.slice(css.indexOf(`${selector} {`));
       const declared = /min-height:\s*(var\(--touch\)|\d+px)/.exec(

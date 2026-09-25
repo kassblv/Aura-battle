@@ -989,6 +989,7 @@ export function App(): JSX.Element {
             onPreview={online.preview}
             dances={danceChoice}
             onCue={playCue}
+            arenaFrames={arena.onFrame}
           />
         )}
 
@@ -1021,6 +1022,7 @@ export function App(): JSX.Element {
             onPreview={online.preview}
             dances={danceChoice}
             onCue={playCue}
+            arenaFrames={arena.onFrame}
           />
         )}
 
@@ -1096,6 +1098,7 @@ function SoloMatchScreen({
       onPreview={session.preview}
       dances={dances}
       onCue={onCue}
+      arenaFrames={arena.onFrame}
     />
   );
 }

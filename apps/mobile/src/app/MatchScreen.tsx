@@ -37,6 +37,8 @@ import type { ChoicePreview } from '../match/choicePreview.js';
 import { cardGesture, familyToShow } from './choiceGesture.js';
 import { handFor, tabsFor, type FamilyTab, type HandCard } from './hand.js';
 import { PoseHand } from './PoseHand.js';
+import { ClipShare } from './ClipShare.js';
+import { useRevealClip, type ArenaFrames } from '../clip/useRevealClip.js';
 import { revealScene } from './reveal.js';
 import { RevealStage } from './RevealStage.js';
 import { scheduleVerdictRender } from './verdictTimer.js';
@@ -194,6 +196,11 @@ export interface MatchScreenProps {
    * l'autre, comme les autres rappels : `sameFrame` le compare par identite.
    */
   readonly onCue?: (cue: AudioCue) => void;
+  /**
+   * Les images de l arene, pour filmer la revelation des manches gagnees
+   * (ADR 0017). Absent : pas de clip. Stable, comme les autres rappels.
+   */
+  readonly arenaFrames?: ArenaFrames;
 }
 
 function MatchScreenBody({
@@ -211,6 +218,7 @@ function MatchScreenBody({
   onPreview,
   dances,
   onCue,
+  arenaFrames,
 }: MatchScreenProps): JSX.Element {
   const [style, setStyle] = useState<Style | null>(null);
   const [tier, setTier] = useState<Tier>(0);
@@ -451,6 +459,9 @@ function MatchScreenBody({
     () => (lastRound === null ? null : revealScene(lastRound, wardrobe)),
     [lastRound, wardrobe],
   );
+
+  // Le clip de la derniere manche gagnee, propose a l'ecran de fin.
+  const clip = useRevealClip({ frames: arenaFrames, view, inPhaseNow, scene });
 
   // La brillante arrive : la main s'ouvre sur sa famille, qu'on la voie briller.
   useEffect(() => {
@@ -864,6 +875,8 @@ function MatchScreenBody({
             </ul>
           )}
 
+          <ClipShare clip={clip} />
+
           <div className="outcome">
             <button type="button" className="outcome__home" onClick={onLeave}>
               Accueil
@@ -922,7 +935,8 @@ function sameFrame(previous: MatchScreenProps, next: MatchScreenProps): boolean 
     previous.onPreview === next.onPreview &&
     previous.dances?.wardrobe === next.dances?.wardrobe &&
     previous.dances?.onEquip === next.dances?.onEquip &&
-    previous.onCue === next.onCue
+    previous.onCue === next.onCue &&
+    previous.arenaFrames === next.arenaFrames
   );
 }
 

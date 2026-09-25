@@ -268,8 +268,10 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
 - [x] Achats intégrés via RevenueCat : reçus validés par RevenueCat, jetons crédités par le serveur via webhook, avec double anti-rejeu (ADR 0016, 2026-09-25). Reste l'ouverture des ventes côté comptes stores.
 
 ### M9 — Partage
-- [ ] Spike : export d'un clip vertical de la révélation (MediaRecorder sur le canvas ou rendu serveur), choix en ADR
-- [ ] Partage natif, lien d'invitation intégré au clip
+- [x] Spike : clip vertical de la révélation (2026-09-25). Composé dans le client, image par image (ADR 0017).
+  - Vérifié : MP4 720×1280, 3,3 s, 1,6 Mo, relu au navigateur. Images contrôlées : carte adverse qui se retourne, ma carte qui claque, bandeau du contre, verdict.
+  - Non vérifié : iOS et Android sur appareil.
+- [~] Partage natif (feuille de partage web, `@capacitor/share` sur mobile, téléchargement en repli) : fait. Le lien d'invitation dans le texte du partage reste à faire : le jeu n'a pas encore d'URL publique à y mettre.
 
 ### M10 — Live-ops
 - [ ] Feature flags, événements de règles en données, bulle d'intention en test A/B
