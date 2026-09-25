@@ -10,6 +10,8 @@ import {
   BAND_LEFT_WIDTH,
   CARD_ARC,
   CARD_HEIGHT,
+  CARD_SELECTED_SCALE,
+  selectedCardHeight,
   CARD_LIFT,
   CARD_STEP_MAX,
   CARD_WIDTH,
@@ -213,6 +215,7 @@ describe('styles.css', () => {
     expect(css).toContain(`--hand-card-h: ${String(CARD_HEIGHT)}px;`);
     expect(css).toContain(`--hand-lift: ${String(CARD_LIFT)}px;`);
     expect(css).toContain(`--hand-arc: ${String(CARD_ARC)}px;`);
+    expect(css).toContain(`--hand-scale: ${String(CARD_SELECTED_SCALE)};`);
     expect(css).toContain(`--amp-w: ${String(AMP_WIDTH)}px;`);
     expect(css).toContain(`--band-left-w: ${String(BAND_LEFT_WIDTH)}px;`);
     expect(css).toContain(`--pick-tight-w: ${String(PICK_TIGHT.width)}px;`);
@@ -321,7 +324,10 @@ describe('hauteur de la bande', () => {
   */
   it('compte les trois blocs : jauge et Ultime, main, amplificateur', () => {
     expect(bandHeight()).toBeGreaterThanOrEqual(ULTIMATE_HEIGHT + GAP + GAUGE_HEIGHT);
-    expect(bandHeight()).toBeGreaterThanOrEqual(TOUCH + GAP + CARD_HEIGHT + CARD_LIFT + CARD_ARC);
+    expect(bandHeight()).toBeGreaterThanOrEqual(
+      TOUCH + GAP + selectedCardHeight() + CARD_LIFT + CARD_ARC,
+    );
+    expect(selectedCardHeight()).toBeGreaterThan(CARD_HEIGHT);
     expect(bandHeight()).toBeGreaterThanOrEqual(clusterHeight(2, PICK_TIGHT, 0));
   });
 });

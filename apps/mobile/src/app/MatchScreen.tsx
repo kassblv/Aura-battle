@@ -34,7 +34,8 @@ import type { AudioCue } from '../audio/cues.js';
 import { renderKey, type MeterZonesView } from '../ui/renderKey.js';
 import { betFor, levelFill, type Bet } from '../ui/bet.js';
 import type { ChoicePreview } from '../match/choicePreview.js';
-import { handFor, nextVariant, tabsFor, type FamilyTab, type HandCard } from './hand.js';
+import { cardGesture, familyToShow } from './choiceGesture.js';
+import { handFor, tabsFor, type FamilyTab, type HandCard } from './hand.js';
 import { PoseHand } from './PoseHand.js';
 import { danceOptions, defaultLook, type Wardrobe } from './wardrobe.js';
 
@@ -217,6 +218,8 @@ function MatchScreenBody({
   const [family, setFamily] = useState<Style>('calme');
   /** Carte trop chere qu'on vient de toucher : elle tremble un instant. */
   const [deniedTier, setDeniedTier] = useState<Tier | null>(null);
+  /** Compte les refus : un second appui refait trembler la meme carte. */
+  const [denyTick, setDenyTick] = useState(0);
   /**
    * L Ultime, arme pour cette manche.
    *
@@ -401,9 +404,18 @@ function MatchScreenBody({
   const shinyKey = shiny === null ? '' : `${shiny.style}.${String(shiny.tier)}`;
   const shinyMove = useMemo(() => parseShinyKey(shinyKey), [shinyKey]);
   const tabs = useMemo(() => tabsFor(shinyMove), [shinyMove]);
+  // Au verrouillage, la main revient sur la carte jouee.
+  const shownFamily = familyToShow({ locked, style, family });
   const cards = useMemo(
-    () => handFor({ family, wardrobe, budget: cap, amplifierCost: amplifier, shiny: shinyMove }),
-    [family, wardrobe, cap, amplifier, shinyMove],
+    () =>
+      handFor({
+        family: shownFamily,
+        wardrobe,
+        budget: cap,
+        amplifierCost: amplifier,
+        shiny: shinyMove,
+      }),
+    [shownFamily, wardrobe, cap, amplifier, shinyMove],
   );
 
   // La brillante arrive : la main s'ouvre sur sa famille, qu'on la voie briller.
@@ -438,6 +450,8 @@ function MatchScreenBody({
   const openFamily = useCallback(
     (next: Style): void => {
       setFamily(next);
+      // Le refus appartient a la famille qu'on quitte.
+      setDeniedTier(null);
       onCue?.({ type: 'card', action: 'deal' });
     },
     [onCue],
@@ -483,22 +497,26 @@ function MatchScreenBody({
    */
   const pickCard = useCallback(
     (card: HandCard): void => {
-      if (!card.affordable) {
-        setDeniedTier(card.tier);
-        onCue?.({ type: 'card', action: 'denied' });
-        return;
+      const gesture = cardGesture(card, { style, tier, family: shownFamily }, wardrobe);
+      switch (gesture.kind) {
+        case 'deny':
+          setDeniedTier(gesture.tier);
+          setDenyTick((tick) => tick + 1);
+          onCue?.({ type: 'card', action: 'denied' });
+          return;
+        case 'flip':
+          setDeniedTier(null);
+          equipDance?.(gesture.poseId);
+          onCue?.({ type: 'card', action: 'flip' });
+          return;
+        case 'pick':
+          setDeniedTier(null);
+          chooseStyle(gesture.move.style);
+          setTier(gesture.move.tier);
+          onCue?.({ type: 'card', action: 'pick' });
       }
-      setDeniedTier(null);
-      if (style === family && tier === card.tier && card.variants.owned > 1) {
-        equipDance?.(nextVariant(wardrobe, { style: family, tier: card.tier }));
-        onCue?.({ type: 'card', action: 'flip' });
-        return;
-      }
-      chooseStyle(family);
-      setTier(card.tier);
-      onCue?.({ type: 'card', action: 'pick' });
     },
-    [style, family, tier, equipDance, wardrobe, chooseStyle, onCue],
+    [style, tier, shownFamily, equipDance, wardrobe, chooseStyle, onCue],
   );
 
   const tapSlot = (slot: number): void => {
@@ -651,10 +669,12 @@ function MatchScreenBody({
           peek={peek}
           onPeek={setPeek}
           tabs={tabs}
-          family={family}
+          family={shownFamily}
+          chosenFamily={style}
           cards={cards}
-          selectedTier={style === family ? tier : null}
-          dealKey={view.round}
+          selectedTier={style === shownFamily ? tier : null}
+          dealing={view.phase === 'choice'}
+          denyTick={denyTick}
           deniedTier={deniedTier}
           onTab={openFamily}
           onCard={pickCard}
@@ -672,11 +692,17 @@ function MatchScreenBody({
           </h2>
           <p className="verdict__line">
             <span>Toi</span>
-            <b>{view.lastRound.myScore}</b>
+            <b>
+              {view.lastRound.myShiny && <span className="verdict__shiny">✨ ×1,2</span>}
+              {view.lastRound.myScore}
+            </b>
           </p>
           <p className="verdict__line">
             <span>{opponentName}</span>
-            <b>{view.lastRound.opponentScore}</b>
+            <b>
+              {view.lastRound.opponentShiny && <span className="verdict__shiny">✨ ×1,2</span>}
+              {view.lastRound.opponentScore}
+            </b>
           </p>
 
           {/*
@@ -873,9 +899,11 @@ const ControlBand = memo(function ControlBand({
   onPeek,
   tabs,
   family,
+  chosenFamily,
   cards,
   selectedTier,
-  dealKey,
+  dealing,
+  denyTick,
   deniedTier,
   onTab,
   onCard,
@@ -901,9 +929,11 @@ const ControlBand = memo(function ControlBand({
   readonly onPeek: (next: AmplifierLevel) => void;
   readonly tabs: readonly FamilyTab[];
   readonly family: Style;
+  readonly chosenFamily: Style | null;
   readonly cards: readonly HandCard[];
   readonly selectedTier: Tier | null;
-  readonly dealKey: number;
+  readonly dealing: boolean;
+  readonly denyTick: number;
   readonly deniedTier: Tier | null;
   readonly onTab: (family: Style) => void;
   readonly onCard: (card: HandCard) => void;
@@ -963,10 +993,12 @@ const ControlBand = memo(function ControlBand({
       <PoseHand
         tabs={tabs}
         family={family}
+        chosenFamily={chosenFamily}
         cards={cards}
         selectedTier={selectedTier}
         locked={locked}
-        dealKey={dealKey}
+        dealing={dealing}
+        denyTick={denyTick}
         deniedTier={deniedTier}
         onTab={onTab}
         onCard={onCard}

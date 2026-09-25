@@ -20,7 +20,24 @@ Commande : `pnpm sim --matches 10000 --strategy all` (graine « sim »).
 | Talent contre budget | 70,1 % | 70,6 % | 55–85 % |
 | Tout sur une manche contre économe | 3,0 % | 2,5 % | 40–60 % (hors zone depuis le 16/09) |
 
-**La brillante pimente sans décider** : la jouer systématiquement gagne 40 % des matchs, bien moins que lire l'adversaire (67 %). Aucun changement d'équilibrage nécessaire.
+Attention : ces 40 % ne mesurent **pas** la valeur de la brillante. `shinyChaser` dépense exactement le palier de sa case, sans amplificateur, contre 4 points pour `counter` : son score mélange la brillante et une sous-dépense (relevé par la relecture finale). D'où la mesure A/B ci-dessous.
+
+## Mesure A/B : la même stratégie, sans puis avec la brillante
+
+6 000 matchs par ligne (`simulateMatch`, graines `ab-0…`). Seul change `BALANCE.shiny.multiplier`.
+
+| Duel | ×1,0 (sans) | ×1,2 (avec) | Écart |
+|---|---|---|---|
+| Chasseur de brillantes contre contre-picker | 13,7 % | 21,5 % | +7,8 |
+| Chasseur de brillantes contre aléatoire | 26,6 % | 35,1 % | +8,5 |
+| Chasseur de brillantes contre glouton | 9,6 % | 16,0 % | +6,4 |
+| Contre-picker contre aléatoire | 60,7 % | 60,8 % | +0,1 |
+
+**Conclusion.**
+- **La brillante a une vraie valeur** : environ +7 à +9 points de victoire pour qui la joue. La chercher est gratifiant.
+- **Elle n'efface pas la lecture** : l'avantage du contre-picker est intact, et courir après la brillante sans lire reste nettement perdant.
+
+Aucun changement d'équilibrage nécessaire.
 
 ## Sortie brute
 

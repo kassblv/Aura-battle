@@ -7,6 +7,7 @@ import { choiceCost } from '../round.js';
 import { evaluateTiming, generateGaugeParams } from '../timing.js';
 import type { Style } from '../types.js';
 import {
+  DEFAULT_SHINY_APPETITE,
   affordableChoice,
   AI_PROFILES,
   AI_PROFILE_IDS,
@@ -392,7 +393,18 @@ describe('decideChoice — carte brillante', () => {
     expect(play(1, 1)).toBe(0);
   });
 
-  it('a un appetit par defaut de 0,35', () => {
-    expect(AI_PROFILES.calm.shinyAppetite ?? 0.35).toBe(0.35);
+  // Un profil sans appetit declare vise sa brillante environ une fois sur trois.
+  it('vise sa brillante une manche sur trois par defaut', () => {
+    expect(DEFAULT_SHINY_APPETITE).toBe(0.35);
+    const { shinyAppetite: _unused, ...sansAppetit } = AI_PROFILES.calm;
+    const rng = createRng('appetit-par-defaut');
+    let hits = 0;
+    for (let i = 0; i < 2_000; i += 1) {
+      const choice = decideChoice({ ...baseContext, profile: sansAppetit, rng, shiny });
+      if (choice.move.style === shiny.style && choice.move.tier === shiny.tier) hits += 1;
+    }
+    // 0,35 plus les tirages ordinaires qui tombent sur la case par hasard.
+    expect(hits / 2_000).toBeGreaterThan(0.3);
+    expect(hits / 2_000).toBeLessThan(0.45);
   });
 });

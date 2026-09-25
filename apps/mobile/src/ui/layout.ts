@@ -237,6 +237,12 @@ export const CARD_HEIGHT = 92;
 /** Hauteur dont se souleve la carte choisie : la main la reserve. */
 export const CARD_LIFT = 12;
 /**
+ * Agrandissement de la carte choisie. Il grandit vers le HAUT (origine en
+ * bas) : la main reserve donc aussi ce surplus, sans quoi la carte mordait
+ * sur la rangee d'onglets et volait leurs appuis.
+ */
+export const CARD_SELECTED_SCALE = 1.06;
+/**
  * Marge sous l'eventail : les cartes du bord, inclinees et plus basses, y
  * descendent. Sans elle, le bas de leur texte passait sous le bord de l'ecran.
  */
@@ -265,11 +271,16 @@ export function handBand(viewportWidth: number): HandBand {
   };
 }
 
+/** Hauteur de la carte choisie, agrandie. */
+export function selectedCardHeight(): number {
+  return Math.ceil(CARD_HEIGHT * CARD_SELECTED_SCALE);
+}
+
 /** Hauteur de la bande : le plus haut des trois blocs. */
 export function bandHeight(): number {
   const padding = 2 * (CLUSTER_PADDING + CLUSTER_BORDER);
   const left = BET_HEADER + GAP + ULTIMATE_HEIGHT + GAP + GAUGE_HEIGHT + padding;
-  const hand = TOUCH + GAP + CARD_HEIGHT + CARD_LIFT + CARD_ARC;
+  const hand = TOUCH + GAP + selectedCardHeight() + CARD_LIFT + CARD_ARC;
   const right = clusterHeight(2, { width: AMP_WIDTH, height: TOUCH }, 0);
   return Math.max(left, hand, right);
 }

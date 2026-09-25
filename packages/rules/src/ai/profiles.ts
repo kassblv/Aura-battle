@@ -204,7 +204,7 @@ export interface AiChoiceContext {
 }
 
 /** Appetit par defaut pour la carte brillante. */
-const DEFAULT_SHINY_APPETITE = 0.35;
+export const DEFAULT_SHINY_APPETITE = 0.35;
 
 const TIERS: readonly Tier[] = [0, 1, 2, 3, 4];
 

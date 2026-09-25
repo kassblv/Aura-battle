@@ -755,12 +755,23 @@ describe('amplificateurs joues', () => {
 });
 
 describe('carte brillante — tirage', () => {
-  it('est deterministe par graine et par manche', () => {
+  // Chaque manche a son propre tirage : sinon la brillante resterait la meme tout le match.
+  it('change de case d une manche a l autre', () => {
+    let same = 0;
+    for (let i = 0; i < 1_000; i += 1) {
+      const one = buildRoundContext(`m-${String(i)}`, 1, BALANCE).shiny.a;
+      const two = buildRoundContext(`m-${String(i)}`, 2, BALANCE).shiny.a;
+      if (one.style === two.style && one.tier === two.tier) same += 1;
+    }
+    expect(same / 1_000).toBeLessThan(0.08);
+  });
+
+  it('rend toujours une case valide, quelle que soit la graine', () => {
     fc.assert(
-      fc.property(fc.string(), fc.integer({ min: 1, max: 3 }), (seed, round) => {
-        expect(buildRoundContext(seed, round, BALANCE).shiny).toEqual(
-          buildRoundContext(seed, round, BALANCE).shiny,
-        );
+      fc.property(fc.string(), (seed) => {
+        const shiny = buildRoundContext(seed, 1, BALANCE).shiny.a;
+        expect(BALANCE.styles).toContain(shiny.style);
+        expect([0, 1, 2, 3, 4]).toContain(shiny.tier);
       }),
     );
   });

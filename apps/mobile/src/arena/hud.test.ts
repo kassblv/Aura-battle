@@ -8,7 +8,7 @@ import {
   BAND_LEFT_WIDTH,
   bandHeight,
   CARD_ARC,
-  CARD_HEIGHT,
+  selectedCardHeight,
   CARD_LIFT,
   GAP,
   GAUGE_HEIGHT,
@@ -207,7 +207,7 @@ describe('la bande de commandes ne couvre pas les combattants', () => {
     depasser la ligne de la moitie haute, cartes soulevees et onglets compris.
   */
   it('laisse degagee la moitie haute des combattants, main de cartes comprise', () => {
-    const hand = TOUCH + GAP + CARD_HEIGHT + CARD_LIFT + CARD_ARC;
+    const hand = TOUCH + GAP + selectedCardHeight() + CARD_LIFT + CARD_ARC;
     for (const device of DEVICES) {
       const band = fightersBand(envelope, device.width, device.height, choiceFraming());
       const clear = band.top + (band.bottom - band.top) * CLEAR_FRACTION;

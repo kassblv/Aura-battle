@@ -20,7 +20,9 @@ const render = (budget = BALANCE.maxRoundCost): string =>
       }),
       selectedTier: 2,
       locked: false,
-      dealKey: 1,
+      chosenFamily: 'acrobatie',
+      dealing: true,
+      denyTick: 0,
       deniedTier: null,
       onTab: () => undefined,
       onCard: () => undefined,
@@ -43,8 +45,17 @@ describe('PoseHand', () => {
     expect(html).toContain('hand__sheen');
   });
 
-  it('souleve la carte choisie', () => {
-    expect(count(render(), /data-selected="true"/g)).toBe(1);
+  it('souleve la carte choisie, et son onglet le rappelle', () => {
+    const html = render();
+    expect(count(html, /data-selected="true"/g)).toBe(1);
+    expect(count(html, /class="hand__tab"[^>]*data-chosen="true"/g)).toBe(1);
+  });
+
+  // Des boutons a bascule, pas un faux motif d'onglets sans panneau.
+  it('annonce les familles comme des boutons a bascule', () => {
+    const html = render();
+    expect(html).not.toContain('role="tab"');
+    expect(count(html, /class="hand__tab"[^>]*aria-pressed="true"/g)).toBe(1);
   });
 
   // Une carte trop chere reste un bouton ACTIF : on la touche pour savoir ce qui manque.
