@@ -22,6 +22,14 @@ const itemIdSchema = z.string().min(1).max(64);
  */
 export const inventoryBuyRequestSchema = z.strictObject({
   itemId: itemIdSchema,
+  /**
+   * La monnaie choisie (2.2.0) : pieces (`soft`) ou jetons (`hard`).
+   *
+   * Une MONNAIE, pas un montant : le prix dans chacune reste celui du
+   * catalogue du serveur. Absent, le serveur paie en pieces et ne prend des
+   * jetons que si les pieces manquent (comportement 2.1).
+   */
+  currency: z.enum(['soft', 'hard']).optional(),
 });
 
 /**

@@ -67,3 +67,12 @@ export function levelFor(xp: number): LevelState {
 
   return { level, into: total - floor, needed: xpForLevel(level + 1) - floor, total };
 }
+
+/**
+ * Les jetons gagnes en passant de `beforeXp` a `afterXp` : un lot par niveau
+ * franchi, rien au-dela du plafond, rien si l'experience ne monte pas.
+ */
+export function levelUpTokens(beforeXp: number, afterXp: number): number {
+  const gained = levelFor(afterXp).level - levelFor(beforeXp).level;
+  return gained > 0 ? gained * BALANCE.progression.tokensPerLevel : 0;
+}

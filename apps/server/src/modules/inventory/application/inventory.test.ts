@@ -35,7 +35,7 @@ const CATALOGUE: readonly CatalogueEntry[] = [
     kind: 'AURA_EFFECT',
     rarity: 'epic',
     priceSoft: 850,
-    priceHard: null,
+    priceHard: 85,
     availableFrom: null,
     availableTo: null,
   },
@@ -141,6 +141,15 @@ describe('buy', () => {
     expect(repo.state.owned).toContain('color.violet');
     expect(repo.debits).toEqual([{ soft: 80, hard: 0 }]);
     expect(repo.state.wallet.soft).toBe(920);
+  });
+
+  // 2.2.0 : la monnaie choisie traverse le service jusqu'au debit.
+  it('paie en jetons quand le joueur les choisit', async () => {
+    const repo = repository({ wallet: { soft: 1_000, hard: 100 } });
+    await service(repo).buy('p-1', 'fx.galaxy', 'hard');
+
+    expect(repo.state.owned).toContain('fx.galaxy');
+    expect(repo.debits).toEqual([{ soft: 0, hard: 85 }]);
   });
 
   it('refuse un objet absent du catalogue', async () => {

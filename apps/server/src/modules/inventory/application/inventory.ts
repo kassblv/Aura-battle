@@ -129,11 +129,15 @@ export class InventoryService {
    * Rendu plutot que relu : la bourse vient de la transaction du debit, la
    * liste des possessions de la lecture qui a servi a juger l'achat.
    */
-  buy(playerId: string, itemId: string): Promise<PlayerInventory> {
-    return this.writes.run(playerId, () => this.buyNow(playerId, itemId));
+  buy(playerId: string, itemId: string, currency?: 'soft' | 'hard'): Promise<PlayerInventory> {
+    return this.writes.run(playerId, () => this.buyNow(playerId, itemId, currency));
   }
 
-  private async buyNow(playerId: string, itemId: string): Promise<PlayerInventory> {
+  private async buyNow(
+    playerId: string,
+    itemId: string,
+    currency: 'soft' | 'hard' | undefined,
+  ): Promise<PlayerInventory> {
     const { inventory, catalogue } = await this.load(playerId);
 
     const item = catalogue.find((entry) => entry.id === itemId);
@@ -153,6 +157,8 @@ export class InventoryService {
         bien. Regle d'or n°1 — le client n'envoie que des intentions.
       */
       day: dayIndexOf(now.getTime()),
+      // Une monnaie, jamais un montant : le prix reste celui du catalogue.
+      ...(currency === undefined ? {} : { currency }),
     });
     if (!outcome.ok) throw new InventoryError(outcome.reason);
 

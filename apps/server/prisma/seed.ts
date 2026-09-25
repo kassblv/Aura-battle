@@ -5,6 +5,7 @@ import {
   animationPrice,
   AURA_COLORS,
   AURA_EFFECTS,
+  catalogueTokenPrice,
   HAIRSTYLES,
   OUTFITS,
   type Rarity,
@@ -97,10 +98,13 @@ async function seedCosmetics(): Promise<number> {
   ];
 
   for (const item of items) {
+    // Le prix en jetons se deduit du prix en pieces (`@aura/content`) : un
+    // article offert n'en a pas, sans quoi il cesserait d'etre offert.
+    const priceHard = catalogueTokenPrice(item.priceSoft);
     await prisma.cosmeticItem.upsert({
       where: { id: item.id },
-      update: { kind: item.kind, rarity: item.rarity, priceSoft: item.priceSoft },
-      create: item,
+      update: { kind: item.kind, rarity: item.rarity, priceSoft: item.priceSoft, priceHard },
+      create: { ...item, priceHard },
     });
   }
 

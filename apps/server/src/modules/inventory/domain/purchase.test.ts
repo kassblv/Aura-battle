@@ -318,3 +318,66 @@ describe('ownedWithFree', () => {
     ]);
   });
 });
+
+/*
+  2.2.0 : le joueur choisit sa monnaie. Le prix dans chacune reste celui du
+  catalogue ; le choix ne dit que dans quelle poche prendre.
+*/
+describe('purchaseOutcome — la monnaie choisie', () => {
+  const both = item({ priceSoft: 400, priceHard: 40 });
+
+  it('paie en jetons quand on les choisit, meme avec assez de pieces', () => {
+    expect(
+      purchaseOutcome({
+        item: both,
+        wallet: { soft: 1_000, hard: 50 },
+        owned: false,
+        now: NOW,
+        currency: 'hard',
+      }),
+    ).toEqual({ ok: true, spend: { soft: 0, hard: 40 } });
+  });
+
+  it('ne se rabat jamais sur l autre monnaie quand on en a choisi une', () => {
+    expect(
+      purchaseOutcome({
+        item: both,
+        wallet: { soft: 1_000, hard: 5 },
+        owned: false,
+        now: NOW,
+        currency: 'hard',
+      }),
+    ).toEqual({ ok: false, reason: 'INSUFFICIENT_FUNDS' });
+    expect(
+      purchaseOutcome({
+        item: both,
+        wallet: { soft: 10, hard: 500 },
+        owned: false,
+        now: NOW,
+        currency: 'soft',
+      }),
+    ).toEqual({ ok: false, reason: 'INSUFFICIENT_FUNDS' });
+  });
+
+  it('refuse les jetons sur un article sans prix en jetons', () => {
+    expect(
+      purchaseOutcome({ item: item(), wallet: RICH, owned: false, now: NOW, currency: 'hard' }),
+    ).toEqual({ ok: false, reason: 'NOT_PURCHASABLE' });
+  });
+
+  it('applique la remise de la vitrine aux jetons aussi', () => {
+    const day = 0;
+    const featured = featuredForDay(day)[0]!;
+    const entry = item({ id: featured, priceSoft: 400, priceHard: 40 });
+    expect(
+      purchaseOutcome({
+        item: entry,
+        wallet: { soft: 0, hard: 100 },
+        owned: false,
+        now: NOW,
+        currency: 'hard',
+        day,
+      }),
+    ).toEqual({ ok: true, spend: { soft: 0, hard: discountedPrice(40) } });
+  });
+});

@@ -64,6 +64,14 @@ export interface PurchaseRequest {
    * qui ne donne rien, jamais celui qui offre une remise a tout le monde.
    */
   readonly day?: number;
+  /**
+   * La monnaie choisie par le joueur (protocole 2.2.0).
+   *
+   * Choisie, elle est la SEULE prelevee : pas de repli silencieux sur l'autre,
+   * qui viderait la poche que le joueur voulait garder. Absente, les pieces
+   * d'abord, les jetons si elles manquent (comportement 2.1).
+   */
+  readonly currency?: 'soft' | 'hard';
 }
 
 /**
@@ -77,6 +85,13 @@ function effectiveSoft(item: CatalogueEntry, day: number | undefined): number | 
   if (item.priceSoft === null) return null;
   if (day === undefined || !isFeatured(item.id, day)) return item.priceSoft;
   return discountedPrice(item.priceSoft);
+}
+
+/** Le prix en jetons facture aujourd'hui : la vitrine remise aussi les jetons. */
+function effectiveHard(item: CatalogueEntry, day: number | undefined): number | null {
+  if (item.priceHard === null) return null;
+  if (day === undefined || !isFeatured(item.id, day)) return item.priceHard;
+  return discountedPrice(item.priceHard);
 }
 
 function purchasable(kind: CosmeticKind): boolean {
@@ -124,11 +139,23 @@ export function purchaseOutcome(request: PurchaseRequest): PurchaseOutcome {
     le joueur peut s'offrir ; l'inverse le laisserait passer a decouvert. Une
     seule valeur pour les deux, et la question ne se pose plus.
   */
+  const hard = effectiveHard(item, request.day);
+
+  if (request.currency === 'soft' || request.currency === 'hard') {
+    const price = request.currency === 'soft' ? soft : hard;
+    if (price === null) return { ok: false, reason: 'NOT_PURCHASABLE' };
+    if (wallet[request.currency] < price) return { ok: false, reason: 'INSUFFICIENT_FUNDS' };
+    return {
+      ok: true,
+      spend: request.currency === 'soft' ? { soft: price, hard: 0 } : { soft: 0, hard: price },
+    };
+  }
+
   if (soft !== null && wallet.soft >= soft) {
     return { ok: true, spend: { soft, hard: 0 } };
   }
-  if (item.priceHard !== null && wallet.hard >= item.priceHard) {
-    return { ok: true, spend: { soft: 0, hard: item.priceHard } };
+  if (hard !== null && wallet.hard >= hard) {
+    return { ok: true, spend: { soft: 0, hard } };
   }
 
   return { ok: false, reason: 'INSUFFICIENT_FUNDS' };

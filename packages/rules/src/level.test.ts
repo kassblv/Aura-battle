@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from './balance.js';
-import { levelFor, xpForLevel } from './level.js';
+import { levelFor, levelUpTokens, xpForLevel } from './level.js';
 
 const { base, growth, maxLevel } = BALANCE.progression;
 
@@ -101,5 +101,36 @@ describe('levelFor', () => {
     expect(base).toBeGreaterThan(0);
     expect(growth).toBeGreaterThan(1);
     expect(maxLevel).toBeGreaterThan(1);
+  });
+});
+
+/*
+  Les jetons gagnes en jouant : chaque niveau franchi en rapporte. C'est ce
+  qui rend la monnaie dure atteignable sans payer (regle d'or n°3 : l'argent
+  ne fait que raccourcir l'attente).
+*/
+describe('levelUpTokens', () => {
+  const perLevel = BALANCE.progression.tokensPerLevel;
+
+  it('ne rapporte rien sans changer de niveau', () => {
+    expect(levelUpTokens(0, 50)).toBe(0);
+  });
+
+  it('rapporte les jetons du niveau franchi', () => {
+    expect(levelUpTokens(90, xpForLevel(2))).toBe(perLevel);
+  });
+
+  it('compte chaque niveau franchi d un coup', () => {
+    expect(levelUpTokens(0, xpForLevel(4))).toBe(3 * perLevel);
+  });
+
+  it('ne rapporte plus rien au plafond, ni pour une experience qui baisse', () => {
+    const cap = xpForLevel(BALANCE.progression.maxLevel);
+    expect(levelUpTokens(cap, cap + 10_000)).toBe(0);
+    expect(levelUpTokens(xpForLevel(5), 0)).toBe(0);
+  });
+
+  it('paie une pose commune des le niveau 2', () => {
+    expect(perLevel).toBeGreaterThanOrEqual(9);
   });
 });

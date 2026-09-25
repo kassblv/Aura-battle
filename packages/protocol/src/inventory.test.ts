@@ -30,6 +30,20 @@ describe('achat', () => {
 
   it('refuse un identifiant vide ou demesure', () => {
     expect(parseInventoryBuyRequest({ itemId: '' }).success).toBe(false);
+  });
+
+  // 2.2.0 : le joueur choisit sa monnaie. Une MONNAIE, jamais un montant.
+  it('accepte le choix de la monnaie, et seulement pieces ou jetons', () => {
+    expect(parseInventoryBuyRequest({ itemId: 'color.violet', currency: 'soft' }).success).toBe(
+      true,
+    );
+    expect(parseInventoryBuyRequest({ itemId: 'color.violet', currency: 'hard' }).success).toBe(
+      true,
+    );
+    expect(parseInventoryBuyRequest({ itemId: 'color.violet', currency: 'gems' }).success).toBe(
+      false,
+    );
+    expect(parseInventoryBuyRequest({ itemId: 'color.violet', currency: 10 }).success).toBe(false);
     expect(parseInventoryBuyRequest({ itemId: 'x'.repeat(200) }).success).toBe(false);
   });
 });

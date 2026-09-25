@@ -225,6 +225,30 @@ describe('PUT /inventory/loadout', () => {
 });
 
 describe('POST /inventory/buy', () => {
+  // 2.2.0 : la monnaie traverse le controleur ; une monnaie inconnue est refusee.
+  it('transmet la monnaie choisie jusqu a la regle d achat', async () => {
+    const reply = await app.inject({
+      method: 'POST',
+      url: '/inventory/buy',
+      headers: { authorization: 'Bearer jwt.p-currency' },
+      payload: { itemId: 'color.violet', currency: 'hard' },
+    });
+    // color.violet n'a pas de prix en jetons : payer en jetons est impossible.
+    expect(reply.statusCode).not.toBe(201);
+    expect(reply.statusCode).toBe(403);
+    expect(reply.json<{ code: string }>().code).toBe('NOT_PURCHASABLE');
+  });
+
+  it('refuse une monnaie inconnue', async () => {
+    const reply = await app.inject({
+      method: 'POST',
+      url: '/inventory/buy',
+      headers: { authorization: 'Bearer jwt.p-currency2' },
+      payload: { itemId: 'color.violet', currency: 'gems' },
+    });
+    expect(reply.statusCode).toBe(400);
+  });
+
   it('repond avec la bourse debitee, sans relire', async () => {
     reads = 0;
     const reply = await buy('p-shop', 'color.violet');

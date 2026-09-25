@@ -6,8 +6,8 @@ describe('PROTOCOL_VERSION', () => {
     expect(PROTOCOL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('est en 2.1.0 : la carte brillante, ajoutee sans rupture', () => {
-    expect(PROTOCOL_VERSION).toBe('2.1.0');
+  it('est en 2.2.0 : le choix de la monnaie a l achat, ajoute sans rupture', () => {
+    expect(PROTOCOL_VERSION).toBe('2.2.0');
   });
 });
 

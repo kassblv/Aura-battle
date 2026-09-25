@@ -75,3 +75,26 @@ export function allCosmetics(): readonly PricedCosmetic[] {
     price: item.price,
   }));
 }
+
+/** Pieces pour un jeton : le taux de la monnaie dure. */
+export const TOKEN_RATE = 10;
+
+/**
+ * Le prix en jetons d'un article, deduit de son prix en pieces.
+ *
+ * Une seule regle pour le seed du serveur et la boutique du client : deux
+ * prix ecrits a la main finiraient par se contredire. Arrondi au-dessus pour
+ * qu'un article payant ne soit jamais gratuit en jetons ; offert reste offert.
+ */
+export function tokenPrice(softPrice: number): number {
+  return softPrice <= 0 ? 0 : Math.ceil(softPrice / TOKEN_RATE);
+}
+
+/**
+ * Le prix en jetons tel qu'il s'ecrit au catalogue du serveur : `null` pour un
+ * article offert, qui cesserait sinon d'etre tenu pour offert (`isOffered`
+ * exige l'absence de prix en jetons).
+ */
+export function catalogueTokenPrice(softPrice: number): number | null {
+  return softPrice <= 0 ? null : tokenPrice(softPrice);
+}

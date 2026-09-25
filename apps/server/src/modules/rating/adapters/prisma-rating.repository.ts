@@ -1,3 +1,4 @@
+import { levelUpTokens } from '@aura/rules';
 import { Inject, Injectable } from '@nestjs/common';
 import { League as LeagueColumn } from '@prisma/client';
 import { currentSeasonId } from '../../../shared/current-season.js';
@@ -214,7 +215,8 @@ export class PrismaRatingRepository
    * parti chez les joueurs).
    */
   /**
-   * Credite la monnaie douce de plusieurs joueurs, en une transaction.
+   * Credite la monnaie douce, l'experience et les jetons d'un niveau franchi
+   * de plusieurs joueurs, en une transaction.
    *
    * `increment` et non une lecture suivie d'une ecriture : deux matchs qui
    * s'achevent au meme instant pour le meme joueur — ca arrive, il suffit de
@@ -225,9 +227,10 @@ export class PrismaRatingRepository
     entries: readonly { readonly playerId: string; readonly soft: number; readonly xp: number }[],
   ): Promise<ReadonlyMap<string, number>> {
     if (entries.length === 0) return new Map();
-    const rows = await this.prisma.$transaction(
-      entries.map((entry) =>
-        this.prisma.player.update({
+    const totals = await this.prisma.$transaction(async (tx) => {
+      const out: [string, number][] = [];
+      for (const entry of entries) {
+        const row = await tx.player.update({
           where: { id: entry.playerId },
           data: {
             softCurrency: { increment: entry.soft },
@@ -236,10 +239,28 @@ export class PrismaRatingRepository
             xp: { increment: entry.xp },
           },
           select: { id: true, xp: true },
-        }),
-      ),
-    );
-    return new Map(rows.map((row) => [row.id, row.xp]));
+        });
+        /*
+          Les jetons du niveau franchi (docs/01, ADR 0015).
+
+          La ligne rendue est celle de CET increment : l'experience d'avant
+          vaut exactement `apres - gain`, meme si un autre match du meme
+          joueur s'acheve en meme temps. Meme transaction que l'experience :
+          jamais un niveau sans ses jetons.
+        */
+        const tokens = levelUpTokens(row.xp - entry.xp, row.xp);
+        if (tokens > 0) {
+          await tx.player.update({
+            where: { id: entry.playerId },
+            data: { hardCurrency: { increment: tokens } },
+            select: { id: true },
+          });
+        }
+        out.push([row.id, row.xp]);
+      }
+      return out;
+    });
+    return new Map(totals);
   }
 
   async saveMany(

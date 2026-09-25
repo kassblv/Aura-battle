@@ -112,6 +112,13 @@ export interface BalanceConfig {
     readonly growth: number;
     /** Dernier niveau : au-dela, l'experience s'accumule sans rien changer. */
     readonly maxLevel: number;
+    /**
+     * Jetons (monnaie dure) gagnes a chaque niveau franchi.
+     *
+     * La monnaie dure s'obtient donc en jouant (regle d'or n°3) : dix jetons
+     * au niveau 2, dans la premiere session, paient deja une pose commune.
+     */
+    readonly tokensPerLevel: number;
   };
 }
 
@@ -196,5 +203,5 @@ export const BALANCE: BalanceConfig = deepFreeze({
     n'est pas un horizon, c'est une decoration. A huit, il tombe vers deux mille
     six cents parties : long, mais atteignable par quelqu'un qui reste.
   */
-  progression: { base: 100, growth: 1.08, maxLevel: 50 },
+  progression: { base: 100, growth: 1.08, maxLevel: 50, tokensPerLevel: 10 },
 });

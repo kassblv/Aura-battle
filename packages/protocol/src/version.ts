@@ -45,7 +45,14 @@
   ignore, un serveur 2.0 ne les envoie pas et le client lit « pas de
   brillante ». Pas de rupture majeure.
 */
-export const PROTOCOL_VERSION = '2.1.0';
+/*
+  2.2.0 — la monnaie choisie a l'achat.
+
+  `inventoryBuyRequest.currency` est AJOUTE et facultatif : un client 2.1 ne
+  l'envoie pas et garde le comportement d'avant (pieces d'abord). Pas de
+  rupture majeure.
+*/
+export const PROTOCOL_VERSION = '2.2.0';
 
 const MAJOR = /^(\d+)\./;
 

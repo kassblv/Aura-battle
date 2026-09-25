@@ -4,6 +4,7 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
 import { loadConfig } from '../../../shared/config.js';
+import { BALANCE, xpForLevel } from '@aura/rules';
 import { STARTING_RATING } from '../domain/rating.js';
 import { PrismaRatingRepository } from './prisma-rating.repository.js';
 
@@ -146,6 +147,38 @@ describe.skipIf(!reachable)('ecriture et lecture reelles du classement', () => {
       expect(leagues.get(playerA)).toBe('legendaire');
     } finally {
       await prisma!.rating.deleteMany({ where: { playerId: playerA } });
+      await prisma!.player.delete({ where: { id: playerA } });
+    }
+  });
+
+  /*
+    Les jetons du niveau franchi, dans la MEME transaction que l'experience :
+    un credit a moitie ecrit donnerait le niveau sans ses jetons.
+  */
+  it('credite les jetons d un niveau franchi avec l experience', async () => {
+    const playerA = await createPlayer();
+    const repository = buildRepository();
+    const nearLevel2 = xpForLevel(2) - 5;
+
+    try {
+      await prisma!.player.update({ where: { id: playerA }, data: { xp: nearLevel2 } });
+      await repository.credit([{ playerId: playerA, soft: 20, xp: 30 }]);
+      const after = await prisma!.player.findUniqueOrThrow({
+        where: { id: playerA },
+        select: { hardCurrency: true, softCurrency: true, xp: true },
+      });
+      expect(after.xp).toBe(nearLevel2 + 30);
+      expect(after.softCurrency).toBe(20);
+      expect(after.hardCurrency).toBe(BALANCE.progression.tokensPerLevel);
+
+      // Sans palier franchi, pas de jetons.
+      await repository.credit([{ playerId: playerA, soft: 8, xp: 12 }]);
+      const again = await prisma!.player.findUniqueOrThrow({
+        where: { id: playerA },
+        select: { hardCurrency: true },
+      });
+      expect(again.hardCurrency).toBe(BALANCE.progression.tokensPerLevel);
+    } finally {
       await prisma!.player.delete({ where: { id: playerA } });
     }
   });

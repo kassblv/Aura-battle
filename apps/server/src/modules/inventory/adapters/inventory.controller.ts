@@ -138,7 +138,9 @@ export class InventoryController {
     // On rend l'etat complet plutot qu'un accuse de reception : le client
     // n'a alors rien a recalculer de son cote, donc rien a faire diverger.
     // L'etat que le service a lu et ecrit, pas une relecture de la base.
-    return toState(await this.run(() => this.inventory.buy(playerId, parsed.data.itemId)));
+    return toState(
+      await this.run(() => this.inventory.buy(playerId, parsed.data.itemId, parsed.data.currency)),
+    );
   }
 
   @Put('loadout')

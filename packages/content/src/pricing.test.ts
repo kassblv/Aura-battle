@@ -3,7 +3,15 @@ import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 import { allAnimationIds, defaultAnimationFor, STYLES, TIERS } from './catalogue.js';
 import type { Rarity } from './cosmetics.js';
-import { allCosmetics, animationPrice, priceForRarity, RARITY_ORDER } from './pricing.js';
+import {
+  allCosmetics,
+  animationPrice,
+  priceForRarity,
+  RARITY_ORDER,
+  TOKEN_RATE,
+  catalogueTokenPrice,
+  tokenPrice,
+} from './pricing.js';
 
 describe('bareme de rarete', () => {
   it('donne un prix a chaque rarete', () => {
@@ -137,5 +145,43 @@ describe('offert = rarete par defaut', () => {
   it('ne vend rien de ce qui porte la rarete par defaut', () => {
     const offenders = priced.filter((item) => item.rarity === 'default' && item.price !== 0);
     expect(offenders).toEqual([]);
+  });
+});
+
+/*
+  Le prix en jetons (monnaie dure) : une seule regle, lue par le seed du
+  serveur ET par la boutique du client. Dix pieces pour un jeton.
+*/
+describe('prix en jetons', () => {
+  it('vaut le prix en pieces divise par le taux, arrondi au-dessus', () => {
+    expect(TOKEN_RATE).toBe(10);
+    expect(tokenPrice(90)).toBe(9);
+    expect(tokenPrice(400)).toBe(40);
+    expect(tokenPrice(850)).toBe(85);
+    expect(tokenPrice(1_500)).toBe(150);
+    expect(tokenPrice(63)).toBe(7);
+  });
+
+  // Offert en pieces, offert en jetons : jamais un prix en jetons sur un cadeau.
+  it('ne met jamais de prix sur ce qui est offert', () => {
+    expect(tokenPrice(0)).toBe(0);
+  });
+
+  it('ne rend jamais un prix nul pour un article payant', () => {
+    expect(tokenPrice(1)).toBe(1);
+  });
+});
+
+/*
+  La ligne de catalogue : un article offert n'a PAS de prix en jetons (null),
+  sans quoi le serveur ne le tiendrait plus pour offert (`isOffered`).
+*/
+describe('catalogueTokenPrice', () => {
+  it('rend null pour un article offert', () => {
+    expect(catalogueTokenPrice(0)).toBeNull();
+  });
+
+  it('rend le prix en jetons pour un article payant', () => {
+    expect(catalogueTokenPrice(400)).toBe(40);
   });
 });
