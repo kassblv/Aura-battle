@@ -68,13 +68,13 @@ jamais plus fortes.
 
 | Palier | Calme 🧊 | Hype 🔥 | Provoc 😏 | Acrobatie 🤸 | Prouesse 💪 |
 |---|---|---|---|---|---|
-| 0 | **Bras croisés**, Mains dans le dos | **Dab** | **Chut**, Doigt vers le ciel | **Saut applaudi** | **Biceps contractés** |
-| 1 | **Main dans la poche**, Marche assurée | **Six Seven**, Épaules qui roulent | **Doigt pointé**, T-pose | **Roulade** | **Pompes** |
-| 2 | **Regard au loin**, Mains en couronne | **Poing levé**, Floss, Célébration de but | **Mewing**, Haussement d'épaules, Applaudissement lent | **Roue** | **Planche** |
-| 3 | **Méditation**, Moonwalk, Coup de pied lent | **Griddy** | **L sur le front**, Épaules époussetées | **Toupie** | **Poirier** |
-| 4 | **Lévitation** | **Danse du bateau** | **Dos tourné**, Révérence | **Salto arrière** | **Drapeau humain** |
+| 0 | **Bras croisés**, Mains dans le dos | **Dab** | **Chut**, Doigt vers le ciel | **Saut applaudi**, Saut étoile | **Biceps contractés**, Squats |
+| 1 | **Main dans la poche**, Marche assurée | **Six Seven**, Épaules qui roulent | **Doigt pointé**, T-pose | **Roulade**, Saut groupé | **Pompes**, Pompes claquées |
+| 2 | **Regard au loin**, Mains en couronne | **Poing levé**, Floss, Célébration de but | **Mewing**, Haussement d'épaules, Applaudissement lent | **Roue**, Grand écart sauté | **Planche**, Chaise invisible |
+| 3 | **Méditation**, Moonwalk, Coup de pied lent | **Griddy** | **L sur le front**, Épaules époussetées | **Toupie**, Vrille | **Poirier**, Squat sur une jambe |
+| 4 | **Lévitation** | **Danse du bateau** | **Dos tourné**, Révérence | **Salto arrière**, Salto avant | **Drapeau humain**, Équerre |
 
-En gras : la pose offerte. 39 poses au total, 25 offertes et 14 variantes. Voir
+En gras : la pose offerte. 49 poses au total, 25 offertes et 24 variantes : chaque case d'Acrobatie et de Prouesse a désormais la sienne. Voir
 `07-content-pipeline.md` pour les noms à revoir avant publication.
 
 Chaque famille garde sa voix : `calme` est posé et maîtrisé, `hype` explose,

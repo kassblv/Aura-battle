@@ -236,6 +236,38 @@ Un aperçu couché se cadre sur sa **longueur** : `previewFraming` prend le plus
 grand de la hauteur et de 1,6 × le rayon au sol, sans quoi la caméra coupe la
 tête et les pieds d'une planche de 40 cm de haut.
 
+## Dix variantes plus tard (mesuré en écrivant les variantes du 2026-09-25)
+
+- **Un geste de face s'écrit en `z`.** « Biceps contractés » avait ses coudes
+  et ses pieds sur l'axe avant/arrière : de face, les poings croisaient le
+  visage et les pieds s'alignaient. Bras écartés, jambes écartées : `z`.
+- **Recopier l'image groupée du salto arrière rapporte 7 avertissements** : son
+  buste mesure 34 cm au lieu de ~52. Le groupé du « Saut groupé » a les bonnes
+  longueurs ; partir de lui.
+- **Un pied qui quitte vite le sol plonge juste avant.** Poser le pied sur la
+  pointe (y −2) dans l'image d'appui, et lancer le coup de pied plus bas.
+- **Mains ouvertes au sol : poignet à 13 cm, pas 9.** La règle des 9 cm ne vaut
+  que pour un poing ; les doigts ouverts passaient 5 cm sous le sol.
+- **Un tibia incliné enfonce son embout.** Pied à y = 0 et tibia penché de ~30°
+  (genoux loin devant) : −4,2 cm. Reculer la hanche (tibia à ~20°) et garder
+  un petit écart de `z` entre genou et pied. Squats et squat sur une jambe n'ont
+  que ~0,7 cm de marge.
+- **Le test de l'épaule attrape un bras très plié** : des mains qui claquent
+  collées au cou débordent de 0,9 %. Claquer plus loin de la poitrine.
+
+### Regarder une pose
+
+`http://localhost:5173/?pose=<id>` ouvre la vitrine sur n'importe quelle pose,
+en développement seulement. Deux pièges :
+
+- **Un fichier ajouté n'apparaît pas tout seul** : la liste de
+  `import.meta.glob` est figée au démarrage de Vite, et le dossier des
+  animations vit hors de l'application. Toucher
+  `apps/mobile/src/content/animations.ts` la recalcule.
+- **Pour figer un instant, avancer l'horloge par pas de 16 ms.** L'arène borne
+  le pas de temps d'une image : une horloge qui saute de 400 ms n'avance la danse
+  que d'un pas, et un salto semble ne jamais quitter le sol.
+
 ## Noms et droits (à vérifier avant publication)
 
 Le prototype utilise des noms de tendances. Avant la sortie sur les stores :

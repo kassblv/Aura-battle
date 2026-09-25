@@ -23,18 +23,17 @@ describe('MOVE_ANIMATIONS', () => {
     }
   });
 
-  it('compte 39 poses : 25 offertes, une par case, et 14 variantes', () => {
+  it('compte 49 poses : 25 offertes, une par case, et 24 variantes', () => {
     const total = STYLES.flatMap((style) =>
       TIERS.flatMap((tier) => animationsFor({ style, tier })),
     ).length;
-    expect(total).toBe(39);
+    expect(total).toBe(49);
   });
 
   /**
    * Une aura battle est un echange : chaque famille doit offrir de quoi
    * varier. Les trois familles historiques gardent leurs variantes ; les deux
-   * nouvelles partent d une pose offerte par case, et leurs variantes viendront
-   * avec la boutique (chantier n°5).
+   * nouvelles ont une variante par case depuis le chantier n°4.
    */
   it('compte les poses de chaque famille', () => {
     const perFamily = Object.fromEntries(
@@ -43,7 +42,7 @@ describe('MOVE_ANIMATIONS', () => {
         TIERS.flatMap((tier) => animationsFor({ style, tier })).length,
       ]),
     );
-    expect(perFamily).toEqual({ calme: 10, hype: 8, provoc: 11, acrobatie: 5, prouesse: 5 });
+    expect(perFamily).toEqual({ calme: 10, hype: 8, provoc: 11, acrobatie: 10, prouesse: 10 });
   });
 
   /** Chaque palier a au moins un cosmetique a cote de son animation offerte. */
@@ -83,9 +82,9 @@ describe('identifiants', () => {
     expect(systemAnimationId('victory')).toBe('anim.system.none.victory');
   });
 
-  it('rend 44 identifiants uniques au total', () => {
+  it('rend 54 identifiants uniques au total', () => {
     const ids = allAnimationIds();
-    expect(ids).toHaveLength(39 + SYSTEM_ANIMATIONS.length);
+    expect(ids).toHaveLength(49 + SYSTEM_ANIMATIONS.length);
     expect(new Set(ids).size).toBe(ids.length);
   });
 });

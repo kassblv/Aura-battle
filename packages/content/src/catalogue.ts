@@ -51,19 +51,19 @@ export const MOVE_ANIMATIONS: Readonly<Record<Style, Readonly<Record<Tier, reado
       ete deplacees, et chacune y est devenue la pose offerte de sa case.
     */
     acrobatie: {
-      0: ['jumpclap'],
-      1: ['roll'],
-      2: ['wheel'],
-      3: ['spin'],
-      4: ['backflip'],
+      0: ['jumpclap', 'starjump'],
+      1: ['roll', 'tuckjump'],
+      2: ['wheel', 'splitleap'],
+      3: ['spin', 'aerialspin'],
+      4: ['backflip', 'frontflip'],
     },
     /* La force pure : pompes, gainage, equilibres. */
     prouesse: {
-      0: ['flex'],
-      1: ['pushups'],
-      2: ['plank'],
-      3: ['handstand'],
-      4: ['humanflag'],
+      0: ['flex', 'squats'],
+      1: ['pushups', 'clappushups'],
+      2: ['plank', 'wallsit'],
+      3: ['handstand', 'pistol'],
+      4: ['humanflag', 'lsit'],
     },
   });
 

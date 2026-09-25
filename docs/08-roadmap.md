@@ -193,7 +193,11 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - Correctif : le verdict de manche n'apparaissait qu'en fin de match (aucun rendu n'était programmé à son instant).
   - Aucun nouveau champ réseau : tout vient de `round:result`.
   - La caméra de révélation passe au chantier n°4.
-- [ ] **Chantier n°4 — animations 3D** : des poses plus fluides et plus spectaculaires, et des variantes pour Acrobatie et Prouesse.
+- [x] **Chantier n°4 — animations 3D et variantes** (2026-09-25). Spec : `docs/superpowers/specs/2026-09-25-animations-variantes-design.md`.
+  - Dix variantes, une par case d'Acrobatie et de Prouesse : ces deux familles ont enfin quelque chose à débloquer (49 poses, 24 variantes).
+  - « Biceps contractés » corrigé : bras et pieds écartés sur l'axe latéral.
+  - Une visionneuse de développement : `?pose=<id>`.
+  - Correctif : l'écran « Choisis ton nom » revenait à chaque lancement malgré « Plus tard ».
 - [ ] **Chantier n°5 — vestiaire et boutique** : parcourir, essayer et acheter des poses ; les jetons (monnaie dure) pour débloquer plus vite, sans jamais vendre de puissance (règle d'or n°3).
 
 ### M7 — Anti-triche et robustesse
