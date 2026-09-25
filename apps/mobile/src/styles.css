@@ -3874,3 +3874,216 @@ body {
     animation: none !important;
   }
 }
+
+/*
+  La revelation (chantier n°3).
+
+  Deux cartes dans les coins hauts, sous le bandeau du score et loin des
+  combattants ; le bandeau du contre au centre, au-dessus du choc, et au-dessus
+  du panneau de verdict qui se pose plus bas. Chaque instant vient de `--at`
+  (delai CSS cale sur `arena/round.ts`, moins le temps deja ecoule).
+*/
+.reveal {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.reveal__card {
+  position: absolute;
+  top: calc(var(--safe-top) + 44px);
+  width: 86px;
+  height: 108px;
+  perspective: 600px;
+}
+.reveal__card[data-side='moi'] {
+  left: var(--safe-left);
+  /* Ma carte n'existe qu'a son instant : elle claque en place. */
+  animation: reveal-slam 420ms var(--e-over) backwards;
+  animation-delay: var(--at);
+}
+.reveal__card[data-side='adversaire'] {
+  right: var(--safe-right);
+  /* L'adverse est la des le debut, face cachee : le suspense se voit. */
+  animation: reveal-drop 320ms var(--e-out) backwards;
+}
+.reveal__flip {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+}
+.reveal__card[data-face-down='true'] .reveal__flip {
+  animation: reveal-turn 520ms var(--e-over) backwards;
+  animation-delay: var(--at);
+}
+.reveal__front,
+.reveal__back {
+  position: absolute;
+  inset: 0;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  box-shadow: 0 8px 18px rgba(0, 0, 0, 0.45);
+}
+.reveal__front {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 4px 5px;
+  text-align: center;
+  background: linear-gradient(#34245e, #221743);
+}
+.reveal__back {
+  display: grid;
+  place-items: center;
+  rotate: y 180deg;
+  font-family: var(--display);
+  font-size: 40px;
+  color: var(--muted);
+  background: repeating-linear-gradient(45deg, var(--chip) 0 8px, var(--chip-deep) 8px 16px);
+}
+.reveal__tier {
+  font-size: 8.5px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.8;
+}
+.reveal__icon {
+  font-size: 36px;
+  line-height: 1;
+}
+.reveal__name {
+  font-weight: 800;
+  font-size: 10.5px;
+  line-height: 1.05;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+.reveal__family {
+  font-size: 9px;
+  color: var(--muted);
+}
+.reveal__card[data-shiny='true'] .reveal__front {
+  border-color: var(--gold-ink);
+  box-shadow:
+    0 0 0 1px var(--gold-ink),
+    0 0 22px color-mix(in srgb, var(--gold-ink) 65%, transparent),
+    0 8px 18px rgba(0, 0, 0, 0.45);
+}
+.reveal__burst {
+  position: absolute;
+  left: 50%;
+  bottom: -14px;
+  translate: -50% 0;
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--gold-ink);
+  color: #2a1600;
+  font-weight: 800;
+  font-size: 11px;
+  white-space: nowrap;
+  animation: reveal-burst 520ms var(--e-over) backwards;
+  animation-delay: calc(var(--at) + 120ms);
+}
+
+.reveal__callout {
+  position: absolute;
+  left: 50%;
+  /* A la hauteur des cartes : plus bas, il mordait le haut du verdict. */
+  top: calc(var(--safe-top) + 40px);
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 4px 18px 6px;
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--hud-line);
+  white-space: nowrap;
+  animation: reveal-callout 460ms var(--e-over) backwards;
+  animation-delay: var(--at);
+}
+.reveal__callout[data-by='moi'] {
+  border-color: var(--good-ink);
+}
+.reveal__callout[data-by='adversaire'] {
+  border-color: var(--bad-ink);
+}
+.reveal__who {
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.reveal__callout[data-kind='counter'][data-by='moi'] .reveal__who {
+  color: var(--good-ink);
+}
+.reveal__callout[data-kind='counter'][data-by='adversaire'] .reveal__who {
+  color: var(--bad-ink);
+}
+.reveal__line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.reveal__fam {
+  font-size: 26px;
+  line-height: 1;
+}
+.reveal__verb {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 20px;
+}
+.reveal__mult {
+  font-family: var(--display);
+  font-size: 18px;
+  color: var(--gold-ink);
+}
+
+@keyframes reveal-slam {
+  from {
+    opacity: 0;
+    scale: 1.6;
+  }
+}
+@keyframes reveal-drop {
+  from {
+    opacity: 0;
+    translate: 0 -30px;
+  }
+}
+/* Face cachee jusqu'a son instant, puis un demi-tour avec un leger rebond. */
+@keyframes reveal-turn {
+  from {
+    rotate: y 180deg;
+  }
+  70% {
+    rotate: y -12deg;
+  }
+}
+@keyframes reveal-burst {
+  from {
+    opacity: 0;
+    scale: 0.3;
+  }
+  60% {
+    scale: 1.3;
+  }
+}
+@keyframes reveal-callout {
+  from {
+    opacity: 0;
+    scale: 2.2;
+  }
+  55% {
+    opacity: 1;
+    scale: 0.92;
+  }
+}

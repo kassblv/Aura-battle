@@ -18,7 +18,7 @@ import {
   type JSX,
   type RefObject,
 } from 'react';
-import { verdictPanelShown } from '../arena/round.js';
+import { msUntilVerdictPanel, verdictPanelShown } from '../arena/round.js';
 import type { MatchView } from '../match/view.js';
 import { leagueLabel } from './leagues.js';
 import {
@@ -37,6 +37,8 @@ import type { ChoicePreview } from '../match/choicePreview.js';
 import { cardGesture, familyToShow } from './choiceGesture.js';
 import { handFor, tabsFor, type FamilyTab, type HandCard } from './hand.js';
 import { PoseHand } from './PoseHand.js';
+import { revealScene } from './reveal.js';
+import { RevealStage } from './RevealStage.js';
 import { danceOptions, defaultLook, type Wardrobe } from './wardrobe.js';
 
 /**
@@ -418,6 +420,30 @@ function MatchScreenBody({
     [shownFamily, wardrobe, cap, amplifier, shinyMove],
   );
 
+  /*
+    Le verdict de la manche se lit a l'horloge au rendu : on programme le rendu
+    de son instant. Sans lui, rien ne rafraichissait l'ecran pendant la
+    revelation, et le verdict n'apparaissait qu'en fin de match.
+  */
+  const [, showVerdict] = useState(0);
+  useEffect(() => {
+    const delay = msUntilVerdictPanel(view.phase, inPhaseNow());
+    if (delay === null) return;
+    const timer = setTimeout(() => {
+      showVerdict((n) => n + 1);
+    }, delay);
+    return () => {
+      clearTimeout(timer);
+    };
+  }, [view.phase, view.round, inPhaseNow]);
+
+  // La revelation : les deux cartes jouees et le bandeau du contre (chantier n°3).
+  const lastRound = view.lastRound;
+  const scene = useMemo(
+    () => (lastRound === null ? null : revealScene(lastRound, wardrobe)),
+    [lastRound, wardrobe],
+  );
+
   // La brillante arrive : la main s'ouvre sur sa famille, qu'on la voie briller.
   useEffect(() => {
     if (shinyMove !== null) setFamily(shinyMove.style);
@@ -680,6 +706,16 @@ function MatchScreenBody({
           onCard={pickCard}
         />
       </div>
+
+      {view.phase === 'reveal' && scene !== null && (
+        <RevealStage
+          key={view.round}
+          scene={scene}
+          elapsedMs={inPhaseNow()}
+          opponentName={opponentName}
+          onCue={onCue}
+        />
+      )}
 
       {verdictPanelShown(view.phase, inPhaseNow()) && view.lastRound !== null && (
         <div className="verdict">

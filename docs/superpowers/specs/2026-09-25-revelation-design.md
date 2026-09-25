@@ -70,16 +70,16 @@ qu'au verdict.
 
 ## Critères d'acceptation
 
-- [ ] `reveal.ts` testé :
+- [x] `reveal.ts` testé :
   - contre par moi et par l'adversaire ;
   - miroir ;
   - contre bloqué ;
   - ordre de révélation ;
   - brillante ;
   - pose adverse connue ou offerte.
-- [ ] La vue en ligne et la vue solo portent les nouveaux champs (tests), et
+- [x] La vue en ligne et la vue solo portent les nouveaux champs (tests), et
   `storyOfRound` les lit (test).
-- [ ] Rendu : deux cartes, dont une face cachée qui se retourne, et un bandeau
+- [x] Rendu : deux cartes, dont une face cachée qui se retourne, et un bandeau
   (test de rendu statique).
-- [ ] À l'écran : capture d'une révélation avec contre et d'un miroir.
-- [ ] lint, typecheck et tests verts ; relecture finale.
+- [x] À l'écran : capture d'une révélation avec contre et d'un miroir.
+- [x] lint, typecheck et tests verts ; relecture finale.
