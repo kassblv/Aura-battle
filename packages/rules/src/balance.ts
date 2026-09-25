@@ -205,3 +205,16 @@ export const BALANCE: BalanceConfig = deepFreeze({
   */
   progression: { base: 100, growth: 1.08, maxLevel: 50, tokensPerLevel: 10 },
 });
+
+/**
+ * Les nombres des evenements de la semaine (`variants.ts`, partie rapide
+ * seulement). Mesures au simulateur : `docs/balance/2026-09-25-evenements.md`.
+ */
+export const EVENT_BALANCE = deepFreeze({
+  /** Ultime express : la jauge d'Ultime, au lieu de `ultimate.gaugeMax`. */
+  ultimeGaugeMax: 60,
+  /** Semaine brillante : la carte brillante, au lieu de `shiny.multiplier`. */
+  brillanceMultiplier: 1.5,
+  /** Contres tranchants : le contre, au lieu de `counter.winnerMultiplier`. */
+  contresMultiplier: 1.6,
+});

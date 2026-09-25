@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE } from './balance.js';
+import { BALANCE, EVENT_BALANCE } from './balance.js';
 import { RULE_VARIANTS, variantConfig, variantForWeek, weekIndexOf } from './variants.js';
 
 describe('variantes de regles', () => {
@@ -52,5 +52,33 @@ describe('rotation hebdomadaire', () => {
       expect(weeks[i] === 'normal' || weeks[i - 1] === 'normal').toBe(true);
     }
     for (const variant of RULE_VARIANTS) expect(weeks).toContain(variant.id);
+  });
+});
+
+/*
+  Regle d'or n° 6 : les nombres des evenements vivent dans `balance.ts`. Et
+  l'annonce affichee au joueur les cite : un reglage qui ne changerait que la
+  valeur laisserait l'accueil promettre l'ancienne.
+*/
+describe('les evenements lisent balance.ts', () => {
+  const fr = (value: number): string => String(value).replace('.', ',');
+  const byId = (id: string) => RULE_VARIANTS.find((variant) => variant.id === id)!;
+
+  it('Ultime express', () => {
+    expect(variantConfig('ultime').ultimate.gaugeMax).toBe(EVENT_BALANCE.ultimeGaugeMax);
+    expect(byId('ultime').pitch).toContain(fr(EVENT_BALANCE.ultimeGaugeMax));
+    expect(byId('ultime').pitch).toContain(fr(BALANCE.ultimate.gaugeMax));
+  });
+
+  it('Semaine brillante', () => {
+    expect(variantConfig('brillance').shiny.multiplier).toBe(EVENT_BALANCE.brillanceMultiplier);
+    expect(byId('brillance').pitch).toContain(`×${fr(EVENT_BALANCE.brillanceMultiplier)}`);
+    expect(byId('brillance').pitch).toContain(`×${fr(BALANCE.shiny.multiplier)}`);
+  });
+
+  it('Contres tranchants', () => {
+    expect(variantConfig('contres').counter.winnerMultiplier).toBe(EVENT_BALANCE.contresMultiplier);
+    expect(byId('contres').pitch).toContain(`×${fr(EVENT_BALANCE.contresMultiplier)}`);
+    expect(byId('contres').pitch).toContain(`×${fr(BALANCE.counter.winnerMultiplier)}`);
   });
 });

@@ -1,4 +1,4 @@
-import { BALANCE, type BalanceConfig } from './balance.js';
+import { BALANCE, EVENT_BALANCE, type BalanceConfig } from './balance.js';
 
 /**
  * Les evenements de la semaine (chantier n°7, M10) : des variantes de regles
@@ -17,6 +17,9 @@ export interface RuleVariant {
   readonly apply: (base: BalanceConfig) => BalanceConfig;
 }
 
+/** Un nombre a la francaise pour une annonce (`1.5` → `1,5`). */
+const fr = (value: number): string => String(value).replace('.', ',');
+
 export const RULE_VARIANTS: readonly RuleVariant[] = Object.freeze([
   {
     // Pas d'energie en plus : mesure, elle faisait passer « toujours le plus
@@ -24,20 +27,29 @@ export const RULE_VARIANTS: readonly RuleVariant[] = Object.freeze([
     // lacher l'Ultime ?) au lieu d'en retirer.
     id: 'ultime',
     name: 'Ultime express',
-    pitch: 'La jauge d’Ultime se remplit à 60 au lieu de 100 : il sort plus souvent.',
-    apply: (base) => ({ ...base, ultimate: { ...base.ultimate, gaugeMax: 60 } }),
+    pitch: `La jauge d’Ultime se remplit à ${fr(EVENT_BALANCE.ultimeGaugeMax)} au lieu de ${fr(BALANCE.ultimate.gaugeMax)} : il sort plus souvent.`,
+    apply: (base) => ({
+      ...base,
+      ultimate: { ...base.ultimate, gaugeMax: EVENT_BALANCE.ultimeGaugeMax },
+    }),
   },
   {
     id: 'brillance',
     name: 'Semaine brillante',
-    pitch: 'La carte brillante vaut ×1,5 au lieu de ×1,2.',
-    apply: (base) => ({ ...base, shiny: { ...base.shiny, multiplier: 1.5 } }),
+    pitch: `La carte brillante vaut ×${fr(EVENT_BALANCE.brillanceMultiplier)} au lieu de ×${fr(BALANCE.shiny.multiplier)}.`,
+    apply: (base) => ({
+      ...base,
+      shiny: { ...base.shiny, multiplier: EVENT_BALANCE.brillanceMultiplier },
+    }),
   },
   {
     id: 'contres',
     name: 'Contres tranchants',
-    pitch: 'Un contre vaut ×1,6 au lieu de ×1,35 : lire l’adversaire paie plus.',
-    apply: (base) => ({ ...base, counter: { ...base.counter, winnerMultiplier: 1.6 } }),
+    pitch: `Un contre vaut ×${fr(EVENT_BALANCE.contresMultiplier)} au lieu de ×${fr(BALANCE.counter.winnerMultiplier)} : lire l’adversaire paie plus.`,
+    apply: (base) => ({
+      ...base,
+      counter: { ...base.counter, winnerMultiplier: EVENT_BALANCE.contresMultiplier },
+    }),
   },
 ]);
 
