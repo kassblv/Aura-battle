@@ -35,6 +35,15 @@ export const DEFAULT_REGION: Region = 'global';
  */
 export const DEFAULT_MMR = 1000;
 
+/**
+ * Temps passe en file par ce ticket a l'instant donne, en millisecondes
+ * entieres, jamais negatif : une horloge qui recule ne cree pas d'attente
+ * negative, qui fausserait la mediane des indicateurs produit.
+ */
+export function queueWaitOf(ticket: Pick<QueueTicket, 'enqueuedAtMs'>, nowMs: number): number {
+  return Math.max(0, Math.floor(nowMs - ticket.enqueuedAtMs));
+}
+
 export interface QueueTicket {
   readonly playerId: string;
   readonly mode: QueueMode;

@@ -31,13 +31,13 @@ class NoRatings implements RatingReader {
 }
 
 class FakeOpener implements MatchOpening {
-  readonly opened: { playerA: string; playerB: string; mode: string }[] = [];
+  readonly opened: Parameters<MatchOpening['open']>[0][] = [];
   refuse = false;
   failure: Error | null = null;
   /** Refuse d'ouvrir, en produisant au passage la cause du refus. */
   refuseWith: (() => void) | null = null;
 
-  open(request: { playerA: string; playerB: string; mode: 'RANKED' | 'CASUAL' }): string | null {
+  open(request: Parameters<MatchOpening['open']>[0]): string | null {
     if (this.failure !== null) throw this.failure;
     if (this.refuseWith !== null) {
       this.refuseWith();
@@ -90,6 +90,16 @@ describe('QueueWorker.runOnce', () => {
     await build().runOnce();
 
     expect(opener.opened[0]?.playerA).toBe('ancien');
+  });
+
+  /** L'attente en file, pour les indicateurs produit (docs/00) : heure serveur, par siege. */
+  it('transmet l attente en file de chaque siege', async () => {
+    await queue.join('ancien', 'ranked', 1_000);
+    await queue.join('recent', 'ranked', 4_000);
+
+    await build().runOnce();
+
+    expect(opener.opened[0]?.queueWaitMs).toEqual({ a: 9_000, b: 6_000 });
   });
 
   it('traduit le mode de file en mode de match', async () => {

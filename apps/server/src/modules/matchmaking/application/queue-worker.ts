@@ -2,7 +2,7 @@ import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import type { QueuePair } from '../domain/pairing.js';
 import type { MatchOpening, PlayerAvailability, QueueClock } from '../domain/ports.js';
-import type { QueueTicket } from '../domain/ticket.js';
+import { queueWaitOf, type QueueTicket } from '../domain/ticket.js';
 import type { GhostFallbackService } from './ghost-fallback.service.js';
 import { QUEUE_TICK_MS, type MatchmakingQueue } from './queue.service.js';
 
@@ -97,6 +97,10 @@ export class QueueWorker {
             playerA: pair.a.playerId,
             playerB: pair.b.playerId,
             mode: MATCH_MODES[pair.a.mode],
+            queueWaitMs: {
+              a: queueWaitOf(pair.a, nowMs),
+              b: queueWaitOf(pair.b, nowMs),
+            },
           });
         } catch (cause) {
           this.log?.warn(`ouverture de match impossible : ${describeCause(cause)}`);

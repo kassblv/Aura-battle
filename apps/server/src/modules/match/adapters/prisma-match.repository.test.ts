@@ -155,6 +155,7 @@ function aRecord(overrides: Partial<MatchRecord> = {}): MatchRecord {
     rejectedEvents: { a: 3, b: 0 },
     droppedEvents: { a: 0, b: 0 },
     impossibleTaps: { a: 0, b: 0 },
+    queueWaitMs: { a: null, b: null },
     ...overrides,
   };
 }
@@ -304,8 +305,21 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord());
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null },
-      { matchId: 'm_1', seat: 'B', playerId: 'p_bob', ghostOfId: null },
+      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: null },
+      { matchId: 'm_1', seat: 'B', playerId: 'p_bob', ghostOfId: null, queueWaitMs: null },
+    ]);
+  });
+
+  /**
+   * L'attente en file de chaque siege (indicateurs produit, docs/00) : le
+   * serveur la connait a l'appariement et nulle part ailleurs.
+   */
+  it('ecrit l attente en file de chaque siege, nulle pour qui n a pas fait la queue', async () => {
+    await repository.save(aRecord({ queueWaitMs: { a: 4_200, b: null } }));
+
+    expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
+      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: 4_200 },
+      { matchId: 'm_1', seat: 'B', playerId: 'p_bob', ghostOfId: null, queueWaitMs: null },
     ]);
   });
 
@@ -328,8 +342,8 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord({ seats: { a: 'p_alice', b: null } }));
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null },
-      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null },
+      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: null },
+      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null, queueWaitMs: null },
     ]);
   });
 
@@ -370,8 +384,8 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord());
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null },
-      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null },
+      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: null },
+      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null, queueWaitMs: null },
     ]);
     expect(prisma.callsTo('matchRound.createMany')[0]?.args.data).toHaveLength(2);
   });
@@ -431,8 +445,8 @@ describe('PrismaMatchRepository', () => {
 
     expect(prisma.callsTo('$queryRaw')).toHaveLength(0);
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: null, ghostOfId: null },
-      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null },
+      { matchId: 'm_1', seat: 'A', playerId: null, ghostOfId: null, queueWaitMs: null },
+      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null, queueWaitMs: null },
     ]);
   });
 

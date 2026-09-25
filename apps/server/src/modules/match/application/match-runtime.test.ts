@@ -522,6 +522,37 @@ describe('persistance — un match doit pouvoir etre rejoue', () => {
     expect(repository.saved[0]?.seats).toEqual({ a: SEATS.a, b: SEATS.b });
   });
 
+  it('ecrit l attente en file de chaque siege, telle que l ouverture l a donnee', () => {
+    runtime.createMatch({
+      matchId: 'm_file',
+      seed: 'g',
+      seats: { a: 'p_file_a', b: 'p_file_b' },
+      mode: 'RANKED',
+      queueWaitMs: { a: 7_500, b: 1_200 },
+    });
+    runtime.forfeit('m_file', 'a');
+    expect(repository.saved[0]?.queueWaitMs).toEqual({ a: 7_500, b: 1_200 });
+  });
+
+  it('n invente aucune attente a qui n a pas fait la queue', () => {
+    // Le match du `beforeEach` est une invitation : personne n'a attendu.
+    runtime.forfeit(MATCH_ID, 'a');
+    expect(repository.saved[0]?.queueWaitMs).toEqual({ a: null, b: null });
+  });
+
+  it('n ecrit jamais d attente au siege d un fantome', () => {
+    runtime.createMatch({
+      matchId: 'm_fantome',
+      seed: 'g',
+      seats: { a: 'p_seul', b: 'ghost_x' },
+      mode: 'RANKED',
+      ghost: { seat: 'b', mmr: 1000, sourcePlayerId: 'p_source', displayName: 'X', league: 'x' },
+      queueWaitMs: { a: 25_000, b: 25_000 },
+    });
+    runtime.forfeit('m_fantome', 'a');
+    expect(repository.saved[0]?.queueWaitMs).toEqual({ a: 25_000, b: null });
+  });
+
   it('ecrit aussi un match termine par abandon', () => {
     runtime.forfeit(MATCH_ID, 'a');
     expect(repository.saved[0]?.reason).toBe('forfeit');

@@ -89,6 +89,15 @@ export interface MatchRecord {
    * reellement passe, sans jamais pretendre que quelqu'un etait connecte.
    */
   readonly ghost: GhostSeatInfo | null;
+  /**
+   * Attente en file de chaque siege, en millisecondes, heure serveur
+   * (indicateurs produit, docs/00 : attente mediane en file classee).
+   *
+   * `null` pour qui n'a pas fait la queue : une invitation, et le siege d'un
+   * fantome — un enregistrement n'attend personne. Zero serait un mensonge :
+   * il tirerait la mediane vers un appariement instantane qui n'a pas eu lieu.
+   */
+  readonly queueWaitMs: Readonly<Record<'a' | 'b', number | null>>;
 }
 
 /** Ecriture d'un match acheve. */

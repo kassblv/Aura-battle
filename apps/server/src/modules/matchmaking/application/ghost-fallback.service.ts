@@ -12,7 +12,7 @@ import {
   shouldFallBackToGhost,
 } from '../domain/ghost.js';
 import type { GhostRecordingStore, MatchOpening } from '../domain/ports.js';
-import type { QueueMode, QueueTicket } from '../domain/ticket.js';
+import { queueWaitOf, type QueueMode, type QueueTicket } from '../domain/ticket.js';
 import type { GhostActions, GhostDirector } from './ghost-director.js';
 
 /**
@@ -142,6 +142,8 @@ export class GhostFallbackService {
         // implique, par la conversion dont le classement se sert deja.
         league: leagueForMmr(recording.mmr),
       },
+      // Le joueur a attendu ; le fantome, lui, n'a jamais fait la queue.
+      queueWaitMs: { a: queueWaitOf(ticket, nowMs) },
     });
 
     if (matchId === null) {

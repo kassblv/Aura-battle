@@ -269,6 +269,7 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
         rejectedEvents: { a: 0, b: 0 },
         droppedEvents: { a: 0, b: 0 },
         impossibleTaps: { a: 0, b: 0 },
+        queueWaitMs: { a: null, b: null },
       }),
     ).rejects.toThrow();
 
@@ -277,6 +278,40 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
     expect(await prisma!.matchRound.findMany({ where: { matchId } })).toHaveLength(0);
 
     await prisma!.player.delete({ where: { id: playerA } });
+  });
+
+  it('ecrit l attente en file de chaque siege, et nulle pour une invitation', async () => {
+    const [playerA, playerB] = [await createPlayer(), await createPlayer()];
+    const { runtime } = buildRuntime();
+    const queued = `m_${randomUUID()}`;
+    const invited = `m_${randomUUID()}`;
+    try {
+      runtime.createMatch({
+        matchId: queued,
+        seed: randomUUID(),
+        seats: { a: playerA, b: playerB },
+        mode: 'RANKED',
+        queueWaitMs: { a: 18_250, b: 3_000 },
+      });
+      runtime.forfeit(queued, 'b');
+      runtime.createMatch({
+        matchId: invited,
+        seed: randomUUID(),
+        seats: { a: playerA, b: playerB },
+      });
+      runtime.forfeit(invited, 'b');
+      await settle();
+
+      const waits = async (matchId: string) =>
+        (await prisma!.matchSeat.findMany({ where: { matchId }, orderBy: { seat: 'asc' } })).map(
+          (seat) => seat.queueWaitMs,
+        );
+      expect(await waits(queued)).toEqual([18_250, 3_000]);
+      expect(await waits(invited)).toEqual([null, null]);
+    } finally {
+      await prisma!.match.deleteMany({ where: { id: { in: [queued, invited] } } });
+      await prisma!.player.deleteMany({ where: { id: { in: [playerA, playerB] } } });
+    }
   });
 
   it('n ecrit rien pour un match encore en cours', async () => {

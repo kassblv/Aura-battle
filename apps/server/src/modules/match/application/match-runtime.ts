@@ -126,6 +126,21 @@ const NOTHING_WORN: SeatWearing = Object.freeze({
   owned: Object.freeze([]),
 });
 
+/** Plus grand entier que la colonne `MatchSeat.queueWaitMs` (int4) accepte. */
+const MAX_QUEUE_WAIT_MS = 2_147_483_647;
+
+/**
+ * Une attente en file ecrivable, ou `null`.
+ *
+ * La valeur vient du serveur (la file), jamais d'un client ; la borne protege
+ * seulement l'ecriture de fin de match : une valeur hors de l'int4 ferait
+ * echouer la transaction entiere, et le match serait perdu pour un indicateur.
+ */
+function waitOf(value: number | undefined): number | null {
+  if (value === undefined || !Number.isFinite(value)) return null;
+  return Math.min(MAX_QUEUE_WAIT_MS, Math.max(0, Math.floor(value)));
+}
+
 /** L'intention d'un verrouillage, telle que le client la formule (2.0.0). */
 export interface PoseIntent {
   readonly poseId: string;
@@ -158,6 +173,8 @@ interface LiveMatch {
   readonly rulesVariant: string;
   readonly config: BalanceConfig;
   readonly startedAtMs: number;
+  /** Attente en file par siege, `null` pour qui n'a pas fait la queue. Ecrite telle quelle. */
+  readonly queueWaitMs: Readonly<Record<Seat, number | null>>;
   state: MatchState;
   /** Cosmetiques de la manche en cours, par siege. */
   wearing: Record<Seat, SeatWearing>;
@@ -558,6 +575,11 @@ export class MatchRuntime {
      * appliquer ne doit pas etre enregistre comme s'il l'avait ete.
      */
     rulesVariant?: string;
+    /**
+     * Attente en file par siege (indicateurs produit, docs/00), mesuree par la
+     * file a l'appariement. Absente, personne n'a fait la queue : invitation.
+     */
+    queueWaitMs?: Partial<Record<Seat, number>>;
   }): boolean {
     if (this.matches.has(input.matchId)) return false;
     /**
@@ -594,6 +616,10 @@ export class MatchRuntime {
       rulesVariant,
       config,
       startedAtMs: this.clock.now(),
+      queueWaitMs: {
+        a: waitOf(input.queueWaitMs?.a),
+        b: waitOf(input.queueWaitMs?.b),
+      },
       state: step.state,
       wearing: { a: NOTHING_WORN, b: NOTHING_WORN },
       contributions: { a: emptyContribution(), b: emptyContribution() },
@@ -1187,6 +1213,11 @@ export class MatchRuntime {
         b: match.ghost?.seat === 'b' ? null : match.seats.b,
       },
       ghost: match.ghost,
+      // Un fantome n'a jamais fait la queue, quoi qu'on ait transmis pour lui.
+      queueWaitMs: {
+        a: match.ghost?.seat === 'a' ? null : match.queueWaitMs.a,
+        b: match.ghost?.seat === 'b' ? null : match.queueWaitMs.b,
+      },
       winner: result.winner,
       reason: result.reason,
       startedAtMs: match.startedAtMs,

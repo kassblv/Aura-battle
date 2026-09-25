@@ -12,6 +12,7 @@ import { SocketAuthenticator } from '../../auth/application/socket-auth.js';
 import { QUEUE_TICK_MS } from '../../matchmaking/application/queue.service.js';
 import { InviteService } from '../application/invites.js';
 import { MatchRuntime } from '../application/match-runtime.js';
+import type { MatchRecord, MatchRepository } from '../domain/ports.js';
 import { matchmakingTestProviders } from '../application/testing-wiring.js';
 import { PLAYER_DIRECTORY } from '../domain/directory.js';
 import { PLAYER_WARDROBE } from '../domain/wardrobe.js';
@@ -63,6 +64,32 @@ const nextPlayerId = (): string => `q_${String((playerCounter += 1))}`;
  * que la suite ne change pas de resultat selon la semaine ou on la lance.
  */
 const VARIANT_WEEK_MS = Date.UTC(1970, 0, 12, 12);
+
+/**
+ * Les matchs acheves, tels que le runtime les confie a l'ecriture.
+ *
+ * Un depot en memoire : ce qui se verifie ici est ce que le CHEMIN
+ * d'ouverture transmet jusqu'a l'enregistrement, pas ce que Postgres accepte.
+ */
+class SavedMatches implements MatchRepository {
+  readonly records: MatchRecord[] = [];
+  save(record: MatchRecord): Promise<void> {
+    this.records.push(record);
+    return Promise.resolve();
+  }
+  /** Attend l'enregistrement d'un match : l'ecriture part apres `match:end`. */
+  async of(matchId: string): Promise<MatchRecord> {
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const found = this.records.find((record) => record.matchId === matchId);
+      if (found !== undefined) return found;
+      if (Date.now() > deadline) throw new Error(`match ${matchId} jamais enregistre`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+}
+
+const saved = new SavedMatches();
 
 let app: NestFastifyApplication;
 let url: string;
@@ -201,7 +228,7 @@ beforeAll(async () => {
           notifier: SocketNotifier,
           scheduler: TimeoutScheduler,
           clock: SystemMatchClock,
-        ) => new MatchRuntime(notifier, scheduler, clock, FAST),
+        ) => new MatchRuntime(notifier, scheduler, clock, FAST, saved),
       },
       // Le worker tourne : c'est lui qu'on eprouve.
       ...matchmakingTestProviders({
@@ -238,6 +265,32 @@ describe('file d attente — se retrouver sans code d invitation', () => {
     expect(pourUn.seat).not.toBe(pourDeux.seat);
     expect(pourUn.opponent.displayName).toBe(`Joueur ${deux.playerId}`);
     expect(pourDeux.opponent.displayName).toBe(`Joueur ${un.playerId}`);
+
+    close(un, deux);
+  });
+
+  /** Indicateurs produit (docs/00) : l'attente en file se lit en base, par siege. */
+  it('enregistre l attente en file de chacun des deux sieges', async () => {
+    const un = await record();
+    const deux = await record();
+
+    un.socket.emit('queue:join', { mode: 'ranked' });
+    await wait(QUEUE_TICK_MS / 2);
+    deux.socket.emit('queue:join', { mode: 'ranked' });
+
+    const found = await un.first<ServerMessage<'match:found'>>('match:found');
+    un.socket.emit('match:forfeit', { matchId: found.matchId });
+    await deux.first<ServerMessage<'match:end'>>('match:end');
+
+    const written = await saved.of(found.matchId);
+    const waits = [written.queueWaitMs.a, written.queueWaitMs.b];
+    for (const waited of waits) {
+      expect(Number.isInteger(waited)).toBe(true);
+      expect(waited).toBeGreaterThanOrEqual(0);
+      expect(waited).toBeLessThan(12_000);
+    }
+    // Le plus ancien est assis en `a` : c'est lui qui a le plus attendu.
+    expect(written.queueWaitMs.a).toBeGreaterThanOrEqual(written.queueWaitMs.b ?? Infinity);
 
     close(un, deux);
   });

@@ -118,6 +118,12 @@ describe('GhostFallbackService — offrir un adversaire a qui attend seul', () =
     expect(demande.ghost?.displayName).toBe(GHOST_DISPLAY_NAME);
   });
 
+  it('transmet l attente du joueur, et aucune pour le fantome', async () => {
+    const b = banc();
+    expect(await b.service.tryOpen(ticket({ enqueuedAtMs: 1_000 }), 27_000)).toBe('opened');
+    expect(b.opener.requests[0]?.queueWaitMs).toEqual({ a: 26_000 });
+  });
+
   it('ouvre en partie rapide au bout de douze secondes', async () => {
     const b = banc();
     expect(await b.service.tryOpen(ticket({ mode: 'casual' }), 12_000)).toBe('opened');

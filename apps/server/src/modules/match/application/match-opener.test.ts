@@ -47,6 +47,7 @@ class FakeRuntime implements MatchStarter {
       league: string;
     } | null;
     rulesVariant: string | undefined;
+    queueWaitMs: Partial<Record<'a' | 'b', number>> | undefined;
     /** Messages deja partis au moment de l'ouverture : l'ordre compte. */
     sentBefore: number;
   }[] = [];
@@ -90,6 +91,7 @@ class FakeRuntime implements MatchStarter {
       league: string;
     } | null;
     rulesVariant?: string;
+    queueWaitMs?: Partial<Record<'a' | 'b', number>>;
   }): boolean {
     if (this.refuse) return false;
     this.opened.push({
@@ -98,6 +100,7 @@ class FakeRuntime implements MatchStarter {
       mode: input.mode,
       ghost: input.ghost ?? null,
       rulesVariant: input.rulesVariant,
+      queueWaitMs: input.queueWaitMs,
       sentBefore: this.notifier.sent.length,
     });
     return true;
@@ -293,6 +296,16 @@ describe('MatchOpener', () => {
     // Le rejet est avale par l'ouverture ; sans ce tour de boucle, il
     // remonterait en rejet non gere apres la fin du test.
     await Promise.resolve();
+  });
+
+  it('transmet au runtime l attente en file de chaque siege', () => {
+    opener.open({ playerA: 'p1', playerB: 'p2', mode: 'RANKED', queueWaitMs: { a: 900, b: 300 } });
+    expect(runtime.opened[0]?.queueWaitMs).toEqual({ a: 900, b: 300 });
+  });
+
+  it('n invente aucune attente pour une invitation', () => {
+    open('INVITE');
+    expect(runtime.opened[0]?.queueWaitMs).toBeUndefined();
   });
 
   it('conserve le mode d ouverture pour l enregistrement', () => {

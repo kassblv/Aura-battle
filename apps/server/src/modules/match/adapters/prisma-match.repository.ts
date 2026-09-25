@@ -227,12 +227,14 @@ export class PrismaMatchRepository implements MatchRepository {
                 seat: SEAT_COLUMN.a,
                 playerId: seats.a,
                 ghostOfId: ghostOf('a'),
+                queueWaitMs: record.queueWaitMs.a,
               },
               {
                 matchId: record.matchId,
                 seat: SEAT_COLUMN.b,
                 playerId: seats.b,
                 ghostOfId: ghostOf('b'),
+                queueWaitMs: record.queueWaitMs.b,
               },
             ],
           });

@@ -14,6 +14,7 @@ import { InviteService } from '../application/invites.js';
 import { PLAYER_DIRECTORY } from '../domain/directory.js';
 import { PLAYER_WARDROBE } from '../domain/wardrobe.js';
 import { MatchRuntime } from '../application/match-runtime.js';
+import type { MatchRecord, MatchRepository } from '../domain/ports.js';
 import { matchmakingTestProviders } from '../application/testing-wiring.js';
 import { MatchGateway } from './match.gateway.js';
 import { SocketNotifier } from './socket-notifier.js';
@@ -60,6 +61,32 @@ const subjectOf = (token: string): string | null =>
 
 let playerCounter = 0;
 const nextPlayerId = (): string => `p_${String((playerCounter += 1))}`;
+
+/**
+ * Les matchs acheves, tels que le runtime les confie a l'ecriture.
+ *
+ * Un depot en memoire : ce qui se verifie ici est ce que le CHEMIN
+ * d'ouverture transmet jusqu'a l'enregistrement, pas ce que Postgres accepte.
+ */
+class SavedMatches implements MatchRepository {
+  readonly records: MatchRecord[] = [];
+  save(record: MatchRecord): Promise<void> {
+    this.records.push(record);
+    return Promise.resolve();
+  }
+  /** Attend l'enregistrement d'un match : l'ecriture part apres `match:end`. */
+  async of(matchId: string): Promise<MatchRecord> {
+    const deadline = Date.now() + 5_000;
+    for (;;) {
+      const found = this.records.find((record) => record.matchId === matchId);
+      if (found !== undefined) return found;
+      if (Date.now() > deadline) throw new Error(`match ${matchId} jamais enregistre`);
+      await new Promise((resolve) => setTimeout(resolve, 20));
+    }
+  }
+}
+
+const saved = new SavedMatches();
 
 let app: NestFastifyApplication;
 let url: string;
@@ -197,7 +224,7 @@ beforeAll(async () => {
           notifier: SocketNotifier,
           scheduler: TimeoutScheduler,
           clock: SystemMatchClock,
-        ) => new MatchRuntime(notifier, scheduler, clock, FAST),
+        ) => new MatchRuntime(notifier, scheduler, clock, FAST, saved),
       },
       // Le chemin d'ouverture est commun a l'invitation et a la file : il faut
       // donc la file, meme pour un scenario d'invitation.
@@ -557,6 +584,18 @@ describe('match complet', () => {
     const fin = await guest.first<ServerMessage<'match:end'>>('match:end');
     expect(fin.winner).toBe('b');
     expect(fin.reason).toBe('forfeit');
+    close(host, guest);
+  });
+});
+
+describe('attente en file — indicateurs produit', () => {
+  it('n enregistre aucune attente pour un match d invitation', async () => {
+    const { host, guest, matchId } = await seatTwoPlayers();
+    host.socket.emit('match:forfeit', { matchId });
+    await guest.first<ServerMessage<'match:end'>>('match:end');
+    const record = await saved.of(matchId);
+    expect(record.mode).toBe('INVITE');
+    expect(record.queueWaitMs).toEqual({ a: null, b: null });
     close(host, guest);
   });
 });

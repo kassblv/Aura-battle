@@ -149,6 +149,11 @@ export interface MatchOpening {
       displayName: string;
       league: string;
     };
+    /**
+     * Attente en file de chaque siege humain (indicateurs produit, docs/00).
+     * Un siege absent n'a pas fait la queue : fantome, ou invitation.
+     */
+    queueWaitMs?: Partial<Record<'a' | 'b', number>>;
   }): string | null;
 }
 

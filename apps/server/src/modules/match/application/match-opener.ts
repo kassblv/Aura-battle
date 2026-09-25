@@ -45,6 +45,8 @@ export interface MatchStarter {
     } | null;
     /** Variante de regles du match ; absente, les regles normales. */
     rulesVariant?: string;
+    /** Attente en file par siege ; un siege absent n'a pas fait la queue. */
+    queueWaitMs?: Partial<Record<Seat, number>>;
   }): boolean;
   /**
    * Enregistre ce que porte un siege, apres la creation.
@@ -134,6 +136,11 @@ export interface OpenRequest {
   readonly mode: MatchMode;
   /** Absent : les deux sieges sont des personnes. */
   readonly ghost?: GhostSeatRequest;
+  /**
+   * Attente en file de chaque siege (indicateurs produit, docs/00). Absente
+   * pour une invitation ; jamais renseignee pour le siege d'un fantome.
+   */
+  readonly queueWaitMs?: Partial<Record<Seat, number>>;
 }
 
 export class MatchOpener {
@@ -254,6 +261,7 @@ export class MatchOpener {
         seats,
         mode: request.mode,
         rulesVariant,
+        ...(request.queueWaitMs === undefined ? {} : { queueWaitMs: request.queueWaitMs }),
         ghost:
           ghost === undefined
             ? null
