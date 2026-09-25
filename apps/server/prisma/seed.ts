@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { seasonsToCreate } from '../src/shared/season-calendar.js';
 import { fileURLToPath } from 'node:url';
 import {
   allAnimationIds,
@@ -17,7 +18,8 @@ import { SEED_GHOST_PREFIX } from '../src/modules/matchmaking/domain/ghost.js';
 import { buildSeedGhosts } from '../src/modules/matchmaking/domain/ghost-seeding.js';
 
 /**
- * Donnees de depart : saison 1, catalogue de cosmetiques, vivier de fantomes.
+ * Donnees de depart : saisons (la courante et la suivante), catalogue de
+ * cosmetiques, vivier de fantomes.
  *
  * Idempotent — on peut le relancer sans dupliquer quoi que ce soit. Un seed qui
  * ne peut etre joue qu'une fois est un seed qu'on n'ose plus lancer.
@@ -45,18 +47,23 @@ function animationRarity(id: string): string {
   return animation.rarity ?? 'default';
 }
 
-async function seedSeason(): Promise<void> {
-  const startsAt = new Date('2026-09-01T00:00:00Z');
-  await prisma.season.upsert({
-    where: { number: 1 },
-    update: {},
-    create: {
-      number: 1,
-      startsAt,
-      // Huit semaines, le rythme annonce dans docs/07 pour un passe de saison.
-      endsAt: new Date(startsAt.getTime() + 8 * 7 * 24 * 60 * 60 * 1_000),
-    },
+/**
+ * Les saisons : la premiere, puis toujours la suivante d'avance, bout a bout
+ * (`seasonsToCreate`). Sans elle, le classement et le passe perdraient leur
+ * saison courante le jour du changement.
+ */
+/** Le debut de la toute premiere saison. */
+const FIRST_SEASON_START = new Date('2026-09-01T00:00:00Z');
+
+async function seedSeason(): Promise<number> {
+  const latest = await prisma.season.findFirst({
+    orderBy: { number: 'desc' },
+    select: { number: true, startsAt: true, endsAt: true },
   });
+  for (const season of seasonsToCreate(latest, new Date(), FIRST_SEASON_START)) {
+    await prisma.season.upsert({ where: { number: season.number }, update: {}, create: season });
+  }
+  return prisma.season.count();
 }
 
 async function seedCosmetics(): Promise<number> {
@@ -163,11 +170,11 @@ async function seedGhosts(): Promise<number> {
 }
 
 async function main(): Promise<void> {
-  await seedSeason();
+  const seasons = await seedSeason();
   const count = await seedCosmetics();
   const ghosts = await seedGhosts();
   console.log(
-    `[seed] saison 1, ${count} cosmetiques et ${ghosts} fantomes d'amorcage (regles ${RULES_VERSION}) en place`,
+    `[seed] ${String(seasons)} saisons, ${count} cosmetiques et ${ghosts} fantomes d'amorcage (regles ${RULES_VERSION}) en place`,
   );
   await prisma.$disconnect();
 }
