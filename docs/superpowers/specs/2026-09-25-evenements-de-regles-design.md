@@ -28,7 +28,8 @@ il reste la référence.
 - **Partie rapide seulement.** Classé et invitations jouent les règles
   normales.
 - **Le serveur fait autorité** : il crée le match avec la variante de la semaine
-  et l'annonce dans `match:found.rulesVariant` (protocole 2.4.0). Le client
+  et l'annonce dans `match:found.rulesVariant` (protocole 2.4.0), rappelée par
+  `match:state.rulesVariant` à la reprise (2.4.1). Le client
   affiche les coûts et l'énergie de CETTE variante — jamais une valeur qu'il
   aurait calculée seul.
 - **Les parties à variante ne nourrissent pas le vivier de fantômes** : un
@@ -51,9 +52,24 @@ il reste la référence.
 ## Critères d'acceptation
 
 - [x] Variantes et rotation testées ; simulateur passé sur chaque variante (`docs/balance/2026-09-25-evenements.md`).
-- [ ] Une partie rapide pendant une semaine d'événement se joue avec la variante
+- [x] Une partie rapide pendant une semaine d'événement se joue avec la variante
   côté serveur (test) et l'écran montre ses coûts (test de rendu).
-- [ ] Classé et invitations inchangés (test).
-- [ ] Pas de fantôme enregistré d'une partie à variante (test).
-- [ ] Vérifié à l'écran ; lint, typecheck, tests ; relecture de sécurité
-  (serveur et protocole) et relecture finale.
+- [x] Classé et invitations inchangés (test).
+- [x] Pas de fantôme enregistré d'une partie à variante (test).
+- [x] Vérifié à l'écran (bandeau d'accueil, badge « Partie rapide », étiquette
+  du HUD et bandeau d'intro contre un fantôme) ; lint, typecheck, 3 385 tests ;
+  relecture de sécurité : deux points importants corrigés — la variante survit
+  à une reprise (`match:state.rulesVariant`, 2.4.1), et le client ignore les
+  champs inconnus (`lenient`), ce que `version.ts` promettait à tort depuis 2.1.
+- [x] Relecture finale (opus) : aucun point critique ni important. Mineur
+  corrigé : les nombres des événements vivent dans `EVENT_BALANCE`
+  (`balance.ts`, règle d'or n° 6) et les annonces les citent (test).
+
+## Limites connues
+
+- Un client antérieur à 2.4.1 analyse en strict et ne comprend pas
+  `match:found.rulesVariant` : sa partie rapide ne s'ouvre pas une semaine
+  d'événement. Sans joueur installé, rien n'est gardé pour lui.
+- Le bandeau d'accueil calcule la semaine sur l'horloge du téléphone : autour
+  du lundi 00:00 UTC, ou sur un téléphone mal réglé, l'annonce peut précéder ou
+  suivre le serveur. Le match, lui, affiche toujours la variante du serveur.

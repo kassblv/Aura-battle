@@ -274,6 +274,7 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
 - [~] Partage natif (feuille de partage web, `@capacitor/share` sur mobile, téléchargement en repli) : fait. Le lien d'invitation dans le texte du partage reste à faire : le jeu n'a pas encore d'URL publique à y mettre.
 
 ### M10 — Live-ops
-- [ ] Feature flags, événements de règles en données, bulle d'intention en test A/B
+- [x] Événements de règles en données (2026-09-26) : une variante de `BalanceConfig` par semaine d'événement, en partie rapide seulement (Ultime express, Semaine brillante, Contres tranchants), annoncée dans `match:found` et `match:state` (protocole 2.4.1), affichée à l'accueil et en match — spec `docs/superpowers/specs/2026-09-25-evenements-de-regles-design.md`. Le client ignore désormais les champs inconnus des messages serveur et des réponses HTTP (`lenient`, `@aura/protocol`) : une version mineure ne casse plus un client installé ; le serveur, lui, émet toujours en strict.
+- [ ] Feature flags, bulle d'intention en test A/B
 - [ ] Contenu servi avec `contentVersion` et cache client
 - [ ] Analytics produit (événements du parcours, indicateurs de `00-vision.md`)
