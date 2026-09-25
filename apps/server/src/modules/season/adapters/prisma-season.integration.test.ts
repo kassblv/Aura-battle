@@ -4,6 +4,9 @@ import { PrismaClient } from '@prisma/client';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import type { SeasonGrant } from '../domain/claim.js';
 import { SeasonConflictError } from '../domain/ports.js';
+import { loadConfig } from '../../../shared/config.js';
+import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { PrismaRatingRepository } from '../../rating/adapters/prisma-rating.repository.js';
 import { PrismaSeasonRepository } from './prisma-season.repository.js';
 
 /**
@@ -258,6 +261,50 @@ describe.skipIf(!reachable)('passe de saison reel', () => {
       ).rejects.toThrow();
     } finally {
       await prisma!.player.delete({ where: { id: playerId } });
+    }
+  });
+
+  /*
+    L'achat du premium et le credit de fin de match touchent les memes lignes
+    (Player, SeasonProgress). Pris dans l'ordre inverse, ils s'interbloquaient :
+    Postgres annulait l'un des deux — et un credit annule faisait perdre le
+    match entier aux DEUX joueurs (relecture de securite). Meme ordre partout :
+    Player d'abord.
+  */
+  it('ne s interbloque pas entre l achat du premium et le credit de fin de match', async () => {
+    const rating = new PrismaRatingRepository(
+      prisma as never,
+      new PinoLoggerService(
+        createLogger(
+          loadConfig({
+            DATABASE_URL: databaseUrl,
+            REDIS_URL: 'redis://localhost:6379',
+            JWT_SECRET: 'un-secret-assez-long',
+            NODE_ENV: 'test',
+          }),
+        ),
+      ),
+    );
+    const repository = new PrismaSeasonRepository(prisma as never);
+    for (let round = 0; round < 12; round += 1) {
+      const playerId = await createPlayer({ hard: 600 });
+      try {
+        const results = await Promise.allSettled([
+          rating.credit([{ playerId, soft: 20, xp: 30 }], seasonId),
+          repository.buyPremium(playerId, seasonId, 500),
+        ]);
+        for (const result of results) {
+          expect(result.status === 'rejected' ? String(result.reason) : 'ok').toBe('ok');
+        }
+        const progress = await prisma!.seasonProgress.findUniqueOrThrow({
+          where: { playerId_seasonId: { playerId, seasonId } },
+        });
+        expect(progress.xp).toBe(30);
+        expect(progress.premiumAt).not.toBeNull();
+        expect((await walletOf(playerId)).hardCurrency).toBe(100);
+      } finally {
+        await prisma!.player.delete({ where: { id: playerId } });
+      }
     }
   });
 });

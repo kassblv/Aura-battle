@@ -1,4 +1,5 @@
 import {
+  discountedPrice,
   SEASON_PASS,
   seasonTierFor,
   type SeasonPass,
@@ -70,10 +71,16 @@ export interface ClaimContext {
 
 const TRACKS: readonly SeasonTrack[] = ['free', 'premium'];
 
-/** La valeur en pieces d'un cosmetique, s'il se change en pieces. */
+/**
+ * La valeur en pieces d'un cosmetique, s'il se change en pieces.
+ *
+ * Au prix le plus bas auquel la boutique le vend (la vitrine, -30 %), jamais
+ * au prix plein : sinon l'acheter en vitrine puis le reclamer ici rendait plus
+ * qu'il n'avait coute, et creait des pieces a chaque saison.
+ */
 function coinsFor(itemId: string, catalogue: readonly CatalogueEntry[]): number {
   const price = catalogue.find((item) => item.id === itemId)?.priceSoft ?? 0;
-  return Math.max(price, OWNED_ITEM_MIN_COINS);
+  return Math.max(discountedPrice(price), OWNED_ITEM_MIN_COINS);
 }
 
 function grantFor(

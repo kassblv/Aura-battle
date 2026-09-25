@@ -266,12 +266,17 @@ export class PrismaRatingRepository
           });
         }
         if (seasonId !== null && entry.xp > 0) {
-          // Un upsert : la premiere partie de la saison cree la ligne, la cle
-          // `(playerId, seasonId)` empeche deux matchs simultanes d'en creer deux.
-          await tx.seasonProgress.upsert({
+          // Creer si absente (sans collision possible avec un achat du premium
+          // simultane, contrairement a un upsert), puis incrementer. La ligne
+          // Player est deja verrouillee plus haut : meme ordre que l'achat du
+          // premium et les reclamations, jamais d'interblocage.
+          await tx.seasonProgress.createMany({
+            data: [{ playerId: entry.playerId, seasonId }],
+            skipDuplicates: true,
+          });
+          await tx.seasonProgress.update({
             where: { playerId_seasonId: { playerId: entry.playerId, seasonId } },
-            create: { playerId: entry.playerId, seasonId, xp: entry.xp },
-            update: { xp: { increment: entry.xp } },
+            data: { xp: { increment: entry.xp } },
             select: { xp: true },
           });
         }

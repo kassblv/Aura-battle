@@ -1,3 +1,4 @@
+import { PinoLoggerService } from '../../shared/logger.js';
 import { Module } from '@nestjs/common';
 import { SystemClock } from '../../shared/clock.js';
 import { AuthModule } from '../auth/auth.module.js';
@@ -26,13 +27,29 @@ import { SeasonRateLimit } from './application/season-rate-limit.js';
     PrismaSeasonRepository,
     {
       provide: SeasonService,
-      inject: [PrismaSeasonRepository, PrismaInventoryRepository, SystemClock, INVENTORY_CHANGES],
+      inject: [
+        PrismaSeasonRepository,
+        PrismaInventoryRepository,
+        SystemClock,
+        INVENTORY_CHANGES,
+        PinoLoggerService,
+      ],
       useFactory: (
         seasons: PrismaSeasonRepository,
         inventory: PrismaInventoryRepository,
         clock: SystemClock,
         changes: InventoryChanges,
-      ) => new SeasonService({ seasons, inventory, clock, changes }),
+        logger: PinoLoggerService,
+      ) =>
+        new SeasonService({
+          seasons,
+          inventory,
+          clock,
+          changes,
+          warn: (message) => {
+            logger.warn(message);
+          },
+        }),
     },
     SystemClock,
     // Un seul exemplaire pour le processus : les seaux vivent en memoire.

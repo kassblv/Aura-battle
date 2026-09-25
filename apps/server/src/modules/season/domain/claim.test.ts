@@ -1,4 +1,4 @@
-import { SEASON_PASS, type SeasonPass } from '@aura/content';
+import { discountedPrice, SEASON_PASS, type SeasonPass } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import type { CatalogueEntry } from '../../inventory/domain/purchase.js';
 import {
@@ -148,26 +148,38 @@ describe('claimOutcome', () => {
         coins: 0,
         tokens: 0,
         itemId: 'color.violet',
-        // Si un achat passe entre la lecture et l'ecriture : les pieces.
-        fallbackCoins: 80,
+        // Si un achat passe entre la lecture et l'ecriture : les pieces, au prix
+        // le plus bas auquel on peut l'acheter (vitrine).
+        fallbackCoins: discountedPrice(80),
       },
     });
   });
 
-  it('change un cosmetique deja possede en pieces, a son prix du catalogue', () => {
+  /*
+    Au prix de la VITRINE, jamais au prix plein : sinon acheter l'objet a
+    -30 % en vitrine puis le reclamer sur le passe rendait le prix plein, et
+    creait des pieces a chaque saison (relecture de securite).
+  */
+  it('change un cosmetique deja possede en pieces, au prix le plus bas de la boutique', () => {
     const outcome = claimOutcome(
       { tier: 3, track: 'free' },
       context({ xp: 300, owned: ['color.violet'] }),
     );
-    expect(outcome).toMatchObject({ ok: true, grant: { coins: 80, itemId: null } });
+    expect(outcome).toMatchObject({
+      ok: true,
+      grant: { coins: discountedPrice(80), itemId: null },
+    });
   });
 
-  it('prend le prix plein du catalogue meme pour un objet rare', () => {
+  it('ne rend jamais plus que ce que coute l objet en vitrine, meme rare', () => {
     const outcome = claimOutcome(
       { tier: 1, track: 'premium' },
       context({ xp: 100, premium: true, owned: ['fx.shock'] }),
     );
-    expect(outcome).toMatchObject({ ok: true, grant: { coins: 850, itemId: null } });
+    expect(outcome).toMatchObject({
+      ok: true,
+      grant: { coins: discountedPrice(850), itemId: null },
+    });
   });
 
   /*
@@ -254,7 +266,7 @@ describe('claimAll', () => {
     const grants = claimAll(context({ xp: 100, premium: true, pass }));
     expect(grants.map((g) => [g.itemId, g.coins])).toEqual([
       ['color.violet', 0],
-      [null, 80],
+      [null, discountedPrice(80)],
     ]);
   });
 

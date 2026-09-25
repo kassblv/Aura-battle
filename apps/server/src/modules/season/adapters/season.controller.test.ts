@@ -1,4 +1,4 @@
-import { SEASON_PASS } from '@aura/content';
+import { discountedPrice, SEASON_PASS } from '@aura/content';
 import { seasonStateSchema, type SeasonState } from '@aura/protocol';
 import { FastifyAdapter, type NestFastifyApplication } from '@nestjs/platform-fastify';
 import { Test } from '@nestjs/testing';
@@ -309,7 +309,7 @@ describe('POST /season/claim', () => {
       owned: ['color.violet'],
     });
     const state = stateOf(await claim('p-owned', { tier: 10, track: 'free' }));
-    expect(state.wallet.soft).toBe(80);
+    expect(state.wallet.soft).toBe(discountedPrice(80));
     expect(notified).toEqual([]);
   });
 

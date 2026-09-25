@@ -62,6 +62,10 @@ export class PrismaSeasonRepository implements SeasonRepository {
     if (grants.length === 0) return;
     try {
       await this.prisma.$transaction(async (tx) => {
+        // La ligne Player d'abord, comme partout ailleurs : sans cet ordre
+        // commun, une reclamation et un achat en boutique du meme objet
+        // s'interbloquaient.
+        await tx.$queryRaw`SELECT id FROM "Player" WHERE id = ${playerId} FOR UPDATE`;
         await tx.seasonClaim.createMany({
           data: grants.map((grant) => ({
             playerId,
@@ -112,25 +116,30 @@ export class PrismaSeasonRepository implements SeasonRepository {
    */
   async buyPremium(playerId: string, seasonId: string, price: number): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      // La ligne existe des le premier match de la saison ; un joueur qui
-      // achete avant d'avoir joue n'en a pas encore.
-      await tx.seasonProgress.upsert({
-        where: { playerId_seasonId: { playerId, seasonId } },
-        create: { playerId, seasonId },
-        update: {},
-        select: { xp: true },
-      });
-
-      const opened = await tx.seasonProgress.updateMany({
-        where: { playerId, seasonId, premiumAt: null },
-        data: { premiumAt: new Date() },
-      });
-      if (opened.count === 0) throw new SeasonConflictError('ALREADY_PREMIUM');
-
+      /*
+        Le debit D'ABORD : il verrouille la ligne Player, comme le credit de
+        fin de match et les reclamations. Dans l'ordre inverse, un achat
+        simultane a une fin de match s'interbloquait avec elle, et Postgres
+        pouvait annuler le credit du match entier (relecture de securite).
+        Un refus plus bas annule le debit avec le reste.
+      */
       const debited = await tx.player.updateMany({
         where: { id: playerId, hardCurrency: { gte: price } },
         data: { hardCurrency: { decrement: price } },
       });
+
+      // La ligne existe des le premier match de la saison ; un joueur qui
+      // achete avant d'avoir joue n'en a pas encore.
+      await tx.seasonProgress.createMany({
+        data: [{ playerId, seasonId }],
+        skipDuplicates: true,
+      });
+      const opened = await tx.seasonProgress.updateMany({
+        where: { playerId, seasonId, premiumAt: null },
+        data: { premiumAt: new Date() },
+      });
+      // « Deja premium » prime sur « pas assez » : c'est ce qu'il faut lire.
+      if (opened.count === 0) throw new SeasonConflictError('ALREADY_PREMIUM');
       if (debited.count === 0) throw new SeasonConflictError('INSUFFICIENT_FUNDS');
     }, PURCHASE_TRANSACTION);
   }

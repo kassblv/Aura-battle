@@ -204,6 +204,8 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - [ ] Ouvrir la vente : comptes App Store, Google Play et RevenueCat, produits, clés et secret du webhook (`docs/10-exploitation.md`, « Achat de jetons »).
 
 ### M7 — Anti-triche et robustesse
+- [ ] **Farm d'XP de saison par abandon en invitation** (relevé le 2026-09-25, relecture de sécurité du passe). Une victoire par abandon rapporte 30 XP : deux comptes en invitation remplissent les trente paliers en quelques minutes. Borné par compte et par saison, non transférable. Piste : aucune XP pour un abandon avant la fin de la première manche, ou un plafond en invitation par paire et par jour.
+- [ ] **Premium de saison et remboursement** : un remboursement de jetons ne révoque pas un premium déjà acheté (la dette est notée, comme pour la boutique).
 - [ ] **Remboursements répétés** (relevé le 2026-09-25, relecture de sécurité des paiements). Un joueur peut acheter des jetons, les dépenser, puis se faire rembourser : la reprise s'arrête à zéro et la dette est seulement notée. Compter les remboursements par joueur, et bloquer l'achat au-delà d'un seuil.
 - [ ] **Webhook de paiement** : avertir au démarrage en production quand `REVENUECAT_WEBHOOK_AUTH` manque (les ventes seraient perdues sans alerte) ; borner le corps de la route à 64 Kio.
 - [ ] **Farm de jetons par collusion** (relevé le 2026-09-25, relecture de sécurité du chantier n°5). Deux comptes qui perdent à tour de rôle par forfait gagnent de l'expérience, donc des jetons au passage de niveau. C'est borné (au plus 49 × 10 jetons par compte), non transférable et freiné par le délai de déconnexion. À traiter avant la vente de jetons en argent réel.
@@ -251,8 +253,15 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   (`levelFor`). Affiché en écusson sur la pastille d'accueil et en barre dans le
   profil. Le total est **recopié** du serveur, jamais cumulé localement — la même
   règle que les LP, pour la même raison.
-- [ ] Passe de saison (gratuit + premium) — **le niveau lui sert de socle** : il
-  compte déjà ce qu'une saison devrait récompenser.
+- [x] **Passe de saison** (chantier n°6, 2026-09-25). Spec : `docs/superpowers/specs/2026-09-25-passe-de-saison-design.md`.
+  - Trente paliers de 100 XP de saison, une piste gratuite et une piste premium à 500 💎 qui en rend 200.
+  - Réclamation au palier ou « Tout récupérer ». Le serveur juge seul et accorde en une transaction.
+  - Un cosmétique déjà possédé se change en pièces, au prix de la vitrine, pour qu'aucun arbitrage ne crée de pièces.
+  - Toujours la saison suivante d'avance en base : le seed l'enchaîne à chaque démarrage.
+  - Écran « Saison » avec pastille sur le rail, « Palier N atteint » en fin de duel en ligne.
+  - Reste :
+    - des cosmétiques exclusifs de saison (une règle « jamais en boutique ») ;
+    - avertir quand on achète le premium dans les derniers jours d'une saison.
 - [x] Achats intégrés via RevenueCat : reçus validés par RevenueCat, jetons crédités par le serveur via webhook, avec double anti-rejeu (ADR 0016, 2026-09-25). Reste l'ouverture des ventes côté comptes stores.
 
 ### M9 — Partage

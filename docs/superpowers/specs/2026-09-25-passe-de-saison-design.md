@@ -34,9 +34,8 @@ jetons sans jamais acheter de puissance (règle d'or n° 3).
 - **Cosmétiques exclusifs de saison** : il faut du contenu neuf et une règle
   « jamais en boutique » que `isOffered` et la boutique ne connaissent pas
   encore. La v1 récompense avec des cosmétiques du catalogue.
-- **Saison 2** : le seed ne crée que la saison 1 (fin le 2026-10-27). Rien ne
-  crée la suivante — à traiter avant cette date, sans quoi le classement et le
-  passe n'ont plus de saison courante.
+- ~~**Saison 2**~~ : fait. Le seed garde toujours la saison suivante d'avance
+  (`seasonsToCreate`).
 
 ## Architecture
 
@@ -49,16 +48,18 @@ jetons sans jamais acheter de puissance (règle d'or n° 3).
   `POST /season/claim`, `POST /season/premium`. Règle de réclamation pure,
   testée. Crédit de l'XP de saison dans `PrismaRatingRepository.credit`.
 - Mobile : écran « Saison » en paysage (piste horizontale, deux rangées), case
-  du rail avec pastille des récompenses à réclamer, « +XP saison » en fin de
-  match.
+  du rail avec pastille des récompenses à réclamer, « Palier N atteint » en fin
+  de duel en ligne (`match:end` ne porte pas l'XP de saison ; le protocole n'a
+  pas été changé pour ça).
 
 ## Critères d'acceptation
 
-- [ ] Règle de réclamation testée : palier non atteint, premium absent, déjà
+- [x] Règle de réclamation testée : palier non atteint, premium absent, déjà
   réclamé, cosmétique déjà possédé → pièces, piste inconnue.
-- [ ] Achat du premium : jetons insuffisants, déjà premium, débit exact.
-- [ ] Crédit de l'XP de saison dans la transaction de fin de match (test contre
+- [x] Achat du premium : jetons insuffisants, déjà premium, débit exact.
+- [x] Crédit de l'XP de saison dans la transaction de fin de match (test contre
   Postgres).
-- [ ] Écran vérifié à l'écran en 844×390 ; aucune donnée calculée par le client
+- [x] Écran vérifié à l'écran en 844×390 ; aucune donnée calculée par le client
   n'est crue.
-- [ ] lint, typecheck, tests ; relecture de sécurité et relecture finale.
+- [x] lint, typecheck, tests ; relecture de sécurité (points importants corrigés).
+- [ ] Relecture finale.

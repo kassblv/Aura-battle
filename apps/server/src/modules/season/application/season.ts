@@ -43,6 +43,8 @@ export interface SeasonDependencies {
   readonly clock: Clock;
   /** Qui doit apprendre qu'un cosmetique a ete accorde. Absent : personne. */
   readonly changes?: InventoryChanges;
+  /** Ou dire qu'un signal au match a echoue apres une reclamation ecrite. */
+  readonly warn?: (message: string) => void;
 }
 
 export class SeasonService {
@@ -114,14 +116,25 @@ export class SeasonService {
       il ne compterait qu'a la prochaine connexion.
     */
     if (this.deps.changes !== undefined && grants.some((grant) => grant.itemId !== null)) {
-      const [stored, catalogue] = await Promise.all([
-        this.deps.inventory.read(playerId),
-        this.deps.inventory.catalogue(),
-      ]);
-      await this.deps.changes.changed(playerId, {
-        owned: ownedWithFree(stored.owned, catalogue),
-        loadout: stored.loadout,
-      });
+      /*
+        La reclamation est deja ECRITE : un echec ici ne doit pas la faire lire
+        comme refusee — le nouvel essai du joueur tomberait sur « deja
+        reclame ». Le match l'apprendra a la prochaine connexion.
+      */
+      try {
+        const [stored, catalogue] = await Promise.all([
+          this.deps.inventory.read(playerId),
+          this.deps.inventory.catalogue(),
+        ]);
+        await this.deps.changes.changed(playerId, {
+          owned: ownedWithFree(stored.owned, catalogue),
+          loadout: stored.loadout,
+        });
+      } catch (cause) {
+        this.deps.warn?.(
+          `signal au match apres une reclamation de saison en echec : ${cause instanceof Error ? cause.name : 'inconnu'}`,
+        );
+      }
     }
   }
 

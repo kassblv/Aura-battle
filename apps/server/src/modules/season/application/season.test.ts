@@ -59,3 +59,42 @@ describe('SeasonService.claimAll', () => {
     expect(writes.length).toBe(2);
   });
 });
+
+/*
+  La reclamation est ecrite AVANT que le match l'apprenne. Si ce signal
+  echoue, le joueur ne doit pas lire une erreur pour une recompense qu'il a
+  bien recue — son nouvel essai lirait « deja reclame ».
+*/
+describe('SeasonService — signal au match apres un cosmetique', () => {
+  it('ne fait pas echouer une reclamation deja ecrite', async () => {
+    const warnings: string[] = [];
+    const service = new SeasonService({
+      seasons: {
+        current: () => Promise.resolve(SEASON),
+        progress: () => Promise.resolve({ xp: 1_000, premium: false, claimed: [] }),
+        grant: () => Promise.resolve(),
+        buyPremium: () => Promise.resolve(),
+      },
+      inventory: {
+        catalogue: () =>
+          Promise.resolve([
+            {
+              id: 'color.violet',
+              kind: 'AURA_COLOR',
+              rarity: 'common',
+              priceSoft: 80,
+              priceHard: 8,
+              availableFrom: null,
+              availableTo: null,
+            },
+          ]),
+        read: () => Promise.resolve({ wallet: { soft: 0, hard: 0 }, owned: [], loadout: null }),
+      },
+      clock: { now: () => new Date('2026-09-25T12:00:00Z') },
+      changes: { changed: () => Promise.reject(new Error('socket partie')) },
+      warn: (message) => warnings.push(message),
+    });
+    await expect(service.claim('p1', { tier: 10, track: 'free' })).resolves.toBeDefined();
+    expect(warnings).toHaveLength(1);
+  });
+});
