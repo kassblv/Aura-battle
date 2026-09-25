@@ -84,6 +84,8 @@ export function createClipRecorder(
   let recorder: MediaRecorderLike | null = null;
   let stream: MediaStream | null = null;
   let chunks: Blob[] = [];
+  /** Une erreur est survenue pendant la prise : la video n'est pas fiable. */
+  let spoiled = false;
 
   const release = (): void => {
     for (const track of stream?.getTracks() ?? []) track.stop();
@@ -101,8 +103,14 @@ export function createClipRecorder(
         if (stream === null) return false;
         const next = new Recorder(stream, { mimeType, videoBitsPerSecond: CLIP_BITRATE });
         chunks = [];
+        spoiled = false;
         next.ondataavailable = (event) => {
           if (event.data.size > 0) chunks.push(event.data);
+        };
+        // Ecoute DES la mise en route : une erreur en pleine prise arrete le
+        // navigateur tout seul, et plus rien ne viendrait a l'arret.
+        next.onerror = () => {
+          spoiled = true;
         };
         next.start();
         recorder = next;
@@ -123,6 +131,12 @@ export function createClipRecorder(
           release();
           resolve(parts.length === 0 ? null : new Blob(parts, { type: containerOf(mimeType) }));
         };
+        // Deja arrete (erreur en cours de prise) : rien ne viendra plus.
+        if (spoiled || current.state === 'inactive') {
+          chunks = [];
+          finish();
+          return;
+        }
         current.onstop = finish;
         current.onerror = () => {
           chunks = [];
@@ -151,4 +165,15 @@ export function createClipRecorder(
       release();
     },
   };
+}
+
+/** Marge sous l'intervalle de 30 images/s : une horloge a 60 Hz bat autour. */
+const FRAME_SLACK_MS = 2;
+
+/**
+ * Une image de clip est-elle due a `now`, la derniere ayant ete composee a
+ * `last` ? L'arene tourne a 60 ou 120 Hz, la video n'en echantillonne que 30.
+ */
+export function clipFrameDue(last: number | null, now: number): boolean {
+  return last === null || now - last >= 1_000 / CLIP_FPS - FRAME_SLACK_MS;
 }

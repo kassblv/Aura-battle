@@ -558,7 +558,14 @@ export function useArena(
 
       // Dans la meme image que le rendu, sinon le tampon est deja efface.
       if (listeners.size > 0) {
-        for (const listener of listeners) listener(canvas, now);
+        for (const listener of listeners) {
+          // Un abonne qui leve ne prive pas les autres de leur image.
+          try {
+            listener(canvas, now);
+          } catch {
+            // Le clip rate une image ; l'arene, elle, continue.
+          }
+        }
       }
     };
 

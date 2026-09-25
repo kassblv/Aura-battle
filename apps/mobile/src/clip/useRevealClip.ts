@@ -6,7 +6,7 @@ import type { ClipStatus } from './button.js';
 import { drawClipFrame, readClipTheme, type ClipTheme } from './composer.js';
 import { CLIP_HEIGHT, CLIP_WIDTH, clipLayout, type ClipOutcome } from './layout.js';
 import { CLIP_STOP_AT_MS, clipPolicy, INITIAL_CLIP_POLICY } from './policy.js';
-import { createClipRecorder, type ClipRecorder } from './recorder.js';
+import { clipFrameDue, createClipRecorder, type ClipRecorder } from './recorder.js';
 
 /**
  * Filme la revelation des manches gagnees (ADR 0017).
@@ -105,7 +105,11 @@ export function useRevealClip(input: RevealClipInput): RevealClip {
           };
           // `now` est dans le repere de `performance.now()`, comme ceci.
           const revealStart = performance.now() - inPhaseMs;
+          let lastDrawn: number | null = null;
           const unsubscribe = frames((arena, now) => {
+            // Trente images par seconde, comme la video : pas une de plus.
+            if (!clipFrameDue(lastDrawn, now)) return;
+            lastDrawn = now;
             const layout = clipLayout({
               scene,
               outcome,

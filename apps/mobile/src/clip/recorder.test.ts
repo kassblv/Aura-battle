@@ -7,6 +7,7 @@ import {
   pickMimeType,
   type MediaRecorderClass,
   type MediaRecorderLike,
+  clipFrameDue,
 } from './recorder.js';
 
 interface Track {
@@ -158,5 +159,52 @@ describe('createClipRecorder', () => {
     );
     expect(recorder.start()).toBe(false);
     expect(tracks[0]?.stopped).toBe(true);
+  });
+});
+
+/*
+  Une erreur du navigateur en pleine revelation (application mise en arriere-
+  plan sur iOS, encodeur perdu) : il emet « error » puis « stop » AUSSITOT,
+  et un `stop()` ulterieur sur un enregistreur inactif ne fait plus rien.
+  Sans ecoute des la mise en route, la promesse d'arret ne se resolvait
+  jamais — et le bouton restait sur « Preparation… » jusqu'au match suivant.
+*/
+describe('createClipRecorder — erreur en cours d enregistrement', () => {
+  it('rend null a l arret, sans attendre un evenement qui ne viendra plus', async () => {
+    const { Recorder, made } = fakeRecorder(['video/mp4']);
+    const { stream } = fakeStream();
+    const recorder = createClipRecorder({ captureStream: () => stream }, Recorder);
+    expect(recorder.start()).toBe(true);
+
+    const instance = made[0]!.instance as MediaRecorderLike & { state: string; stop: () => void };
+    instance.state = 'inactive';
+    instance.stop = () => undefined;
+    instance.onerror?.();
+    instance.onstop?.();
+
+    const result = await Promise.race([
+      recorder.stop(),
+      new Promise<'pendu'>((resolve) => setTimeout(() => resolve('pendu'), 200)),
+    ]);
+    expect(result).toBeNull();
+  });
+});
+
+/*
+  L'arene tourne a 60 ou 120 Hz ; la video n'echantillonne que 30 images par
+  seconde. Composer chaque image de l'arene gaspillait le travail pendant le
+  choc — le moment le plus lourd, et celui qu'on filme.
+*/
+describe('clipFrameDue', () => {
+  it('compose au plus trente images par seconde', () => {
+    expect(clipFrameDue(null, 0)).toBe(true);
+    expect(clipFrameDue(0, 8)).toBe(false);
+    expect(clipFrameDue(0, 16)).toBe(false);
+    expect(clipFrameDue(0, 33)).toBe(true);
+  });
+
+  // Une marge : une image de 60 Hz arrivee a 32,9 ms ne doit pas faire sauter une image.
+  it('tolere le battement d une horloge a 60 Hz', () => {
+    expect(clipFrameDue(0, 31.5)).toBe(true);
   });
 });
