@@ -273,7 +273,7 @@ Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de c
   - Les récompenses non réclamées à la fin de la saison sont perdues : sans
     saison courante, plus rien ne se réclame.
 
-  **Exclusifs de saison** : certains cosmétiques ne se gagnent QUE sur le passe (champ `exclusive`, « Saison 1 ») — ni en boutique, ni en vitrine, ni offerts. La saison 1 en a deux : la couleur Aurore (palier premium 22) et la Tenue d'Aurore (palier premium 30). Leur prix de 0 veut dire « ne se vend pas » ; toute règle qui lit « 0 = offert » vérifie d'abord `isExclusive`.
+  **Exclusifs de saison** : certains cosmétiques ne se gagnent QUE sur le passe (champ `exclusive`, « Saison 1 ») — ni en boutique, ni en vitrine, ni offerts. La saison 1 en a deux : la couleur Aurore (palier premium 22) et la Tenue d'Aurore (palier premium 30). Les paliers premium 22 et 26 payaient 60 pièces chacun : ils portent désormais l'Aurore et les 20 jetons déplacés du palier 30. La piste premium rend toujours 200 jetons, et 120 pièces de moins — échangées contre l'exclusif. Leur prix de 0 veut dire « ne se vend pas » ; toute règle qui lit « 0 = offert » vérifie d'abord `isExclusive`.
 - **Monnaie douce** (◈ pièces) gagnée en jouant ; **monnaie dure** (💎 jetons). Toutes deux ne servent qu'au cosmétique et au passe de saison.
   - **Les jetons se gagnent aussi en jouant** : dix par niveau franchi (`BALANCE.progression.tokensPerLevel`). Le niveau 2, dans la première session, paie une pose commune.
   - **Dix pièces pour un jeton** : chaque article payant a un prix en jetons, arrondi au-dessus (`tokenPrice`). La vitrine remise aussi les jetons.

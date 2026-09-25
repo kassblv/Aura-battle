@@ -66,7 +66,7 @@ export interface WardrobeProps {
   /** Ouvre la boutique sur l article essaye. */
   readonly onShop: (id: string) => void;
   /** Ouvre le passe de saison : la ou se gagne un exclusif essaye. */
-  readonly onSeason?: () => void;
+  readonly onSeason: () => void;
   readonly onClose: () => void;
   /**
    * Meme largeur que la boutique, et pour la meme raison : ici aussi le
@@ -302,7 +302,7 @@ export function WardrobeScreen({
               type="button"
               className="ward__buy"
               onClick={() => {
-                onSeason?.();
+                onSeason();
               }}
             >
               🎖️ Au passe de saison
