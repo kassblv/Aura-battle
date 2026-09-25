@@ -1,3 +1,4 @@
+import { discountedPrice } from './featured.js';
 /**
  * Le passe de saison (chantier n°6), en donnee (regle d'or n°5).
  *
@@ -88,4 +89,19 @@ export const SEASON_PASS: SeasonPass = Object.freeze({
 export function seasonTierFor(xp: number): number {
   if (!Number.isFinite(xp) || xp <= 0) return 0;
   return Math.min(TIER_COUNT, Math.floor(xp / XP_PER_TIER));
+}
+
+/** Ce qu'un cosmetique deja possede rapporte au minimum : une case de pieces. */
+export const OWNED_ITEM_MIN_COINS = 40;
+
+/**
+ * Ce que rapporte un cosmetique du passe que le joueur possede deja.
+ *
+ * Au prix le plus bas auquel la boutique le vend (la vitrine, -30 %) : sinon
+ * l'acheter en vitrine puis le reclamer rendait plus qu'il n'avait coute. Et
+ * jamais moins qu'une case de pieces : une recompense n'est jamais vide.
+ * Lue par le serveur qui paie et par l'ecran qui l'annonce.
+ */
+export function ownedItemCoins(priceSoft: number): number {
+  return Math.max(discountedPrice(priceSoft), OWNED_ITEM_MIN_COINS);
 }

@@ -1,4 +1,10 @@
-import { SEASON_PASS, type SeasonPass, type SeasonReward, type SeasonTrack } from '@aura/content';
+import {
+  ownedItemCoins,
+  SEASON_PASS,
+  type SeasonPass,
+  type SeasonReward,
+  type SeasonTrack,
+} from '@aura/content';
 import type { SeasonState } from '@aura/protocol';
 import type { RewardSize } from '../audio/cues.js';
 import { itemInfo } from './wardrobe.js';
@@ -128,18 +134,22 @@ export function describeReward(
     case 'item': {
       const info = itemInfo(reward.itemId);
       const name = info?.name ?? 'Cosmétique';
-      const converts = owned.has(reward.itemId) && info !== null && info.price > 0;
+      // Meme regle que le serveur qui paie (`ownedItemCoins`) : prix de
+      // vitrine, et jamais moins qu'une case de pieces.
+      const converts = owned.has(reward.itemId) && info !== null;
       return {
         kind: 'item',
         icon: itemIcon(reward.itemId),
         label: name,
         itemId: reward.itemId,
         converts,
-        gain: converts ? `+${String(info.price)} ◈` : name,
+        gain: converts ? `+${String(ownedItemCoins(info.price))} ◈` : name,
       };
     }
   }
 }
+
+const NOTHING_OWNED: ReadonlySet<string> = new Set();
 
 const key = (tier: number, track: SeasonTrack): string => `${String(tier)}:${track}`;
 
@@ -172,7 +182,10 @@ export function seasonView(
         : open
           ? 'claimable'
           : 'sealed';
-    return { tier: tierNumber, track, state: status, ...describeReward(reward, owned) };
+    // Une case reclamee reste ce qu'elle a donne : l'objet est desormais a
+    // soi PARCE QU'elle l'a donne, pas avant.
+    const ownedBefore = status === 'claimed' ? NOTHING_OWNED : owned;
+    return { tier: tierNumber, track, state: status, ...describeReward(reward, ownedBefore) };
   };
 
   const tiers = pass.tiers.map((entry) => ({
@@ -255,6 +268,38 @@ export function tierReached(before: SeasonState | null, after: SeasonState): num
   if (before === null || was === null || after.season === null) return null;
   if (was.number !== after.season.number) return null;
   return after.tier > before.tier ? after.tier : null;
+}
+
+/** « Palier N atteint », rattache au match qui l'a fait atteindre. */
+export interface TierAnnouncement {
+  readonly tier: number;
+  /** Le compteur de matchs (`record.matches`) de la lecture qui l'a trouve. */
+  readonly forMatch: number;
+}
+
+/**
+ * L'annonce qu'une lecture produit, ou `null`.
+ *
+ * Seule la lecture qui SUIT une fin de match annonce : celle qui suit
+ * l'ouverture de l'ecran trouverait peut-etre un palier atteint plus tot, et
+ * l'annoncerait a la fin d'un match qui n'y est pour rien.
+ */
+export function announcementAfterRead(
+  before: SeasonState | null,
+  after: SeasonState,
+  read: { readonly matchRead: boolean; readonly match: number },
+): TierAnnouncement | null {
+  if (!read.matchRead) return null;
+  const tier = tierReached(before, after);
+  return tier === null ? null : { tier, forMatch: read.match };
+}
+
+/** Le palier a annoncer a l'ecran de fin de CE match, ou `null`. */
+export function visibleAnnouncement(
+  announcement: TierAnnouncement | null,
+  match: number,
+): number | null {
+  return announcement !== null && announcement.forMatch === match ? announcement.tier : null;
 }
 
 /**

@@ -47,14 +47,14 @@ function animationRarity(id: string): string {
   return animation.rarity ?? 'default';
 }
 
+/** Le debut de la toute premiere saison. */
+const FIRST_SEASON_START = new Date('2026-09-01T00:00:00Z');
+
 /**
  * Les saisons : la premiere, puis toujours la suivante d'avance, bout a bout
  * (`seasonsToCreate`). Sans elle, le classement et le passe perdraient leur
  * saison courante le jour du changement.
  */
-/** Le debut de la toute premiere saison. */
-const FIRST_SEASON_START = new Date('2026-09-01T00:00:00Z');
-
 async function seedSeason(): Promise<number> {
   const latest = await prisma.season.findFirst({
     orderBy: { number: 'desc' },

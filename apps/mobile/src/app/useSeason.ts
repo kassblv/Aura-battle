@@ -14,9 +14,11 @@ import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 import {
   claimableCount,
   newlyClaimed,
+  announcementAfterRead,
   rewardSize,
-  tierReached,
+  visibleAnnouncement,
   type ClaimedCell,
+  type TierAnnouncement,
 } from './season.js';
 
 /**
@@ -88,6 +90,12 @@ export interface SeasonHook {
  */
 export function useSeason(
   accessToken: string | null,
+  /**
+   * Le joueur connecte. Change quand on restaure un autre compte SANS
+   * recharger la page : tout l'etat du precedent est alors oublie. Pas le
+   * jeton, renouvele toutes les quinze minutes pour le meme joueur.
+   */
+  playerId: string | null,
   reloadKey: number,
   onGranted: (celebration: SeasonCelebration) => void,
 ): SeasonHook {
@@ -97,11 +105,28 @@ export function useSeason(
   const [error, setError] = useState<string | null>(null);
   const [tick, setTick] = useState(0);
   const [celebration, setCelebration] = useState<SeasonCelebration | null>(null);
-  const [justReached, setJustReached] = useState<number | null>(null);
+  const [announcement, setAnnouncement] = useState<TierAnnouncement | null>(null);
 
   // L'etat d'avant vit dans une REF : en dependance, il relancerait la lecture
   // a chaque reponse, donc en boucle.
   const previous = useRef<SeasonState | null>(null);
+  // La cle de match de la derniere lecture reussie : une lecture pour une
+  // NOUVELLE cle est celle qui suit une fin de match.
+  const lastReadKey = useRef<number | null>(null);
+
+  /*
+    Un autre compte : rien du precedent ne doit survivre — ni sa piste a
+    l'ecran, ni sa pastille, ni une comparaison qui annoncerait les paliers de
+    l'un comme gagnes par l'autre.
+  */
+  useEffect(() => {
+    previous.current = null;
+    lastReadKey.current = null;
+    setState(null);
+    setSynced(false);
+    setAnnouncement(null);
+    setCelebration(null);
+  }, [playerId]);
   const celebrations = useRef(0);
   const granted = useRef(onGranted);
   granted.current = onGranted;
@@ -124,11 +149,16 @@ export function useSeason(
       try {
         const fresh = await readSeason(baseUrl(), accessToken);
         if (cancelled) return;
-        const reached = tierReached(previous.current, fresh);
+        const matchRead = lastReadKey.current !== null && lastReadKey.current !== reloadKey;
+        const found = announcementAfterRead(previous.current, fresh, {
+          matchRead,
+          match: reloadKey,
+        });
         previous.current = fresh;
+        lastReadKey.current = reloadKey;
         setState(fresh);
         setSynced(true);
-        if (reached !== null) setJustReached(reached);
+        if (found !== null) setAnnouncement(found);
       } catch {
         if (!cancelled) setSynced(false);
       }
@@ -137,7 +167,7 @@ export function useSeason(
     return () => {
       cancelled = true;
     };
-  }, [accessToken, baseUrl, reloadKey, tick]);
+  }, [accessToken, baseUrl, reloadKey, tick, playerId]);
 
   const run = useCallback(
     async (action: (url: string, token: string) => Promise<SeasonState>): Promise<void> => {
@@ -203,8 +233,11 @@ export function useSeason(
   }, [run]);
 
   const dismissReached = useCallback(() => {
-    setJustReached(null);
+    setAnnouncement(null);
   }, []);
+
+  // Montree seulement a l'ecran de fin du match qui l'a produite.
+  const justReached = visibleAnnouncement(announcement, reloadKey);
 
   // Relire, c'est rouvrir l'ecran : la fete precedente est deja vue, et la
   // rejouer ferait sauter des cases encaissees il y a longtemps.

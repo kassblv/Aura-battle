@@ -1,11 +1,12 @@
 /**
  * Le calendrier des saisons : huit semaines chacune, bout a bout.
  *
- * Le seed tourne a chaque demarrage (ADR 0012), mais un serveur peut tourner
- * des semaines sans redemarrer. Il garde donc TOUJOURS la saison suivante
+ * Le seed tourne a chaque demarrage (ADR 0012) et garde la saison suivante
  * d'avance en base : sans elle, le classement et le passe perdraient leur
- * saison courante a minuit le jour du changement, et personne ne le verrait
- * avant la premiere fin de match qui ne compte pour rien.
+ * saison courante a minuit le jour du changement. Cela suppose un demarrage
+ * au moins une fois par saison (huit semaines) — tout deploiement en est un ;
+ * un serveur qui tournerait plus longtemps sans redemarrer finirait sa
+ * derniere saison connue sans suivante (docs/10).
  */
 
 /** Huit semaines, le rythme annonce dans docs/07. */

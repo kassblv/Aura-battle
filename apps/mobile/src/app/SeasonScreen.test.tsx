@@ -1,3 +1,4 @@
+import { ownedItemCoins } from '@aura/content';
 import { createElement } from 'react';
 import { renderToStaticMarkup } from 'react-dom/server';
 import type { SeasonState } from '@aura/protocol';
@@ -98,7 +99,7 @@ describe('SeasonScreen — la piste', () => {
 
   it('annonce un cosmetique deja possede comme des pieces', () => {
     const html = render({ owned: new Set(['color.violet']) });
-    expect(html).toMatch(/Palier 10, gratuit : [^"]*déjà à toi : \+\d+ ◈/);
+    expect(html).toContain(`déjà à toi : +${String(ownedItemCoins(80))} ◈`);
   });
 });
 

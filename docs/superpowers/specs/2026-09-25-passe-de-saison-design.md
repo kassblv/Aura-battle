@@ -62,4 +62,4 @@ jetons sans jamais acheter de puissance (règle d'or n° 3).
 - [x] Écran vérifié à l'écran en 844×390 ; aucune donnée calculée par le client
   n'est crue.
 - [x] lint, typecheck, tests ; relecture de sécurité (points importants corrigés).
-- [ ] Relecture finale.
+- [x] Relecture finale (opus) : quatre points importants corrigés (montant de conversion affiché, case réclamée, changement de compte, annonce de palier) ; rail et changement de saison documentés.

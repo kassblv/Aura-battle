@@ -449,7 +449,7 @@ body {
   retrouve une centaine de pixels, assez pour « Classement », et le pave
   entier reste dans l'arc du pouce gauche.
 
-  La derniere rangee n'en porte que deux, et c'est voulu : un vide dans un
+  La derniere rangee n'en porte que trois, et c'est voulu : un vide dans un
   coin se lit comme de la place, une grille etiree se lit comme une erreur.
 
   Quatre colonnes depuis le passe de saison : sept menus en trois colonnes
@@ -566,6 +566,19 @@ body {
   pave de libelles coupes : un menu se reconnait a son symbole, et
   l'`aria-label` porte toujours son nom pour qui ne voit pas l'ecran.
 */
+/*
+  Entre 700 et 800 px, les quatre colonnes tombent sous la largeur du mot
+  « Classement » (mesure : 70 px de case pour 71 de libelle a 710 px). Le
+  libelle se resserre plutot que de deborder ; sous 700, il disparait.
+  Ecrit APRES la regle de base, qu'il doit corriger.
+*/
+@media (max-width: 800px) {
+  .rail__label {
+    font-size: 10.5px;
+    letter-spacing: -0.01em;
+  }
+}
+
 @media (max-width: 700px) {
   .rail {
     grid-template-columns: repeat(5, 1fr);

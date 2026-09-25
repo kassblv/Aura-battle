@@ -125,6 +125,14 @@ Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste l
   d'entrée en session pendant vingt manches classées.
 - **Hors périmètre de ce jalon** : la réinitialisation douce de fin de saison (dernière ligne
   ci-dessus) et le MMR caché séparé de la partie rapide ne sont pas encore codés.
+- **Ce qui se passe AUJOURD'HUI au changement de saison (2026-09-25).** Le seed garde
+  toujours la saison suivante d'avance. Les classements sont rangés par saison
+  (`Rating (playerId, seasonId)`) : à la première seconde de la saison 2 (2026-10-27),
+  chaque joueur repart donc de **MMR 1 000, 0 LP et cinq matchs de placement**. Le
+  classement est vide et les fenêtres de matchmaking se resserrent sur une seule valeur.
+  C'est une **réinitialisation dure**, pas la douce promise plus haut : à remplacer avant
+  cette date (voir `08-roadmap.md`). Les récompenses du passe non réclamées de la saison 1
+  sont perdues au même instant.
 
 ## Fantômes
 

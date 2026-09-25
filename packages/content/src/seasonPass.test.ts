@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { AURA_COLORS, AURA_EFFECTS, HAIRSTYLES, OUTFITS } from './cosmetics.js';
 import { allAnimationIds } from './catalogue.js';
-import { SEASON_PASS, seasonTierFor } from './seasonPass.js';
+import { discountedPrice } from './featured.js';
+import { OWNED_ITEM_MIN_COINS, ownedItemCoins, SEASON_PASS, seasonTierFor } from './seasonPass.js';
 
 const KNOWN = new Set<string>([
   ...AURA_EFFECTS.map((i) => i.id),
@@ -57,5 +58,22 @@ describe('seasonTierFor', () => {
     expect(seasonTierFor(2_950)).toBe(29);
     expect(seasonTierFor(1_000_000)).toBe(30);
     expect(seasonTierFor(-5)).toBe(0);
+  });
+});
+
+/*
+  Un cosmetique deja possede se change en pieces. UNE regle, lue par le
+  serveur qui paie ET par l'ecran qui l'annonce : l'ecran promettait le prix
+  plein, le serveur payait le prix de vitrine.
+*/
+describe('ownedItemCoins', () => {
+  it('vaut le prix de vitrine, jamais le prix plein', () => {
+    expect(ownedItemCoins(850)).toBe(discountedPrice(850));
+    expect(ownedItemCoins(400)).toBe(280);
+  });
+
+  it('ne vaut jamais moins qu une recompense de pieces ordinaire', () => {
+    expect(ownedItemCoins(0)).toBe(OWNED_ITEM_MIN_COINS);
+    expect(ownedItemCoins(10)).toBe(OWNED_ITEM_MIN_COINS);
   });
 });

@@ -492,7 +492,12 @@ export function App(): JSX.Element {
     },
     [playCue, refreshInventory],
   );
-  const season = useSeason(session.accessToken, record.matches, onSeasonGranted);
+  const season = useSeason(
+    session.accessToken,
+    session.identity?.playerId ?? null,
+    record.matches,
+    onSeasonGranted,
+  );
 
   /*
     Ce que l'ecran de fin annonce.

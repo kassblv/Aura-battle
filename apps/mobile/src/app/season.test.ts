@@ -1,3 +1,4 @@
+import { ownedItemCoins } from '@aura/content';
 import { SEASON_PASS } from '@aura/content';
 import type { SeasonState } from '@aura/protocol';
 import { describe, expect, it } from 'vitest';
@@ -9,6 +10,8 @@ import {
   rewardSize,
   seasonView,
   tierReached,
+  announcementAfterRead,
+  visibleAnnouncement,
 } from './season.js';
 
 const NOW = Date.parse('2026-09-25T12:00:00.000Z');
@@ -196,7 +199,25 @@ describe('describeReward', () => {
       new Set(['color.violet']),
     );
     expect(reward.converts).toBe(true);
-    expect(reward.gain).toMatch(/^\+\d+ ◈$/);
+    // Le montant EXACT que le serveur accorde (prix de vitrine), pas le prix plein.
+    expect(reward.gain).toBe(`+${String(ownedItemCoins(80))} ◈`);
+  });
+
+  /*
+    Une case deja reclamee reste ce qu'elle a donne : l'objet. Apres la
+    reclamation, l'inventaire relu le contient — sans cette regle, la case
+    basculait en « deja a toi : +N ◈ » en pleine celebration.
+  */
+  it('garde l objet sur une case reclamee, meme une fois l objet possede', () => {
+    const view = seasonView(
+      state({ tier: 10, claimed: [{ tier: 10, track: 'free' }] }),
+      NOW,
+      new Set(['color.violet']),
+    );
+    const cell = view?.tiers[9]?.free;
+    expect(cell?.state).toBe('claimed');
+    expect(cell?.converts).toBe(false);
+    expect(cell?.gain).toBe('Violet');
   });
 });
 
@@ -254,5 +275,33 @@ describe('rewardSize', () => {
       ),
     ).toBe('jackpot');
     expect(rewardSize([], true)).toBe('jackpot');
+  });
+});
+
+/*
+  « Palier N atteint » appartient au MATCH qui l'a fait atteindre : seule la
+  lecture qui suit une fin de match l'annonce, et l'annonce ne se montre que
+  pour ce match-la — jamais au suivant, jamais apres l'ouverture de l'ecran.
+*/
+describe('annonce de palier', () => {
+  const at3 = state({ xp: 300, tier: 3 });
+  const at4 = state({ xp: 400, tier: 4 });
+
+  it('annonce le palier atteint, pour le match qui l a fait atteindre', () => {
+    expect(announcementAfterRead(at3, at4, { matchRead: true, match: 7 })).toEqual({
+      tier: 4,
+      forMatch: 7,
+    });
+  });
+
+  it('n annonce rien a la lecture qui suit l ouverture de l ecran', () => {
+    expect(announcementAfterRead(at3, at4, { matchRead: false, match: 7 })).toBeNull();
+  });
+
+  it('ne montre une annonce qu au match qui l a produite', () => {
+    const announcement = { tier: 4, forMatch: 7 };
+    expect(visibleAnnouncement(announcement, 7)).toBe(4);
+    expect(visibleAnnouncement(announcement, 8)).toBeNull();
+    expect(visibleAnnouncement(null, 7)).toBeNull();
   });
 });

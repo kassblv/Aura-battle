@@ -1,5 +1,6 @@
 import {
-  discountedPrice,
+  OWNED_ITEM_MIN_COINS,
+  ownedItemCoins,
   SEASON_PASS,
   seasonTierFor,
   type SeasonPass,
@@ -31,7 +32,6 @@ import {
  * du catalogue, il ne rapporterait rien. Le plancher vaut une recompense de
  * pieces ordinaire de la piste gratuite — une recompense n'est jamais vide.
  */
-export const OWNED_ITEM_MIN_COINS = 40;
 
 export interface ClaimKey {
   readonly tier: number;
@@ -79,8 +79,7 @@ const TRACKS: readonly SeasonTrack[] = ['free', 'premium'];
  * qu'il n'avait coute, et creait des pieces a chaque saison.
  */
 function coinsFor(itemId: string, catalogue: readonly CatalogueEntry[]): number {
-  const price = catalogue.find((item) => item.id === itemId)?.priceSoft ?? 0;
-  return Math.max(discountedPrice(price), OWNED_ITEM_MIN_COINS);
+  return ownedItemCoins(catalogue.find((item) => item.id === itemId)?.priceSoft ?? 0);
 }
 
 function grantFor(
@@ -183,3 +182,6 @@ export function premiumOutcome(
   if (request.wallet.hard < pass.premiumPrice) return { ok: false, reason: 'INSUFFICIENT_FUNDS' };
   return { ok: true, spend: { soft: 0, hard: pass.premiumPrice } };
 }
+
+/** Reexporte : la regle de conversion vit dans `@aura/content`, lue aussi par l'ecran. */
+export { OWNED_ITEM_MIN_COINS };
