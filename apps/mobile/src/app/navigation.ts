@@ -11,6 +11,7 @@ export type Screen =
   | 'profile'
   | 'leaderboard'
   | 'challenges'
+  | 'season'
   | 'settings'
   | 'wardrobe'
   | 'shop'
@@ -49,8 +50,9 @@ export function navigate(state: Navigation, to: Screen): Navigation {
    * porte au moment ou la question pourrait se poser. Accessoirement, un
    * panneau de vestiaire en pleine manche recouvrirait les commandes.
    */
-  // Le vestiaire et la boutique restent fermes pendant une manche.
-  if ((to === 'wardrobe' || to === 'shop') && state.matchRunning) return state;
+  // Le vestiaire, la boutique et le passe (on y essaie des cosmetiques)
+  // restent fermes pendant une manche.
+  if ((to === 'wardrobe' || to === 'shop' || to === 'season') && state.matchRunning) return state;
 
   /**
    * On ne cherche pas d adversaire quand on en a deja un.

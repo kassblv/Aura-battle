@@ -37,6 +37,8 @@ import { homeClusters } from '../ui/layout.js';
 import { ChallengesScreen } from './ChallengesScreen.jsx';
 import { panelLayout } from './panel.js';
 import { useChallenges } from './useChallenges.js';
+import { SeasonScreen } from './SeasonScreen.jsx';
+import { useSeason, type SeasonCelebration } from './useSeason.js';
 import { ShopScreen } from './ShopScreen.jsx';
 import { InviteScreen } from './InviteScreen.jsx';
 import { QueueScreen } from './QueueScreen.jsx';
@@ -478,6 +480,21 @@ export function App(): JSX.Element {
   const challenges = useChallenges(session.accessToken, record.matches);
 
   /*
+    Le passe de saison se relit apres chaque match, comme les defis : l'XP de
+    saison vient d'y bouger. Chaque gain accorde se fete (son, vibration) et
+    relit l'inventaire, qui tient la bourse et les possessions — on ne recopie
+    jamais la bourse du passe dans celle de l'inventaire.
+  */
+  const onSeasonGranted = useCallback(
+    (party: SeasonCelebration) => {
+      playCue({ type: 'reward', size: party.size });
+      refreshInventory();
+    },
+    [playCue, refreshInventory],
+  );
+  const season = useSeason(session.accessToken, record.matches, onSeasonGranted);
+
+  /*
     Ce que l'ecran de fin annonce.
 
     Reduit ici a ce dont il a besoin — un nom et un montant. Lui passer les
@@ -573,7 +590,8 @@ export function App(): JSX.Element {
     cadre, donc en parts de largeur (voir `ui/layout.ts`).
   */
   const clusters = useMemo(() => homeClusters(viewportWidth), [viewportWidth]);
-  const panelOpen = nav.screen === 'shop' || nav.screen === 'wardrobe';
+  // Le passe aussi : on y essaie les cosmetiques de la piste sur le personnage.
+  const panelOpen = nav.screen === 'shop' || nav.screen === 'wardrobe' || nav.screen === 'season';
   arena.sidePanel.current = panelOpen && !inDuel ? panel.width : 0;
 
   /**
@@ -586,11 +604,7 @@ export function App(): JSX.Element {
    */
   if (nav.screen !== 'match' && !inDuel) {
     // Ce qu'on essaie prend le pas sur ce qu'on porte, et seulement a l'ecran.
-    const shown = tryOn(
-      looks.a,
-      meme.animationId,
-      nav.screen === 'shop' || nav.screen === 'wardrobe' ? trying : null,
-    );
+    const shown = tryOn(looks.a, meme.animationId, panelOpen ? trying : null);
     arena.presentation.current = {
       fighters: {
         a: { animationId: shown.animationId, look: shown.look },
@@ -632,13 +646,15 @@ export function App(): JSX.Element {
     quelqu'un a ne plus lire un message.
   */
   const { dismissCompleted } = challenges;
+  const { dismissReached } = season;
 
   const { dismissEnded } = online;
   const leaveMatch = useCallback(() => {
     dismissCompleted();
+    dismissReached();
     dismissEnded();
     setNav((current) => navigate({ ...current, matchRunning: false }, 'home'));
-  }, [dismissCompleted, dismissEnded]);
+  }, [dismissCompleted, dismissReached, dismissEnded]);
 
   /*
     Les gestes de fin de match, STABLES.
@@ -653,22 +669,25 @@ export function App(): JSX.Element {
     // En ligne, « rejouer » c est se remettre en file : l adversaire
     // precedent n a aucune raison d etre encore la.
     dismissCompleted();
+    dismissReached();
     dismissEnded();
     joinQueue(mode);
-  }, [dismissCompleted, dismissEnded, joinQueue, mode]);
+  }, [dismissCompleted, dismissReached, dismissEnded, joinQueue, mode]);
   const requeueFromInvite = useCallback(() => {
     // Depuis une invitation aussi, « rejouer » passe par la file : celui qui
     // avait donne le code n a pas forcement envie d'un second duel, et
     // l attendre laisserait le joueur devant rien.
     dismissCompleted();
+    dismissReached();
     dismissEnded();
     setNav((current) => navigate(current, 'queue'));
     joinQueue(mode);
-  }, [dismissCompleted, dismissEnded, joinQueue, mode]);
+  }, [dismissCompleted, dismissReached, dismissEnded, joinQueue, mode]);
   const goHome = useCallback(() => {
+    dismissReached();
     dismissEnded();
     setNav((current) => navigate(current, 'home'));
-  }, [dismissEnded]);
+  }, [dismissReached, dismissEnded]);
 
   return (
     <div className="app">
@@ -714,6 +733,12 @@ export function App(): JSX.Element {
             questsReady={challenges.claimable}
             onChallenges={() => {
               go('challenges');
+            }}
+            seasonReady={season.claimable}
+            onSeason={() => {
+              // Relu a l'ouverture : l'etat a pu changer sur un autre appareil.
+              season.refresh();
+              go('season');
             }}
             profile={profile}
             mode={mode}
@@ -841,6 +866,33 @@ export function App(): JSX.Element {
           />
         )}
 
+        {!showOnboarding && nav.screen === 'season' && (
+          <SeasonScreen
+            season={season.state}
+            owned={inventory.owned}
+            // A la minute : l'heure ne sert qu'aux jours restants, et une
+            // valeur neuve a chaque rendu recalculerait la piste pour rien.
+            now={Math.floor(Date.now() / 60_000) * 60_000}
+            busy={season.busy}
+            error={season.error}
+            celebration={season.celebration}
+            trying={trying}
+            layout={panel}
+            onClaim={season.claim}
+            onClaimAll={season.claimAll}
+            onBuyPremium={season.buyPremium}
+            onTry={(id) => {
+              // Retoucher l'article le repose : se comparer sans lui.
+              setTrying((current) => (current === id ? null : id));
+            }}
+            onClose={() => {
+              setTrying(null);
+              season.clearError();
+              go('home');
+            }}
+          />
+        )}
+
         {!showOnboarding && nav.screen === 'settings' && (
           <SettingsScreen
             setting={qualitySetting}
@@ -928,6 +980,7 @@ export function App(): JSX.Element {
             onRematch={requeue}
             rematchLabel="Rejouer"
             questsDone={questsDone}
+            seasonReached={season.justReached}
             onPreview={online.preview}
             dances={danceChoice}
             onCue={playCue}
@@ -959,6 +1012,7 @@ export function App(): JSX.Element {
             onRematch={requeueFromInvite}
             rematchLabel="Rejouer"
             questsDone={questsDone}
+            seasonReached={season.justReached}
             onPreview={online.preview}
             dances={danceChoice}
             onCue={playCue}

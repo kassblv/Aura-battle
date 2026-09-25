@@ -51,10 +51,29 @@ export type AudioCue =
    * distribuer, choisir, retourner, refuser une carte trop chere, ou voir sa
    * carte brillante arriver. Rien de l'adversaire ne passe ici.
    */
-  | { readonly type: 'card'; readonly action: CardAction };
+  | { readonly type: 'card'; readonly action: CardAction }
+  /**
+   * Une recompense du passe de saison vient d'etre accordee PAR LE SERVEUR.
+   *
+   * Jamais au toucher : le son suit la reponse, pas le geste. Un tintement qui
+   * precederait un refus annoncerait un gain que le joueur n'a pas.
+   */
+  | { readonly type: 'reward'; readonly size: RewardSize };
 
 /** Les gestes de la main de cartes. */
 export type CardAction = 'deal' | 'pick' | 'flip' | 'denied' | 'shiny';
+
+/**
+ * Le poids d'une recompense : des pieces, quelque chose de rare (jetons,
+ * cosmetique), ou le gros lot — tout recuperer d'un coup, la piste premium.
+ */
+export type RewardSize = 'small' | 'rare' | 'jackpot';
+
+const REWARD_SOUNDS: Readonly<Record<RewardSize, SoundName>> = {
+  small: 'buy',
+  rare: 'chime',
+  jackpot: 'victory',
+};
 
 /** Le son de chaque geste de carte : des sons existants, reconnaissables. */
 const CARD_SOUNDS: Readonly<Record<CardAction, SoundName>> = {
@@ -121,6 +140,9 @@ export function soundForCue(cue: AudioCue): SoundRequest | null {
 
     case 'card':
       return { name: CARD_SOUNDS[cue.action], combo: 0 };
+
+    case 'reward':
+      return { name: REWARD_SOUNDS[cue.size], combo: 0 };
 
     // `matchEnd` reste en dernier : son aiguillage interne rend dans chaque
     // branche sans `break`, et un `case` pose apres lui se lit comme une

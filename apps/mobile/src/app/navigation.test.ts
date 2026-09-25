@@ -52,6 +52,13 @@ describe('navigate', () => {
     expect(navigate(at('home'), 'shop').screen).toBe('shop');
   });
 
+  // Le passe essaie des cosmetiques sur le personnage, comme la boutique.
+  it('ouvre le passe de saison depuis l accueil, jamais pendant une manche', () => {
+    expect(navigate(at('home'), 'season').screen).toBe('season');
+    const during = at('match', true);
+    expect(navigate(during, 'season')).toBe(during);
+  });
+
   it('laisse le vestiaire ouvert depuis l accueil et le profil', () => {
     expect(navigate(at('home'), 'wardrobe').screen).toBe('wardrobe');
     expect(navigate(at('profile'), 'wardrobe').screen).toBe('wardrobe');

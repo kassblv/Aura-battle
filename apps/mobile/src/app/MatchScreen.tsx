@@ -175,6 +175,13 @@ export interface MatchScreenProps {
     readonly reward: number;
   }[];
   /**
+   * Le palier de saison atteint pendant CE match, ou `null`.
+   *
+   * Annonce au meme endroit que les defis, pour la meme raison : c'est en
+   * sortant de sa partie qu'on apprend que la partie a compte.
+   */
+  readonly seasonReached?: number | null;
+  /**
    * Ce que le joueur regarde pendant le choix, pour que SON personnage le
    * montre. Local : l appelant le pose dans l arene, rien ne part au serveur.
    * Doit etre stable d un rendu a l autre.
@@ -200,6 +207,7 @@ function MatchScreenBody({
   onRematch,
   rematchLabel,
   questsDone = [],
+  seasonReached = null,
   onPreview,
   dances,
   onCue,
@@ -833,8 +841,17 @@ function MatchScreenBody({
             et deux choses qui s'annoncent en meme temps au meme endroit n'en
             annoncent qu'une.
           */}
-          {questsDone.length > 0 && (
-            <ul className="questsdone" aria-label="Défis terminés">
+          {(questsDone.length > 0 || seasonReached !== null) && (
+            <ul className="questsdone" aria-label="Débloqué pendant ce match">
+              {seasonReached !== null && (
+                <li className="questsdone__item questsdone__item--season">
+                  <b>Passe de saison</b>
+                  <span className="questsdone__name">Palier {seasonReached} atteint</span>
+                  <span className="questsdone__gain" aria-hidden="true">
+                    🎖️
+                  </span>
+                </li>
+              )}
               {questsDone.map((quest) => (
                 <li key={quest.id} className="questsdone__item">
                   <b>Défi terminé</b>
@@ -896,6 +913,10 @@ function sameFrame(previous: MatchScreenProps, next: MatchScreenProps): boolean 
     previous.clock === next.clock &&
     previous.opponentName === next.opponentName &&
     previous.rematchLabel === next.rematchLabel &&
+    // Les annonces de fin arrivent APRES `match:end`, par une relecture : sans
+    // ces deux comparaisons, l'ecran de fin ne les verrait qu'au rendu suivant.
+    previous.questsDone === next.questsDone &&
+    previous.seasonReached === next.seasonReached &&
     previous.onLeave === next.onLeave &&
     previous.onRematch === next.onRematch &&
     previous.onPreview === next.onPreview &&

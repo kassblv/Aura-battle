@@ -162,3 +162,11 @@ describe('hapticFor — gestes de carte', () => {
     expect(hapticFor({ type: 'card', action: 'denied' })).toBeNull();
   });
 });
+
+describe('hapticFor — passe de saison', () => {
+  it('fait sentir une recompense a sa mesure', () => {
+    expect(hapticFor({ type: 'reward', size: 'small' })).toBe('light');
+    expect(hapticFor({ type: 'reward', size: 'rare' })).toBe('medium');
+    expect(hapticFor({ type: 'reward', size: 'jackpot' })).toBe('heavy');
+  });
+});

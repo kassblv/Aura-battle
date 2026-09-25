@@ -173,3 +173,11 @@ describe('soundForCue — gestes de carte (chantier n°2)', () => {
     expect(soundForCue({ type: 'card', action: 'shiny' })?.name).toBe('tapGold');
   });
 });
+
+describe('soundForCue — passe de saison', () => {
+  it('sonne une recompense a sa mesure', () => {
+    expect(soundForCue({ type: 'reward', size: 'small' })?.name).toBe('buy');
+    expect(soundForCue({ type: 'reward', size: 'rare' })?.name).toBe('chime');
+    expect(soundForCue({ type: 'reward', size: 'jackpot' })?.name).toBe('victory');
+  });
+});

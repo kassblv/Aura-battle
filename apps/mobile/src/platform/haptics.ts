@@ -60,6 +60,9 @@ export function hapticFor(cue: AudioCue): HapticStyle | null {
       return cue.action === 'pick' || cue.action === 'flip' || cue.action === 'shiny'
         ? 'light'
         : null;
+    case 'reward':
+      // Le gain se sent a sa mesure : des pieces effleurent, le gros lot cogne.
+      return cue.size === 'jackpot' ? 'heavy' : cue.size === 'rare' ? 'medium' : 'light';
     default:
       // Combos, fin de recharge, accents de geste : le son les porte deja, et
       // ils arrivent trop souvent pour meriter le moteur.

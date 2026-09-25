@@ -58,6 +58,9 @@ export interface HomeProps {
   /** Recompenses qui attendent : la pastille du rail. */
   readonly questsReady: number;
   readonly onChallenges: () => void;
+  /** Recompenses du passe de saison a recuperer : sa pastille. */
+  readonly seasonReady: number;
+  readonly onSeason: () => void;
   readonly onWardrobe: () => void;
   readonly onShop: () => void;
   /** Cherche un adversaire : c est le chemin normal vers un duel. */
@@ -99,6 +102,8 @@ export function HomeScreen({
   clusters,
   questsReady,
   onChallenges,
+  seasonReady,
+  onSeason,
 }: HomeProps): JSX.Element {
   return (
     <div className="home">
@@ -130,26 +135,19 @@ export function HomeScreen({
       </button>
 
       {/*
-        Une seule bourse affichee, et c'est deliberé.
-
-        La monnaie premium s'ACHETE (docs/01 §11) : il n'y a aucun moyen d'en
-        gagner, et les achats integres n'existent pas encore. Un « ◆ 0 » pose
-        a cote du reste est donc une promesse que le jeu ne tient pas — le
-        joueur cherche comment en obtenir et ne trouve rien. On la montrera le
-        jour ou elle voudra dire quelque chose ; elle reste dans `Wallet`, que
-        le serveur tient deja.
+        Les deux bourses, toujours : les jetons se gagnent en jouant (dix par
+        niveau) et s'achetent (ADR 0015 et 0016). Un « 💎 0 » dit qu'ils
+        existent, et le prochain niveau dit comment en avoir.
       */}
       <div className="wallet">
         <span className="coin">
           <b aria-hidden="true">◈</b>
           {profile.wallet.soft}
         </span>
-        {profile.wallet.hard > 0 && (
-          <span className="coin coin--hard">
-            <b aria-hidden="true">◆</b>
-            {profile.wallet.hard}
-          </span>
-        )}
+        <span className="coin coin--hard">
+          <b aria-hidden="true">💎</b>
+          {profile.wallet.hard}
+        </span>
       </div>
 
       {/*
@@ -318,6 +316,34 @@ export function HomeScreen({
               {questsReady > 0 && (
                 <span className="rail__badge" aria-hidden="true">
                   {questsReady}
+                </span>
+              )}
+            </button>
+
+            {/*
+              Le passe de saison, a cote des defis : les deux repondent a
+              « qu'est-ce que j'ai a prendre ? », l'un pour aujourd'hui,
+              l'autre pour la saison.
+            */}
+            <button
+              type="button"
+              className="rail__btn"
+              onClick={onSeason}
+              aria-label={
+                seasonReady > 0
+                  ? `Passe de saison, ${String(seasonReady)} récompense${seasonReady > 1 ? 's' : ''} à récupérer`
+                  : 'Passe de saison'
+              }
+            >
+              <span className="rail__icon" aria-hidden="true">
+                🎖️
+              </span>
+              <span className="rail__label" aria-hidden="true">
+                Saison
+              </span>
+              {seasonReady > 0 && (
+                <span className="rail__badge" aria-hidden="true">
+                  {seasonReady}
                 </span>
               )}
             </button>

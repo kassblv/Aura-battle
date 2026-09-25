@@ -451,11 +451,16 @@ body {
 
   La derniere rangee n'en porte que deux, et c'est voulu : un vide dans un
   coin se lit comme de la place, une grille etiree se lit comme une erreur.
+
+  Quatre colonnes depuis le passe de saison : sept menus en trois colonnes
+  auraient pris une troisieme rangee, soit 64 px de hauteur sur 390 pour des
+  menus secondaires. A 844 px chaque case garde 84 px, assez pour
+  « Classement » une fois le rembourrage lateral reduit a 4 px.
 */
 .rail {
   flex: none;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 6px;
 }
 
@@ -471,7 +476,7 @@ body {
   /* 58 et non 74 : a 74, deux rangees et la galerie prenaient 218 px sur
      390 — plus de la moitie de la hauteur pour des menus secondaires. */
   min-height: 58px;
-  padding: 7px 8px;
+  padding: 7px 4px;
   border-radius: 16px;
   display: flex;
   flex-direction: column;
@@ -3400,6 +3405,15 @@ body {
   font-variant-numeric: tabular-nums;
 }
 
+/* Le palier de saison se distingue d'un defi : l'or du passe, pas le vert. */
+.questsdone__item--season {
+  border-color: var(--gold-ink);
+}
+
+.questsdone__item--season b {
+  color: var(--gold-ink);
+}
+
 .questsdone__name {
   font-size: 13px;
   font-weight: 700;
@@ -4257,4 +4271,510 @@ body {
 }
 .shop__notice[data-kind='failed'] {
   color: var(--bad-ink);
+}
+
+/*
+  --- passe de saison ---
+
+  Un panneau de droite, comme la boutique : la largeur vient de `panel.ts`
+  (posee en ligne), et l'arene recentre le personnage dans ce qui reste — on y
+  essaie les cosmetiques de la piste.
+
+  Rien ne defile en hauteur : l'en-tete, la barre et les deux gestes prennent
+  leur taille, et la piste s'etire dans le reste (`flex: 1`, `min-height: 0`).
+  Seule la piste defile, et de cote.
+*/
+.season {
+  position: absolute;
+  right: var(--safe-right);
+  top: 14px;
+  bottom: var(--safe-bottom);
+  width: min(520px, 62%);
+  border-radius: 18px;
+  padding: 10px 12px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  box-shadow: 0 18px 40px -20px rgba(0, 0, 0, 0.7);
+}
+
+.season__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.season__head h2 {
+  margin: 0;
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 19px;
+}
+
+/* Le compte a rebours : c'est lui qui dit « reviens demain ». */
+.season__days {
+  margin-right: auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--chip);
+  border: 1px solid var(--line);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--gold-ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.season__note {
+  margin: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.season__note--bad {
+  color: var(--bad-ink);
+  font-weight: 700;
+}
+
+.season__progress {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+}
+
+.season__tier {
+  font-family: var(--display);
+  font-weight: 400;
+  font-size: 14px;
+  color: var(--gold-ink);
+}
+
+.season__bar {
+  display: block;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--chip-deep);
+  overflow: hidden;
+}
+
+.season__bar i {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, var(--accent), var(--gold-ink));
+  transition: width var(--d-panel) var(--e-out);
+}
+
+.season__xp {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Les deux gestes, cote a cote : la hauteur ne se depense pas deux fois. */
+.season__actions {
+  display: grid;
+  grid-template-columns: 1fr 1.35fr;
+  gap: 8px;
+}
+
+.season__all,
+.season__premium {
+  font: inherit;
+  border: 0;
+  border-radius: 13px;
+  /* Cible tactile : le minimum de l'ADR 0008. */
+  min-height: var(--touch);
+  padding: 4px 10px;
+  cursor: pointer;
+  transition: transform var(--d-tap) var(--e-out);
+}
+
+.season__all {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--accent-ink);
+  background: var(--accent);
+  box-shadow: 0 3px 0 var(--accent-deep);
+}
+
+/* Quelque chose attend : le bouton respire, comme les cases qu'il ramasse. */
+.season__all[data-ready='true'] {
+  animation: season-breathe 1.6s ease-in-out infinite;
+}
+
+.season__premium {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  line-height: 1.2;
+  color: var(--ink);
+  background: linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--gold-ink) 30%, var(--chip)),
+    var(--chip)
+  );
+  border: 1px solid var(--gold-ink);
+  box-shadow: 0 3px 0 var(--chip-deep);
+}
+
+.season__premium b {
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.season__premium small {
+  font-size: 10px;
+  color: var(--gold-ink);
+  font-weight: 700;
+}
+
+.season__all:active,
+.season__premium:active {
+  transform: translateY(3px);
+  box-shadow: none;
+}
+
+.season__all:disabled,
+.season__premium:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  animation: none;
+}
+
+/* Hors de portee, le manque reste lisible : c'est lui qu'on vient lire. */
+.season__premium:disabled small {
+  color: var(--ink);
+}
+
+.season__owned {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: var(--touch);
+  border-radius: 13px;
+  border: 1px solid var(--gold-ink);
+  font-family: var(--display);
+  font-size: 13px;
+  color: var(--gold-ink);
+}
+
+/*
+  La piste : la seule chose qui defile, et de cote.
+
+  `scroll-snap` pose chaque palier au bord plutot qu'a cheval ; la legende
+  reste collee a gauche pour qu'on sache toujours quelle rangee est laquelle.
+*/
+.season__track {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 6px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  /* De quoi laisser deborder la lueur et le saut d'une case sans les rogner. */
+  padding: 2px 0 8px;
+  scroll-snap-type: x proximity;
+  overscroll-behavior-x: contain;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+}
+
+.season__legend,
+.season__col {
+  display: grid;
+  grid-template-rows: 18px minmax(var(--touch), 1fr) minmax(var(--touch), 1fr);
+  gap: 5px;
+}
+
+.season__legend {
+  position: sticky;
+  left: 0;
+  z-index: 2;
+  flex: none;
+  width: 22px;
+  background: var(--surface);
+}
+
+.season__row-name {
+  grid-row: 2;
+  writing-mode: vertical-rl;
+  transform: rotate(180deg);
+  justify-self: center;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.season__row-name[data-track='premium'] {
+  grid-row: 3;
+  color: var(--gold-ink);
+}
+
+.season__tiers {
+  display: flex;
+  gap: 6px;
+  margin: 0;
+  padding: 0 4px 0 0;
+  list-style: none;
+}
+
+.season__col {
+  flex: none;
+  width: 66px;
+  scroll-snap-align: start;
+  scroll-margin-left: 28px;
+}
+
+/* Le numero du palier, et le fil de la progression qui le traverse. */
+.season__num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  background: var(--chip-deep);
+}
+
+.season__col[data-reached='true'] .season__num {
+  color: var(--accent-ink);
+  background: var(--gold-ink);
+}
+
+.season__col[data-next='true'] .season__num {
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--accent);
+}
+
+.season__cell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  min-height: var(--touch);
+  padding: 4px 3px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--chip);
+  color: var(--ink);
+  font: inherit;
+  cursor: pointer;
+  transition:
+    transform var(--d-tap) var(--e-out),
+    border-color var(--d-tap) var(--e-out);
+}
+
+.season__cell[data-track='premium'] {
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--gold-ink) 14%, var(--chip)),
+    var(--chip)
+  );
+}
+
+.season__cell:active {
+  transform: scale(0.94);
+}
+
+.season__cell:disabled {
+  cursor: default;
+  transform: none;
+}
+
+.season__icon {
+  font-size: 20px;
+  line-height: 1;
+  color: var(--gold-ink);
+}
+
+.season__cell[data-kind='tokens'] .season__icon {
+  color: var(--accent);
+}
+
+.season__label {
+  max-width: 100%;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow-wrap: anywhere;
+}
+
+/* A prendre : la case brille et respire. C'est ELLE qu'on doit voir d'abord. */
+.season__cell[data-state='claimable'] {
+  border-color: var(--gold-ink);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--gold-ink) 55%, transparent);
+  animation: season-glow 1.3s ease-in-out infinite;
+}
+
+/* Lointaine : lisible, mais en retrait. */
+.season__cell[data-state='ahead'] {
+  opacity: 0.62;
+}
+
+/* Scellee : atteinte, en attente de la piste premium. Plus proche qu'un palier lointain. */
+.season__cell[data-state='sealed'] {
+  border-style: dashed;
+  border-color: color-mix(in srgb, var(--gold-ink) 60%, var(--line));
+}
+
+.season__cell[data-state='claimed'] {
+  border-color: color-mix(in srgb, var(--good-ink) 45%, var(--line));
+}
+
+.season__cell[data-state='claimed'] .season__icon,
+.season__cell[data-state='claimed'] .season__label {
+  opacity: 0.45;
+}
+
+/* Porte a l'essai sur le personnage. */
+.season__cell[data-trying='true'] {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.season__check,
+.season__lock {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.season__check {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--good-ink);
+}
+
+/*
+  L'encaissement : la case saute, et le gain s'envole au-dessus d'elle.
+
+  Declenche par la REPONSE du serveur, jamais par le toucher : un gain annonce
+  avant un refus serait un mensonge. Dans une cascade « Tout recuperer », `--i`
+  decale chaque case de la precedente.
+*/
+.season__cell[data-fresh='true'] {
+  z-index: 1;
+  animation: season-pop 420ms var(--e-over) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+.season__gain {
+  position: absolute;
+  left: 50%;
+  top: 30%;
+  z-index: 3;
+  pointer-events: none;
+  white-space: nowrap;
+  font-family: var(--display);
+  font-size: 13px;
+  color: var(--gold-ink);
+  text-shadow: 0 2px 6px rgba(0, 0, 0, 0.6);
+  opacity: 0;
+  animation: season-gain 900ms var(--e-out) both;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+/* La piste premium s'ouvre : chaque case s'eclaire, de gauche a droite. */
+.season__cell[data-unsealed='true'] {
+  animation: season-unseal 560ms var(--e-out) both;
+}
+
+@keyframes season-glow {
+  50% {
+    box-shadow: 0 0 20px color-mix(in srgb, var(--gold-ink) 85%, transparent);
+    transform: scale(1.04);
+  }
+}
+
+@keyframes season-breathe {
+  50% {
+    transform: scale(1.03);
+  }
+}
+
+@keyframes season-pop {
+  0% {
+    transform: scale(1);
+  }
+  40% {
+    transform: scale(1.22);
+    box-shadow: 0 0 26px var(--gold-ink);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes season-gain {
+  0% {
+    opacity: 0;
+    transform: translate(-50%, 0) scale(0.7);
+  }
+  25% {
+    opacity: 1;
+    transform: translate(-50%, -14px) scale(1.15);
+  }
+  100% {
+    opacity: 0;
+    transform: translate(-50%, -32px) scale(1);
+  }
+}
+
+@keyframes season-unseal {
+  0% {
+    filter: brightness(1);
+  }
+  40% {
+    filter: brightness(1.8);
+    box-shadow: 0 0 24px var(--gold-ink);
+  }
+  100% {
+    filter: brightness(1);
+  }
+}
+
+/*
+  Moins d'animation : la regle globale ramene les durees a 0,01 ms, ce qui
+  ferait clignoter les boucles infinies. On les arrete ; la lueur statique et
+  la bordure doree disent deja « a prendre ». Le gain, lui, reste lisible un
+  instant au lieu de s'envoler.
+*/
+@media (prefers-reduced-motion: reduce) {
+  .season__cell[data-state='claimable'],
+  .season__all[data-ready='true'] {
+    animation: none !important;
+  }
+  .season__gain {
+    animation: none !important;
+    opacity: 1;
+    transform: translate(-50%, -24px);
+  }
+}
+
+/* Rien a ramasser : le bouton s'eteint au lieu de promettre. */
+.season__all:disabled {
+  opacity: 0.45;
+  box-shadow: none;
+  filter: grayscale(0.5);
+  cursor: default;
 }
