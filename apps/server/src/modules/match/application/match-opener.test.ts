@@ -46,6 +46,7 @@ class FakeRuntime implements MatchStarter {
       displayName: string;
       league: string;
     } | null;
+    rulesVariant: string | undefined;
     /** Messages deja partis au moment de l'ouverture : l'ordre compte. */
     sentBefore: number;
   }[] = [];
@@ -88,6 +89,7 @@ class FakeRuntime implements MatchStarter {
       displayName: string;
       league: string;
     } | null;
+    rulesVariant?: string;
   }): boolean {
     if (this.refuse) return false;
     this.opened.push({
@@ -95,6 +97,7 @@ class FakeRuntime implements MatchStarter {
       seats: input.seats,
       mode: input.mode,
       ghost: input.ghost ?? null,
+      rulesVariant: input.rulesVariant,
       sentBefore: this.notifier.sent.length,
     });
     return true;
@@ -473,5 +476,77 @@ describe('MatchOpener — face a un fantome', () => {
     expect(runtime.opened[0]?.ghost).toBeNull();
     expect(notifier.foundBy('p1')?.ghost).toBe(false);
     expect(notifier.foundBy('p2')?.ghost).toBe(false);
+  });
+});
+
+/**
+ * Evenements de la semaine (M10) : la partie rapide joue la variante de la
+ * semaine, le classe et les invitations jouent les regles normales.
+ *
+ * L'ouverture est le bon endroit : c'est elle qui annonce `match:found`, et
+ * l'annonce doit dire la regle que le runtime appliquera — la meme decision,
+ * prise une fois, pour les deux.
+ */
+describe('MatchOpener — variante de la semaine', () => {
+  /** Lundi 12 janvier 1970 : semaine 1, « Ultime express ». */
+  const VARIANT_WEEK_MS = Date.UTC(1970, 0, 12, 12);
+  /** Lundi 5 janvier 1970 : semaine 0, normale. */
+  const NORMAL_WEEK_MS = Date.UTC(1970, 0, 5, 12);
+
+  const openAt = (atMs: number, mode: 'RANKED' | 'CASUAL' | 'INVITE'): string | null => {
+    opener = new MatchOpener(runtime, notifier, presence, queue, null, { now: () => atMs });
+    return opener.open({ playerA: 'p1', playerB: 'p2', mode });
+  };
+
+  it('ouvre une partie rapide avec la variante, et l annonce aux deux joueurs', () => {
+    openAt(VARIANT_WEEK_MS, 'CASUAL');
+
+    expect(runtime.opened[0]?.rulesVariant).toBe('ultime');
+    expect(notifier.foundBy('p1')?.rulesVariant).toBe('ultime');
+    expect(notifier.foundBy('p2')?.rulesVariant).toBe('ultime');
+  });
+
+  it.each(['RANKED', 'INVITE'] as const)('joue %s en regles normales', (mode) => {
+    openAt(VARIANT_WEEK_MS, mode);
+
+    expect(runtime.opened[0]?.rulesVariant).toBe('normal');
+    // Rien a annoncer : un client 2.3 ne connait pas le champ, et « normal »
+    // est ce qu'il suppose sans lui.
+    expect(notifier.foundBy('p1')).not.toHaveProperty('rulesVariant');
+  });
+
+  it('n annonce rien une semaine normale', () => {
+    openAt(NORMAL_WEEK_MS, 'CASUAL');
+
+    expect(runtime.opened[0]?.rulesVariant).toBe('normal');
+    expect(notifier.foundBy('p1')).not.toHaveProperty('rulesVariant');
+  });
+
+  it('joue normal sans calendrier cable', () => {
+    open('CASUAL');
+    expect(runtime.opened[0]?.rulesVariant).toBe('normal');
+  });
+
+  /** Le fantome rejoue sous les regles de la partie : son adversaire les voit annoncees. */
+  it('donne la variante a une partie rapide contre un fantome', () => {
+    opener = new MatchOpener(runtime, notifier, presence, queue, null, {
+      now: () => VARIANT_WEEK_MS,
+    });
+    opener.open({
+      playerA: 'p1',
+      playerB: 'ghost_x',
+      mode: 'CASUAL',
+      ghost: {
+        seat: 'b',
+        sourcePlayerId: 'p_source',
+        mmr: 1_000,
+        recordingId: 'r_1',
+        displayName: 'Aura anonyme',
+        league: 'sans_aura',
+      },
+    });
+
+    expect(runtime.opened[0]?.rulesVariant).toBe('ultime');
+    expect(notifier.foundBy('p1')?.rulesVariant).toBe('ultime');
   });
 });

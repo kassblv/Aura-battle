@@ -13,6 +13,8 @@ import {
   opponentOf,
   reduce,
   RULES_VERSION,
+  RULE_VARIANTS,
+  variantConfig,
   type BalanceConfig,
   type Choice,
   type ChoiceRejection,
@@ -148,6 +150,13 @@ interface LiveMatch {
   readonly seats: MatchSeats;
   /** Par quel chemin ce match a ete ouvert. Conserve tel quel a l'ecriture. */
   readonly mode: MatchRecord['mode'];
+  /**
+   * Variante de regles de ce match (`normal` sans evenement) et la config qui
+   * en decoule. Figees a l'ouverture : TOUT ce qui touche au jeu de ce match
+   * lit `match.config`, jamais la config par defaut du runtime.
+   */
+  readonly rulesVariant: string;
+  readonly config: BalanceConfig;
   readonly startedAtMs: number;
   state: MatchState;
   /** Cosmetiques de la manche en cours, par siege. */
@@ -349,9 +358,10 @@ export class MatchRuntime {
     private readonly scheduler: TimerScheduler,
     private readonly clock: MatchClock,
     /**
-     * Valeurs de jeu. Injectable a dessein : les tests de bout en bout
-     * raccourcissent les phases pour jouer un match entier en une seconde, et
-     * les evenements de live-ops (docs/07) feront varier les regles en donnee.
+     * Valeurs de jeu par defaut. Injectable a dessein : les tests de bout en
+     * bout raccourcissent les phases pour jouer un match entier en une
+     * seconde. Un match a variante (evenements de la semaine) part de cette
+     * base et la modifie : voir `createMatch`.
      */
     private readonly config: BalanceConfig = BALANCE,
     /** Ecriture du match acheve. Absente, les matchs ne sont pas conserves. */
@@ -542,6 +552,12 @@ export class MatchRuntime {
      * monde, sans exception a creuser.
      */
     ghost?: (GhostSeatInfo & { displayName: string; league: string }) | null;
+    /**
+     * Variante de regles (evenements de la semaine, M10). Absente ou inconnue,
+     * le match joue les regles normales : un identifiant qu'on ne sait pas
+     * appliquer ne doit pas etre enregistre comme s'il l'avait ete.
+     */
+    rulesVariant?: string;
   }): boolean {
     if (this.matches.has(input.matchId)) return false;
     /**
@@ -560,15 +576,23 @@ export class MatchRuntime {
     if (input.seats.a === input.seats.b) return false;
     if (SEATS.some((seat) => this.isBusy(input.seats[seat]))) return false;
 
+    const requested = input.rulesVariant;
+    const rulesVariant =
+      requested !== undefined && RULE_VARIANTS.some((variant) => variant.id === requested)
+        ? requested
+        : 'normal';
+    const config = variantConfig(rulesVariant, this.config);
     const step = createMatch(input.seed, {
       startedAtMs: this.clock.now(),
-      config: this.config,
+      config,
     });
     const match: LiveMatch = {
       matchId: input.matchId,
       seed: input.seed,
       seats: input.seats,
       mode: input.mode ?? 'INVITE',
+      rulesVariant,
+      config,
       startedAtMs: this.clock.now(),
       state: step.state,
       wearing: { a: NOTHING_WORN, b: NOTHING_WORN },
@@ -610,6 +634,14 @@ export class MatchRuntime {
   opponentIn(matchId: string, seat: Seat): string | null {
     const match = this.matches.get(matchId);
     return match === undefined ? null : match.seats[opponentOf(seat)];
+  }
+
+  /**
+   * Les valeurs de jeu d'un match en cours, ou `null` s'il n'existe pas (ou
+   * plus). Le fantome s'y cale : il joue avec les regles de SON match.
+   */
+  configOf(matchId: string): BalanceConfig | null {
+    return this.matches.get(matchId)?.config ?? null;
   }
 
   snapshotFor(matchId: string, seat: Seat): ServerMessage<'match:state'> | null {
@@ -666,7 +698,7 @@ export class MatchRuntime {
       return;
     }
 
-    const phaseStartedAtMs = match.state.phaseEndsAtMs - this.config.phases.rechargeMs;
+    const phaseStartedAtMs = match.state.phaseEndsAtMs - match.config.phases.rechargeMs;
     const elapsedMs = arrivedAtMs - phaseStartedAtMs;
     const latest = elapsedMs + TAP_TOLERANCE_MS + CLOCK_ALLOWANCE_MS;
 
@@ -688,7 +720,7 @@ export class MatchRuntime {
    */
   private timingIsPlausible(match: LiveMatch, tapAtMs: number | null): boolean {
     if (tapAtMs === null) return true;
-    const phaseStartedAtMs = match.state.phaseEndsAtMs - this.config.phases.choiceMs;
+    const phaseStartedAtMs = match.state.phaseEndsAtMs - match.config.phases.choiceMs;
     const elapsedMs = this.clock.now() - phaseStartedAtMs;
     return tapAtMs <= elapsedMs + LOCK_TOLERANCE_MS + CLOCK_ALLOWANCE_MS;
   }
@@ -808,7 +840,7 @@ export class MatchRuntime {
 
   private apply(match: LiveMatch, event: MatchEvent): void {
     const atMs = this.clock.now();
-    const step = reduce(match.state, event, this.config);
+    const step = reduce(match.state, event, match.config);
 
     // On ne journalise qu'un evenement **accepte**. Le moteur renvoie l'etat
     // inchange — le meme objet — quand il ignore un evenement ; c'est ce qui
@@ -877,7 +909,7 @@ export class MatchRuntime {
           this.notifier.send(
             player,
             'recharge:start',
-            rechargeStartFor(match.state, match.matchId),
+            rechargeStartFor(match.state, match.matchId, match.config),
           );
           break;
         case 'choice':
@@ -1136,7 +1168,11 @@ export class MatchRuntime {
       matchId: match.matchId,
       seed: match.seed,
       mode: match.mode,
-      rulesVersion: RULES_VERSION,
+      // La variante en metadonnee de build semver (`1.0.0+ultime`) : le rejeu
+      // doit savoir sous quelles regles le match s'est joue, et la version
+      // seule ne le dit plus.
+      rulesVersion:
+        match.rulesVariant === 'normal' ? RULES_VERSION : `${RULES_VERSION}+${match.rulesVariant}`,
       contentVersion: CONTENT_VERSION,
       // `null` au siege d'un fantome : `MatchSeat.playerId` pointe sur `Player`
       // (docs/04), et l'identifiant synthetique d'un siege fantome n'y existe
@@ -1166,7 +1202,7 @@ export class MatchRuntime {
   /**
    * Conserve ce match comme modele de fantome (docs/05 § « Fantomes »).
    *
-   * Trois conditions, et chacune ferme un defaut precis :
+   * Quatre conditions, et chacune ferme un defaut precis :
    *
    * - **`RANKED` seulement**, parce que c'est ce que le document demande — et
    *   parce qu'une invitation entre amis n'est pas un echantillon de niveau ;
@@ -1175,6 +1211,8 @@ export class MatchRuntime {
    *   s'eloignant un peu plus a chaque fois de ce qu'un humain joue vraiment ;
    * - **au moins une manche jouee**, sinon on enregistrerait un adversaire qui
    *   ne fait rien — c'est-a-dire une victoire offerte a qui le croisera.
+   * - **les regles normales**, parce qu'un fantome rejoue ses choix sans leurs
+   *   regles : joue sous une variante, il n'a rien a faire dans le vivier.
    *
    * Comme l'ecriture du match, elle ne bloque pas la fin de partie et un echec
    * ne remonte jamais : perdre un enregistrement ne coute qu'un fantome de
@@ -1214,6 +1252,10 @@ export class MatchRuntime {
   private recordGhost(match: LiveMatch): void {
     if (this.ghostRecorder === null) return;
     if (match.mode !== 'RANKED' || match.ghost !== null) return;
+    // Un fantome joue avec d'autres regles n'a rien a faire dans le vivier
+    // normal. Le classe ne joue jamais de variante aujourd'hui : la garde vaut
+    // pour le jour ou quelqu'un l'y ouvrirait.
+    if (match.rulesVariant !== 'normal') return;
     if (match.ghostTrace.a.length === 0 && match.ghostTrace.b.length === 0) return;
 
     void this.ghostRecorder

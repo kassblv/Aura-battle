@@ -12,6 +12,8 @@ import {
   evaluateTiming,
   generateGaugeParams,
   generateOrbSequence,
+  variantConfig,
+  type BalanceConfig,
   type Choice,
   type RechargeTap,
   type Seat,
@@ -82,8 +84,14 @@ class TestRuntime implements GhostActions {
   readonly submitted: Submitted[] = [];
   readonly locked: Locked[] = [];
   private lastSeq = 0;
+  /** Les regles du match ; `null`, celles du directeur. */
+  config: BalanceConfig | null = null;
 
   constructor(private readonly clock: { now(): number }) {}
+
+  configOf(_matchId: string): BalanceConfig | null {
+    return this.config;
+  }
 
   acceptSeq(_matchId: string, _seat: Seat, seq: number): boolean {
     if (seq <= this.lastSeq) return false;
@@ -318,6 +326,15 @@ describe('GhostDirector — le choix', () => {
     b.deliver('choice:start', choiceStart({ ult: 60 }));
     b.scheduler.runUntil(Number.MAX_SAFE_INTEGER);
     expect(b.runtime.locked[0]?.choice.useUltimate).toBe(false);
+  });
+
+  /** Evenements de la semaine : le fantome joue les regles de SON match. */
+  it('lit la jauge d Ultime dans les regles du match, pas dans les siennes', () => {
+    const b = banc(aRecording([aRound({ useUltimate: true })]));
+    b.runtime.config = variantConfig('ultime');
+    b.deliver('choice:start', choiceStart({ ult: 60 }));
+    b.scheduler.runUntil(Number.MAX_SAFE_INTEGER);
+    expect(b.runtime.locked[0]?.choice.useUltimate).toBe(true);
   });
 
   it('active l Ultime quand la jauge est pleine', () => {

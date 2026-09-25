@@ -9,6 +9,8 @@
 | Invitation | Non | Ami via code ou lien |
 | Solo | Non | IA du prototype |
 
+Les événements de la semaine (variantes de règles, M10) ne touchent que la **partie rapide** : le classé et les invitations jouent toujours les règles normales, et un match à variante n'enregistre jamais de fantôme.
+
 ## File d'attente
 
 - Ticket en Redis : `playerId`, MMR, heure d'entrée, région.

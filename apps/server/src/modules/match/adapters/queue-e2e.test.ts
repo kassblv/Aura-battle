@@ -58,6 +58,12 @@ const subjectOf = (token: string): string | null =>
 let playerCounter = 0;
 const nextPlayerId = (): string => `q_${String((playerCounter += 1))}`;
 
+/**
+ * La semaine vue par l'ouverture : semaine 1, « Ultime express ». Figee pour
+ * que la suite ne change pas de resultat selon la semaine ou on la lance.
+ */
+const VARIANT_WEEK_MS = Date.UTC(1970, 0, 12, 12);
+
 let app: NestFastifyApplication;
 let url: string;
 
@@ -198,7 +204,10 @@ beforeAll(async () => {
         ) => new MatchRuntime(notifier, scheduler, clock, FAST),
       },
       // Le worker tourne : c'est lui qu'on eprouve.
-      ...matchmakingTestProviders({ withWorker: true }),
+      ...matchmakingTestProviders({
+        withWorker: true,
+        rulesClock: { now: () => VARIANT_WEEK_MS },
+      }),
     ],
   }).compile();
 
@@ -465,6 +474,50 @@ describe('un joueur qui insiste', () => {
     const refus = await un.first<{ code: string }>('error');
 
     expect(refus.code).toBe('ALREADY_IN_MATCH');
+    close(un, deux);
+  });
+});
+
+/**
+ * Evenements de la semaine (M10) : la partie rapide joue la variante, le
+ * classe reste la reference. Deux clients reels, le vrai worker, la vraie
+ * ouverture : c'est le chemin qu'emprunte un joueur.
+ */
+describe('variante de la semaine', () => {
+  it('annonce la variante aux deux joueurs d une partie rapide, et la joue', async () => {
+    const un = await record();
+    const deux = await record();
+
+    un.socket.emit('queue:join', { mode: 'casual' });
+    deux.socket.emit('queue:join', { mode: 'casual' });
+
+    const pourUn = await un.first<ServerMessage<'match:found'>>('match:found');
+    const pourDeux = await deux.first<ServerMessage<'match:found'>>('match:found');
+
+    expect(pourUn.rulesVariant).toBe('ultime');
+    expect(pourDeux.rulesVariant).toBe('ultime');
+    // Le runtime joue ce qui a ete annonce, et garde ses phases de test.
+    const config = app.get(MatchRuntime).configOf(pourUn.matchId);
+    expect(config?.ultimate.gaugeMax).toBe(60);
+    expect(config?.phases).toEqual(FAST.phases);
+
+    close(un, deux);
+  });
+
+  it('laisse le classe en regles normales la meme semaine', async () => {
+    const un = await record();
+    const deux = await record();
+
+    un.socket.emit('queue:join', { mode: 'ranked' });
+    deux.socket.emit('queue:join', { mode: 'ranked' });
+
+    const pourUn = await un.first<ServerMessage<'match:found'>>('match:found');
+    const pourDeux = await deux.first<ServerMessage<'match:found'>>('match:found');
+
+    expect(pourUn).not.toHaveProperty('rulesVariant');
+    expect(pourDeux).not.toHaveProperty('rulesVariant');
+    expect(app.get(MatchRuntime).configOf(pourUn.matchId)).toBe(FAST);
+
     close(un, deux);
   });
 });

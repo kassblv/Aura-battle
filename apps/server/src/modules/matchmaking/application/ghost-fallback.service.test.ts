@@ -82,6 +82,7 @@ const NO_ACTIONS: GhostActions = {
   acceptSeq: () => true,
   submitTaps: (_matchId: string, _seat: Seat, _taps: readonly RechargeTap[]) => undefined,
   lockChoice: (_matchId: string, _seat: Seat, _choice: Choice, _tap: number | null) => undefined,
+  configOf: () => null,
 };
 
 function banc(store: TestStore = new TestStore([recording()])) {

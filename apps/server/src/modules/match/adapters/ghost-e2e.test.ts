@@ -257,7 +257,12 @@ beforeAll(async () => {
           logger: PinoLoggerService,
         ) => new MatchRuntime(notifier, scheduler, clock, FAST, null, null, logger, ghostRecorder),
       },
-      ...matchmakingTestProviders({ withWorker: true, withGhosts: true, config: FAST }),
+      ...matchmakingTestProviders({
+        withWorker: true,
+        withGhosts: true,
+        config: FAST,
+        rulesClock: { now: () => VARIANT_WEEK_MS },
+      }),
     ],
   }).compile();
 
@@ -278,6 +283,12 @@ beforeAll(async () => {
     await ghosts.save({ ...recording, atMs: Date.parse('2020-01-01T00:00:00Z') });
   }
 });
+
+/**
+ * La semaine vue par l'ouverture : semaine 1, « Ultime express ». Figee pour
+ * que la suite ne change pas de resultat selon la semaine ou on la lance.
+ */
+const VARIANT_WEEK_MS = Date.UTC(1970, 0, 12, 12);
 
 afterAll(async () => {
   await app?.close();
@@ -454,6 +465,42 @@ describe('fantomes — un joueur seul ne reste pas devant une file vide', () => 
     // Le joueur ne recoit que ses propres messages, et rien qui nomme le siege
     // d'en face : aucun message du protocole ne transporte d'identifiant.
     expect(JSON.stringify(found)).not.toContain('ghost:');
+
+    close(seul);
+  });
+});
+
+/**
+ * Evenements de la semaine (M10) : un fantome de partie rapide joue sous la
+ * variante de son match, celle que son adversaire voit annoncee.
+ */
+describe('fantomes — la variante de la semaine', () => {
+  it('ouvre une partie rapide contre un fantome sous la variante, jusqu a son terme', async () => {
+    const seul = await record();
+    autoPlay(seul, 'anim.calme.t1.pocket');
+    seul.socket.emit('queue:join', { mode: 'casual' });
+
+    const found = await seul.first<ServerMessage<'match:found'>>('match:found');
+    expect(found.ghost).toBe(true);
+    expect(found.rulesVariant).toBe('ultime');
+    expect(app.get(MatchRuntime).configOf(found.matchId)?.ultimate.gaugeMax).toBe(60);
+
+    const fin = await seul.first<ServerMessage<'match:end'>>('match:end');
+    expect(fin.matchId).toBe(found.matchId);
+
+    close(seul);
+  });
+
+  it('garde le classe contre un fantome en regles normales', async () => {
+    const seul = await record();
+    seul.socket.emit('queue:join', { mode: 'ranked' });
+
+    const found = await seul.first<ServerMessage<'match:found'>>('match:found');
+    expect(found.ghost).toBe(true);
+    expect(found).not.toHaveProperty('rulesVariant');
+    expect(app.get(MatchRuntime).configOf(found.matchId)?.ultimate.gaugeMax).toBe(
+      BALANCE.ultimate.gaugeMax,
+    );
 
     close(seul);
   });

@@ -4,7 +4,8 @@ import { PROTOCOL_VERSION } from '@aura/protocol';
 import { RULES_VERSION, type Seat } from '@aura/rules';
 import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
-import type { MatchNotifier } from '../domain/ports.js';
+import type { MatchClock, MatchNotifier } from '../domain/ports.js';
+import { rulesVariantFor } from '../domain/rules-variant.js';
 import type { MatchSeats, SeatWearing } from './match-runtime.js';
 
 /**
@@ -42,6 +43,8 @@ export interface MatchStarter {
       displayName: string;
       league: string;
     } | null;
+    /** Variante de regles du match ; absente, les regles normales. */
+    rulesVariant?: string;
   }): boolean;
   /**
    * Enregistre ce que porte un siege, apres la creation.
@@ -140,6 +143,11 @@ export class MatchOpener {
     private readonly presence: PlayerPresence,
     private readonly queue: QueueEviction | null = null,
     private readonly log: AppLog | null = null,
+    /**
+     * Heure serveur, pour la variante de la semaine (M10). Absente, tout se
+     * joue en regles normales — ce que faisait le jeu avant les evenements.
+     */
+    private readonly clock: MatchClock | null = null,
   ) {}
 
   /**
@@ -192,6 +200,13 @@ export class MatchOpener {
     const matchId = `m_${randomUUID()}`;
     const seed = randomUUID();
     const ghost = request.ghost;
+    /*
+      Decidee UNE fois, ici : l'annonce et le runtime lisent la meme valeur. Un
+      fantome de partie rapide la recoit aussi — il rejoue ses choix sous les
+      regles de CE match, que son adversaire voit annoncees.
+    */
+    const rulesVariant =
+      this.clock === null ? 'normal' : rulesVariantFor(request.mode, this.clock.now());
 
     for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
       // Rien a annoncer a un fantome : il n'y a personne au bout, et
@@ -227,6 +242,8 @@ export class MatchOpener {
          * c'est ici, et nulle part ailleurs, que cette promesse se tient.
          */
         ghost: facingGhost,
+        // Omise en regles normales : c'est ce qu'un client suppose sans elle.
+        ...(rulesVariant === 'normal' ? {} : { rulesVariant }),
       });
     }
 
@@ -236,6 +253,7 @@ export class MatchOpener {
         seed,
         seats,
         mode: request.mode,
+        rulesVariant,
         ghost:
           ghost === undefined
             ? null

@@ -21,6 +21,7 @@ import {
 } from '../../matchmaking/domain/ports.js';
 import { RATING_DIRECTORY, type RatingDirectory } from '../../rating/domain/ports.js';
 import { SocketNotifier } from '../adapters/socket-notifier.js';
+import type { MatchClock } from '../domain/ports.js';
 import { TimeoutScheduler, SystemMatchClock } from '../adapters/timeout-scheduler.js';
 import { MatchOpener } from './match-opener.js';
 import { MatchRuntime } from './match-runtime.js';
@@ -68,6 +69,12 @@ export function matchmakingTestProviders(
     withGhosts?: boolean;
     /** Memes valeurs de jeu que le runtime de la suite : le rejeu s'y cale. */
     config?: BalanceConfig;
+    /**
+     * Heure lue par l'ouverture pour la variante de la semaine (M10). Absente,
+     * tout se joue en regles normales : une suite ne doit pas changer de
+     * resultat selon la semaine ou on la lance.
+     */
+    rulesClock?: MatchClock;
   } = {},
 ): Provider[] {
   const providers: Provider[] = [
@@ -98,7 +105,7 @@ export function matchmakingTestProviders(
       provide: MatchOpener,
       inject: [MatchRuntime, SocketNotifier, MatchmakingQueue],
       useFactory: (runtime: MatchRuntime, notifier: SocketNotifier, queue: MatchmakingQueue) =>
-        new MatchOpener(runtime, notifier, notifier, queue),
+        new MatchOpener(runtime, notifier, notifier, queue, null, options.rulesClock ?? null),
     },
   ];
 

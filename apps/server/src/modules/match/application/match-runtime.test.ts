@@ -1533,3 +1533,126 @@ describe('defis quotidiens', () => {
     expect(tracker.seen).toHaveLength(0);
   });
 });
+
+/**
+ * Evenements de la semaine (M10) : chaque match joue SA config.
+ *
+ * Le runtime garde une config par defaut, mais un match ouvert avec une
+ * variante doit la lire partout — moteur, echeances, controles. Un seul
+ * `this.config` oublie et la partie rapide annoncerait une regle qu'elle ne
+ * joue pas.
+ */
+describe('variante de regles — une config par match', () => {
+  class RecordingRepository {
+    readonly saved: MatchRecord[] = [];
+    save(record: MatchRecord): Promise<void> {
+      this.saved.push(record);
+      return Promise.resolve();
+    }
+  }
+
+  class RecordingGhostRecorder {
+    readonly calls: Parameters<GhostRecorder['record']>[0][] = [];
+    record(input: Parameters<GhostRecorder['record']>[0]): Promise<void> {
+      this.calls.push(input);
+      return Promise.resolve();
+    }
+  }
+
+  let repository: RecordingRepository;
+  let recorder: RecordingGhostRecorder;
+
+  const build = (rulesVariant?: string, mode: MatchRecord['mode'] = 'CASUAL'): void => {
+    repository = new RecordingRepository();
+    recorder = new RecordingGhostRecorder();
+    runtime = new MatchRuntime(
+      notifier,
+      scheduler,
+      clock,
+      BALANCE,
+      repository,
+      null,
+      null,
+      recorder,
+    );
+    runtime.createMatch({
+      matchId: MATCH_ID,
+      seed: 'graine',
+      seats: SEATS,
+      mode,
+      ...(rulesVariant === undefined ? {} : { rulesVariant }),
+    });
+  };
+
+  /** `a` joue calme, `b` hype : calme contre hype (docs/01 §4). */
+  const counterRound = (): ServerMessage<'round:result'> => {
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', choice(1), null);
+    runtime.lockChoice(
+      MATCH_ID,
+      'b',
+      { move: { style: 'hype', tier: 1 }, amplifier: 0, useUltimate: false },
+      null,
+    );
+    return (notifier.to(SEATS.a, 'round:result') as ServerMessage<'round:result'>[]).at(-1)!;
+  };
+
+  it('joue la variante demandee', () => {
+    build('ultime');
+    expect(runtime.configOf(MATCH_ID)?.ultimate.gaugeMax).toBe(60);
+  });
+
+  it('applique la variante au moteur lui-meme, pas seulement a l annonce', () => {
+    build('contres');
+    const result = counterRound();
+    expect(result.sides.a.counter).toBe(true);
+    expect(result.sides.a.final / result.sides.a.base).toBeCloseTo(1.6, 1);
+  });
+
+  it('garde la config du runtime sans variante', () => {
+    build();
+    expect(runtime.configOf(MATCH_ID)).toBe(BALANCE);
+    const result = counterRound();
+    expect(result.sides.a.final / result.sides.a.base).toBeCloseTo(1.35, 1);
+  });
+
+  it('joue normal une variante inconnue', () => {
+    build('inventee');
+    expect(runtime.configOf(MATCH_ID)).toBe(BALANCE);
+  });
+
+  it('ne touche pas aux autres matchs du meme runtime', () => {
+    build('ultime');
+    runtime.createMatch({ matchId: 'm_normal', seed: 'g', seats: { a: 'x', b: 'y' } });
+    expect(runtime.configOf('m_normal')?.ultimate.gaugeMax).toBe(BALANCE.ultimate.gaugeMax);
+  });
+
+  it('inscrit la variante dans la version des regles du match enregistre', () => {
+    build('ultime');
+    runtime.forfeit(MATCH_ID, 'a');
+    // Metadonnee de build semver : le rejeu sait sous quelles regles rejouer.
+    expect(repository.saved[0]?.rulesVersion).toMatch(/^\d+\.\d+\.\d+\+ultime$/);
+  });
+
+  /** Un fantome joue avec d'autres regles n'a rien a faire dans le vivier normal. */
+  it('n enregistre aucun fantome d un match a variante, meme classe', () => {
+    build('contres', 'RANKED');
+    counterRound();
+    scheduler.fire(MATCH_ID);
+    counterRound();
+    // La fin de la revelation clot le match.
+    scheduler.fire(MATCH_ID);
+    expect(repository.saved).toHaveLength(1);
+    expect(recorder.calls).toHaveLength(0);
+  });
+
+  it('enregistre le meme match classe joue en regles normales', () => {
+    build(undefined, 'RANKED');
+    counterRound();
+    scheduler.fire(MATCH_ID);
+    counterRound();
+    // La fin de la revelation clot le match.
+    scheduler.fire(MATCH_ID);
+    expect(recorder.calls).toHaveLength(1);
+  });
+});

@@ -201,7 +201,8 @@ beforeAll(async () => {
       },
       // Le chemin d'ouverture est commun a l'invitation et a la file : il faut
       // donc la file, meme pour un scenario d'invitation.
-      ...matchmakingTestProviders(),
+      // Une semaine d'evenement : l'invitation doit l'ignorer.
+      ...matchmakingTestProviders({ rulesClock: { now: () => Date.UTC(1970, 0, 12, 12) } }),
     ],
   }).compile();
 
@@ -681,5 +682,19 @@ describe('abus — un seul compte ne doit pas multiplier son budget', () => {
       .filter((e) => (e as { code: string }).code === 'RATE_LIMITED');
     expect(refus).toHaveLength(1);
     close(player);
+  });
+});
+
+/** Evenements de la semaine (M10) : une invitation joue les regles normales. */
+describe('invitation pendant une semaine d evenement', () => {
+  it('ouvre en regles normales et n annonce aucune variante', async () => {
+    const { host, guest, matchId } = await seatTwoPlayers();
+
+    expect(host.all('match:found')[0]).not.toHaveProperty('rulesVariant');
+    expect(guest.all('match:found')[0]).not.toHaveProperty('rulesVariant');
+    expect(app.get(MatchRuntime).configOf(matchId)).toBe(FAST);
+
+    host.socket.disconnect();
+    guest.socket.disconnect();
   });
 });

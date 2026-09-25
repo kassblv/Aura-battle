@@ -90,6 +90,13 @@ export interface GhostActions {
   acceptSeq(matchId: string, seat: Seat, seq: number): boolean;
   submitTaps(matchId: string, seat: Seat, taps: readonly RechargeTap[]): void;
   lockChoice(matchId: string, seat: Seat, choice: Choice, timingTapAtMs: number | null): void;
+  /**
+   * Les regles du match (evenements de la semaine, M10), `null` s'il est fini.
+   * Un fantome de partie rapide joue sous la variante de SON match : payer ou
+   * lancer l'Ultime selon la config normale lui ferait jouer une autre partie
+   * que celle de son adversaire.
+   */
+  configOf(matchId: string): BalanceConfig | null;
 }
 
 /** Echeances du fantome. Meme contrat que celui des phases du match. */
@@ -125,6 +132,7 @@ export class GhostDirector {
   constructor(
     private readonly scheduler: GhostScheduler,
     private readonly clock: GhostClock,
+    /** Regles de repli, quand le match ne dit plus les siennes. */
     private readonly config: BalanceConfig = BALANCE,
     private readonly log: AppLog | null = null,
   ) {}
@@ -223,6 +231,11 @@ export class GhostDirector {
     return rounds[round - 1] ?? rounds.at(-1) ?? null;
   }
 
+  /** Les regles du match de ce fantome, lues a chaque decision. */
+  private configFor(live: LiveGhost): BalanceConfig {
+    return live.actions.configOf(live.matchId) ?? this.config;
+  }
+
   /** Arme une echeance au nom de ce fantome, en gardant de quoi l'annuler. */
   private schedule(live: LiveGhost, atMs: number, run: () => void): void {
     live.timerCount += 1;
@@ -259,7 +272,7 @@ export class GhostDirector {
     }));
 
     const phaseMs = message.endsAt - message.startsAt;
-    const taps = rechargeTapsForCount(round.rechargeTaps, orbs, this.config).filter(
+    const taps = rechargeTapsForCount(round.rechargeTaps, orbs, this.configFor(live)).filter(
       (tap) => tap.atMs <= phaseMs - GHOST_PHASE_GUARD_MS,
     );
     if (taps.length === 0) return;
@@ -331,7 +344,7 @@ export class GhostDirector {
     const reproduit =
       round.timing.delta >= NO_TAP_DELTA
         ? null
-        : tapAtMsForDelta(round.timing.delta, gauge, this.config);
+        : tapAtMsForDelta(round.timing.delta, gauge, this.configFor(live));
     const wantedTapAtMs =
       reproduit !== null && reproduit >= MIN_CHARGE_TO_TAP_MS ? reproduit : null;
 
@@ -358,7 +371,7 @@ export class GhostDirector {
     };
 
     this.schedule(live, lockAtMs, () => {
-      const choice = this.playableChoice(desired, message, live.playedMoves);
+      const choice = this.playableChoice(desired, message, live.playedMoves, this.configFor(live));
       live.playedMoves.push(choice.move);
       live.seq += 1;
       if (!live.actions.acceptSeq(live.matchId, live.seat, live.seq)) return;
@@ -378,15 +391,16 @@ export class GhostDirector {
     desired: Choice,
     message: ServerMessage<'choice:start'>,
     playedMoves: readonly Move[],
+    config: BalanceConfig,
   ): Choice {
-    const affordable = isChoiceAffordable(desired, message.energy, this.config);
-    const ultimateReady = !desired.useUltimate || message.ult >= this.config.ultimate.gaugeMax;
+    const affordable = isChoiceAffordable(desired, message.energy, config);
+    const ultimateReady = !desired.useUltimate || message.ult >= config.ultimate.gaugeMax;
     if (affordable && ultimateReady) return desired;
 
     return affordableChoice(
       desired,
       { energy: message.energy, ultimateGauge: message.ult, previousMoves: playedMoves },
-      this.config,
+      config,
     );
   }
 }

@@ -57,7 +57,7 @@ CREATED ─────────────────────▶ ROUND
 |---|---|
 | `pong` | `{ t, serverTime }` |
 | `queue:status` | `{ mode, elapsedMs, searchRange }` |
-| `match:found` | `{ matchId, seat: 'left' \| 'right', opponent: { displayName, league, cosmetics }, protocolVersion, rulesVersion, contentVersion, ghost: boolean }` |
+| `match:found` | `{ matchId, seat: 'left' \| 'right', opponent: { displayName, league, cosmetics }, protocolVersion, rulesVersion, contentVersion, ghost: boolean, rulesVariant? }` (2.4.0 : variante de la semaine, partie rapide seulement) |
 | `round:intro` | `{ matchId, round, endsAt, roundsWon, energy, ult }` |
 | `recharge:start` | `{ matchId, round, startsAt, endsAt, orbs: OrbSpec[] }` — séquence identique pour les deux joueurs |
 | `choice:start` | `{ matchId, round, endsAt, meter: { period, zone, perfect, center }, energy, ult, shiny? }` — `energy`, `ult` et `shiny` (sa case brillante) du destinataire uniquement |
@@ -120,6 +120,7 @@ C'est le **premier** message qui contient les choix de l'adversaire.
   - `POST /season/claim` `{ tier, track }` (strict : aucun montant). Refus : 400 `INVALID_PAYLOAD`, 403 `TIER_LOCKED` / `PREMIUM_REQUIRED`, 404 `UNKNOWN_TIER` / `NO_SEASON`, 409 `ALREADY_CLAIMED`.
   - `POST /season/claim-all` : tout ce qui est atteint et pas réclamé, sur les pistes du joueur, en une transaction. 404 `NO_SEASON`.
   - `POST /season/premium` : débite 500 jetons et ouvre la piste. 403 `INSUFFICIENT_FUNDS`, 409 `ALREADY_PREMIUM`, 404 `NO_SEASON`.
+- **2.4.0** (2026-09-25) : les événements de la semaine. `match:found.rulesVariant` est ajouté, facultatif : l'identifiant d'une variante de `RULE_VARIANTS` (`@aura/rules`), jamais ses valeurs. Absent, les règles normales — un client 2.3 l'ignore et suppose ce qu'il supposait déjà. Le serveur le décide à l'ouverture, en heure serveur (semaine UTC, lundi), pour la **partie rapide seulement**, fantôme compris ; classé et invitation n'en portent jamais. Le match joue la config de la variante de bout en bout (moteur, échéances, fantôme), et son `Match.rulesVersion` en base la porte en métadonnée semver (`1.0.0+ultime`) pour que le rejeu sache sous quelles règles rejouer. `match:state` ne la répète pas encore : un client repris après une coupure doit l'avoir retenue de `match:found`.
 - La charge d'authentification du handshake est elle aussi décrite par un schéma : `handshakeAuthSchema` = `{ token, protocolVersion }`, strict et borné. C'est le seul point d'entrée dont un abus précède toute vérification métier.
 - `rulesVersion` et `contentVersion` sont envoyés dans `match:found`. Le serveur ne mélange jamais deux versions de règles dans un même match.
 

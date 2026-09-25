@@ -333,17 +333,19 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
      */
     {
       provide: MatchOpener,
-      inject: [MatchRuntime, SocketNotifier, MatchmakingQueue, PinoLoggerService],
+      inject: [MatchRuntime, SocketNotifier, MatchmakingQueue, PinoLoggerService, SystemMatchClock],
       useFactory: (
         runtime: MatchRuntime,
         notifier: SocketNotifier,
         queue: MatchmakingQueue,
         logger: PinoLoggerService,
+        // L'heure serveur dit la semaine, donc la variante de la partie rapide.
+        clock: SystemMatchClock,
       ) =>
         // `SocketNotifier` tient les deux roles : envoyer un message, et dire
         // qui est la et sous quel nom. Ce sont deux ports distincts, parce que
         // ce sont deux questions distinctes.
-        new MatchOpener(runtime, notifier, notifier, queue, logger),
+        new MatchOpener(runtime, notifier, notifier, queue, logger, clock),
     },
 
     {
