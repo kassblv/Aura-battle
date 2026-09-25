@@ -29,7 +29,7 @@ import { navigate, openingScreen, type Navigation } from './navigation.js';
 import { needsOnboarding } from './onboarding.js';
 import { OnboardingScreen } from './OnboardingScreen.jsx';
 import { newProfile, type PlayerProfile } from './profile.js';
-import type { ShopState } from './shop.js';
+import { nextTrying, type ShopState } from './shop.js';
 import { useInventory } from './useInventory.js';
 import { LeaderboardScreen } from './LeaderboardScreen.jsx';
 import { SettingsScreen } from './SettingsScreen.jsx';
@@ -759,9 +759,9 @@ export function App(): JSX.Element {
             state={shop}
             trying={trying}
             onTry={(id) => {
-              // Retoucher l'article qu'on porte deja le repose : on peut
-              // comparer avec soi-meme sans quitter l'etalage.
-              setTrying((current) => (current === id ? null : id));
+              // Retoucher un article possede le repose (se comparer sans lui) ;
+              // un article a acheter reste a l'essai, sa barre d'achat aussi.
+              setTrying((current) => nextTrying(current, id, shop.owned.has(id)));
             }}
             onBuy={(id, currency) => {
               /*
@@ -882,7 +882,7 @@ export function App(): JSX.Element {
             onTry={setTrying}
             onShop={(id) => {
               // L essai suit le joueur en boutique : l article y est deja
-              // enfile, et le second appui l achete.
+              // enfile, et la barre d achat propose ◈ ou 💎.
               setTrying(id);
               go('shop');
             }}

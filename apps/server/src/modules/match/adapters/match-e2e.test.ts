@@ -589,8 +589,10 @@ describe('securite du match', () => {
 
     expect(snapshot.opponentLocked).toBe(true);
     expect(snapshot.seat).toBe('a');
-    // Le choix de l'adversaire n'apparait nulle part dans l'instantane.
-    expect(JSON.stringify(snapshot)).not.toContain('hype');
+    // Le choix de l'adversaire n'apparait nulle part dans l'instantane. La
+    // case brillante du DESTINATAIRE, elle, y est de droit (2.1.0) : tiree au
+    // hasard, elle tombait en Hype une fois sur cinq et faisait crier a la fuite.
+    expect(JSON.stringify({ ...snapshot, shiny: null })).not.toContain('hype');
     /**
      * Le nom de l'adversaire survit a la reprise.
      *

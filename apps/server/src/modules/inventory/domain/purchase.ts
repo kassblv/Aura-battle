@@ -69,7 +69,7 @@ export interface PurchaseRequest {
    *
    * Choisie, elle est la SEULE prelevee : pas de repli silencieux sur l'autre,
    * qui viderait la poche que le joueur voulait garder. Absente, les pieces
-   * d'abord, les jetons si elles manquent (comportement 2.1).
+   * seulement.
    */
   readonly currency?: 'soft' | 'hard';
 }
@@ -126,13 +126,6 @@ export function purchaseOutcome(request: PurchaseRequest): PurchaseOutcome {
   }
 
   /*
-    La monnaie douce d'abord.
-
-    Quelqu'un qui a gagne de quoi se payer un objet en jouant ne doit pas se
-    voir prelever la monnaie qu'il a achetee — c'est la seule des deux qu'il ne
-    peut pas regagner.
-  */
-  /*
     Les fonds se jugent sur le prix REELLEMENT facture.
 
     Juger sur le prix plein puis debiter le prix remise refuserait un achat que
@@ -151,13 +144,14 @@ export function purchaseOutcome(request: PurchaseRequest): PurchaseOutcome {
     };
   }
 
-  if (soft !== null && wallet.soft >= soft) {
-    return { ok: true, spend: { soft, hard: 0 } };
-  }
-  if (hard !== null && wallet.hard >= hard) {
-    return { ok: true, spend: { soft: 0, hard } };
-  }
-
+  /*
+    Sans monnaie choisie (client 2.1) : les pieces seulement. Jamais de jetons
+    sans que le joueur les ait demandes — le repli d'avant restait inerte tant
+    qu'aucun article n'avait de prix en jetons, et viderait sinon une poche
+    sans consentement.
+  */
+  if (soft === null) return { ok: false, reason: 'NOT_PURCHASABLE' };
+  if (wallet.soft >= soft) return { ok: true, spend: { soft, hard: 0 } };
   return { ok: false, reason: 'INSUFFICIENT_FUNDS' };
 }
 

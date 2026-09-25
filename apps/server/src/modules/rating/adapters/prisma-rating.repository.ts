@@ -2,6 +2,7 @@ import { levelUpTokens } from '@aura/rules';
 import { Inject, Injectable } from '@nestjs/common';
 import { League as LeagueColumn } from '@prisma/client';
 import { currentSeasonId } from '../../../shared/current-season.js';
+import { CREDIT_TRANSACTION } from '../../../shared/database-timeouts.js';
 import { describeCause } from '../../../shared/describe-cause.js';
 import { PinoLoggerService } from '../../../shared/logger.js';
 import { PrismaService } from '../../../shared/prisma.service.js';
@@ -227,9 +228,12 @@ export class PrismaRatingRepository
     entries: readonly { readonly playerId: string; readonly soft: number; readonly xp: number }[],
   ): Promise<ReadonlyMap<string, number>> {
     if (entries.length === 0) return new Map();
+    // Les lignes se verrouillent dans l'ordre des identifiants : deux matchs
+    // aux joueurs croises verrouilleraient sinon en sens contraire.
+    const ordered = [...entries].sort((a, b) => a.playerId.localeCompare(b.playerId));
     const totals = await this.prisma.$transaction(async (tx) => {
       const out: [string, number][] = [];
-      for (const entry of entries) {
+      for (const entry of ordered) {
         const row = await tx.player.update({
           where: { id: entry.playerId },
           data: {
@@ -259,7 +263,7 @@ export class PrismaRatingRepository
         out.push([row.id, row.xp]);
       }
       return out;
-    });
+    }, CREDIT_TRANSACTION);
     return new Map(totals);
   }
 

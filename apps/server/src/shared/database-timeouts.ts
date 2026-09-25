@@ -63,6 +63,16 @@ export const DATABASE_TIMEOUTS = Object.freeze({
 export const PURCHASE_TRANSACTION = Object.freeze({ maxWait: 2_000, timeout: 5_000 });
 
 /**
+ * Bornes du credit de fin de match (`PrismaRatingRepository.credit`) : pieces,
+ * experience et jetons d'un niveau franchi, dans une transaction interactive.
+ *
+ * Meme attente de connexion que l'enregistrement du match qui la precede :
+ * sous charge, un credit abandonne des deux secondes ferait perdre au joueur
+ * ce que le match vient de lui donner.
+ */
+export const CREDIT_TRANSACTION = Object.freeze({ maxWait: 5_000, timeout: 5_000 });
+
+/**
  * Une requete hors transaction, au pire, avant de reussir ou d'echouer :
  * attendre une connexion, puis sa reponse.
  */

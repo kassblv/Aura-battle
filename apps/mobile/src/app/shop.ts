@@ -257,3 +257,15 @@ export function buyOptions(
     hard: { price: item.tokens, afford: wallet.hard >= item.tokens },
   };
 }
+
+/**
+ * L'article a l'essai apres un appui sur `id`.
+ *
+ * Un article pas encore possede reste a l'essai quand on le retouche : c'est
+ * l'ancien geste d'achat, et le retirer ferait disparaitre la barre d'achat
+ * sous le pouce. Un article possede se repose, pour se comparer sans lui.
+ */
+export function nextTrying(current: string | null, id: string, owned: boolean): string | null {
+  if (current !== id) return id;
+  return owned ? null : id;
+}

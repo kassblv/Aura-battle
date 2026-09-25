@@ -2,7 +2,7 @@ import { HAIRSTYLES, OUTFITS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import { discountedPrice, featuredForDay, tokenPrice } from '@aura/content';
 import { memeGallery } from './memes.js';
-import { buy, buyOptions, shopSections, type ShopState } from './shop.js';
+import { buy, buyOptions, nextTrying, shopSections, type ShopState } from './shop.js';
 
 const state = (soft: number, owned: string[] = []): ShopState => ({
   wallet: { soft, hard: 0 },
@@ -262,5 +262,25 @@ describe('buyOptions', () => {
 
   it('ne propose rien pour un article deja possede', () => {
     expect(buyOptions(item, { soft: 500, hard: 500 }, true)).toBeNull();
+  });
+});
+
+/*
+  Retoucher l'article essaye. L'ancien geste (« retoucher achete ») est dans
+  les doigts : sur un article pas encore a soi, le retirer ferait disparaitre
+  la barre d'achat sous le pouce qui venait l'utiliser.
+*/
+describe('nextTrying', () => {
+  it('essaie un nouvel article', () => {
+    expect(nextTrying('a', 'b', false)).toBe('b');
+    expect(nextTrying(null, 'b', false)).toBe('b');
+  });
+
+  it('garde a l essai un article pas encore possede', () => {
+    expect(nextTrying('a', 'a', false)).toBe('a');
+  });
+
+  it('repose un article possede, pour se comparer sans lui', () => {
+    expect(nextTrying('a', 'a', true)).toBeNull();
   });
 });

@@ -135,7 +135,13 @@ describe('purchaseOutcome', () => {
     ).toEqual({ ok: true, spend: { soft: 80, hard: 0 } });
   });
 
-  it('se rabat sur la monnaie dure quand la douce ne suffit pas', () => {
+  /*
+    Sans monnaie choisie (un client 2.1), JAMAIS de jetons : les jetons ne
+    partent que quand le joueur l'a demande. Le repli d'avant restait inerte
+    tant qu'aucun article n'avait de prix en jetons ; depuis la 2.2.0, il
+    aurait vide une poche sans consentement.
+  */
+  it('ne se rabat jamais sur les jetons sans qu on les ait choisis', () => {
     expect(
       purchaseOutcome({
         item: item({ priceSoft: 80, priceHard: 2 }),
@@ -143,7 +149,7 @@ describe('purchaseOutcome', () => {
         owned: false,
         now: NOW,
       }),
-    ).toEqual({ ok: true, spend: { soft: 0, hard: 2 } });
+    ).toEqual({ ok: false, reason: 'INSUFFICIENT_FUNDS' });
   });
 
   describe('fenetre de disponibilite', () => {

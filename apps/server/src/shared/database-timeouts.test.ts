@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { DATABASE_TIMEOUTS, PURCHASE_TRANSACTION, WORST_QUERY_MS } from './database-timeouts.js';
+import {
+  CREDIT_TRANSACTION,
+  DATABASE_TIMEOUTS,
+  PURCHASE_TRANSACTION,
+  WORST_QUERY_MS,
+} from './database-timeouts.js';
 
 /**
  * Les delais de la base ne valent que les uns par rapport aux autres : ce sont
@@ -15,6 +20,18 @@ describe('DATABASE_TIMEOUTS', () => {
   it('ne coupe aucune transaction interactive encore dans ses delais', () => {
     // Celle du match est verifiee a cote d'elle (`prisma-match.repository.test.ts`).
     expect(DATABASE_TIMEOUTS.idleInTransactionMs).toBeGreaterThan(PURCHASE_TRANSACTION.timeout);
+    expect(DATABASE_TIMEOUTS.idleInTransactionMs).toBeGreaterThan(CREDIT_TRANSACTION.timeout);
+  });
+
+  /*
+    Le credit de fin de match (pieces, experience, jetons) attend une connexion
+    aussi longtemps que l'enregistrement du match qui le precede : sous charge,
+    abandonner le credit plus tot que le match ferait perdre au joueur ce que
+    le match vient de lui donner.
+  */
+  it('laisse au credit de fin de match le temps d attendre une connexion', () => {
+    expect(CREDIT_TRANSACTION.maxWait).toBeGreaterThanOrEqual(DATABASE_TIMEOUTS.connectMs);
+    expect(DATABASE_TIMEOUTS.statementMs).toBeGreaterThanOrEqual(CREDIT_TRANSACTION.timeout);
   });
 
   it('ne coupe pas une instruction plus tot que la transaction qui la porte', () => {

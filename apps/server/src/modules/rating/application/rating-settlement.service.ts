@@ -207,7 +207,7 @@ export class RatingSettlementService implements MatchRatingSettlement {
     try {
       return await this.wallets.credit(entries);
     } catch (cause) {
-      this.log?.warn(`credit de la monnaie douce en echec : ${describeCause(cause)}`);
+      this.log?.warn(`credit de fin de match en echec : ${describeCause(cause)}`);
       /*
         Un credit rate rend une carte VIDE, donc un total d'experience a zero.
 
