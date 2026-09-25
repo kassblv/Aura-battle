@@ -1,7 +1,7 @@
 import { levelUpTokens } from '@aura/rules';
 import { Inject, Injectable } from '@nestjs/common';
 import { League as LeagueColumn } from '@prisma/client';
-import { currentSeasonId } from '../../../shared/current-season.js';
+import { currentSeason, currentSeasonId } from '../../../shared/current-season.js';
 import { CREDIT_TRANSACTION } from '../../../shared/database-timeouts.js';
 import { describeCause } from '../../../shared/describe-cause.js';
 import { PinoLoggerService } from '../../../shared/logger.js';
@@ -15,7 +15,7 @@ import type {
   SeasonRatings,
   WalletCredit,
 } from '../domain/ports.js';
-import type { League, RatingSnapshot } from '../domain/rating.js';
+import { seasonCarryOver, type League, type RatingSnapshot } from '../domain/rating.js';
 
 /**
  * Adaptateur Prisma des ports de lecture/ecriture du classement (docs/04).
@@ -75,6 +75,17 @@ interface RatingRow {
   losses: number;
 }
 
+const RATING_COLUMNS = {
+  playerId: true,
+  mmr: true,
+  rd: true,
+  leaguePoints: true,
+  league: true,
+  placements: true,
+  wins: true,
+  losses: true,
+} as const;
+
 function toSnapshot(row: RatingRow): RatingSnapshot {
   return {
     mmr: row.mmr,
@@ -98,25 +109,38 @@ export class PrismaRatingRepository
   ) {}
 
   async loadForMatch(playerIds: readonly string[], nowMs: number): Promise<SeasonRatings | null> {
-    const seasonId = await currentSeasonId(this.prisma, nowMs);
-    if (seasonId === null) return null;
+    const season = await currentSeason(this.prisma, nowMs);
+    if (season === null) return null;
+    const seasonId = season.id;
     if (playerIds.length === 0) return { seasonId, ratings: new Map() };
 
     const rows = await this.prisma.rating.findMany({
       where: { seasonId, playerId: { in: [...playerIds] } },
-      select: {
-        playerId: true,
-        mmr: true,
-        rd: true,
-        leaguePoints: true,
-        league: true,
-        placements: true,
-        wins: true,
-        losses: true,
-      },
+      select: RATING_COLUMNS,
     });
+    const ratings = new Map(rows.map((row) => [row.playerId, toSnapshot(row)]));
 
-    return { seasonId, ratings: new Map(rows.map((row) => [row.playerId, toSnapshot(row)])) };
+    /*
+      Premier match de la saison : on repart de la saison precedente,
+      reinitialisee en douceur (`seasonCarryOver`, docs/05), jamais de zero.
+      La plus recente d'abord ; un joueur absent d'une saison reprend la
+      derniere ou il a joue.
+    */
+    const missing = playerIds.filter((id) => !ratings.has(id));
+    if (missing.length > 0) {
+      const earlier = await this.prisma.rating.findMany({
+        where: { playerId: { in: missing }, season: { number: { lt: season.number } } },
+        orderBy: { season: { number: 'desc' } },
+        select: RATING_COLUMNS,
+      });
+      for (const row of earlier) {
+        if (!ratings.has(row.playerId)) {
+          ratings.set(row.playerId, seasonCarryOver(toSnapshot(row)));
+        }
+      }
+    }
+
+    return { seasonId, ratings };
   }
 
   /**
@@ -193,15 +217,11 @@ export class PrismaRatingRepository
     nowMs: number,
   ): Promise<ReadonlyMap<string, string>> {
     if (playerIds.length === 0) return new Map();
-    const seasonId = await currentSeasonId(this.prisma, nowMs);
-    if (seasonId === null) return new Map();
-
-    const rows = await this.prisma.rating.findMany({
-      where: { seasonId, playerId: { in: [...playerIds] } },
-      select: { playerId: true, league: true },
-    });
-
-    return new Map(rows.map((row) => [row.playerId, LEAGUE_FROM_COLUMN[row.league]]));
+    // La meme lecture que le match : un joueur qui n'a pas encore joue de la
+    // saison montre la ligue de sa reprise douce, pas « Sans aura ».
+    const loaded = await this.loadForMatch(playerIds, nowMs);
+    if (loaded === null) return new Map();
+    return new Map([...loaded.ratings].map(([playerId, rating]) => [playerId, rating.league]));
   }
 
   /**

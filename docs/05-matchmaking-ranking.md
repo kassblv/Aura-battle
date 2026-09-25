@@ -83,7 +83,7 @@ Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste l
 
 - LP gagnés/perdus : base ±20, corrigée par l'écart entre MMR et LP pour converger (gain plus fort si le MMR est au-dessus des LP).
 - 5 matchs de placement par saison.
-- Saison de 8 semaines ; réinitialisation douce en fin de saison (LP ramenés vers la médiane, MMR compressé de 20 % vers 1 000).
+- Saison de 8 semaines ; réinitialisation douce en fin de saison : **LP divisés par deux**, **MMR compressé de 20 % vers 1 000**, placements et bilan rouverts (`seasonCarryOver`). « Vers la médiane » se lisait ainsi à l'origine ; tirer vers la médiane d'une population neuve aurait fait **monter** les joueurs du bas, ce qu'une ligue ne fait pas.
 
 ### Précisions d'implémentation (jalon M5, ADR 0010)
 
@@ -123,16 +123,14 @@ Ces points ne changent aucune valeur ci-dessus ; ils tranchent ce que la liste l
 - **`match:found.league` lit une ligue mise en cache à la connexion**, comme le nom affiché
   (docs/03), et rafraîchie à chaque match classé — sans quoi elle resterait figée à sa valeur
   d'entrée en session pendant vingt manches classées.
-- **Hors périmètre de ce jalon** : la réinitialisation douce de fin de saison (dernière ligne
-  ci-dessus) et le MMR caché séparé de la partie rapide ne sont pas encore codés.
-- **Ce qui se passe AUJOURD'HUI au changement de saison (2026-09-25).** Le seed garde
-  toujours la saison suivante d'avance. Les classements sont rangés par saison
-  (`Rating (playerId, seasonId)`) : à la première seconde de la saison 2 (2026-10-27),
-  chaque joueur repart donc de **MMR 1 000, 0 LP et cinq matchs de placement**. Le
-  classement est vide et les fenêtres de matchmaking se resserrent sur une seule valeur.
-  C'est une **réinitialisation dure**, pas la douce promise plus haut : à remplacer avant
-  cette date (voir `08-roadmap.md`). Les récompenses du passe non réclamées de la saison 1
-  sont perdues au même instant.
+- **Hors périmètre de ce jalon** : le MMR caché séparé de la partie rapide n'est pas encore
+  codé. La réinitialisation douce, elle, l'est depuis le 2026-09-25.
+- **Au changement de saison** (2026-09-25). Le seed garde toujours la saison suivante d'avance.
+  Au **premier match** d'un joueur dans la nouvelle saison, sa ligne la plus récente d'une
+  saison antérieure est reprise, réinitialisée en douceur (`seasonCarryOver`), puis écrite à
+  la fin du match comme les autres. La ligue affichée avant ce match suit la même lecture
+  (`leaguesOf` passe par `loadForMatch`). Un joueur absent d'une saison reprend la dernière
+  où il a joué. Les récompenses du passe non réclamées de la saison précédente sont perdues.
 
 ## Fantômes
 

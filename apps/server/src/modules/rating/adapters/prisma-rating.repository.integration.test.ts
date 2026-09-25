@@ -238,4 +238,48 @@ describe.skipIf(!reachable)('ecriture et lecture reelles du classement', () => {
       await prisma!.player.delete({ where: { id: playerA } });
     }
   });
+
+  /*
+    Premier match d'une nouvelle saison : on repart de la ligne de la saison
+    precedente, reinitialisee en douceur — jamais de zero (docs/05).
+  */
+  it('reprend la saison precedente, en douceur, au premier match d une saison', async () => {
+    const playerA = await createPlayer();
+    const repository = buildRepository();
+    const seasons = await prisma!.season.findMany({ orderBy: { number: 'asc' }, take: 2 });
+    const [first, second] = seasons;
+    if (first === undefined || second === undefined) throw new Error('il faut deux saisons');
+
+    try {
+      await prisma!.rating.create({
+        data: {
+          playerId: playerA,
+          seasonId: first.id,
+          mmr: 1_500,
+          leaguePoints: 2_600,
+          league: 'LEGENDAIRE',
+          placements: 5,
+          wins: 40,
+          losses: 12,
+        },
+      });
+      const inSecond = second.startsAt.getTime() + 60_000;
+      const loaded = await repository.loadForMatch([playerA], inSecond);
+      expect(loaded?.seasonId).toBe(second.id);
+      expect(loaded?.ratings.get(playerA)).toMatchObject({
+        mmr: 1_400,
+        leaguePoints: 1_300,
+        placements: 0,
+        wins: 0,
+        losses: 0,
+      });
+      // La ligue affichee avant le match suit la meme regle : pas « Sans aura ».
+      const leagues = await repository.leaguesOf([playerA], inSecond);
+      expect(leagues.get(playerA)).toBe(loaded?.ratings.get(playerA)?.league);
+      expect(leagues.get(playerA)).not.toBe('sans_aura');
+    } finally {
+      await prisma!.rating.deleteMany({ where: { playerId: playerA } });
+      await prisma!.player.delete({ where: { id: playerA } });
+    }
+  });
 });

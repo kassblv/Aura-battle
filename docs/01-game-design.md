@@ -250,6 +250,7 @@ Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de c
   contredire, et c'est toujours celle qu'on a oublié de mettre à jour qui
   s'affiche.
 
+- **Changement de saison : on repart plus bas, jamais de zéro.** Au premier match de la saison, les LP de la précédente sont divisés par deux, le MMR se resserre de 20 % vers 1 000, et cinq matchs de placement se rouvrent (`docs/05`, `seasonCarryOver`). Repartir de zéro effacerait la raison de revenir ; ne rien réinitialiser figerait le haut du classement.
 - **Passe de saison.** Un horizon daté : 30 paliers de 100 XP de saison
   (`SEASON_PASS`, `@aura/content`). L'**XP de saison** est l'expérience de chaque
   match joué pendant la saison, créditée dans la même transaction que l'XP du

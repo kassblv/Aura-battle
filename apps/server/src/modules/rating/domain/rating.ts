@@ -70,6 +70,32 @@ export const STARTING_RATING: RatingSnapshot = Object.freeze({
   losses: 0,
 });
 
+/**
+ * La reinitialisation douce de fin de saison (docs/05).
+ *
+ * - Le MMR se resserre de 20 % vers 1 000 : l'ecart entre joueurs survit, en
+ *   plus petit — un tres bon joueur retrouve vite son niveau, sans ecraser
+ *   des debutants pendant ses placements.
+ * - Les LP sont divises par deux : on ne repart pas de zero, on repart plus
+ *   bas. « Vers la mediane » se lit ainsi : ramener vers la mediane d'une
+ *   population neuve ferait MONTER les joueurs du bas, ce qu'une ligue ne fait
+ *   pas.
+ * - La saison rouvre ses placements et son bilan.
+ */
+export const SEASON_MMR_COMPRESSION = 0.2;
+export const SEASON_LP_KEPT = 0.5;
+
+export function seasonCarryOver(previous: RatingSnapshot): RatingSnapshot {
+  const mmr = Math.round(1_000 + (previous.mmr - 1_000) * (1 - SEASON_MMR_COMPRESSION));
+  const leaguePoints = Math.round(previous.leaguePoints * SEASON_LP_KEPT);
+  return {
+    ...STARTING_RATING,
+    mmr,
+    leaguePoints,
+    league: leagueFor(leaguePoints),
+  };
+}
+
 /** Nombre de matchs de placement par saison (docs/05). */
 export const PLACEMENT_MATCHES = 5;
 

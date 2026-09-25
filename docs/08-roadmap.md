@@ -203,7 +203,8 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - [x] Acheter des jetons avec de l'argent réel par RevenueCat (ADR 0016), crédités par le serveur via webhook, de façon idempotente (2026-09-25).
   - [ ] Ouvrir la vente : comptes App Store, Google Play et RevenueCat, produits, clés et secret du webhook (`docs/10-exploitation.md`, « Achat de jetons »).
 
-- [ ] **Avant le 2026-10-27 : réinitialisation douce du classement au changement de saison.** Aujourd'hui, la saison 2 repart de zéro pour tout le monde (MMR 1 000, 0 LP, placements) ; `docs/05` promet des LP ramenés vers la médiane et un MMR compressé de 20 % vers 1 000. À coder au premier match de la saison, depuis la ligne de la saison précédente (règle d'or n° 6 : `balance`, test, `docs/01`). Prévenir aussi avant la fin de saison qu'il reste des récompenses du passe à réclamer.
+- [x] **Réinitialisation douce du classement au changement de saison** (2026-09-25, avant la saison 2 du 2026-10-27) : LP divisés par deux, MMR compressé de 20 % vers 1 000, placements rouverts, repris au premier match de la saison (`seasonCarryOver`, `docs/05`).
+- [ ] Prévenir avant la fin de saison qu'il reste des récompenses du passe à réclamer.
 
 ### M7 — Anti-triche et robustesse
 - [ ] **Farm d'XP de saison par abandon en invitation** (relevé le 2026-09-25, relecture de sécurité du passe). Une victoire par abandon rapporte 30 XP : deux comptes en invitation remplissent les trente paliers en quelques minutes. Borné par compte et par saison, non transférable. Piste : aucune XP pour un abandon avant la fin de la première manche, ou un plafond en invitation par paire et par jour.

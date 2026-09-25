@@ -4,19 +4,20 @@ import type { Seat } from '@aura/rules';
 import {
   GHOST_LEAGUE_POINTS_MULTIPLIER,
   isMutualForfeit,
+  type League,
   leagueFor,
   leagueForMmr,
+  type MatchOutcome,
   nextLeaguePoints,
   nextMmr,
   nextRating,
   outcomeFor,
   PLACEMENT_MATCHES,
-  rewardsFor,
-  STARTING_RATING,
-  type League,
-  type MatchOutcome,
   type RatingOutcome,
   type RatingSnapshot,
+  rewardsFor,
+  seasonCarryOver,
+  STARTING_RATING,
 } from './rating.js';
 
 /**
@@ -388,5 +389,41 @@ describe('leagueForMmr — quelle ligue montrer pour qui n a pas de LP', () => {
         expect(leagueForMmr(mmr)).toBe(leagueFor(Math.max(0, mmr - 1_000)));
       }),
     );
+  });
+});
+
+/*
+  La reinitialisation douce de fin de saison (docs/05) : on ne repart pas de
+  zero, on repart plus bas. Le MMR se resserre de 20 % vers 1 000, les LP sont
+  divises par deux, et la saison rouvre ses cinq matchs de placement.
+*/
+describe('seasonCarryOver', () => {
+  const previous = {
+    ...STARTING_RATING,
+    mmr: 1_500,
+    leaguePoints: 2_600,
+    league: 'legendaire' as const,
+    placements: 5,
+    wins: 40,
+    losses: 12,
+  };
+
+  it('resserre le MMR de 20 % vers 1 000, dans les deux sens', () => {
+    expect(seasonCarryOver(previous).mmr).toBe(1_400);
+    expect(seasonCarryOver({ ...previous, mmr: 800 }).mmr).toBe(840);
+  });
+
+  it('divise les LP par deux, et en deduit la ligue', () => {
+    const next = seasonCarryOver(previous);
+    expect(next.leaguePoints).toBe(1_300);
+    expect(next.league).toBe(leagueFor(1_300));
+  });
+
+  it('rouvre les placements et le bilan de la saison', () => {
+    expect(seasonCarryOver(previous)).toMatchObject({ placements: 0, wins: 0, losses: 0 });
+  });
+
+  it('laisse un nouveau venu au depart', () => {
+    expect(seasonCarryOver(STARTING_RATING)).toEqual(STARTING_RATING);
   });
 });
