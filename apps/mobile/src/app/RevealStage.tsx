@@ -8,9 +8,13 @@ import type { RevealCallout, RevealCard, RevealScene } from './reveal.js';
  * La mise en scene de la revelation (chantier n°3).
  *
  * Montee par manche pendant la phase `reveal`. Les instants passent par des
- * delais CSS (`--at`) diminues du temps deja ecoule dans la phase : monte en
- * retard (reconnexion, onglet revenu), un delai negatif avance l'animation
- * jusqu'au bon instant au lieu de la rejouer depuis le debut.
+ * delais CSS (`--at`) diminues du temps deja ecoule dans la phase au montage :
+ * montee en retard (onglet revenu, rendu tardif), un delai negatif avance
+ * l'animation jusqu'au bon instant au lieu de la rejouer depuis le debut.
+ *
+ * Apres une reconnexion en pleine revelation, elle ne se monte pas : `match:state`
+ * ne porte pas le dernier `round:result`, et la vue n'a donc pas de manche a
+ * raconter. On reprend a la manche suivante.
  *
  * Rien n'y est interactif : `aria-hidden` sur les cartes, et un seul bandeau
  * annonce par `role="status"`.

@@ -16,6 +16,7 @@ function round(over: Partial<RoundView> = {}): RoundView {
     opponentShiny: false,
     myMove: { style: 'calme', tier: 2 },
     opponentMove: { style: 'hype', tier: 2 },
+    myPoseId: null,
     opponentPoseId: null,
     counteredBy: null,
     counterBlocked: false,

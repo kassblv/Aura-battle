@@ -19,6 +19,7 @@ const round = (over: Partial<RoundView> = {}): RoundView => ({
   opponentShiny: false,
   myMove: { style: 'acrobatie', tier: 2 },
   opponentMove: { style: 'prouesse', tier: 1 },
+  myPoseId: null,
   opponentPoseId: null,
   counteredBy: 'moi',
   counterBlocked: false,
@@ -41,6 +42,15 @@ describe('revealScene', () => {
       bare,
     );
     expect(scene.theirs.name).toBe("Haussement d'épaules");
+  });
+
+  it('montre la pose que le serveur a jouee pour moi, pas celle du vestiaire', () => {
+    const scene = revealScene(
+      round({ myMove: { style: 'provoc', tier: 2 }, myPoseId: 'anim.provoc.t2.shrug' }),
+      bare,
+    );
+    expect(scene.mine.name).toBe("Haussement d'épaules");
+    expect(scene.mine.poseId).toBe('anim.provoc.t2.shrug');
   });
 
   it('ignore une pose adverse qui ne correspond pas a son mouvement', () => {
@@ -100,6 +110,20 @@ describe('revealScene', () => {
       bare,
     );
     expect(scene.callout).toEqual({ kind: 'blocked', by: 'adversaire' });
+  });
+
+  it('attribue le contre bloque a mon Ultime quand c est moi qui le subissais', () => {
+    const scene = revealScene(
+      round({
+        myMove: { style: 'prouesse', tier: 1 },
+        opponentMove: { style: 'acrobatie', tier: 2 },
+        counteredBy: null,
+        counterBlocked: true,
+        myUltimate: true,
+      }),
+      bare,
+    );
+    expect(scene.callout).toEqual({ kind: 'blocked', by: 'moi' });
   });
 
   it('fait eclater les cartes brillantes', () => {

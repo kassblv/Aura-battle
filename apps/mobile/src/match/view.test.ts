@@ -165,6 +165,7 @@ describe('ce que la revelation raconte (chantier n°3)', () => {
     expect(last.myMove).toEqual({ style: 'calme', tier: 1 });
     expect(BALANCE.styles).toContain(last.opponentMove.style);
     expect(last.opponentPoseId).toBeNull();
+    expect(last.myPoseId).toBeNull();
     // Solo : l'adversaire ouvre, le joueur ferme la scene.
     expect(last.revealFirst).toBe('adversaire');
     const record = match.state.history.at(-1)!;
@@ -209,6 +210,8 @@ describe('ce que la revelation raconte (chantier n°3)', () => {
     expect(last.myMove).toEqual({ style: 'hype', tier: 2 });
     expect(last.opponentMove).toEqual({ style: 'calme', tier: 2 });
     expect(last.opponentPoseId).toBe('anim.calme.t2.x');
+    // Ma pose aussi vient du serveur : c'est elle qu'il a jouee, et que l'adversaire voit.
+    expect(last.myPoseId).toBe('anim.hype.t2.x');
     expect(last.counteredBy).toBe('adversaire');
     expect(last.counterBlocked).toBe(false);
     expect(last.revealFirst).toBe('moi');

@@ -53,8 +53,8 @@ export interface RevealScene {
 
 const gallery = memeGallery();
 
-/** La pose adverse annoncee, si elle joue bien ce mouvement ; sinon l'offerte. */
-function opponentPose(move: Move, poseId: string | null): { id: string; name: string } {
+/** La pose annoncee par le serveur, si elle joue bien ce mouvement ; sinon l'offerte. */
+function cellPose(move: Move, poseId: string | null): { id: string; name: string } {
   const cell = gallery.filter((card) => card.style === move.style && card.tier === move.tier);
   const card = cell.find((c) => c.animationId === poseId) ?? cell.find((c) => c.free) ?? cell[0];
   return { id: card?.animationId ?? '', name: card?.name ?? '' };
@@ -86,15 +86,18 @@ export function revealScene(round: RoundView, wardrobe: Wardrobe): RevealScene {
   const second = REVEAL_FIRST_AT_MS + REVEAL_GAP_MS;
   const myFirst = round.revealFirst === 'moi';
 
-  const myPose = danceOptions(wardrobe, round.myMove);
-  const myCard = myPose.choices.find((card) => card.animationId === myPose.current);
-  const their = opponentPose(round.opponentMove, round.opponentPoseId);
+  // En ligne, la pose que le serveur a jouee ; en solo, celle du vestiaire.
+  const mine = cellPose(
+    round.myMove,
+    round.myPoseId ?? danceOptions(wardrobe, round.myMove).current,
+  );
+  const their = cellPose(round.opponentMove, round.opponentPoseId);
 
   return {
     mine: {
-      poseId: myPose.current,
-      name: myCard?.name ?? '',
-      icon: poseIcon(myPose.current),
+      poseId: mine.id,
+      name: mine.name,
+      icon: poseIcon(mine.id),
       family: round.myMove.style,
       tier: round.myMove.tier,
       atMs: myFirst ? first : second,

@@ -68,6 +68,8 @@ export interface RoundView {
   */
   readonly myMove: Move;
   readonly opponentMove: Move;
+  /** Ma pose telle que le serveur l'a jouee, en ligne ; `null` en solo (le vestiaire fait foi). */
+  readonly myPoseId: string | null;
   /** La pose adverse, en ligne ; `null` en solo, ou l'IA joue l'offerte. */
   readonly opponentPoseId: string | null;
   /** Qui a applique un contre, ou `null`. */
@@ -162,6 +164,7 @@ export function viewOfSolo(match: SoloMatch): MatchView {
             opponentShiny: last.seats.b.shiny,
             myMove: soloMoveOf(state, 'a'),
             opponentMove: soloMoveOf(state, 'b'),
+            myPoseId: null,
             opponentPoseId: null,
             counteredBy: last.seats.a.countered
               ? 'moi'
@@ -226,6 +229,7 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
             opponentShiny: last.sides[other].shiny ?? false,
             myMove: last.sides[seat].move,
             opponentMove: last.sides[other].move,
+            myPoseId: last.sides[seat].cosmetic.animationId,
             opponentPoseId: last.sides[other].cosmetic.animationId,
             counteredBy: last.sides[seat].counter
               ? 'moi'
