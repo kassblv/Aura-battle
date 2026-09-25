@@ -6,8 +6,8 @@ describe('PROTOCOL_VERSION', () => {
     expect(PROTOCOL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('est en 2.2.0 : le choix de la monnaie a l achat, ajoute sans rupture', () => {
-    expect(PROTOCOL_VERSION).toBe('2.2.0');
+  it('est en 2.3.0 : le passe de saison, ajoute sans rupture', () => {
+    expect(PROTOCOL_VERSION).toBe('2.3.0');
   });
 });
 

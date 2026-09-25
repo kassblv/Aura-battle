@@ -52,7 +52,13 @@
   l'envoie pas et garde le comportement d'avant (pieces d'abord). Pas de
   rupture majeure.
 */
-export const PROTOCOL_VERSION = '2.2.0';
+/*
+  2.3.0 — le passe de saison.
+
+  Routes HTTP AJOUTEES (`GET /season`, `POST /season/claim`,
+  `POST /season/premium`) : un client 2.2 ne les appelle pas. Pas de rupture.
+*/
+export const PROTOCOL_VERSION = '2.3.0';
 
 const MAJOR = /^(\d+)\./;
 

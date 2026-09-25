@@ -19,3 +19,4 @@ export * from './inventory.js';
 export * from './leaderboard.js';
 export * from './client.js';
 export * from './server.js';
+export * from './season.js';
