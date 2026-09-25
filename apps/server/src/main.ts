@@ -11,6 +11,7 @@ import type { FastifyReply, FastifyRequest } from 'fastify';
 import { AppModule } from './app.module.js';
 import { loadConfig, type ServerConfig } from './shared/config.js';
 import { PinoLoggerService } from './shared/logger.js';
+import { HTTP_BODY_LIMIT, startupWarnings } from './shared/startup-warnings.js';
 import { servesIndex } from './shared/static-client.js';
 
 /**
@@ -109,6 +110,7 @@ async function bootstrap(): Promise<void> {
   */
   const adapter = new FastifyAdapter({
     trustProxy: config.trustProxy === '' ? false : config.trustProxy,
+    bodyLimit: HTTP_BODY_LIMIT,
   });
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, adapter, {
     bufferLogs: true,
@@ -152,6 +154,7 @@ async function bootstrap(): Promise<void> {
 
   logger.log(`serveur pret sur le port ${config.port} — environnement ${config.nodeEnv}`);
   if (config.clientDir !== '') logger.log(`client servi depuis ${config.clientDir}`);
+  for (const warning of startupWarnings(config)) logger.warn(warning);
 }
 
 void bootstrap();
