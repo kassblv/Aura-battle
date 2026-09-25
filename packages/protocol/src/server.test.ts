@@ -296,6 +296,38 @@ describe('recharge:start', () => {
   });
 });
 
+/*
+  2.4.0 : la variante de regles de la semaine (partie rapide). Un identifiant
+  court et borne ; absent, les regles normales.
+*/
+describe('match:found — variante de regles', () => {
+  const found = {
+    matchId: 'm_01',
+    seat: 'a',
+    opponent: { displayName: 'Nova', league: 'bronze', cosmetics: {} },
+    protocolVersion: '2.4.0',
+    rulesVersion: '1.0.0',
+    contentVersion: '1',
+    ghost: false,
+  };
+
+  it('accepte une variante annoncee, et son absence', () => {
+    expect(parseServerMessage('match:found', { ...found, rulesVariant: 'brillance' }).success).toBe(
+      true,
+    );
+    expect(parseServerMessage('match:found', found).success).toBe(true);
+  });
+
+  it('refuse une variante demesuree ou mal formee', () => {
+    expect(
+      parseServerMessage('match:found', { ...found, rulesVariant: 'x'.repeat(40) }).success,
+    ).toBe(false);
+    expect(
+      parseServerMessage('match:found', { ...found, rulesVariant: 'Pas un id!' }).success,
+    ).toBe(false);
+  });
+});
+
 describe('match:found et match:end', () => {
   it('accepte une rencontre annoncee', () => {
     expect(

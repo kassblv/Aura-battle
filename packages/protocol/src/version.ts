@@ -58,7 +58,14 @@
   Routes HTTP AJOUTEES (`GET /season`, `POST /season/claim`,
   `POST /season/premium`) : un client 2.2 ne les appelle pas. Pas de rupture.
 */
-export const PROTOCOL_VERSION = '2.3.0';
+/*
+  2.4.0 — la variante de regles de la semaine.
+
+  `match:found.rulesVariant` est AJOUTE et facultatif : un client 2.3 l'ignore
+  et joue la partie rapide avec les couts normaux a l'ecran — le serveur, lui,
+  fait autorite sur le score. Pas de rupture majeure.
+*/
+export const PROTOCOL_VERSION = '2.4.0';
 
 const MAJOR = /^(\d+)\./;
 

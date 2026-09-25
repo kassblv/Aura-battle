@@ -127,6 +127,16 @@ export const SERVER_MESSAGES = {
     rulesVersion: z.string().max(16),
     contentVersion: z.string().max(16),
     ghost: z.boolean(),
+    /**
+     * La variante de regles de la semaine (2.4.0, partie rapide seulement) :
+     * le client affiche SES couts et ses multiplicateurs. Absente : les regles
+     * normales. Un identifiant, jamais des valeurs — le client les relit dans
+     * `@aura/rules`, comme le serveur.
+     */
+    rulesVariant: z
+      .string()
+      .regex(/^[a-z][a-z0-9-]{0,23}$/)
+      .optional(),
   }),
 
   // `energy` et `ult` sont ceux du destinataire, jamais de l'adversaire.
