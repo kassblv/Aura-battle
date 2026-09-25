@@ -1,12 +1,13 @@
 import {
+  type AmplifierLevel,
   AURA_COLORS,
   AURA_EFFECTS,
   danceKey,
   HAIRSTYLES,
+  isExclusive,
+  type Move,
   OUTFITS,
   SKIN_TONES,
-  type AmplifierLevel,
-  type Move,
 } from '@aura/content';
 import { memeGallery, type MemeCard } from './memes.js';
 
@@ -84,6 +85,8 @@ export interface WardrobeItem {
   readonly swatch: string;
   readonly swatchSecondary?: string;
   readonly price: number;
+  /** Exclusif d'une saison (« Saison 1 ») : se gagne sur le passe, ne se vend pas. */
+  readonly exclusive?: string;
 }
 
 export interface WardrobeSection {
@@ -112,6 +115,7 @@ export function wardrobeSections(): readonly WardrobeSection[] {
         swatch: outfit.jacket,
         swatchSecondary: outfit.pants,
         price: outfit.price,
+        ...(outfit.exclusive === undefined ? {} : { exclusive: outfit.exclusive }),
       })),
     },
     {
@@ -143,6 +147,7 @@ export function wardrobeSections(): readonly WardrobeSection[] {
         name: color.name.fr,
         swatch: color.hex,
         price: color.price,
+        ...(color.exclusive === undefined ? {} : { exclusive: color.exclusive }),
       })),
     },
   ];
@@ -157,19 +162,24 @@ export function priceOf(id: string): number {
   return itemIndex.get(id)?.price ?? 0;
 }
 
-/** Ce qui est gratuit appartient a tout le monde : inutile de le stocker. */
+/**
+ * Ce qui est gratuit appartient a tout le monde : inutile de le stocker.
+ * SAUF un exclusif de saison, dont le prix de 0 veut dire « ne se vend pas » :
+ * il n'est qu'a qui l'a gagne sur le passe.
+ */
 export function isOwned(wardrobe: Wardrobe, id: string): boolean {
   const item = itemIndex.get(id);
   if (item === undefined) return false;
+  if (isExclusive(id)) return wardrobe.owned.has(id);
   return item.price === 0 || wardrobe.owned.has(id);
 }
 
 export function defaultLook(): Look {
   return {
-    outfit: OUTFITS.find((o) => o.price === 0)?.id ?? 'outfit.noir',
+    outfit: OUTFITS.find((o) => o.price === 0 && o.exclusive === undefined)?.id ?? 'outfit.noir',
     hair: HAIRSTYLES.find((h) => h.price === 0)?.id ?? 'hair.court',
     skin: SKIN_TONES[0] ?? '#f3cfae',
-    aura: AURA_COLORS.find((c) => c.price === 0)?.hex ?? '#ffcf3f',
+    aura: AURA_COLORS.find((c) => c.price === 0 && c.exclusive === undefined)?.hex ?? '#ffcf3f',
     dances: {},
   };
 }
@@ -322,6 +332,9 @@ export function itemInfo(id: string): { readonly name: string; readonly price: n
  */
 export function ownsItem(wardrobe: Wardrobe, id: string): boolean {
   if (wardrobe.owned.has(id)) return true;
+  // Un exclusif de saison ne se possede qu'une fois gagne : son prix de 0 veut
+  // dire « ne se vend pas », pas « offert ».
+  if (isExclusive(id)) return false;
   const info = itemInfo(id);
   if (info === null) return false;
   const dance = danceIndex.get(id);

@@ -948,6 +948,10 @@ export function App(): JSX.Element {
             onEquipDance={equipMatchDance}
             trying={trying}
             onTry={setTrying}
+            onSeason={() => {
+              setTrying(null);
+              go('season');
+            }}
             onShop={(id) => {
               // L essai suit le joueur en boutique : l article y est deja
               // enfile, et la barre d achat propose ◈ ou 💎.

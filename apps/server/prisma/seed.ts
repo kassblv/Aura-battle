@@ -66,8 +66,23 @@ async function seedSeason(): Promise<number> {
   return prisma.season.count();
 }
 
+/**
+ * Rarete et prix d'une couleur ou d'une tenue.
+ *
+ * Un EXCLUSIF de saison n'a aucun prix (ni pieces ni jetons : `NOT_PURCHASABLE`)
+ * et une rarete legendaire : un prix de 0 et la rarete par defaut le feraient
+ * tenir pour offert a TOUS (`isOffered`), et il se gagne sur le passe.
+ */
+function catalogueTerms(item: { readonly price: number; readonly exclusive?: string }): {
+  rarity: string;
+  priceSoft: number | null;
+} {
+  if (item.exclusive !== undefined) return { rarity: 'legendary', priceSoft: null };
+  return { rarity: item.price === 0 ? 'default' : 'common', priceSoft: item.price };
+}
+
 async function seedCosmetics(): Promise<number> {
-  const items: { id: string; kind: CosmeticKind; rarity: string; priceSoft: number }[] = [
+  const items: { id: string; kind: CosmeticKind; rarity: string; priceSoft: number | null }[] = [
     ...allAnimationIds().map((id) => ({
       id,
       kind: 'ANIMATION' as const,
@@ -87,8 +102,7 @@ async function seedCosmetics(): Promise<number> {
     ...AURA_COLORS.map((color) => ({
       id: color.id,
       kind: 'AURA_COLOR' as const,
-      rarity: color.price === 0 ? 'default' : 'common',
-      priceSoft: color.price,
+      ...catalogueTerms(color),
     })),
     ...HAIRSTYLES.map((hair) => ({
       id: hair.id,
@@ -99,15 +113,14 @@ async function seedCosmetics(): Promise<number> {
     ...OUTFITS.map((outfit) => ({
       id: outfit.id,
       kind: 'OUTFIT' as const,
-      rarity: outfit.price === 0 ? 'default' : 'common',
-      priceSoft: outfit.price,
+      ...catalogueTerms(outfit),
     })),
   ];
 
   for (const item of items) {
     // Le prix en jetons se deduit du prix en pieces (`@aura/content`) : un
     // article offert n'en a pas, sans quoi il cesserait d'etre offert.
-    const priceHard = catalogueTokenPrice(item.priceSoft);
+    const priceHard = item.priceSoft === null ? null : catalogueTokenPrice(item.priceSoft);
     await prisma.cosmeticItem.upsert({
       where: { id: item.id },
       update: { kind: item.kind, rarity: item.rarity, priceSoft: item.priceSoft, priceHard },

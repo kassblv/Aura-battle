@@ -298,3 +298,25 @@ describe('ownsItem et itemInfo', () => {
     expect(ownsItem({ ...nobody, owned: new Set(['fx.flames']) }, 'fx.flames')).toBe(true);
   });
 });
+
+/*
+  Un exclusif de saison porte un prix de 0 parce qu'il ne se VEND pas, pas
+  parce qu'il est offert : il n'appartient qu'a qui l'a gagne sur le passe.
+*/
+describe('cosmetiques exclusifs de saison', () => {
+  const bare = { look: defaultLook(), owned: new Set<string>() };
+
+  it('ne sont a personne tant qu on ne les a pas gagnes', () => {
+    expect(isOwned(bare, 'outfit.aurore')).toBe(false);
+    expect(isOwned(bare, 'color.aurore')).toBe(false);
+    expect(isOwned({ ...bare, owned: new Set(['outfit.aurore']) }, 'outfit.aurore')).toBe(true);
+    expect(ownsItem(bare, 'color.aurore')).toBe(false);
+    expect(ownsItem({ ...bare, owned: new Set(['color.aurore']) }, 'color.aurore')).toBe(true);
+  });
+
+  it('ne sont jamais la tenue ni la couleur de depart', () => {
+    const look = defaultLook();
+    expect(look.outfit).not.toBe('outfit.aurore');
+    expect(look.aura).not.toBe('#6ef0c4');
+  });
+});

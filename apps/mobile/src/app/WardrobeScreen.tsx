@@ -1,12 +1,13 @@
 import { useState, type JSX } from 'react';
 import {
-  STYLES,
+  isExclusive,
+  type Style,
   styleIcon,
   styleName,
+  STYLES,
+  type Tier,
   tierName,
   TIERS,
-  type Style,
-  type Tier,
 } from '@aura/content';
 import type { PanelLayout } from './panel.js';
 import { memeGallery } from './memes.js';
@@ -64,6 +65,8 @@ export interface WardrobeProps {
   readonly onTry: (id: string | null) => void;
   /** Ouvre la boutique sur l article essaye. */
   readonly onShop: (id: string) => void;
+  /** Ouvre le passe de saison : la ou se gagne un exclusif essaye. */
+  readonly onSeason?: () => void;
   readonly onClose: () => void;
   /**
    * Meme largeur que la boutique, et pour la meme raison : ici aussi le
@@ -79,6 +82,7 @@ export function WardrobeScreen({
   trying,
   onTry,
   onShop,
+  onSeason,
   onClose,
   layout,
 }: WardrobeProps): JSX.Element {
@@ -166,7 +170,11 @@ export function WardrobeScreen({
                       />
                       <span>{item.name}</span>
                       {/* Un objet gratuit n affiche pas « 0 » : ce serait un prix. */}
-                      {item.price > 0 && <small>{owned ? 'acquis' : `${item.price} ◈`}</small>}
+                      {item.exclusive !== undefined ? (
+                        <small>{owned ? '🎖️ exclusif' : `🎖️ ${item.exclusive}`}</small>
+                      ) : (
+                        item.price > 0 && <small>{owned ? 'acquis' : `${item.price} ◈`}</small>
+                      )}
                     </button>
                   </li>
                 );
@@ -288,15 +296,28 @@ export function WardrobeScreen({
           <span>
             Essai : <b>{tried.name}</b>
           </span>
-          <button
-            type="button"
-            className="ward__buy"
-            onClick={() => {
-              onShop(trying);
-            }}
-          >
-            En boutique · {tried.price} ◈
-          </button>
+          {/* Un exclusif ne se vend pas : il se gagne sur le passe. */}
+          {isExclusive(trying) ? (
+            <button
+              type="button"
+              className="ward__buy"
+              onClick={() => {
+                onSeason?.();
+              }}
+            >
+              🎖️ Au passe de saison
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="ward__buy"
+              onClick={() => {
+                onShop(trying);
+              }}
+            >
+              En boutique · {tried.price} ◈
+            </button>
+          )}
         </div>
       )}
     </section>

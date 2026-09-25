@@ -49,6 +49,12 @@ export interface AuraColor {
   readonly name: { readonly fr: string };
   readonly hex: string;
   readonly price: number;
+  /**
+   * Exclusif d'une saison (« Saison 1 ») : il ne se vend pas et n'est offert a
+   * personne, il se gagne sur le passe. Son prix de 0 ne veut donc PAS dire
+   * « offert a tous » — voir `isExclusive`.
+   */
+  readonly exclusive?: string;
 }
 
 export const AURA_COLORS: readonly AuraColor[] = Object.freeze([
@@ -58,6 +64,8 @@ export const AURA_COLORS: readonly AuraColor[] = Object.freeze([
   { id: 'color.pink', name: { fr: 'Rose néon' }, hex: '#ff4fa3', price: 120 },
   { id: 'color.red', name: { fr: 'Rouge sang' }, hex: '#ff3b3b', price: 160 },
   { id: 'color.white', name: { fr: 'Blanc pur' }, hex: '#ffffff', price: 300 },
+  // Exclusif du passe de la saison 1 : jamais en boutique.
+  { id: 'color.aurore', name: { fr: 'Aurore' }, hex: '#6ef0c4', price: 0, exclusive: 'Saison 1' },
 ]);
 
 export interface Hairstyle {
@@ -88,6 +96,8 @@ export interface Outfit {
   readonly zip?: boolean;
   readonly collar?: boolean;
   readonly price: number;
+  /** Exclusif d'une saison : voir `AuraColor.exclusive`. */
+  readonly exclusive?: string;
 }
 
 export const OUTFITS: readonly Outfit[] = Object.freeze([
@@ -146,6 +156,17 @@ export const OUTFITS: readonly Outfit[] = Object.freeze([
     shoes: '#1b1426',
     zip: true,
     price: 700,
+  },
+  {
+    // Le grand prix du passe de la saison 1 : jamais en boutique.
+    id: 'outfit.aurore',
+    name: { fr: 'Tenue d’Aurore' },
+    jacket: '#16404d',
+    pants: '#0d2530',
+    shoes: '#6ef0c4',
+    zip: true,
+    price: 0,
+    exclusive: 'Saison 1',
   },
 ]);
 
@@ -215,4 +236,18 @@ export function defaultEffectForLevel(level: AmplifierLevel): AuraEffect {
     throw new Error(`Aucun effet par defaut pour le niveau A${level}`);
   }
   return effect;
+}
+
+const EXCLUSIVE_IDS: ReadonlySet<string> = new Set(
+  [...AURA_COLORS, ...OUTFITS]
+    .filter((item) => item.exclusive !== undefined)
+    .map((item) => item.id),
+);
+
+/**
+ * Un cosmetique exclusif de saison : ni vendu, ni offert a tous, gagne sur le
+ * passe. A verifier AVANT de lire un prix de 0 comme « offert ».
+ */
+export function isExclusive(id: string): boolean {
+  return EXCLUSIVE_IDS.has(id);
 }

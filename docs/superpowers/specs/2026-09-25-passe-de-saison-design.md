@@ -31,9 +31,7 @@ jetons sans jamais acheter de puissance (règle d'or n° 3).
 
 ## Hors périmètre (itération suivante)
 
-- **Cosmétiques exclusifs de saison** : il faut du contenu neuf et une règle
-  « jamais en boutique » que `isOffered` et la boutique ne connaissent pas
-  encore. La v1 récompense avec des cosmétiques du catalogue.
+- ~~**Cosmétiques exclusifs de saison**~~ : faits (2026-09-25). Un champ `exclusive` (« Saison 1 ») : prix 0 parce qu'ils ne se VENDENT pas, jamais offerts à tous. Le seed les écrit sans aucun prix et en rareté légendaire. Aurore (couleur, palier premium 22) et la Tenue d'Aurore (palier premium 30, le grand prix).
 - ~~**Saison 2**~~ : fait. Le seed garde toujours la saison suivante d'avance
   (`seasonsToCreate`).
 

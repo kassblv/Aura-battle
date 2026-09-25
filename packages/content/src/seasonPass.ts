@@ -55,9 +55,19 @@ const PREMIUM_ITEMS: Readonly<Record<number, string>> = {
   14: 'hair.long',
   20: 'anim.prouesse.t4.lsit',
   25: 'fx.shock',
+  22: 'color.aurore',
   28: 'anim.acrobatie.t4.frontflip',
   29: 'fx.dark',
+  // Le grand prix : l'exclusif de la saison, au dernier palier.
+  30: 'outfit.aurore',
 };
+
+/**
+ * Les jetons de la piste premium hors de la regle « tous les trois paliers » :
+ * le palier 30 porte l'exclusif, ses vingt jetons passent au 26 — la piste
+ * rend toujours 200 jetons.
+ */
+const PREMIUM_TOKENS: Readonly<Record<number, number>> = { 26: 20 };
 
 function freeReward(tier: number): SeasonReward {
   const item = FREE_ITEMS[tier];
@@ -70,6 +80,8 @@ function freeReward(tier: number): SeasonReward {
 function premiumReward(tier: number): SeasonReward {
   const item = PREMIUM_ITEMS[tier];
   if (item !== undefined) return { kind: 'item', itemId: item };
+  const tokens = PREMIUM_TOKENS[tier];
+  if (tokens !== undefined) return { kind: 'tokens', amount: tokens };
   // Vingt jetons tous les trois paliers : 200 sur la saison.
   if (tier % 3 === 0) return { kind: 'tokens', amount: 20 };
   return { kind: 'coins', amount: 60 };

@@ -263,7 +263,7 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - Toujours la saison suivante d'avance en base : le seed l'enchaîne à chaque démarrage.
   - Écran « Saison » avec pastille sur le rail, « Palier N atteint » en fin de duel en ligne.
   - Reste :
-    - des cosmétiques exclusifs de saison (une règle « jamais en boutique ») ;
+    - ~~cosmétiques exclusifs de saison~~ : faits (champ `exclusive`, Aurore et Tenue d'Aurore) ;
     - avertir quand on achète le premium dans les derniers jours d'une saison.
 - [x] Achats intégrés via RevenueCat : reçus validés par RevenueCat, jetons crédités par le serveur via webhook, avec double anti-rejeu (ADR 0016, 2026-09-25). Reste l'ouverture des ventes côté comptes stores.
 
