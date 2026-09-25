@@ -6,8 +6,8 @@ describe('PROTOCOL_VERSION', () => {
     expect(PROTOCOL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('est en 2.4.0 : la variante de regles, ajoutee sans rupture', () => {
-    expect(PROTOCOL_VERSION).toBe('2.4.0');
+  it('est en 2.4.1 : la variante de regles, jusque dans la reprise', () => {
+    expect(PROTOCOL_VERSION).toBe('2.4.1');
   });
 });
 

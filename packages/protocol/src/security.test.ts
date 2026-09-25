@@ -2,7 +2,15 @@ import { describe, expect, it } from 'vitest';
 import { parseClientMessage } from './client.js';
 import { MAX_PARSE_ERROR_LENGTH } from './primitives.js';
 import { parseHandshake } from './handshake.js';
-import { parseServerMessage } from './server.js';
+import { SERVER_MESSAGES, type ServerMessageName } from './server.js';
+
+/**
+ * Ce que le SERVEUR accepte d'emettre : le schema strict, celui de
+ * `serializeServerMessage`. C'est la que vit la regle d'or n° 4 — le client,
+ * lui, ignore les cles inconnues (compatibilite ascendante).
+ */
+const emitted = (name: ServerMessageName, payload: unknown) =>
+  SERVER_MESSAGES[name].safeParse(payload);
 
 /**
  * Tests issus de la relecture de securite du jalon M2.
@@ -100,20 +108,20 @@ describe('cosmetiques — le registre sortant n a plus de conteneur ouvert', () 
 
   it('accepte les emplacements connus', () => {
     expect(
-      parseServerMessage('match:found', found({ auraColor: 'color.gold', outfit: 'outfit.noir' }))
+      emitted('match:found', found({ auraColor: 'color.gold', outfit: 'outfit.noir' }))
         .success,
     ).toBe(true);
   });
 
   it('accepte la danse signature de l adversaire', () => {
     expect(
-      parseServerMessage('match:found', found({ signature: 'anim.hype.t3.griddy' })).success,
+      emitted('match:found', found({ signature: 'anim.hype.t3.griddy' })).success,
     ).toBe(true);
   });
 
   it('refuse une signature qui n est pas un identifiant de contenu', () => {
     expect(
-      parseServerMessage('match:found', found({ signature: 'anim.hype.t3.griddy\n{"mmr":1}' }))
+      emitted('match:found', found({ signature: 'anim.hype.t3.griddy\n{"mmr":1}' }))
         .success,
     ).toBe(false);
   });
@@ -122,7 +130,7 @@ describe('cosmetiques — le registre sortant n a plus de conteneur ouvert', () 
     // Le scenario exact que le garde-fou doit attraper : un bug qui etale
     // `{ ...opponentProfile }` dans un champ ouvert.
     expect(
-      parseServerMessage(
+      emitted(
         'match:found',
         found({ auraColor: 'color.gold', mmr: '1240', energy: '14', ultimateGauge: '80' }),
       ).success,
@@ -196,7 +204,7 @@ describe('timing — la charge reste dans la phase de choix', () => {
 describe('messages sortants — plus de chaine sans borne', () => {
   it('borne le message d erreur, qui ne doit jamais vehiculer d etat de match', () => {
     expect(
-      parseServerMessage('error', {
+      emitted('error', {
         code: 'INVALID_PAYLOAD',
         message: 'x'.repeat(5_000),
         retryable: false,
@@ -210,10 +218,10 @@ describe('messages sortants — plus de chaine sans borne', () => {
       deepLink,
       expiresAt: 1_700_000_000_000,
     });
-    expect(parseServerMessage('invite:created', invite('aurabattle://invite/AB12CD')).success).toBe(
+    expect(emitted('invite:created', invite('aurabattle://invite/AB12CD')).success).toBe(
       true,
     );
-    expect(parseServerMessage('invite:created', invite('javascript:alert(1)')).success).toBe(false);
+    expect(emitted('invite:created', invite('javascript:alert(1)')).success).toBe(false);
   });
 });
 

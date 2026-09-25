@@ -4,7 +4,16 @@ import {
   SERVER_MESSAGE_NAMES,
   parseServerMessage,
   serializeServerMessage,
+  type ServerMessageName,
 } from './server.js';
+
+/**
+ * Ce que le SERVEUR accepte d'emettre : le schema strict, celui de
+ * `serializeServerMessage`. C'est la que vit la regle d'or n° 4 — le client,
+ * lui, ignore les cles inconnues (compatibilite ascendante).
+ */
+const emitted = (name: ServerMessageName, payload: unknown) =>
+  SERVER_MESSAGES[name].safeParse(payload);
 
 const roundResult = {
   matchId: 'm_01',
@@ -78,12 +87,12 @@ describe('registre des messages serveur', () => {
 
 describe('aucune fuite avant la revelation (regle d or n°4)', () => {
   it('ne laisse passer que le strict necessaire dans opponent:locked', () => {
-    expect(parseServerMessage('opponent:locked', { matchId: 'm_01', round: 1 }).success).toBe(true);
+    expect(emitted('opponent:locked', { matchId: 'm_01', round: 1 }).success).toBe(true);
   });
 
   it('refuse d emettre un opponent:locked qui contiendrait le choix adverse', () => {
     const fuite = { matchId: 'm_01', round: 1, move: { style: 'calme', tier: 3 } };
-    expect(parseServerMessage('opponent:locked', fuite).success).toBe(false);
+    expect(emitted('opponent:locked', fuite).success).toBe(false);
   });
 
   it('refuse un choice:start qui contiendrait l energie adverse', () => {
@@ -95,8 +104,8 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
       energy: 14,
       ult: 32,
     };
-    expect(parseServerMessage('choice:start', valide).success).toBe(true);
-    expect(parseServerMessage('choice:start', { ...valide, opponentEnergy: 12 }).success).toBe(
+    expect(emitted('choice:start', valide).success).toBe(true);
+    expect(emitted('choice:start', { ...valide, opponentEnergy: 12 }).success).toBe(
       false,
     );
   });
@@ -111,16 +120,16 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
       ult: 32,
     };
     expect(
-      parseServerMessage('choice:start', { ...base, shiny: { style: 'prouesse', tier: 3 } })
+      emitted('choice:start', { ...base, shiny: { style: 'prouesse', tier: 3 } })
         .success,
     ).toBe(true);
     // Facultative : un serveur 2.0 ne l'envoie pas, et le message reste valide.
-    expect(parseServerMessage('choice:start', base).success).toBe(true);
+    expect(emitted('choice:start', base).success).toBe(true);
     expect(
-      parseServerMessage('choice:start', { ...base, shiny: { style: 'danse', tier: 3 } }).success,
+      emitted('choice:start', { ...base, shiny: { style: 'danse', tier: 3 } }).success,
     ).toBe(false);
     expect(
-      parseServerMessage('choice:start', { ...base, shiny: { style: 'hype', tier: 7 } }).success,
+      emitted('choice:start', { ...base, shiny: { style: 'hype', tier: 7 } }).success,
     ).toBe(false);
   });
 
@@ -132,9 +141,9 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
         b: { ...roundResult.sides.b, shiny: false },
       },
     };
-    expect(parseServerMessage('round:result', withShiny).success).toBe(true);
+    expect(emitted('round:result', withShiny).success).toBe(true);
     expect(
-      parseServerMessage('round:result', {
+      emitted('round:result', {
         ...roundResult,
         sides: { ...roundResult.sides, a: { ...roundResult.sides.a, shiny: 'oui' } },
       }).success,
@@ -150,8 +159,8 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
       energy: 14,
       ult: 0,
     };
-    expect(parseServerMessage('round:intro', valide).success).toBe(true);
-    expect(parseServerMessage('round:intro', { ...valide, opponentUlt: 40 }).success).toBe(false);
+    expect(emitted('round:intro', valide).success).toBe(true);
+    expect(emitted('round:intro', { ...valide, opponentUlt: 40 }).success).toBe(false);
   });
 
   /**
@@ -165,6 +174,33 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
    * optionnel parce qu'un annuaire injoignable ne doit pas empecher une
    * reprise.
    */
+  /*
+    2.4.1 : la variante de regles survit a une reprise. Sans elle, une
+    application tuee puis rouverte affichait les couts normaux pendant que le
+    serveur comptait avec la variante.
+  */
+  it('accepte la variante de regles dans un match:state, et refuse une variante mal formee', () => {
+    const base = {
+      matchId: 'm_01',
+      seat: 'a',
+      phase: 'choice',
+      round: 2,
+      endsAt: 1_700_000_050_000,
+      roundsWon: { a: 1, b: 0 },
+      energy: 11,
+      ult: 57.5,
+      opponentLocked: true,
+      ghost: false,
+      history: [],
+    };
+    expect(emitted('match:state', { ...base, rulesVariant: 'ultime' }).success).toBe(
+      true,
+    );
+    expect(emitted('match:state', { ...base, rulesVariant: 'Pas bon' }).success).toBe(
+      false,
+    );
+  });
+
   it('accepte un match:state qui rappelle le nom de l adversaire', () => {
     const base = {
       matchId: 'm_01',
@@ -179,16 +215,16 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
       ghost: false,
       history: [],
     };
-    expect(parseServerMessage('match:state', base).success).toBe(true);
+    expect(emitted('match:state', base).success).toBe(true);
     expect(
-      parseServerMessage('match:state', {
+      emitted('match:state', {
         ...base,
         opponent: { displayName: 'Nova', league: 'bronze', cosmetics: {} },
       }).success,
     ).toBe(true);
     // Et rien de plus que ce que `match:found` annoncait deja.
     expect(
-      parseServerMessage('match:state', {
+      emitted('match:state', {
         ...base,
         opponent: { displayName: 'Nova', league: 'bronze', cosmetics: {}, mmr: 1200 },
       }).success,
@@ -211,7 +247,7 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
       history: [],
     };
     expect(
-      parseServerMessage('match:state', { ...base, shiny: { style: 'hype', tier: 3 } }).success,
+      emitted('match:state', { ...base, shiny: { style: 'hype', tier: 3 } }).success,
     ).toBe(true);
   });
 
@@ -229,9 +265,9 @@ describe('aucune fuite avant la revelation (regle d or n°4)', () => {
       ghost: false,
       history: [],
     };
-    expect(parseServerMessage('match:state', valide).success).toBe(true);
+    expect(emitted('match:state', valide).success).toBe(true);
     expect(
-      parseServerMessage('match:state', {
+      emitted('match:state', {
         ...valide,
         opponentChoice: { style: 'hype', tier: 4 },
       }).success,
@@ -388,7 +424,79 @@ describe('error', () => {
   });
 });
 
+/*
+  Compatibilite ascendante : un champ AJOUTE par un serveur plus recent ne doit
+  pas faire perdre le match a un client plus ancien. Le client analyse donc en
+  ignorant les cles inconnues — a toutes les profondeurs — sans rien lacher des
+  types ni des bornes. Le serveur, lui, reste strict a l'emission.
+*/
+describe('parseServerMessage — champs d un serveur plus recent', () => {
+  const found = {
+    matchId: 'm_01',
+    seat: 'a',
+    opponent: { displayName: 'Nova', league: 'bronze', cosmetics: {} },
+    protocolVersion: '2.4.1',
+    rulesVersion: '1.0.0',
+    contentVersion: '1',
+    ghost: false,
+  };
+
+  it('ignore un champ inconnu a la racine et le retire', () => {
+    const parsed = parseServerMessage('match:found', { ...found, futur: { a: 1 } });
+    expect(parsed.success).toBe(true);
+    expect(parsed.success && 'futur' in parsed.data.data).toBe(false);
+  });
+
+  it('ignore un champ inconnu dans un objet imbrique', () => {
+    const futur = {
+      ...roundResult,
+      sides: { ...roundResult.sides, a: { ...roundResult.sides.a, bonus: 3 } },
+    };
+    expect(parseServerMessage('round:result', futur).success).toBe(true);
+  });
+
+  it('garde les bornes des tableaux', () => {
+    const orb = { index: 0, x: 0.3, y: 0.7, kind: 'normal', points: 1, lifetimeMs: 1_600 };
+    const trop = {
+      matchId: 'm_01',
+      round: 1,
+      startsAt: 1,
+      endsAt: 2,
+      orbs: Array.from({ length: 500 }, (_, index) => ({ ...orb, index })),
+    };
+    expect(parseServerMessage('recharge:start', trop).success).toBe(false);
+  });
+
+  it('garde les valeurs par defaut', () => {
+    const state = parseServerMessage('match:state', {
+      matchId: 'm_01',
+      seat: 'a',
+      phase: 'choice',
+      round: 1,
+      endsAt: 1_700_000_000_000,
+      roundsWon: { a: 0, b: 0 },
+      energy: 10,
+      ult: 0,
+      opponentLocked: false,
+      history: [],
+    });
+    expect(state.success && state.data.name === 'match:state' && state.data.data.ghost).toBe(
+      false,
+    );
+  });
+});
+
 describe('serializeServerMessage', () => {
+  it('refuse d emettre un champ que le protocole ne connait pas', () => {
+    const result = serializeServerMessage('opponent:locked', {
+      matchId: 'm_01',
+      round: 1,
+      // @ts-expect-error — champ hors protocole
+      futur: true,
+    });
+    expect(result.success).toBe(false);
+  });
+
   it('valide le message avant de l emettre', () => {
     const result = serializeServerMessage('opponent:locked', { matchId: 'm_01', round: 1 });
     expect(result.success).toBe(true);

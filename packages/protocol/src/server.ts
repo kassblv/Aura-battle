@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { errorCodeSchema } from './errors.js';
+import { lenient } from './lenient.js';
 import {
   cosmeticSchema,
   matchIdSchema,
@@ -14,6 +15,9 @@ import {
   unknownMessage,
   type ParseResult,
 } from './primitives.js';
+
+/** Un identifiant de variante de regles (`RULE_VARIANTS`, @aura/rules). */
+const rulesVariantSchema = z.string().regex(/^[a-z][a-z0-9-]{0,23}$/);
 
 /**
  * Messages serveur -> client (docs/03-pvp-protocol.md).
@@ -124,6 +128,8 @@ export const SERVER_MESSAGES = {
     seat: seatSchema,
     opponent: opponentSchema,
     protocolVersion: z.string().max(16),
+    // La version SEULE (`1.0.0`) : la variante voyage a part, dans
+    // `rulesVariant`. La forme `1.0.0+ultime` n'existe qu'en base, pour le rejeu.
     rulesVersion: z.string().max(16),
     contentVersion: z.string().max(16),
     ghost: z.boolean(),
@@ -133,10 +139,7 @@ export const SERVER_MESSAGES = {
      * normales. Un identifiant, jamais des valeurs — le client les relit dans
      * `@aura/rules`, comme le serveur.
      */
-    rulesVariant: z
-      .string()
-      .regex(/^[a-z][a-z0-9-]{0,23}$/)
-      .optional(),
+    rulesVariant: rulesVariantSchema.optional(),
   }),
 
   // `energy` et `ult` sont ceux du destinataire, jamais de l'adversaire.
@@ -234,6 +237,8 @@ export const SERVER_MESSAGES = {
    * les manches deja revelees.
    */
   'match:state': z.strictObject({
+    /** La variante de regles de ce match (2.4.1) : elle survit a une reprise. */
+    rulesVariant: rulesVariantSchema.optional(),
     matchId: matchIdSchema,
     seat: seatSchema,
     phase: z.enum(['intro', 'recharge', 'choice', 'reveal', 'ended']),
@@ -325,7 +330,19 @@ export type ParsedServerMessage = {
   [N in ServerMessageName]: { readonly name: N; readonly data: ServerMessage<N> };
 }[ServerMessageName];
 
-/** Analyse une charge utile serveur. Utilise par le client, qui recoit des noms du reseau. */
+/**
+ * Les schemas d'analyse COTE CLIENT : tolerants aux champs ajoutes par un
+ * serveur plus recent (voir `lenient`). Calcules une fois, au chargement.
+ */
+const CLIENT_PARSERS = Object.fromEntries(
+  Object.entries(SERVER_MESSAGES).map(([name, schema]) => [name, lenient(schema)]),
+) as Record<ServerMessageName, z.ZodType>;
+
+/**
+ * Analyse une charge utile serveur. Utilise par le client, qui recoit des noms
+ * du reseau. Les cles inconnues sont ignorees ; le serveur, lui, emet par
+ * `serializeServerMessage`, qui reste strict.
+ */
 export function parseServerMessage(
   name: string,
   payload: unknown,
@@ -333,7 +350,7 @@ export function parseServerMessage(
   if (!isServerMessageName(name)) {
     return unknownMessage(name);
   }
-  const parsed = SERVER_MESSAGES[name].safeParse(payload);
+  const parsed = CLIENT_PARSERS[name].safeParse(payload);
   return parsed.success
     ? { success: true, data: { name, data: parsed.data } as ParsedServerMessage }
     : parseFailure(parsed.error);

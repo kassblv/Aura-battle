@@ -4,7 +4,8 @@
  * Une difference de version **majeure** est incompatible : le serveur repond
  * `CLIENT_OUTDATED` et le client affiche un ecran de mise a jour. Une
  * difference mineure ou corrective reste compatible — un champ ajoute ne casse
- * pas un client qui l'ignore.
+ * pas un client qui l'ignore (vrai depuis 2.4.1 : le client analyse les
+ * messages serveur en ignorant les cles inconnues, voir `lenient.ts`).
  */
 /*
   1.1.0 — `choice:lock` a PERDU son champ `cosmetic`.
@@ -61,11 +62,22 @@
 /*
   2.4.0 — la variante de regles de la semaine.
 
-  `match:found.rulesVariant` est AJOUTE et facultatif : un client 2.3 l'ignore
-  et joue la partie rapide avec les couts normaux a l'ecran — le serveur, lui,
-  fait autorite sur le score. Pas de rupture majeure.
+  `match:found.rulesVariant` est AJOUTE et facultatif.
 */
-export const PROTOCOL_VERSION = '2.4.0';
+/*
+  2.4.1 — `match:state.rulesVariant`, facultatif : la variante survit a une
+  reprise (application tuee puis rouverte en plein match).
+
+  ET le client ignore desormais les cles inconnues (`lenient`). Les notes
+  ci-dessus disaient « un client plus ancien ignore le champ ajoute » : c'etait
+  FAUX. Le client analysait avec les `strictObject` du serveur et refusait tout
+  message portant un champ qu'il ne connaissait pas — un client 2.0 face a un
+  serveur 2.1 perdait chaque manche a `round:result`. Sans joueur installe
+  jusqu'ici, personne n'en a souffert. A partir d'un client 2.4.1, la promesse
+  de l'en-tete tient : un champ AJOUTE ne casse plus un client plus ancien.
+  Un client anterieur a 2.4.1, lui, reste fragile face a toute addition.
+*/
+export const PROTOCOL_VERSION = '2.4.1';
 
 const MAJOR = /^(\d+)\./;
 
