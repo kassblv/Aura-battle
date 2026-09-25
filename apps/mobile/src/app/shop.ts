@@ -199,40 +199,6 @@ function allSections(): readonly CatalogueSection[] {
   ];
 }
 
-/*
-  Le catalogue du client sert a nommer, jamais a facturer.
-
-  Construit a partir des sections SANS vitrine : le prix qui compte est celui
-  que le serveur applique, et il le recalcule avec SON jour. Y ranger les prix
-  remises ferait croire ici a un total que la-bas on refuserait.
-*/
-const catalogue = new Map<string, Omit<ShopItem, 'tokens'>>();
-for (const section of allSections()) {
-  for (const item of section.items) catalogue.set(item.id, item);
-}
-
-/**
- * Achete un objet.
- *
- * Trois refus, et chacun protege le joueur : pas assez de monnaie, objet deja
- * possede — un double appui sur un bouton de boutique est la chose la plus
- * courante du monde, et il debiterait deux fois — et identifiant inconnu.
- *
- * Les objets offerts ne s achetent pas non plus : le debit serait nul, mais
- * l objet entrerait dans la liste des possessions et brouillerait la
- * distinction entre ce qui est offert et ce qui est achete.
- */
-export function buy(state: ShopState, id: string): ShopState {
-  const item = catalogue.get(id);
-  if (item === undefined) return state;
-  if (state.owned.has(id)) return state;
-  if (state.wallet.soft < item.price) return state;
-
-  const owned = new Set(state.owned);
-  owned.add(id);
-  return { wallet: { ...state.wallet, soft: state.wallet.soft - item.price }, owned };
-}
-
 /** Ce que la barre d'achat propose pour l'article essaye. */
 export interface BuyOptions {
   readonly soft: { readonly price: number; readonly afford: boolean };
