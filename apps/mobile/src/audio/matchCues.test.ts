@@ -14,6 +14,14 @@ function round(over: Partial<RoundView> = {}): RoundView {
     countered: false,
     myShiny: false,
     opponentShiny: false,
+    myMove: { style: 'calme', tier: 2 },
+    opponentMove: { style: 'hype', tier: 2 },
+    opponentPoseId: null,
+    counteredBy: null,
+    counterBlocked: false,
+    revealFirst: 'adversaire',
+    opponentQuality: 'good',
+    opponentUltimate: false,
     ...over,
   };
 }

@@ -1,6 +1,7 @@
 import { BALANCE } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
-import { viewOfSolo } from './view.js';
+import { EMPTY_ONLINE_STATE, type OnlineMatch } from './online.js';
+import { viewOfOnline, viewOfSolo } from './view.js';
 import { createSoloMatch, type SoloMatch } from './solo.js';
 
 const solo = (): SoloMatch => createSoloMatch({ seed: 'vue', opponent: 'calm', startedAtMs: 0 });
@@ -151,5 +152,67 @@ describe('carte brillante dans la vue', () => {
     runTo(match, 'reveal');
     expect(viewOfSolo(match).lastRound?.myShiny).toBe(true);
     expect(typeof viewOfSolo(match).lastRound?.opponentShiny).toBe('boolean');
+  });
+});
+
+describe('ce que la revelation raconte (chantier n°3)', () => {
+  it('dit en solo les deux mouvements, qui a contre, et qui se revele d abord', () => {
+    const match = solo();
+    runTo(match, 'choice');
+    match.lock({ move: { style: 'calme', tier: 1 }, amplifier: 0, useUltimate: false }, null, 1);
+    runTo(match, 'reveal');
+    const last = viewOfSolo(match).lastRound!;
+    expect(last.myMove).toEqual({ style: 'calme', tier: 1 });
+    expect(BALANCE.styles).toContain(last.opponentMove.style);
+    expect(last.opponentPoseId).toBeNull();
+    // Solo : l'adversaire ouvre, le joueur ferme la scene.
+    expect(last.revealFirst).toBe('adversaire');
+    const record = match.state.history.at(-1)!;
+    const expected = record.seats.a.countered ? 'moi' : record.seats.b.countered ? 'adversaire' : null;
+    expect(last.counteredBy).toBe(expected);
+  });
+
+  it('reprend en ligne tout ce que round:result porte', () => {
+    const side = (style: 'calme' | 'hype', counter: boolean) => ({
+      move: { style, tier: 2 as const },
+      amp: 0,
+      ult: false,
+      cosmetic: { animationId: `anim.${style}.t2.x`, effectId: 'fx.glow' },
+      recharge: { points: 1, bestCombo: 1, boostPct: 0, ultGain: 0, energyGain: 0 },
+      timing: { quality: 'good' as const, error: 0.1 },
+      repeat: false,
+      counter,
+      countered: !counter,
+      counterBlocked: false,
+      shiny: false,
+      base: 30,
+      final: counter ? 40 : 25,
+      energyAfter: 10,
+      ultAfter: 0,
+    });
+    const match = {
+      state: {
+        ...EMPTY_ONLINE_STATE,
+        seat: 'b',
+        phase: 'reveal',
+        lastRound: {
+          matchId: 'm_1',
+          round: 1,
+          sides: { a: side('calme', true), b: side('hype', false) },
+          winner: 'a',
+          roundsWon: { a: 1, b: 0 },
+          timeline: { revealFirst: 'b' },
+        },
+      },
+    } as unknown as OnlineMatch;
+    const last = viewOfOnline(match).lastRound!;
+    expect(last.myMove).toEqual({ style: 'hype', tier: 2 });
+    expect(last.opponentMove).toEqual({ style: 'calme', tier: 2 });
+    expect(last.opponentPoseId).toBe('anim.calme.t2.x');
+    expect(last.counteredBy).toBe('adversaire');
+    expect(last.counterBlocked).toBe(false);
+    expect(last.revealFirst).toBe('moi');
+    expect(last.opponentQuality).toBe('good');
+    expect(last.opponentUltimate).toBe(false);
   });
 });

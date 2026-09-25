@@ -62,6 +62,21 @@ export interface RoundView {
   readonly myShiny: boolean;
   /** L'adversaire a joue la sienne : revele avec la manche. */
   readonly opponentShiny: boolean;
+  /*
+    Ce que la revelation raconte (chantier n°3). Tout vient de `round:result`
+    en ligne, ou de l'historique du moteur en solo : rien n'est devine.
+  */
+  readonly myMove: Move;
+  readonly opponentMove: Move;
+  /** La pose adverse, en ligne ; `null` en solo, ou l'IA joue l'offerte. */
+  readonly opponentPoseId: string | null;
+  /** Qui a applique un contre, ou `null`. */
+  readonly counteredBy: 'moi' | 'adversaire' | null;
+  /** Un contre a ete annule par l'Ultime. */
+  readonly counterBlocked: boolean;
+  readonly revealFirst: 'moi' | 'adversaire';
+  readonly opponentQuality: TimingQuality;
+  readonly opponentUltimate: boolean;
 }
 
 export interface MatchView {
@@ -103,6 +118,11 @@ const DURATIONS: Readonly<Record<ViewPhase, number>> = {
   ended: 1,
 };
 
+/** Le dernier mouvement joue par un siege en solo : le moteur le range dans `moves`. */
+function soloMoveOf(state: SoloMatch['state'], seat: 'a' | 'b'): Move {
+  return state.seats[seat].moves.at(-1) ?? { style: 'calme', tier: 0 };
+}
+
 export function viewOfSolo(match: SoloMatch): MatchView {
   const state = match.state;
   const context = state.roundContext;
@@ -140,6 +160,19 @@ export function viewOfSolo(match: SoloMatch): MatchView {
             countered: last.seats.a.countered || last.seats.b.countered,
             myShiny: last.seats.a.shiny,
             opponentShiny: last.seats.b.shiny,
+            myMove: soloMoveOf(state, 'a'),
+            opponentMove: soloMoveOf(state, 'b'),
+            opponentPoseId: null,
+            counteredBy: last.seats.a.countered
+              ? 'moi'
+              : last.seats.b.countered
+                ? 'adversaire'
+                : null,
+            counterBlocked: last.seats.a.counterBlocked || last.seats.b.counterBlocked,
+            // En solo, l'adversaire ouvre : la revelation du joueur ferme la scene.
+            revealFirst: 'adversaire',
+            opponentQuality: last.seats.b.timing.quality,
+            opponentUltimate: last.seats.b.usedUltimate,
           },
     ended:
       state.result === null
@@ -191,6 +224,18 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
             countered: last.sides.a.counter || last.sides.b.counter,
             myShiny: last.sides[seat].shiny ?? false,
             opponentShiny: last.sides[other].shiny ?? false,
+            myMove: last.sides[seat].move,
+            opponentMove: last.sides[other].move,
+            opponentPoseId: last.sides[other].cosmetic.animationId,
+            counteredBy: last.sides[seat].counter
+              ? 'moi'
+              : last.sides[other].counter
+                ? 'adversaire'
+                : null,
+            counterBlocked: last.sides.a.counterBlocked || last.sides.b.counterBlocked,
+            revealFirst: last.timeline.revealFirst === seat ? 'moi' : 'adversaire',
+            opponentQuality: last.sides[other].timing.quality,
+            opponentUltimate: last.sides[other].ult,
           },
     ended:
       state.result === null

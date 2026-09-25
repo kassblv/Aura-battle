@@ -99,6 +99,14 @@ describe('renderKey', () => {
       countered: false,
       myShiny: false,
       opponentShiny: false,
+      myMove: { style: 'calme' as const, tier: 2 as const },
+      opponentMove: { style: 'hype' as const, tier: 2 as const },
+      opponentPoseId: null,
+      counteredBy: null,
+      counterBlocked: false,
+      revealFirst: 'adversaire' as const,
+      opponentQuality: 'good' as const,
+      opponentUltimate: false,
     };
     expect(key({ lastRound: won })).not.toBe(key());
     expect(key({ lastRound: { ...won, round: 2 } })).not.toBe(key({ lastRound: won }));
@@ -121,6 +129,14 @@ describe('renderKey', () => {
       countered: false,
       myShiny: false,
       opponentShiny: false,
+      myMove: { style: 'calme' as const, tier: 2 as const },
+      opponentMove: { style: 'hype' as const, tier: 2 as const },
+      opponentPoseId: null,
+      counteredBy: null,
+      counterBlocked: false,
+      revealFirst: 'adversaire' as const,
+      opponentQuality: 'good' as const,
+      opponentUltimate: false,
     };
     expect(
       key({ lastRound: { ...one, myQuality: 'miss', myUltimate: true, countered: true } }),

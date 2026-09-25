@@ -40,11 +40,11 @@ export interface RoundStory {
 /**
  * Ce que l arene lit d une manche terminee.
  *
- * Structurellement compatible avec `RoundView` de `match/view.ts` : les champs
- * facultatifs sont ceux que la vue ne porte pas encore. Ils ne sont pas des
- * details de confort — sans eux, l arene ne sait ni qui a contre qui, ni si
- * l adversaire a lache son Ultime, et le choc raconte une histoire approximative
- * un coup sur deux. Les replis ci-dessous sont explicites et testes.
+ * Structurellement compatible avec `RoundView` de `match/view.ts`, qui porte
+ * tous ces champs depuis le chantier n°3. Ils restent facultatifs ici pour les
+ * appelants qui n'ont qu'un resume de manche. Ce ne sont pas des details de
+ * confort : sans eux, l arene ne sait ni qui a contre qui, ni si l adversaire a
+ * lache son Ultime. Les replis ci-dessous sont explicites et testes.
  */
 export interface RoundReport {
   readonly round: number;
