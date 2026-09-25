@@ -186,7 +186,13 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - Chaque geste a son effet, son son et sa vibration : distribution, soulèvement, retournement, tremblement, écrasement.
   - La caméra de choix cadre les combattants au-dessus de la main. Mesuré sur six formats d'écran.
   - Protocole 2.1.0.
-- [ ] **Chantier n°3 — révélation** : le nom des deux poses, la mise en scène du contre (qui bat qui, et pourquoi), la caméra.
+- [x] **Chantier n°3 — révélation** (2026-09-25). Spec : `docs/superpowers/specs/2026-09-25-revelation-design.md`.
+  - Les deux cartes jouées tombent dans les coins hauts à l'instant où chaque combattant se révèle ; celle de l'adversaire arrive face cachée et se retourne.
+  - Au choc, un bandeau dit qui bat qui et pourquoi : « 🤸 BAT 💪 · ×1,35 », « MIROIR » ou « 🛡️ CONTRE BLOQUÉ ». La brillante éclate avec son ×1,2.
+  - L'arène reçoit enfin qui a contré, au lieu de le déduire du vainqueur.
+  - Correctif : le verdict de manche n'apparaissait qu'en fin de match (aucun rendu n'était programmé à son instant).
+  - Aucun nouveau champ réseau : tout vient de `round:result`.
+  - La caméra de révélation passe au chantier n°4.
 - [ ] **Chantier n°4 — animations 3D** : des poses plus fluides et plus spectaculaires, et des variantes pour Acrobatie et Prouesse.
 - [ ] **Chantier n°5 — vestiaire et boutique** : parcourir, essayer et acheter des poses ; les jetons (monnaie dure) pour débloquer plus vite, sans jamais vendre de puissance (règle d'or n°3).
 
