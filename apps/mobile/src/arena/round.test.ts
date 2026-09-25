@@ -5,6 +5,7 @@ import {
   VERDICT_PANEL_AT_MS,
   outcomeShown,
   verdictPanelShown,
+  msUntilVerdictPanel,
   CLASH_AT_MS,
   REVEAL_FIRST_AT_MS,
   REVEAL_GAP_MS,
@@ -217,5 +218,23 @@ describe('panneau de verdict — il attend que le choc soit fini', () => {
 
   it('laisse le temps de le lire avant la manche suivante', () => {
     expect(BALANCE.phases.revealMs - VERDICT_PANEL_AT_MS).toBeGreaterThanOrEqual(2_000);
+  });
+});
+
+/*
+  Le panneau se lit a l'horloge AU RENDU : sans un rendu programme a son
+  instant, rien ne le faisait apparaitre avant la fin du match — les manches
+  1 et 2 n'avaient jamais eu leur verdict.
+*/
+describe('msUntilVerdictPanel — le rendu qui fait tomber le verdict', () => {
+  it('attend la fin du choc pendant la revelation', () => {
+    expect(msUntilVerdictPanel('reveal', 0)).toBe(VERDICT_PANEL_AT_MS);
+    expect(msUntilVerdictPanel('reveal', 500)).toBe(VERDICT_PANEL_AT_MS - 500);
+  });
+
+  it('ne programme rien une fois le panneau la, ni hors revelation', () => {
+    expect(msUntilVerdictPanel('reveal', VERDICT_PANEL_AT_MS)).toBeNull();
+    expect(msUntilVerdictPanel('choice', 0)).toBeNull();
+    expect(msUntilVerdictPanel('ended', 0)).toBeNull();
   });
 });

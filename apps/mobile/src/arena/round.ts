@@ -235,3 +235,15 @@ function ultimateSeat(story: RoundStory): Seat | null {
   if (a === b) return null;
   return a ? 'a' : 'b';
 }
+
+/**
+ * Dans combien de temps le panneau de verdict doit tomber, ou `null` s'il n'y
+ * a rien a attendre.
+ *
+ * `verdictPanelShown` se lit a l'horloge au moment du rendu : il faut donc un
+ * rendu a cet instant precis, que l'ecran programme avec ce delai.
+ */
+export function msUntilVerdictPanel(phase: string, inPhaseMs: number): number | null {
+  if (phase !== 'reveal' || inPhaseMs >= VERDICT_PANEL_AT_MS) return null;
+  return VERDICT_PANEL_AT_MS - inPhaseMs;
+}
