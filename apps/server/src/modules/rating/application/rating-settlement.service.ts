@@ -100,7 +100,7 @@ export class RatingSettlementService implements MatchRatingSettlement {
     if (season === null) {
       // Hors saison, ou lecture en echec : personne n'a de classement a
       // afficher, et il n'y a de toute facon rien a ecrire.
-      const totals = await this.creditWallets(seats, rewards, ghost);
+      const totals = await this.creditWallets(seats, rewards, ghost, null);
       return this.neutralOutcome(this.withTotals(seats, rewards, totals), ghost);
     }
 
@@ -162,12 +162,12 @@ export class RatingSettlementService implements MatchRatingSettlement {
         this.log?.warn(
           `ecriture du classement en echec, classement inchange affiche : ${describeCause(cause)}`,
         );
-        const totals = await this.creditWallets(seats, rewards, ghost);
+        const totals = await this.creditWallets(seats, rewards, ghost, season.seasonId);
         return this.buildOutcome(existing, existing, this.withTotals(seats, rewards, totals));
       }
     }
 
-    const totals = await this.creditWallets(seats, rewards, ghost);
+    const totals = await this.creditWallets(seats, rewards, ghost, season.seasonId);
     return this.buildOutcome(existing, updated, this.withTotals(seats, rewards, totals));
   }
 
@@ -180,11 +180,16 @@ export class RatingSettlementService implements MatchRatingSettlement {
    * reconstructibles depuis le journal des matchs.
    *
    * Le siege du fantome n'a pas de bourse : rien ne part a son nom.
+   *
+   * `seasonId` : la saison du match, pour l'XP du passe ; `null` hors saison
+   * ou quand le classement n'a pu etre lu — l'experience du joueur monte
+   * quand meme, seule celle de la saison attend le match suivant.
    */
   private async creditWallets(
     seats: Readonly<Record<Seat, string>>,
     rewards: Record<Seat, { softCurrency: number; xp: number }>,
     ghost: GhostSeatInfo | null,
+    seasonId: string | null,
   ): Promise<ReadonlyMap<string, number>> {
     if (this.wallets === null) return new Map();
 
@@ -205,7 +210,7 @@ export class RatingSettlementService implements MatchRatingSettlement {
     if (entries.length === 0) return new Map();
 
     try {
-      return await this.wallets.credit(entries);
+      return await this.wallets.credit(entries, seasonId);
     } catch (cause) {
       this.log?.warn(`credit de fin de match en echec : ${describeCause(cause)}`);
       /*

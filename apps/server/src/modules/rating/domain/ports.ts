@@ -125,6 +125,14 @@ export interface WalletCredit {
        */
       readonly xp: number;
     }[],
+    /**
+     * La saison du match, lue par le classement ; `null` hors saison.
+     *
+     * L'experience du match s'ajoute aussi a l'XP de SAISON (le passe), dans
+     * la meme transaction. La saison vient de l'appelant plutot que d'une
+     * relecture ici : celle qui a classe le match est celle qui le recompense.
+     */
+    seasonId: string | null,
     /*
       Rend l'experience TOTALE apres credit, par joueur.
 

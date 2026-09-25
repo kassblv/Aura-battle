@@ -17,11 +17,18 @@ export async function currentSeasonId(
   prisma: PrismaService,
   nowMs: number,
 ): Promise<string | null> {
+  return (await currentSeason(prisma, nowMs))?.id ?? null;
+}
+
+/** La saison courante et ce qu'en montre le passe : son numero et sa fin. */
+export async function currentSeason(
+  prisma: PrismaService,
+  nowMs: number,
+): Promise<{ readonly id: string; readonly number: number; readonly endsAt: Date } | null> {
   const at = new Date(nowMs);
-  const season = await prisma.season.findFirst({
+  return prisma.season.findFirst({
     where: { startsAt: { lte: at }, endsAt: { gt: at } },
     orderBy: { number: 'desc' },
-    select: { id: true },
+    select: { id: true, number: true, endsAt: true },
   });
-  return season?.id ?? null;
 }

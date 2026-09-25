@@ -212,6 +212,27 @@ model PlayerChallenge {
   @@id([playerId, day, challengeId])
 }
 
+model SeasonProgress {
+  playerId  String
+  seasonId  String
+  xp        Int       @default(0)             // XP de saison, créditée en fin de match
+  premiumAt DateTime?                         // piste premium achetée (jetons)
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season    Season   @relation(fields: [seasonId], references: [id])
+  @@id([playerId, seasonId])
+}
+
+model SeasonClaim {
+  playerId  String
+  seasonId  String
+  tier      Int
+  track     String                            // free | premium (contrainte CHECK)
+  claimedAt DateTime @default(now())
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season    Season   @relation(fields: [seasonId], references: [id])
+  @@id([playerId, seasonId, tier, track])
+}
+
 model SuspicionFlag {
   id        String   @id @default(uuid())
   playerId  String
@@ -234,6 +255,10 @@ Les objets offerts ne sont **jamais écrits** dans `InventoryItem` : ils sont aj
 - un `kind` vendable (`PURCHASABLE_KINDS`).
 
 Un prix de zéro sous une autre rareté est refusé par un test de `@aura/content` (`pricing.test.ts`). Ce qui a été acheté reste possédé quelles que soient ces conditions.
+
+## Passe de saison : réclamer sans payer deux fois
+
+Le palier se **déduit** de `SeasonProgress.xp` (`seasonTierFor`), il n'est pas stocké. Une réclamation insère `SeasonClaim` **puis** crédite, dans une transaction : la clé primaire `(playerId, seasonId, tier, track)` refuse la seconde avant tout crédit. Un cosmétique accordé s'écrit dans `InventoryItem` avec `source = 'pass'` ; s'il est déjà possédé au moment de l'écriture, la ligne n'est pas écrite et le joueur reçoit ses pièces à la place. L'achat du premium marque `premiumAt` (conditionné à `premiumAt IS NULL`) puis débite les jetons (conditionné à `hardCurrency >= prix`), dans une transaction.
 
 ## Loadout : un kind par emplacement
 

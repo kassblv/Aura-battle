@@ -115,6 +115,11 @@ C'est le **premier** message qui contient les choix de l'adversaire.
   - `choice:start.shiny: { style, tier }`, la case du **destinataire** seulement ;
   - `round:result.sides.*.shiny: boolean`.
 - **2.2.0** (2026-09-25) : la monnaie choisie à l'achat. `POST /inventory/buy` accepte `currency: 'soft' | 'hard'`, facultatif. C'est une **monnaie**, jamais un montant : le prix reste celui du catalogue du serveur. Choisie, elle est la seule prélevée ; absente, le serveur garde le comportement 2.1 (les pièces d'abord). Voir l'ADR 0015.
+- **2.3.0** (2026-09-25) : le passe de saison, en HTTP authentifié (jeton Bearer), limité en débit par joueur (429 `RATE_LIMITED`). Chaque route rend l'état complet `SeasonState` (`seasonStateSchema`) : `season` (`{ number, endsAt }` ou `null` hors saison), `xp`, `tier`, `premium`, `claimed`, `wallet`. Les récompenses sont du contenu (`SEASON_PASS`), jamais envoyées par le serveur.
+  - `GET /season`.
+  - `POST /season/claim` `{ tier, track }` (strict : aucun montant). Refus : 400 `INVALID_PAYLOAD`, 403 `TIER_LOCKED` / `PREMIUM_REQUIRED`, 404 `UNKNOWN_TIER` / `NO_SEASON`, 409 `ALREADY_CLAIMED`.
+  - `POST /season/claim-all` : tout ce qui est atteint et pas réclamé, sur les pistes du joueur, en une transaction. 404 `NO_SEASON`.
+  - `POST /season/premium` : débite 500 jetons et ouvre la piste. 403 `INSUFFICIENT_FUNDS`, 409 `ALREADY_PREMIUM`, 404 `NO_SEASON`.
 - La charge d'authentification du handshake est elle aussi décrite par un schéma : `handshakeAuthSchema` = `{ token, protocolVersion }`, strict et borné. C'est le seul point d'entrée dont un abus précède toute vérification métier.
 - `rulesVersion` et `contentVersion` sont envoyés dans `match:found`. Le serveur ne mélange jamais deux versions de règles dans un même match.
 

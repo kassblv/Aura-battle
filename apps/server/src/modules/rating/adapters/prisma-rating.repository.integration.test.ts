@@ -162,7 +162,7 @@ describe.skipIf(!reachable)('ecriture et lecture reelles du classement', () => {
 
     try {
       await prisma!.player.update({ where: { id: playerA }, data: { xp: nearLevel2 } });
-      await repository.credit([{ playerId: playerA, soft: 20, xp: 30 }]);
+      await repository.credit([{ playerId: playerA, soft: 20, xp: 30 }], null);
       const after = await prisma!.player.findUniqueOrThrow({
         where: { id: playerA },
         select: { hardCurrency: true, softCurrency: true, xp: true },
@@ -172,12 +172,68 @@ describe.skipIf(!reachable)('ecriture et lecture reelles du classement', () => {
       expect(after.hardCurrency).toBe(BALANCE.progression.tokensPerLevel);
 
       // Sans palier franchi, pas de jetons.
-      await repository.credit([{ playerId: playerA, soft: 8, xp: 12 }]);
+      await repository.credit([{ playerId: playerA, soft: 8, xp: 12 }], null);
       const again = await prisma!.player.findUniqueOrThrow({
         where: { id: playerA },
         select: { hardCurrency: true },
       });
       expect(again.hardCurrency).toBe(BALANCE.progression.tokensPerLevel);
+    } finally {
+      await prisma!.player.delete({ where: { id: playerA } });
+    }
+  });
+
+  /*
+    L'XP de saison (passe de saison) : meme transaction que l'experience du
+    joueur, cumulee d'un match a l'autre, et rien du tout hors saison.
+  */
+  it('cumule l XP de saison dans la transaction du credit', async () => {
+    const [playerA, playerB] = [await createPlayer(), await createPlayer()];
+    const repository = buildRepository();
+
+    try {
+      const season = await repository.loadForMatch([playerA], Date.now());
+      expect(season).not.toBeNull();
+      const seasonId = season!.seasonId;
+
+      await repository.credit(
+        [
+          { playerId: playerB, soft: 10, xp: 12 },
+          { playerId: playerA, soft: 20, xp: 30 },
+        ],
+        seasonId,
+      );
+      await repository.credit([{ playerId: playerA, soft: 20, xp: 30 }], seasonId);
+
+      const rows = await prisma!.seasonProgress.findMany({
+        where: { seasonId, playerId: { in: [playerA, playerB] } },
+        select: { playerId: true, xp: true, premiumAt: true },
+      });
+      const byPlayer = new Map(rows.map((row) => [row.playerId, row]));
+      expect(byPlayer.get(playerA)?.xp).toBe(60);
+      expect(byPlayer.get(playerB)?.xp).toBe(12);
+      expect(byPlayer.get(playerA)?.premiumAt).toBeNull();
+
+      // Hors saison : l'experience du joueur monte, pas celle d'une saison.
+      await repository.credit([{ playerId: playerA, soft: 0, xp: 30 }], null);
+      const after = await prisma!.seasonProgress.findUniqueOrThrow({
+        where: { playerId_seasonId: { playerId: playerA, seasonId } },
+        select: { xp: true },
+      });
+      expect(after.xp).toBe(60);
+    } finally {
+      await prisma!.player.deleteMany({ where: { id: { in: [playerA, playerB] } } });
+    }
+  });
+
+  it('n ecrit aucune ligne de saison pour un credit sans experience', async () => {
+    const playerA = await createPlayer();
+    const repository = buildRepository();
+
+    try {
+      const season = await repository.loadForMatch([playerA], Date.now());
+      await repository.credit([{ playerId: playerA, soft: 5, xp: 0 }], season!.seasonId);
+      expect(await prisma!.seasonProgress.count({ where: { playerId: playerA } })).toBe(0);
     } finally {
       await prisma!.player.delete({ where: { id: playerA } });
     }

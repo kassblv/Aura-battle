@@ -66,6 +66,8 @@ class FakePresenceCache implements PresenceLeagueCache {
 /** Le portefeuille : on note qui est credite de combien, monnaie ET experience. */
 class FakeWallets implements WalletCredit {
   readonly credits: { playerId: string; soft: number; xp: number }[] = [];
+  /** La saison recue avec chaque credit, pour l'XP du passe. */
+  readonly seasons: (string | null)[] = [];
   failure: Error | null = null;
 
   /** Total d experience simule apres credit : on empile les gains. */
@@ -73,9 +75,11 @@ class FakeWallets implements WalletCredit {
 
   credit(
     entries: readonly { playerId: string; soft: number; xp: number }[],
+    seasonId: string | null,
   ): Promise<ReadonlyMap<string, number>> {
     if (this.failure !== null) return Promise.reject(this.failure);
     this.credits.push(...entries);
+    this.seasons.push(seasonId);
     for (const entry of entries) {
       this.totals.set(entry.playerId, (this.totals.get(entry.playerId) ?? 0) + entry.xp);
     }
@@ -361,6 +365,22 @@ describe('credit de la monnaie douce', () => {
     for (const credit of wallets.credits) {
       expect(credit.xp, credit.playerId).toBeGreaterThan(0);
     }
+  });
+
+  /*
+    L'XP de saison (passe de saison) se credite avec l'experience, sur la
+    saison que le match vient de lire : jamais une autre lue plus tard.
+  */
+  it('transmet la saison du match au credit, pour l XP du passe', async () => {
+    await settle({ mode: 'CASUAL', result: { winner: 'a', reason: 'rounds' } });
+    expect(wallets.seasons).toEqual(['s_1']);
+  });
+
+  it('credite sans saison hors saison', async () => {
+    lookup.season = null;
+    await settle({ mode: 'RANKED', result: { winner: 'a', reason: 'rounds' } });
+    expect(wallets.seasons).toEqual([null]);
+    expect(wallets.credits.length).toBe(2);
   });
 
   it('credite aussi hors classe', async () => {

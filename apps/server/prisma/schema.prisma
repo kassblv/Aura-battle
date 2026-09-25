@@ -46,6 +46,8 @@ model Player {
   matchSeats     MatchSeat[]
   challenges     PlayerChallenge[]
   tokenPurchases TokenPurchase[]
+  seasonProgress SeasonProgress[]
+  seasonClaims   SeasonClaim[]
 }
 
 /// Une facon de prouver qu'on est ce joueur.
@@ -121,7 +123,9 @@ model Season {
   startsAt DateTime
   endsAt   DateTime
 
-  ratings Rating[]
+  ratings        Rating[]
+  seasonProgress SeasonProgress[]
+  seasonClaims   SeasonClaim[]
 }
 
 model Rating {
@@ -295,6 +299,45 @@ model PlayerChallenge {
 
   @@id([playerId, day, challengeId])
   @@index([playerId, day])
+}
+
+/// Le passe de saison d'un joueur, pour une saison (docs/01, passe de saison).
+///
+/// `xp` monte a chaque fin de match, dans la transaction qui credite
+/// l'experience du joueur (`PrismaRatingRepository.credit`). Les paliers s'en
+/// DEDUISENT (`seasonTierFor`, @aura/content), comme le niveau de `Player.xp`.
+///
+/// `premiumAt` : la piste premium, achetee en jetons. Une date plutot qu'un
+/// booleen, comme `claimedAt` : savoir QUAND vaut mieux que savoir que oui.
+model SeasonProgress {
+  playerId  String
+  seasonId  String
+  xp        Int       @default(0)
+  premiumAt DateTime?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id])
+
+  @@id([playerId, seasonId])
+}
+
+/// Une recompense du passe, reclamee.
+///
+/// La cle primaire EST la garde contre la double reclamation : deux onglets
+/// qui reclament le meme palier au meme instant, et la seconde insertion
+/// echoue avant tout credit (la ligne s'ecrit AVANT le credit, dans la meme
+/// transaction). `track` vaut `free` ou `premium`.
+model SeasonClaim {
+  playerId  String
+  seasonId  String
+  tier      Int
+  track     String
+  claimedAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id])
+
+  @@id([playerId, seasonId, tier, track])
 }
 
 model Loadout {

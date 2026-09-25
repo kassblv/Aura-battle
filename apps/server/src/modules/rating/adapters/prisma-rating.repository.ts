@@ -223,9 +223,14 @@ export class PrismaRatingRepository
    * s'achevent au meme instant pour le meme joueur — ca arrive, il suffit de
    * deux onglets — perdraient l'un des deux credits. L'incrementation se fait
    * dans la base, qui sait les empiler.
+   *
+   * L'experience du match monte aussi l'XP de la saison `seasonId` (passe de
+   * saison), dans la meme transaction : jamais un match qui compte pour le
+   * niveau et pas pour le passe. Rien sans experience ni hors saison.
    */
   async credit(
     entries: readonly { readonly playerId: string; readonly soft: number; readonly xp: number }[],
+    seasonId: string | null,
   ): Promise<ReadonlyMap<string, number>> {
     if (entries.length === 0) return new Map();
     // Les lignes se verrouillent dans l'ordre des identifiants : deux matchs
@@ -258,6 +263,16 @@ export class PrismaRatingRepository
             where: { id: entry.playerId },
             data: { hardCurrency: { increment: tokens } },
             select: { id: true },
+          });
+        }
+        if (seasonId !== null && entry.xp > 0) {
+          // Un upsert : la premiere partie de la saison cree la ligne, la cle
+          // `(playerId, seasonId)` empeche deux matchs simultanes d'en creer deux.
+          await tx.seasonProgress.upsert({
+            where: { playerId_seasonId: { playerId: entry.playerId, seasonId } },
+            create: { playerId: entry.playerId, seasonId, xp: entry.xp },
+            update: { xp: { increment: entry.xp } },
+            select: { xp: true },
           });
         }
         out.push([row.id, row.xp]);

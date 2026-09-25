@@ -250,6 +250,28 @@ Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de c
   contredire, et c'est toujours celle qu'on a oublié de mettre à jour qui
   s'affiche.
 
+- **Passe de saison.** Un horizon daté : 30 paliers de 100 XP de saison
+  (`SEASON_PASS`, `@aura/content`). L'**XP de saison** est l'expérience de chaque
+  match joué pendant la saison, créditée dans la même transaction que l'XP du
+  joueur ; rien hors saison, rien pour un siège fantôme ni un abandon (0 XP).
+  - **Piste gratuite** : 40 pièces par palier, 5 jetons aux paliers 5, 15 et 25,
+    un cosmétique aux paliers 10, 20 et 30.
+  - **Piste premium** : **500 jetons**, jamais d'argent directement. Elle rend
+    200 jetons sur la saison et des cosmétiques plus rares. Achetable à tout
+    moment : les paliers déjà atteints deviennent réclamables d'un coup.
+  - **Réclamer** : un appui par récompense, ou « Tout récupérer ». Le serveur
+    seul juge l'XP, le palier, la piste et ce qui est déjà réclamé ; le client
+    n'envoie qu'un palier et une piste. Refus, dans cet ordre : palier inconnu,
+    déjà réclamé, palier non atteint, premium requis — « non atteint » passe
+    avant « premium requis » pour ne jamais pousser à acheter une piste qui ne
+    donnerait rien tout de suite.
+  - **Un cosmétique déjà possédé se change en pièces**, à son prix du catalogue,
+    **40 pièces au moins** (`OWNED_ITEM_MIN_COINS`) : un objet offert à tous vaut
+    zéro au catalogue, et une récompense n'est jamais vide. Même conversion pour
+    un objet que le catalogue ne connaît pas.
+  - Les récompenses non réclamées à la fin de la saison sont perdues : sans
+    saison courante, plus rien ne se réclame.
+
 - **Monnaie douce** (◈ pièces) gagnée en jouant ; **monnaie dure** (💎 jetons). Toutes deux ne servent qu'au cosmétique et au passe de saison.
   - **Les jetons se gagnent aussi en jouant** : dix par niveau franchi (`BALANCE.progression.tokensPerLevel`). Le niveau 2, dans la première session, paie une pose commune.
   - **Dix pièces pour un jeton** : chaque article payant a un prix en jetons, arrondi au-dessus (`tokenPrice`). La vitrine remise aussi les jetons.
