@@ -10,6 +10,9 @@
  */
 interface ImportMetaEnv {
   readonly VITE_SERVER_URL?: string;
+  /** Cles publiques de RevenueCat, par store (ADR 0016). Absentes : pas d'achat de jetons. */
+  readonly VITE_REVENUECAT_APPLE_KEY?: string;
+  readonly VITE_REVENUECAT_GOOGLE_KEY?: string;
 }
 
 interface ImportMeta {

@@ -5,6 +5,7 @@ import { HealthModule } from './modules/health/health.module.js';
 import { ChallengesModule } from './modules/challenges/challenges.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { MatchModule } from './modules/match/match.module.js';
+import { PaymentsModule } from './modules/payments/payments.module.js';
 import { ConfigModule } from './shared/config.module.js';
 import { LoggerModule } from './shared/logger.module.js';
 import { MetricsModule } from './shared/metrics.module.js';
@@ -27,6 +28,7 @@ import { MetricsModule } from './shared/metrics.module.js';
     MatchModule,
     InventoryModule,
     ChallengesModule,
+    PaymentsModule,
     AdminModule,
   ],
 })

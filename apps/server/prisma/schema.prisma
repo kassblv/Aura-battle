@@ -38,13 +38,14 @@ model Player {
   /// compare a la seconde pres (`iat`) et laissait une fenetre (ADR 0013).
   credentialsVersion Int       @default(0)
 
-  identities    AuthIdentity[]
-  refreshTokens RefreshToken[]
-  ratings       Rating[]
-  inventory     InventoryItem[]
-  loadout       Loadout?
-  matchSeats    MatchSeat[]
-  challenges    PlayerChallenge[]
+  identities     AuthIdentity[]
+  refreshTokens  RefreshToken[]
+  ratings        Rating[]
+  inventory      InventoryItem[]
+  loadout        Loadout?
+  matchSeats     MatchSeat[]
+  challenges     PlayerChallenge[]
+  tokenPurchases TokenPurchase[]
 }
 
 /// Une facon de prouver qu'on est ce joueur.
@@ -302,4 +303,28 @@ model Loadout {
   data     Json
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+}
+
+/// Un achat de jetons en argent reel, credite par le webhook de RevenueCat
+/// (ADR 0016).
+///
+/// La cle est l'identifiant de l'EVENEMENT : RevenueCat renvoie un webhook
+/// tant qu'il n'a pas recu de 2xx, et un renvoi ne doit jamais crediter deux
+/// fois. L'insertion de cette ligne et le credit du joueur vont dans la meme
+/// transaction. La comptabilite de reference reste celle de RevenueCat et des
+/// stores : cette table sert l'idempotence et le support.
+model TokenPurchase {
+  eventId     String   @id
+  playerId    String
+  productId   String
+  tokens      Int
+  /// APP_STORE, PLAY_STORE...
+  store       String
+  /// PRODUCTION ou SANDBOX
+  environment String
+  createdAt   DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId])
 }

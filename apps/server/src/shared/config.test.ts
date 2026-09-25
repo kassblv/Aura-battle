@@ -140,6 +140,26 @@ describe('administration', () => {
     quand la sauvegarde a echoue et depuis quand le serveur tourne — tout ce
     qu'il faut pour choisir son moment.
   */
+  /*
+    Le webhook de RevenueCat (ADR 0016) : c'est lui qui credite des jetons
+    payes. Sans secret, la route reste fermee — une route ouverte ferait des
+    jetons pour qui sait former une requete.
+  */
+  it('ferme le webhook de paiement quand aucun secret n est pose', () => {
+    expect(loadConfig(validEnv).revenuecatWebhookAuth).toBe('');
+  });
+
+  it('refuse un secret de webhook trop court', () => {
+    expect(() => loadConfig({ ...validEnv, REVENUECAT_WEBHOOK_AUTH: 'court' })).toThrow(
+      /REVENUECAT_WEBHOOK_AUTH/,
+    );
+  });
+
+  it('refuse les achats de test (sandbox) par defaut', () => {
+    expect(loadConfig(validEnv).revenuecatSandbox).toBe(false);
+    expect(loadConfig({ ...validEnv, REVENUECAT_SANDBOX: '1' }).revenuecatSandbox).toBe(true);
+  });
+
   it('ferme le panneau quand aucun secret n est pose', () => {
     expect(loadConfig(validEnv).adminToken).toBe('');
   });

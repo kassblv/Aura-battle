@@ -4,6 +4,7 @@ import type { Wallet } from './profile.js';
 import { dayIndexOf } from '@aura/content';
 import { buyOptions, shopSections, type ShopState } from './shop.js';
 import type { Currency } from '../net/inventory.js';
+import type { TokenShop } from './useTokenStore.js';
 
 /**
  * La boutique, ou l'on essaie avant d'acheter.
@@ -32,6 +33,8 @@ export interface ShopProps {
   readonly onClose: () => void;
   /** Largeur du panneau et nombre de colonnes, decides par `panelLayout`. */
   readonly layout: PanelLayout;
+  /** Les packs de jetons en argent reel (ADR 0016). Absent : pas de section. */
+  readonly tokenShop?: TokenShop;
 }
 
 export function ShopScreen({
@@ -41,6 +44,7 @@ export function ShopScreen({
   onBuy,
   onClose,
   layout,
+  tokenShop,
 }: ShopProps): JSX.Element {
   const sections = shopSections(dayIndexOf(Date.now()));
   return (
@@ -97,6 +101,7 @@ export function ShopScreen({
       })()}
 
       <div className="shop__scroll">
+        {tokenShop !== undefined && <TokenPacks shop={tokenShop} />}
         {sections.map((section) => (
           <div key={section.id} className="shop__section">
             <h3>{section.title}</h3>
@@ -186,5 +191,46 @@ function Purse({ wallet }: { readonly wallet: Wallet }): JSX.Element {
       </b>
       {wallet.hard}
     </span>
+  );
+}
+
+/**
+ * Les packs de jetons, en tete de la boutique.
+ *
+ * Le prix affiche est celui du store, deja localise ; la quantite, celle que
+ * le serveur creditera. Sur le web, les stores imposent leurs achats integres :
+ * on le dit plutot que de cacher les jetons.
+ */
+function TokenPacks({ shop }: { readonly shop: TokenShop }): JSX.Element | null {
+  if (shop.status === 'none') return null;
+  return (
+    <div className="shop__section shop__packs">
+      <h3>Jetons 💎</h3>
+      {shop.status === 'web' ? (
+        <p className="shop__hint">Les jetons s’achètent dans l’application mobile.</p>
+      ) : shop.status === 'loading' ? (
+        <p className="shop__hint">Chargement des offres…</p>
+      ) : (
+        <ul className="shop__items">
+          {shop.offers.map((offer) => (
+            <li key={offer.productId}>
+              <button
+                type="button"
+                className="shop__pack"
+                disabled={shop.buying !== null}
+                onClick={() => {
+                  shop.buy(offer.productId);
+                }}
+              >
+                <span className="shop__pack-tokens">💎 {offer.tokens}</span>
+                <small className="shop__pack-price">
+                  {shop.buying === offer.productId ? '…' : offer.price}
+                </small>
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

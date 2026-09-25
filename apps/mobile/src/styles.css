@@ -4207,3 +4207,35 @@ body {
   color: #2a1600;
   animation: pop-in var(--d-chip) var(--e-over) both;
 }
+
+/* Les packs de jetons (ADR 0016) : dores comme leur monnaie. */
+.shop__pack {
+  font: inherit;
+  width: 100%;
+  min-height: 46px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 6px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--gold-ink);
+  background: var(--chip);
+  color: var(--ink);
+  cursor: pointer;
+}
+.shop__pack:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+.shop__pack-tokens {
+  font-weight: 800;
+  font-size: 14px;
+}
+.shop__pack-price {
+  font-weight: 800;
+  color: var(--gold-ink);
+}
+.shop__packs h3 {
+  color: var(--gold-ink);
+}

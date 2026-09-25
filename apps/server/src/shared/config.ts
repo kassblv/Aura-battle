@@ -122,6 +122,30 @@ const configSchema = z.object({
     .string()
     .default('inconnu')
     .transform((raw) => (raw.trim() === '' ? 'inconnu' : raw.trim().slice(0, 40))),
+  /**
+   * Secret du webhook de RevenueCat (ADR 0016), recopie a l'identique dans le
+   * champ « Authorization header » de son tableau de bord.
+   *
+   * **Vide par defaut, et la route reste alors fermee** : c'est elle qui
+   * credite des jetons payes, et ouverte elle en fabriquerait pour qui sait
+   * former une requete. Trente-deux caracteres minimum quand il est pose.
+   */
+  revenuecatWebhookAuth: z
+    .string()
+    .default('')
+    .refine(
+      (value) => value.length === 0 || value.length >= 32,
+      'REVENUECAT_WEBHOOK_AUTH doit faire au moins 32 caracteres, ou rester vide',
+    ),
+  /**
+   * Accepter les achats de test (`environment: SANDBOX`). `'1'` et rien
+   * d'autre, eteint par defaut : en production, un achat de test credite
+   * serait un jeton gratuit pour tout testeur de l'application.
+   */
+  revenuecatSandbox: z
+    .string()
+    .default('0')
+    .transform((raw) => raw === '1'),
   adminToken: z
     .string()
     .default('')
@@ -221,6 +245,8 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     metricsEnabled: env.AURA_METRICS,
     metricsToken: env.AURA_METRICS_TOKEN,
     adminToken: env.ADMIN_TOKEN,
+    revenuecatWebhookAuth: env.REVENUECAT_WEBHOOK_AUTH,
+    revenuecatSandbox: env.REVENUECAT_SANDBOX,
     commit: env.SOURCE_COMMIT,
     clientDir: env.CLIENT_DIR,
     trustProxy: env.TRUST_PROXY,

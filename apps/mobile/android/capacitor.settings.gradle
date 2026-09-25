@@ -11,5 +11,11 @@ project(':capacitor-haptics').projectDir = new File('../../../node_modules/.pnpm
 include ':capacitor-screen-orientation'
 project(':capacitor-screen-orientation').projectDir = new File('../../../node_modules/.pnpm/@capacitor+screen-orientation@8.0.1_@capacitor+core@8.5.2/node_modules/@capacitor/screen-orientation/android')
 
+include ':capacitor-splash-screen'
+project(':capacitor-splash-screen').projectDir = new File('../../../node_modules/.pnpm/@capacitor+splash-screen@8.0.2_@capacitor+core@8.5.2/node_modules/@capacitor/splash-screen/android')
+
 include ':capacitor-status-bar'
 project(':capacitor-status-bar').projectDir = new File('../../../node_modules/.pnpm/@capacitor+status-bar@8.0.3_@capacitor+core@8.5.2/node_modules/@capacitor/status-bar/android')
+
+include ':revenuecat-purchases-capacitor'
+project(':revenuecat-purchases-capacitor').projectDir = new File('../../../node_modules/.pnpm/@revenuecat+purchases-capacitor@13.6.1_@capacitor+core@8.5.2/node_modules/@revenuecat/purchases-capacitor/android')

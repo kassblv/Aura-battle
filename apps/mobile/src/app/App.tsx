@@ -44,6 +44,7 @@ import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
 import { useViewportWidth } from './useViewport.js';
 import { greetingStore, markGreeted, wasGreeted } from './greeting.js';
+import { useTokenStore } from './useTokenStore.js';
 import { devPoseFrom } from './devPose.js';
 import { memeGallery, stepMeme } from './memes.js';
 import { tryOn } from './tryOn.js';
@@ -218,6 +219,10 @@ export function App(): JSX.Element {
    * c'est son apparence — et le serveur la lui rend, pour ce qu'il possede.
    */
   const inventory = useInventory(session.accessToken, skin);
+
+  // Les packs de jetons (ADR 0016) : apres un achat, le webhook credite, et on
+  // relit la bourse.
+  const tokenShop = useTokenStore(session.identity?.playerId ?? null, inventory.refresh);
 
   const wardrobe: Wardrobe = useMemo(
     () => ({ look: inventory.look, owned: inventory.owned }),
@@ -757,6 +762,7 @@ export function App(): JSX.Element {
         {!showOnboarding && nav.screen === 'shop' && (
           <ShopScreen
             state={shop}
+            tokenShop={tokenShop}
             trying={trying}
             onTry={(id) => {
               // Retoucher un article possede le repose (se comparer sans lui) ;

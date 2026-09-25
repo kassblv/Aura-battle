@@ -200,7 +200,8 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - Correctif : l'écran « Choisis ton nom » revenait à chaque lancement malgré « Plus tard ». Le nom se change désormais depuis le profil (« ✏️ Changer de nom »).
 - [ ] **Chantier n°5 — vestiaire et boutique** : parcourir, essayer et acheter des poses ; les jetons (monnaie dure) pour débloquer plus vite, sans jamais vendre de puissance (règle d'or n°3).
   - [x] Les jetons se gagnent en jouant (10 par niveau), chaque article payant a un prix en jetons, le joueur choisit sa monnaie (protocole 2.2.0, ADR 0015). La bourse, la barre d'achat « ◈ / 💎 » et le « +10 💎 » de fin de match (2026-09-25).
-  - [ ] Acheter des jetons avec de l'argent réel : achats intégrés iOS et Android. Choix d'intégration à faire par le propriétaire du jeu.
+  - [x] Acheter des jetons avec de l'argent réel par RevenueCat (ADR 0016), crédités par le serveur via webhook, de façon idempotente (2026-09-25).
+  - [ ] Ouvrir la vente : comptes App Store, Google Play et RevenueCat, produits, clés et secret du webhook (`docs/10-exploitation.md`, « Achat de jetons »).
 
 ### M7 — Anti-triche et robustesse
 - [ ] **Farm de jetons par collusion** (relevé le 2026-09-25, relecture de sécurité du chantier n°5). Deux comptes qui perdent à tour de rôle par forfait gagnent de l'expérience, donc des jetons au passage de niveau. C'est borné (au plus 49 × 10 jetons par compte), non transférable et freiné par le délai de déconnexion. À traiter avant la vente de jetons en argent réel.
