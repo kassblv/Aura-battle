@@ -1609,6 +1609,18 @@ describe('variante de regles — une config par match', () => {
     expect(result.sides.a.final / result.sides.a.base).toBeCloseTo(1.6, 1);
   });
 
+  /*
+    Une application tuee puis rouverte revient par `match:rejoin` : sans la
+    variante dans l'instantane, l'ecran affichait les couts normaux pendant
+    que le serveur comptait avec la variante.
+  */
+  it('rappelle la variante dans l instantane de reprise, et la tait quand elle est normale', () => {
+    build('ultime');
+    expect(runtime.snapshotFor(MATCH_ID, 'a')?.rulesVariant).toBe('ultime');
+    build();
+    expect(runtime.snapshotFor(MATCH_ID, 'a')).not.toHaveProperty('rulesVariant');
+  });
+
   it('garde la config du runtime sans variante', () => {
     build();
     expect(runtime.configOf(MATCH_ID)).toBe(BALANCE);

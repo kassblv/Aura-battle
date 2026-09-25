@@ -647,7 +647,11 @@ export class MatchRuntime {
   snapshotFor(matchId: string, seat: Seat): ServerMessage<'match:state'> | null {
     const match = this.matches.get(matchId);
     if (match === undefined) return null;
-    return matchStateFor(seat, match.state, matchId, this.facesGhost(match, seat));
+    const snapshot = matchStateFor(seat, match.state, matchId, this.facesGhost(match, seat));
+    // La variante survit a la reprise ; tue quand elle est normale, comme a l'ouverture.
+    return match.rulesVariant === 'normal'
+      ? snapshot
+      : { ...snapshot, rulesVariant: match.rulesVariant };
   }
 
   /**

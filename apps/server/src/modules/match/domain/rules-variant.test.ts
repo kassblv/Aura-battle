@@ -1,3 +1,4 @@
+import { serializeServerMessage } from '@aura/protocol';
 import { RULE_VARIANTS, variantForWeek, weekIndexOf } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
 import { rulesVariantFor } from './rules-variant.js';
@@ -27,5 +28,27 @@ describe('rulesVariantFor — la variante de la semaine, en partie rapide seulem
       const atMs = NORMAL_WEEK_MS + week * 7 * DAY_MS;
       expect(rulesVariantFor('CASUAL', atMs)).toBe(variantForWeek(weekIndexOf(atMs)));
     }
+  });
+});
+
+/*
+  Les variantes sont declarees dans `@aura/rules`, le format de leur identifiant
+  dans `@aura/protocol`. Rien ne relie les deux au typecheck : une variante au
+  nom trop long ou accentue ferait echouer l'EMISSION de `match:found`, et la
+  partie rapide ne s'ouvrirait plus de toute la semaine.
+*/
+describe('chaque variante s annonce dans match:found', () => {
+  it.each(RULE_VARIANTS.map((variant) => variant.id))('%s', (id) => {
+    const found = serializeServerMessage('match:found', {
+      matchId: 'm_01',
+      seat: 'a',
+      opponent: { displayName: 'Nova', league: 'bronze', cosmetics: {} },
+      protocolVersion: '2.4.1',
+      rulesVersion: '1.0.0',
+      rulesVariant: id,
+      contentVersion: '1',
+      ghost: false,
+    });
+    expect(found.success).toBe(true);
   });
 });
