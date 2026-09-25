@@ -210,6 +210,15 @@ function TokenPacks({ shop }: { readonly shop: TokenShop }): JSX.Element | null 
   return (
     <div className="shop__section shop__packs">
       <h3>Jetons 💎</h3>
+      {shop.notice !== null && (
+        <p className="shop__notice" role="status" data-kind={shop.notice.kind}>
+          {shop.notice.kind === 'pending'
+            ? 'Paiement reçu — tes jetons arrivent…'
+            : shop.notice.kind === 'credited'
+              ? `+${String(shop.notice.tokens)} 💎 reçus !`
+              : 'Le paiement n’a pas abouti. Rien n’a été débité.'}
+        </p>
+      )}
       {shop.status === 'web' ? (
         <p className="shop__hint">Les jetons s’achètent dans l’application mobile.</p>
       ) : shop.status === 'loading' ? (
@@ -221,7 +230,7 @@ function TokenPacks({ shop }: { readonly shop: TokenShop }): JSX.Element | null 
               <button
                 type="button"
                 className="shop__pack"
-                disabled={shop.buying !== null}
+                disabled={shop.buying !== null || shop.notice?.kind === 'pending'}
                 onClick={() => {
                   shop.buy(offer.productId);
                 }}

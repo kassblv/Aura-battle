@@ -62,6 +62,11 @@ export function revenueCatStore(
       .then(() => plugin.logIn({ appUserID: playerId }))
       .then(() => undefined);
     identities.set(plugin, { playerId, ready });
+    // Un echec (hors ligne) ne se garde pas : la tentative suivante reessaie.
+    // Le greffon reste configure, sous l'identite d'avant.
+    ready.catch(() => {
+      if (identities.get(plugin)?.ready === ready) identities.set(plugin, current);
+    });
     return ready;
   };
 
@@ -78,10 +83,12 @@ export function revenueCatStore(
       return products;
     },
     async buy(productId) {
-      await configure();
       const product = known.get(productId);
       if (product === undefined) return 'failed';
       try {
+        // Dans le `try` : un changement de compte hors ligne echoue ici, et
+        // l'achat doit le dire plutot que rejeter.
+        await configure();
         await plugin.purchaseStoreProduct({ product });
         return 'bought';
       } catch (cause) {

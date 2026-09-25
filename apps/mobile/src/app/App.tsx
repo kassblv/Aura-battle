@@ -222,7 +222,11 @@ export function App(): JSX.Element {
 
   // Les packs de jetons (ADR 0016) : apres un achat, le webhook credite, et on
   // relit la bourse.
-  const tokenShop = useTokenStore(session.identity?.playerId ?? null, inventory.refresh);
+  const tokenShop = useTokenStore(
+    session.identity?.playerId ?? null,
+    inventory.wallet.hard,
+    inventory.refresh,
+  );
 
   const wardrobe: Wardrobe = useMemo(
     () => ({ look: inventory.look, owned: inventory.owned }),

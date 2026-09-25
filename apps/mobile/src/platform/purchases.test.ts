@@ -2,7 +2,8 @@ import { TOKEN_PACKS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
 import { revenueCatStore, type PurchasesPlugin } from './purchases.js';
 
-function fakePlugin(options: { cancel?: boolean } = {}) {
+function fakePlugin(options: { cancel?: boolean; loginFails?: number } = {}) {
+  let loginFailures = options.loginFails ?? 0;
   const calls: string[] = [];
   const plugin: PurchasesPlugin = {
     configure: (config) => {
@@ -11,6 +12,10 @@ function fakePlugin(options: { cancel?: boolean } = {}) {
     },
     logIn: ({ appUserID }) => {
       calls.push(`logIn:${appUserID}`);
+      if (loginFailures > 0) {
+        loginFailures -= 1;
+        return Promise.reject(new Error('hors ligne'));
+      }
       return Promise.resolve({});
     },
     getProducts: ({ productIdentifiers, type }) => {
@@ -71,5 +76,20 @@ describe('revenueCatStore', () => {
     await revenueCatStore(plugin, 'cle', 'joueur-2').products();
     expect(calls.filter((c) => c.startsWith('configure'))).toEqual(['configure:joueur-1']);
     expect(calls).toContain('logIn:joueur-2');
+  });
+
+  /*
+    Un changement de compte hors ligne echoue. L'achat doit le dire
+    ('failed'), jamais rejeter — et la tentative suivante doit reessayer au
+    lieu de rejouer pour toujours l'echec garde en memoire.
+  */
+  it('ne garde pas en memoire un changement de compte qui a echoue', async () => {
+    const { plugin, calls } = fakePlugin({ loginFails: 1 });
+    await revenueCatStore(plugin, 'cle', 'joueur-1').products();
+    const second = revenueCatStore(plugin, 'cle', 'joueur-2');
+    await expect(second.products()).rejects.toThrow('hors ligne');
+    await second.products();
+    expect(await second.buy(TOKEN_PACKS[0]!.productId)).toBe('bought');
+    expect(calls.filter((c) => c === 'logIn:joueur-2')).toHaveLength(2);
   });
 });

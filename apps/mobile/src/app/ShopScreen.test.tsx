@@ -22,6 +22,7 @@ const shop = (over: Partial<TokenShop> = {}): TokenShop => ({
   status: 'ready',
   offers: [],
   buying: null,
+  notice: null,
   buy: () => undefined,
   ...over,
 });
@@ -65,5 +66,23 @@ describe('ShopScreen — la vitrine', () => {
     const bar = html.slice(html.indexOf('shop__buy'));
     expect(bar).toMatch(/data-currency="soft"[^>]*>.*<s class="shop__pay-was">\d+<\/s>/s);
     expect(bar).toMatch(/data-currency="hard"[^>]*>.*<s class="shop__pay-was">\d+<\/s>/s);
+  });
+});
+
+describe('ShopScreen — apres le paiement', () => {
+  // Sans message, le joueur croirait a un echec et paierait deux fois.
+  it('dit que les jetons arrivent, et bloque un second achat en attendant', () => {
+    const html = render(
+      shop({
+        offers: [{ productId: 'aura.tokens.100', tokens: 100, price: '0,99 €' }],
+        notice: { kind: 'pending', before: 0 },
+      }),
+    );
+    expect(html).toContain('tes jetons arrivent');
+    expect(html).toMatch(/<button[^>]*class="shop__pack"[^>]*disabled/);
+  });
+
+  it('annonce les jetons recus', () => {
+    expect(render(shop({ notice: { kind: 'credited', tokens: 100 } }))).toContain('+100 💎');
   });
 });

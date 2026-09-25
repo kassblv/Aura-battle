@@ -163,7 +163,6 @@ describe('danses en boutique', () => {
   it('n expose aucune danse offerte', () => {
     expect(dances?.items.every((item) => item.price > 0)).toBe(true);
   });
-
 });
 
 /*

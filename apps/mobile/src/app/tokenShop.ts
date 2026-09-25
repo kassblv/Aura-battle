@@ -28,3 +28,22 @@ export function tokenOffers(products: readonly StoreProduct[]): readonly TokenOf
       : [{ productId: pack.productId, tokens: pack.tokens, price: product.priceString }];
   });
 }
+
+/**
+ * Ce que la boutique dit d'un achat de jetons en cours.
+ *
+ * - `pending` : le store a encaisse, le serveur n'a pas encore credite ;
+ * - `credited` : la bourse a monte de `tokens` ;
+ * - `failed` : le store a refuse (pas une annulation du joueur).
+ */
+export type PurchaseNotice =
+  | { readonly kind: 'pending'; readonly before: number }
+  | { readonly kind: 'credited'; readonly tokens: number }
+  | { readonly kind: 'failed' }
+  | null;
+
+/** Le message une fois la bourse relue : l'attente cesse quand les jetons arrivent. */
+export function noticeAfterWallet(notice: PurchaseNotice, hard: number): PurchaseNotice {
+  if (notice?.kind !== 'pending' || hard <= notice.before) return notice;
+  return { kind: 'credited', tokens: hard - notice.before };
+}

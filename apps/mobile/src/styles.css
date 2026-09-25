@@ -4247,3 +4247,14 @@ body {
   font-weight: 600;
   opacity: 0.65;
 }
+
+/* Le suivi d'un achat de jetons : dit, pour qu'on ne paie pas deux fois. */
+.shop__notice {
+  margin: 0 0 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--gold-ink);
+}
+.shop__notice[data-kind='failed'] {
+  color: var(--bad-ink);
+}
