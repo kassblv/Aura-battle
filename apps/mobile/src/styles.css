@@ -4239,3 +4239,11 @@ body {
 .shop__packs h3 {
   color: var(--gold-ink);
 }
+
+/* Le prix plein barre dans la barre d'achat : la remise de la vitrine se compare. */
+.shop__pay-was {
+  margin-right: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  opacity: 0.65;
+}

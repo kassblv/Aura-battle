@@ -1,7 +1,7 @@
 import type { CSSProperties, JSX } from 'react';
 import type { PanelLayout } from './panel.js';
 import type { Wallet } from './profile.js';
-import { dayIndexOf } from '@aura/content';
+import { dayIndexOf, tokenPrice } from '@aura/content';
 import { buyOptions, shopSections, type ShopState } from './shop.js';
 import type { Currency } from '../net/inventory.js';
 import type { TokenShop } from './useTokenStore.js';
@@ -83,7 +83,8 @@ export function ShopScreen({
                 onBuy(tried.id, 'soft');
               }}
             >
-              ◈ {options.soft.price}
+              {tried.fullPrice !== undefined && <s className="shop__pay-was">{tried.fullPrice}</s>}◈{' '}
+              {options.soft.price}
             </button>
             <button
               type="button"
@@ -94,6 +95,9 @@ export function ShopScreen({
                 onBuy(tried.id, 'hard');
               }}
             >
+              {tried.fullPrice !== undefined && (
+                <s className="shop__pay-was">{tokenPrice(tried.fullPrice)}</s>
+              )}
               💎 {options.hard.price}
             </button>
           </div>
