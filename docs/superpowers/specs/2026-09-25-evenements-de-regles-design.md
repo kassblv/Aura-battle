@@ -70,6 +70,6 @@ il reste la référence.
 - Un client antérieur à 2.4.1 analyse en strict et ne comprend pas
   `match:found.rulesVariant` : sa partie rapide ne s'ouvre pas une semaine
   d'événement. Sans joueur installé, rien n'est gardé pour lui.
-- Le bandeau d'accueil calcule la semaine sur l'horloge du téléphone : autour
-  du lundi 00:00 UTC, ou sur un téléphone mal réglé, l'annonce peut précéder ou
-  suivre le serveur. Le match, lui, affiche toujours la variante du serveur.
+- Le bandeau d'accueil calcule la semaine sur l'heure serveur estimée par
+  ping/pong (2026-09-26) ; avant la première mesure seulement, sur l'horloge du
+  téléphone. Le match, lui, affiche toujours la variante du serveur.

@@ -114,3 +114,19 @@ export function createSyncedClock(): SyncedClock {
     },
   };
 }
+
+/**
+ * L'heure serveur estimee, en millisecondes depuis l'epoque.
+ *
+ * `perfNowMs` est l'horloge locale de la mesure (`performance.now()`), et
+ * `wallNowMs` l'horloge murale (`Date.now()`), seul repli tant qu'aucun
+ * aller-retour n'a abouti. Pour une ANNONCE (l'evenement de la semaine), jamais
+ * pour un instant de jeu : ceux-la restent relatifs au debut de phase.
+ */
+export function estimatedServerNow(
+  clock: SyncedClock | null,
+  perfNowMs: number,
+  wallNowMs: number,
+): number {
+  return clock?.synced === true ? clock.toServerTime(perfNowMs) : wallNowMs;
+}

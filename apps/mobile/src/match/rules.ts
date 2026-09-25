@@ -54,8 +54,9 @@ export function matchRules(variant: string | null): MatchRules {
  *
  * Une ANNONCE, pas une decision : c'est le serveur qui choisit la variante du
  * match, a l'instant ou il le cree. La meme rotation deterministe des deux
- * cotes ; seul un lancement a cheval sur le lundi 00:00 UTC peut differer, et
- * le match dira alors la sienne.
+ * cotes, lue sur l'heure serveur estimee (`online.serverNow`) : seul un
+ * telephone pas encore synchronise retombe sur son horloge murale, et le match
+ * dira alors la sienne.
  */
 export function weekEvent(nowMs: number): MatchEvent | null {
   return matchRules(variantForWeek(weekIndexOf(nowMs))).event;

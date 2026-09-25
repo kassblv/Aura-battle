@@ -11,6 +11,7 @@ import { outcomeShown } from '../arena/round.js';
 import { lookFromCosmetics } from './loadout.js';
 import { cuesForTransition } from '../audio/matchCues.js';
 import { viewOfOnline, type MatchView } from '../match/view.js';
+import { estimatedServerNow } from '../net/clock.js';
 import { reportProductEvent } from '../net/events.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 import type { ConnectionStatus } from '../net/connection.js';
@@ -104,6 +105,8 @@ export interface OnlineSession {
   readonly wake: () => void;
   /** Mesure du partage de clip (`POST /events`) : silencieuse, jamais bloquante. */
   readonly reportClipShared: () => void;
+  /** L'heure serveur estimee (ping/pong), ou l'horloge murale avant mesure. Pour les annonces. */
+  readonly serverNow: () => number;
 }
 
 export function useOnlineMatch(
@@ -355,6 +358,11 @@ export function useOnlineMatch(
 
   const clock = useCallback(() => performance.now(), []);
 
+  const serverNow = useCallback(
+    () => estimatedServerNow(clientRef.current?.clock ?? null, performance.now(), Date.now()),
+    [],
+  );
+
   const clearSettled = useCallback(() => {
     setSettled(null);
   }, []);
@@ -423,6 +431,7 @@ export function useOnlineMatch(
     ready,
     wake,
     reportClipShared,
+    serverNow,
   };
 }
 

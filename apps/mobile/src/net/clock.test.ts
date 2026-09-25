@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createSyncedClock, SYNC_WINDOW } from './clock.js';
+import { createSyncedClock, estimatedServerNow, SYNC_WINDOW } from './clock.js';
 
 /** Aller-retour symetrique : le serveur repond pile au milieu du trajet. */
 const symmetric = (sentAtMs: number, roundTripMs: number, offsetMs: number) => ({
@@ -112,5 +112,24 @@ describe('createSyncedClock', () => {
     clock.observe(symmetric(1000, 50, -hours));
     expect(clock.offsetMs).toBeCloseTo(-hours, 3);
     expect(clock.toServerTime(1000)).toBeCloseTo(1000 - hours, 3);
+  });
+});
+
+/*
+  L'accueil annonce l'evenement de la semaine : sur l'heure SERVEUR quand elle
+  est mesuree, sinon sur l'horloge murale. Un telephone mal regle autour du
+  lundi 00:00 UTC annoncait sinon une autre variante que celle du match.
+*/
+describe('estimatedServerNow', () => {
+  it('suit le serveur des qu un aller-retour a abouti', () => {
+    const clock = createSyncedClock();
+    // Au milieu du trajet (1 000 en local), le serveur lisait 5 000 000.
+    clock.observe({ sentAtMs: 990, serverTimeMs: 5_000_000, receivedAtMs: 1_010 });
+    expect(estimatedServerNow(clock, 2_000, 123)).toBe(5_001_000);
+  });
+
+  it('retombe sur l horloge murale avant toute mesure', () => {
+    expect(estimatedServerNow(createSyncedClock(), 2_000, 123)).toBe(123);
+    expect(estimatedServerNow(null, 2_000, 123)).toBe(123);
   });
 });

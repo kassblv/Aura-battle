@@ -749,7 +749,7 @@ export function App(): JSX.Element {
             }}
             profile={profile}
             mode={mode}
-            weekEvent={weekEvent(Date.now())}
+            weekEvent={weekEvent(online.serverNow())}
             onToggleMode={() => {
               setMode((current) => (current === 'ranked' ? 'casual' : 'ranked'));
             }}
