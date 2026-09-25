@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   blobToBase64,
+  clipLeftTheGame,
   CLIP_SHARE_TEXT,
   clipFileName,
   shareClip,
@@ -127,5 +128,21 @@ describe('blobToBase64', () => {
     const big = new Uint8Array(100_000).map((_, i) => i % 256);
     const encoded = await blobToBase64(new Blob([big]));
     expect(Uint8Array.from(atob(encoded), (c) => c.charCodeAt(0))).toEqual(big);
+  });
+});
+
+/*
+  Ce qui compte comme « clip partage » pour l'indicateur de docs/00-vision :
+  la feuille de partage, OU le telechargement — sur le web, on telecharge puis
+  on poste a la main. Une annulation ou un echec ne partagent rien.
+*/
+describe('clipLeftTheGame', () => {
+  it.each([
+    ['shared', true],
+    ['downloaded', true],
+    ['cancelled', false],
+    ['failed', false],
+  ] as const)('%s → %s', (outcome, expected) => {
+    expect(clipLeftTheGame(outcome)).toBe(expected);
   });
 });

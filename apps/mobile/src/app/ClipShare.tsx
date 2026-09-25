@@ -1,6 +1,6 @@
 import { memo, useEffect, useState, type JSX } from 'react';
 import { clipButton, type ShareFeedback } from '../clip/button.js';
-import { shareClip } from '../clip/share.js';
+import { clipLeftTheGame, shareClip } from '../clip/share.js';
 import type { RevealClip } from '../clip/useRevealClip.js';
 
 /**
@@ -12,8 +12,11 @@ import type { RevealClip } from '../clip/useRevealClip.js';
  */
 export const ClipShare = memo(function ClipShare({
   clip,
+  onShared,
 }: {
   readonly clip: RevealClip;
+  /** Le clip a quitte le jeu (partage ou telechargement) : la mesure du duel en ligne. */
+  readonly onShared?: (() => void) | undefined;
 }): JSX.Element | null {
   const [feedback, setFeedback] = useState<ShareFeedback>('idle');
   // Un nouveau clip efface le verdict du precedent partage.
@@ -29,9 +32,15 @@ export const ClipShare = memo(function ClipShare({
     if (blob === null || button.disabled) return;
     setFeedback('sharing');
     // Appele dans le geste meme : `navigator.share` l exige.
-    void shareClip(blob).then(setFeedback, () => {
-      setFeedback('failed');
-    });
+    void shareClip(blob).then(
+      (outcome) => {
+        setFeedback(outcome);
+        if (clipLeftTheGame(outcome)) onShared?.();
+      },
+      () => {
+        setFeedback('failed');
+      },
+    );
   };
 
   return (

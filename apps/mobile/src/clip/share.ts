@@ -17,6 +17,15 @@ export const CLIP_SHARE_TEXT = 'Mon aura a fait plier la sienne 🔥 Défie-moi 
 
 export type ShareOutcome = 'shared' | 'downloaded' | 'cancelled' | 'failed';
 
+/**
+ * Le clip a-t-il quitte le jeu ? La feuille de partage, ou le telechargement :
+ * sur le web, on telecharge puis on poste a la main. C'est ce que compte
+ * l'indicateur « part des matchs partages en clip ».
+ */
+export function clipLeftTheGame(outcome: ShareOutcome): boolean {
+  return outcome === 'shared' || outcome === 'downloaded';
+}
+
 /** Le nom du fichier, dont l extension suit le format reellement encode. */
 export function clipFileName(type: string): string {
   return type.startsWith('video/webm') ? 'aura-battle.webm' : 'aura-battle.mp4';

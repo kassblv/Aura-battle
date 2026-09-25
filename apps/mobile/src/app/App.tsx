@@ -997,6 +997,7 @@ export function App(): JSX.Element {
             dances={danceChoice}
             onCue={playCue}
             arenaFrames={arena.onFrame}
+            onClipShared={online.reportClipShared}
           />
         )}
 
@@ -1030,6 +1031,7 @@ export function App(): JSX.Element {
             dances={danceChoice}
             onCue={playCue}
             arenaFrames={arena.onFrame}
+            onClipShared={online.reportClipShared}
           />
         )}
 

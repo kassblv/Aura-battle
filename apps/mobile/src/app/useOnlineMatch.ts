@@ -11,6 +11,7 @@ import { outcomeShown } from '../arena/round.js';
 import { lookFromCosmetics } from './loadout.js';
 import { cuesForTransition } from '../audio/matchCues.js';
 import { viewOfOnline, type MatchView } from '../match/view.js';
+import { reportProductEvent } from '../net/events.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { ArenaControls } from '../arena/useArena.js';
@@ -101,6 +102,8 @@ export interface OnlineSession {
    * habituel (`match:rejoin` puis `match:state`).
    */
   readonly wake: () => void;
+  /** Mesure du partage de clip (`POST /events`) : silencieuse, jamais bloquante. */
+  readonly reportClipShared: () => void;
 }
 
 export function useOnlineMatch(
@@ -381,6 +384,18 @@ export function useOnlineMatch(
     clientRef.current?.wake();
   }, []);
 
+  /** Le clip du match en cours (ou tout juste fini) a quitte le jeu : on le mesure. */
+  const reportClipShared = useCallback(() => {
+    const matchId = matchRef.current?.state.matchId;
+    if (accessToken === null || matchId === undefined || matchId === null) return;
+    const url = resolveServerUrl(
+      import.meta.env.VITE_SERVER_URL,
+      window.location.hostname,
+      currentPageLocation(),
+    );
+    void reportProductEvent(url, accessToken, { kind: 'clip_shared', matchId });
+  }, [accessToken]);
+
   const preview = useCallback((next: ChoicePreview | null) => {
     previewRef.current = next;
   }, []);
@@ -407,6 +422,7 @@ export function useOnlineMatch(
     joinInvite,
     ready,
     wake,
+    reportClipShared,
   };
 }
 

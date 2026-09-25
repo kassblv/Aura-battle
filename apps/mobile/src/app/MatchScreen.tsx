@@ -199,6 +199,11 @@ export interface MatchScreenProps {
    * (ADR 0017). Absent : pas de clip. Stable, comme les autres rappels.
    */
   readonly arenaFrames?: ArenaFrames;
+  /**
+   * Le clip de ce duel a quitte le jeu. Duel en ligne seulement : c'est une
+   * mesure (docs/00-vision), et un match solo n'existe pas cote serveur.
+   */
+  readonly onClipShared?: () => void;
 }
 
 function MatchScreenBody({
@@ -217,6 +222,7 @@ function MatchScreenBody({
   dances,
   onCue,
   arenaFrames,
+  onClipShared,
 }: MatchScreenProps): JSX.Element {
   const [style, setStyle] = useState<Style | null>(null);
   const [tier, setTier] = useState<Tier>(0);
@@ -905,7 +911,7 @@ function MatchScreenBody({
             </ul>
           )}
 
-          <ClipShare clip={clip} />
+          <ClipShare clip={clip} onShared={onClipShared} />
 
           <div className="outcome">
             <button type="button" className="outcome__home" onClick={onLeave}>
@@ -966,7 +972,8 @@ function sameFrame(previous: MatchScreenProps, next: MatchScreenProps): boolean 
     previous.dances?.wardrobe === next.dances?.wardrobe &&
     previous.dances?.onEquip === next.dances?.onEquip &&
     previous.onCue === next.onCue &&
-    previous.arenaFrames === next.arenaFrames
+    previous.arenaFrames === next.arenaFrames &&
+    previous.onClipShared === next.onClipShared
   );
 }
 
