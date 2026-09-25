@@ -18,7 +18,7 @@ import {
   type JSX,
   type RefObject,
 } from 'react';
-import { msUntilVerdictPanel, verdictPanelShown } from '../arena/round.js';
+import { verdictPanelShown } from '../arena/round.js';
 import type { MatchView } from '../match/view.js';
 import { leagueLabel } from './leagues.js';
 import {
@@ -39,6 +39,7 @@ import { handFor, tabsFor, type FamilyTab, type HandCard } from './hand.js';
 import { PoseHand } from './PoseHand.js';
 import { revealScene } from './reveal.js';
 import { RevealStage } from './RevealStage.js';
+import { scheduleVerdictRender } from './verdictTimer.js';
 import { danceOptions, defaultLook, type Wardrobe } from './wardrobe.js';
 
 /**
@@ -422,20 +423,19 @@ function MatchScreenBody({
 
   /*
     Le verdict de la manche se lit a l'horloge au rendu : on programme le rendu
-    de son instant. Sans lui, rien ne rafraichissait l'ecran pendant la
-    revelation, et le verdict n'apparaissait qu'en fin de match.
+    de son instant (`verdictTimer.ts`).
   */
   const [, showVerdict] = useState(0);
-  useEffect(() => {
-    const delay = msUntilVerdictPanel(view.phase, inPhaseNow());
-    if (delay === null) return;
-    const timer = setTimeout(() => {
-      showVerdict((n) => n + 1);
-    }, delay);
-    return () => {
-      clearTimeout(timer);
-    };
-  }, [view.phase, view.round, inPhaseNow]);
+  useEffect(
+    () =>
+      scheduleVerdictRender(
+        () => ({ phase: viewRef.current.phase, inPhaseMs: inPhaseNow() }),
+        () => {
+          showVerdict((n) => n + 1);
+        },
+      ),
+    [view.phase, view.round, inPhaseNow],
+  );
 
   // La revelation : les deux cartes jouees et le bandeau du contre (chantier n°3).
   const lastRound = view.lastRound;
