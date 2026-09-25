@@ -47,6 +47,16 @@ describe('buyItem', () => {
     expect(Object.keys(body)).toEqual(['itemId']);
   });
 
+  // 2.2.0 : une MONNAIE, jamais un montant.
+  it('envoie la monnaie choisie, et toujours aucun montant', async () => {
+    const fetcher = ok(state);
+    await buyItem('http://srv', 'jeton', 'color.violet', { fetcher, currency: 'hard' });
+
+    const raw = fetcher.mock.calls[0]?.[1]?.body;
+    const body = JSON.parse(typeof raw === 'string' ? raw : '{}') as Record<string, unknown>;
+    expect(body).toEqual({ itemId: 'color.violet', currency: 'hard' });
+  });
+
   it('rend l inventaire mis a jour', async () => {
     await expect(
       buyItem('http://srv', 'jeton', 'color.violet', { fetcher: ok(state) }),

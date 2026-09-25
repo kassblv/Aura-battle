@@ -169,7 +169,11 @@ describe('ce que la revelation raconte (chantier n°3)', () => {
     // Solo : l'adversaire ouvre, le joueur ferme la scene.
     expect(last.revealFirst).toBe('adversaire');
     const record = match.state.history.at(-1)!;
-    const expected = record.seats.a.countered ? 'moi' : record.seats.b.countered ? 'adversaire' : null;
+    const expected = record.seats.a.countered
+      ? 'moi'
+      : record.seats.b.countered
+        ? 'adversaire'
+        : null;
     expect(last.counteredBy).toBe(expected);
   });
 

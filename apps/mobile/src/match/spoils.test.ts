@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { xpForLevel } from '@aura/rules';
+import { BALANCE, xpForLevel } from '@aura/rules';
 import { matchSpoils, type MatchEndFacts } from './spoils.js';
 
 const facts = (over: Partial<MatchEndFacts> = {}): MatchEndFacts => ({
@@ -120,5 +120,17 @@ describe('matchSpoils', () => {
     expect(matchSpoils(facts({ softCurrency: 12 })).empty).toBe(false);
     expect(matchSpoils(facts({ ratingAfter: 1210 })).empty).toBe(false);
     expect(matchSpoils(facts({ xp: 12, xpTotal: 12 })).empty).toBe(false);
+  });
+
+  /*
+    Les jetons d'un palier : le serveur les credite dans la meme transaction
+    que l'experience, et la meme courbe (`levelUpTokens`) dit combien.
+  */
+  it('annonce les jetons gagnes en franchissant un niveau', () => {
+    const seuil = xpForLevel(2);
+    expect(matchSpoils(facts({ xp: 30, xpTotal: seuil })).tokens).toBe(
+      BALANCE.progression.tokensPerLevel,
+    );
+    expect(matchSpoils(facts({ xp: 30, xpTotal: seuil - 1 })).tokens).toBeNull();
   });
 });

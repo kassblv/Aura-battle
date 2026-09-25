@@ -250,5 +250,9 @@ Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de c
   contredire, et c'est toujours celle qu'on a oublié de mettre à jour qui
   s'affiche.
 
-- **Monnaie douce** gagnée en jouant, **monnaie premium** achetée ; toutes deux ne servent qu'au cosmétique et au passe de saison.
+- **Monnaie douce** (◈ pièces) gagnée en jouant ; **monnaie dure** (💎 jetons). Toutes deux ne servent qu'au cosmétique et au passe de saison.
+  - **Les jetons se gagnent aussi en jouant** : dix par niveau franchi (`BALANCE.progression.tokensPerLevel`). Le niveau 2, dans la première session, paie une pose commune.
+  - **Dix pièces pour un jeton** : chaque article payant a un prix en jetons, arrondi au-dessus (`tokenPrice`). La vitrine remise aussi les jetons.
+  - **Le joueur choisit sa monnaie** à l'achat ; celle qu'il choisit est la seule prélevée.
+  - L'achat de jetons avec de l'argent réel (achats intégrés des stores) n'est pas encore construit (ADR 0015).
 - **Solo :** entraînement contre les 4 IA du prototype, adaptées aux règles ci-dessus (tableaux d'IA dans `packages/rules/src/ai`).

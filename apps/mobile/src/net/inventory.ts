@@ -99,6 +99,9 @@ export async function readInventory(
   );
 }
 
+/** Pieces (`soft`) ou jetons (`hard`). */
+export type Currency = 'soft' | 'hard';
+
 /**
  * Achete un objet, et rend l inventaire mis a jour.
  *
@@ -109,11 +112,13 @@ export async function buyItem(
   baseUrl: string,
   accessToken: string,
   itemId: string,
-  options: AuthOptions = {},
+  options: AuthOptions & { readonly currency?: Currency } = {},
 ): Promise<InventoryState> {
+  // La monnaie choisie (2.2.0) : une poche, jamais un montant.
+  const body = options.currency === undefined ? { itemId } : { itemId, currency: options.currency };
   return call(
     endpoint(baseUrl, '/inventory/buy'),
-    { method: 'POST', headers: authorized(accessToken), body: JSON.stringify({ itemId }) },
+    { method: 'POST', headers: authorized(accessToken), body: JSON.stringify(body) },
     options.fetcher ?? globalThis.fetch.bind(globalThis),
   );
 }

@@ -1,8 +1,8 @@
 import { HAIRSTYLES, OUTFITS } from '@aura/content';
 import { describe, expect, it } from 'vitest';
-import { discountedPrice, featuredForDay } from '@aura/content';
+import { discountedPrice, featuredForDay, tokenPrice } from '@aura/content';
 import { memeGallery } from './memes.js';
-import { buy, shopSections, type ShopState } from './shop.js';
+import { buy, buyOptions, shopSections, type ShopState } from './shop.js';
 
 const state = (soft: number, owned: string[] = []): ShopState => ({
   wallet: { soft, hard: 0 },
@@ -224,5 +224,43 @@ describe('danses en boutique', () => {
     const cible = memeGallery().find((card) => !card.free)!;
     const avant: ShopState = { wallet: { soft: 0, hard: 0 }, owned: new Set<string>() };
     expect(buy(avant, cible.animationId)).toBe(avant);
+  });
+});
+
+/*
+  Le prix en jetons affiche doit etre CELUI QUE LE SERVEUR FACTURE : la vitrine
+  remise le prix en jetons du catalogue, elle ne convertit pas le prix remise.
+  (9 jetons −30 % = 6 ; convertir 63 pieces donnerait 7.)
+*/
+describe('prix en jetons', () => {
+  it('porte le prix en jetons de chaque article payant', () => {
+    for (const section of shopSections(0).filter((s) => s.id !== 'featured')) {
+      for (const item of section.items) expect(item.tokens).toBe(tokenPrice(item.price));
+    }
+  });
+
+  it('remise en vitrine le prix en jetons comme le serveur', () => {
+    const day = 0;
+    const featured = shopSections(day).find((s) => s.id === 'featured');
+    expect(featured).toBeDefined();
+    for (const item of featured!.items) {
+      expect(item.tokens).toBe(discountedPrice(tokenPrice(item.fullPrice!)));
+    }
+  });
+});
+
+/* La barre d'achat de l'article essaye : deux monnaies, chacune jugee seule. */
+describe('buyOptions', () => {
+  const item = { id: 'x', name: 'X', price: 400, tokens: 40 };
+
+  it('propose les deux monnaies, chacune avec son prix et sa bourse', () => {
+    expect(buyOptions(item, { soft: 500, hard: 10 }, false)).toEqual({
+      soft: { price: 400, afford: true },
+      hard: { price: 40, afford: false },
+    });
+  });
+
+  it('ne propose rien pour un article deja possede', () => {
+    expect(buyOptions(item, { soft: 500, hard: 500 }, true)).toBeNull();
   });
 });

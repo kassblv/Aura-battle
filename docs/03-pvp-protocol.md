@@ -114,6 +114,7 @@ C'est le **premier** message qui contient les choix de l'adversaire.
 - **2.1.0** (2026-09-24) : la carte brillante. Deux champs sont ajoutés, facultatifs et donc compatibles :
   - `choice:start.shiny: { style, tier }`, la case du **destinataire** seulement ;
   - `round:result.sides.*.shiny: boolean`.
+- **2.2.0** (2026-09-25) : la monnaie choisie à l'achat. `POST /inventory/buy` accepte `currency: 'soft' | 'hard'`, facultatif. C'est une **monnaie**, jamais un montant : le prix reste celui du catalogue du serveur. Choisie, elle est la seule prélevée ; absente, le serveur garde le comportement 2.1 (les pièces d'abord). Voir l'ADR 0015.
 - La charge d'authentification du handshake est elle aussi décrite par un schéma : `handshakeAuthSchema` = `{ token, protocolVersion }`, strict et borné. C'est le seul point d'entrée dont un abus précède toute vérification métier.
 - `rulesVersion` et `contentVersion` sont envoyés dans `match:found`. Le serveur ne mélange jamais deux versions de règles dans un même match.
 

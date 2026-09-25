@@ -1,4 +1,4 @@
-import { levelFor } from '@aura/rules';
+import { levelFor, levelUpTokens } from '@aura/rules';
 
 /**
  * Ce qu une partie a rapporte, tel que l ecran de fin doit le dire.
@@ -39,6 +39,8 @@ export interface MatchSpoils {
    * nomme, il ne se deduit pas d une barre qui a l air pleine.
    */
   readonly levelUp: number | null;
+  /** Jetons gagnes avec le palier, ou `null` sans palier franchi. */
+  readonly tokens: number | null;
   /** La nouvelle ligue, uniquement si elle a change. */
   readonly league: string | null;
   /** Vrai quand il n y a rien a annoncer : l appelant n affiche alors rien. */
@@ -70,12 +72,15 @@ export function matchSpoils(facts: MatchEndFacts): MatchSpoils {
   const after = levelFor(facts.xpTotal);
   const before = levelFor(facts.xpTotal - facts.xp);
   const levelUp = after.level > before.level ? after.level : null;
+  const gained = levelUpTokens(facts.xpTotal - facts.xp, facts.xpTotal);
+  const tokens = gained > 0 ? gained : null;
 
   return {
     coins,
     lp,
     xp,
     levelUp,
+    tokens,
     league,
     empty: coins === null && lp === null && xp === null && league === null,
   };

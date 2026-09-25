@@ -410,8 +410,7 @@ export function App(): JSX.Element {
    */
   const gallery = useMemo(() => memeGallery(), []);
   const [memeId, setMemeId] = useState(
-    () =>
-      devPoseFrom(window.location.search, import.meta.env.DEV) ?? gallery[0]?.animationId ?? '',
+    () => devPoseFrom(window.location.search, import.meta.env.DEV) ?? gallery[0]?.animationId ?? '',
   );
   const meme = gallery.find((card) => card.animationId === memeId) ?? gallery[0]!;
   /**
@@ -764,7 +763,7 @@ export function App(): JSX.Element {
               // comparer avec soi-meme sans quitter l'etalage.
               setTrying((current) => (current === id ? null : id));
             }}
-            onBuy={(id) => {
+            onBuy={(id, currency) => {
               /*
                 L'achat part au serveur et rend l'inventaire complet.
 
@@ -774,7 +773,7 @@ export function App(): JSX.Element {
                 La boutique et le vestiaire lisent cette meme liste, donc ce
                 qu'on achete devient portable sur-le-champ.
               */
-              void inventory.buy(id);
+              void inventory.buy(id, currency);
             }}
             onClose={() => {
               setTrying(null);

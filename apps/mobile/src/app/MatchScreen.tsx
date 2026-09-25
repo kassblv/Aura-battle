@@ -796,6 +796,11 @@ function MatchScreenBody({
               {spoils.levelUp !== null && (
                 <span className="spoils__level">Niveau {spoils.levelUp}</span>
               )}
+              {spoils.tokens !== null && (
+                <span className="spoils__tokens">
+                  <span aria-hidden="true">💎</span> +{spoils.tokens}
+                </span>
+              )}
               {spoils.league !== null && (
                 <span className="spoils__league">{leagueLabel(spoils.league)}</span>
               )}

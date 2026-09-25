@@ -1,7 +1,13 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { InventoryState } from '@aura/protocol';
 import { AuthError } from '../net/auth.js';
-import { buyItem, equipLoadout, readInventory, InventoryRequestError } from '../net/inventory.js';
+import {
+  buyItem,
+  equipLoadout,
+  readInventory,
+  InventoryRequestError,
+  type Currency,
+} from '../net/inventory.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 import { lookFromLoadout, loadoutFromLook } from './loadout.js';
 import { defaultLook, type Look } from './wardrobe.js';
@@ -50,7 +56,7 @@ export interface InventoryView {
    * et le joueur verrait sa recompense disparaitre.
    */
   readonly refresh: () => void;
-  buy(itemId: string): Promise<boolean>;
+  buy(itemId: string, currency?: Currency): Promise<boolean>;
   equip(look: Look): Promise<boolean>;
   clearError(): void;
 }
@@ -140,12 +146,14 @@ export function useInventory(accessToken: string | null, localSkin: string): Inv
   }, []);
 
   const buy = useCallback(
-    async (itemId: string) => {
+    async (itemId: string, currency?: Currency) => {
       if (accessToken === null) {
         setError(INVENTORY_MESSAGES.UNREACHABLE ?? null);
         return false;
       }
-      return run(() => buyItem(baseUrl(), accessToken, itemId));
+      return run(() =>
+        buyItem(baseUrl(), accessToken, itemId, currency === undefined ? {} : { currency }),
+      );
     },
     [accessToken, baseUrl, run],
   );

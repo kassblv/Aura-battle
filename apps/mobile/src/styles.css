@@ -4148,3 +4148,62 @@ body {
   color: var(--bad-ink);
   font-size: 12px;
 }
+
+/* Les jetons dans la bourse : separes des pieces par un peu d'air. */
+.purse__tokens {
+  margin-left: 6px;
+}
+
+/*
+  La barre d'achat de l'article essaye : elle prend la place de l'indication.
+  Deux monnaies, deux boutons — et une monnaie qu'on n'a pas est grisee, pas
+  cachee : le joueur voit ce qui lui manque.
+*/
+.shop__buy {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.shop__buy-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 800;
+  font-size: 12px;
+}
+.shop__pay {
+  font: inherit;
+  font-weight: 800;
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+  min-height: 46px;
+  min-width: 76px;
+  padding: 0 12px;
+  border-radius: 12px;
+  border: 1px solid var(--line);
+  background: var(--accent);
+  color: var(--accent-ink);
+  cursor: pointer;
+}
+.shop__pay[data-currency='hard'] {
+  background: var(--gold-ink);
+  color: #2a1600;
+}
+.shop__pay:disabled {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+  cursor: default;
+}
+
+/* Les jetons du palier : dores, comme leur bouton en boutique. */
+.spoils__tokens {
+  font-size: 12px;
+  font-weight: 800;
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: var(--gold-ink);
+  color: #2a1600;
+  animation: pop-in var(--d-chip) var(--e-over) both;
+}

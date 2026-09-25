@@ -199,6 +199,8 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   - Une visionneuse de développement : `?pose=<id>`.
   - Correctif : l'écran « Choisis ton nom » revenait à chaque lancement malgré « Plus tard ». Le nom se change désormais depuis le profil (« ✏️ Changer de nom »).
 - [ ] **Chantier n°5 — vestiaire et boutique** : parcourir, essayer et acheter des poses ; les jetons (monnaie dure) pour débloquer plus vite, sans jamais vendre de puissance (règle d'or n°3).
+  - [x] Les jetons se gagnent en jouant (10 par niveau), chaque article payant a un prix en jetons, le joueur choisit sa monnaie (protocole 2.2.0, ADR 0015). La bourse, la barre d'achat « ◈ / 💎 » et le « +10 💎 » de fin de match (2026-09-25).
+  - [ ] Acheter des jetons avec de l'argent réel : achats intégrés iOS et Android. Choix d'intégration à faire par le propriétaire du jeu.
 
 ### M7 — Anti-triche et robustesse
 - [ ] **Graine du choix par défaut prévisible** (relevé le 2026-09-24, antérieur au chantier des poses). La famille jouée d'office par un siège qui ne verrouille pas dérive de la graine du match. Or cette graine se reconstitue à partir des orbes de `recharge:start` : mulberry32 n'a que 32 bits d'état, et FNV-1a est réversible. Un tricheur peut donc contrer d'avance un adversaire lent ou déconnecté (règle d'or n°4). Correctif proposé, à valider avec un ADR : une graine secrète distincte, tirée par le serveur, pour `default` ; `buildRoundContext` la reçoit en entrée, ce qui garde le moteur pur ; elle est persistée avec le match pour pouvoir le rejouer.
