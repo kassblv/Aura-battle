@@ -72,13 +72,31 @@ colorer un verdict.
 
 ## Critères d'acceptation
 
-- [ ] Chaque définition testée contre Postgres sur un jeu de données construit à
-  la main (valeur ET effectif).
-- [ ] Verdict pur testé : seuil atteint, manqué, échantillon insuffisant.
-- [ ] `POST /events` : siège absent → rien d'inscrit ; renvoi → une seule ligne ;
+- [x] Chaque définition testée contre Postgres sur un jeu de données construit à
+  la main (valeur ET effectif) ; deux définitions cassées exprès font tomber
+  les tests. Chaque scénario vit à une date de 1980–1998 qui lui est propre :
+  aucune donnée d'une autre suite ne tombe dans ses fenêtres.
+- [x] Verdict pur testé : seuil atteint, manqué, échantillon insuffisant.
+- [x] `POST /events` : siège absent → rien d'inscrit ; renvoi → une seule ligne ;
   corps inconnu → 400 ; sans jeton → 401.
-- [ ] `queueWaitMs` écrit pour un appariement en file, absent pour une invitation.
-- [ ] Le client envoie l'événement après un partage ou un téléchargement, pas
+- [x] `queueWaitMs` écrit pour un appariement en file, absent pour une invitation
+  et pour le siège d'un fantôme.
+- [x] Le client envoie l'événement après un partage ou un téléchargement, pas
   après une annulation ; un échec réseau ne se voit pas.
-- [ ] Panneau vérifié à l'écran ; lint, typecheck, tests ; relecture de sécurité
-  et relecture finale.
+- [x] Panneau vérifié à l'écran (instance séparée, données semées puis
+  supprimées) ; lint, typecheck, tests ; relecture de sécurité : aucun point
+  critique ni important. Mineur corrigé : le rapport est gardé une minute
+  (huit agrégats sur toute la base par calcul).
+
+## Limites connues
+
+- **`clip_shared` est déclaratif.** Un script peut l'envoyer après chacun de ses
+  matchs sans rien partager : l'indicateur monterait d'un match par match joué,
+  jamais pour le match d'un autre, et rien d'autre n'en dépend (ni score, ni
+  récompense). C'est la limite de toute mesure que seul le client connaît.
+- **Un partage envoyé dans les millisecondes qui suivent `match:end`** peut
+  arriver avant l'écriture du match en base : il n'est pas compté. L'indicateur
+  est sous-estimé, jamais gonflé.
+- Les matchs antérieurs à la migration n'ont pas de `queueWaitMs`.
+- Pas d'index sur `Match.endedAt` ni `Player.createdAt` : à poser quand la base
+  grossira (le cache d'une minute suffit d'ici là).
