@@ -22,17 +22,26 @@ connue (reçus rejoués ou forgés).
 - **La quantité vient de notre catalogue** (`TOKEN_PACKS`, `@aura/content`),
   jamais de l'événement. Le prix, lui, est celui des stores, affiché tel que
   RevenueCat le rend (monnaie et taxes locales).
-- **Idempotence par l'identifiant d'événement.** `TokenPurchase.eventId` est
-  la clé primaire. L'achat s'inscrit puis le joueur est crédité, dans la même
-  transaction : un renvoi de RevenueCat ne crédite jamais deux fois.
+- **Deux anti-rejeux.** L'identifiant d'événement (clé primaire de
+  `TokenPurchase`) et la transaction du store (`store`, `transactionId`,
+  unique) : une même transaction peut produire deux événements distincts. La
+  ligne et le crédit vont dans la même transaction de base.
 - **L'acheteur est le joueur.** Le SDK est configuré avec l'identifiant du
-  joueur (`appUserID`). Un identifiant anonyme n'est pas crédité.
+  joueur (`appUserID`).
+- **Un achat payé ne disparaît jamais en silence.** Un produit inconnu, un
+  acheteur anonyme ou un joueur supprimé : la ligne s'inscrit avec
+  `status = UNATTRIBUTED` et sa raison, pour que le support la rende.
 - **Route fermée sans secret** (`REVENUECAT_WEBHOOK_AUTH`, 32 caractères
-  minimum, comparé à longueur constante). Les achats de test (`SANDBOX`) ne
-  sont crédités que si `REVENUECAT_SANDBOX=1`.
-- **Un remboursement ne se débite pas automatiquement** : les jetons ont pu
-  être dépensés, et un solde négatif n'existe pas. Il est journalisé en
-  `warn` pour que le support tranche.
+  minimum, comparé à longueur constante, normalisé sans « Bearer » ni
+  espaces). Les achats de test (`SANDBOX`) ne sont crédités qu'avec
+  `REVENUECAT_SANDBOX=1`, **refusé en production** ; un environnement absent
+  vaut un test.
+- **Un remboursement reprend ce qui reste**, jamais en dessous de zéro, sous
+  verrou de la ligne du joueur. Ce qui avait été dépensé est noté
+  (`refundedTokens`, et un `warn` qui dit combien) pour que le support tranche.
+- **Les types non traités s'acquittent avant toute autre validation** :
+  refusés, RevenueCat les renverrait jusqu'à épuisement.
+- **La trace de vente survit au compte** (`onDelete: SetNull`).
 - **Pas de SDK de paiement dans le navigateur** : import dynamique derrière
   `isNative()`. Le web dit que les jetons s'achètent dans l'application.
 

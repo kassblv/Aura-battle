@@ -4,7 +4,13 @@ import { TOKEN_PACKS } from '@aura/content';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { CONFIG } from '../../../shared/config.js';
 import { PinoLoggerService } from '../../../shared/logger.js';
-import { TOKEN_LEDGER, type TokenCredit, type TokenLedger } from '../domain/ports.js';
+import {
+  TOKEN_LEDGER,
+  type TokenCredit,
+  type TokenLedger,
+  type TokenRefund,
+  type UnattributedPurchase,
+} from '../domain/ports.js';
 import { PaymentsController } from './payments.controller.js';
 
 const SECRET = 's'.repeat(40);
@@ -12,11 +18,21 @@ const PLAYER = '811fa70a-c2cc-4f2e-832e-b1c662c7bd31';
 
 /** Le grand livre en memoire, avec l'idempotence de la base. */
 const granted: TokenCredit[] = [];
+const unattributed: UnattributedPurchase[] = [];
+const refunds: TokenRefund[] = [];
 const ledger: TokenLedger = {
   grant: (credit) => {
     if (granted.some((g) => g.eventId === credit.eventId)) return Promise.resolve('duplicate');
     granted.push(credit);
     return Promise.resolve('granted');
+  },
+  recordUnattributed: (purchase) => {
+    unattributed.push(purchase);
+    return Promise.resolve('recorded');
+  },
+  refund: (refund) => {
+    refunds.push(refund);
+    return Promise.resolve({ kind: 'refunded', taken: 30, owed: 70 });
   },
 };
 const warnings: string[] = [];
@@ -59,6 +75,7 @@ const purchase = (id: string) => ({
     type: 'NON_RENEWING_PURCHASE',
     app_user_id: PLAYER,
     product_id: TOKEN_PACKS[0]!.productId,
+    transaction_id: `tx-${id}`,
     environment: 'PRODUCTION',
     store: 'PLAY_STORE',
   },
@@ -101,13 +118,25 @@ describe('POST /payments/revenuecat', () => {
     expect(granted.some((g) => g.eventId === 'e3')).toBe(false);
   });
 
-  it('signale un remboursement sans rien debiter', async () => {
+  it('reprend les jetons d un remboursement, et signale ce qui manque', async () => {
     const reply = await post(
       app,
       { event: { ...purchase('e4').event, type: 'CANCELLATION' } },
       SECRET,
     );
     expect(reply.statusCode).toBe(200);
-    expect(warnings.some((w) => w.includes('rembours'))).toBe(true);
+    expect(refunds.map((r) => r.transactionId)).toContain('tx-e4');
+    expect(warnings.some((w) => w.includes('70'))).toBe(true);
+  });
+
+  // Un achat paye qu'on ne sait pas attribuer s'inscrit : il ne disparait pas.
+  it('inscrit un achat non attribuable', async () => {
+    const reply = await post(
+      app,
+      { event: { ...purchase('e5').event, app_user_id: '$RCAnonymousID:x' } },
+      SECRET,
+    );
+    expect(reply.statusCode).toBe(200);
+    expect(unattributed.map((u) => u.eventId)).toContain('e5');
   });
 });

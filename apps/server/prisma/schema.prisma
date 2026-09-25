@@ -305,26 +305,45 @@ model Loadout {
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 }
 
-/// Un achat de jetons en argent reel, credite par le webhook de RevenueCat
-/// (ADR 0016).
+/// Un achat de jetons en argent reel, recu par le webhook de RevenueCat
+/// (ADR 0016) : credite, ou inscrit pour le support s'il n'a pu l'etre.
 ///
-/// La cle est l'identifiant de l'EVENEMENT : RevenueCat renvoie un webhook
-/// tant qu'il n'a pas recu de 2xx, et un renvoi ne doit jamais crediter deux
-/// fois. L'insertion de cette ligne et le credit du joueur vont dans la meme
-/// transaction. La comptabilite de reference reste celle de RevenueCat et des
-/// stores : cette table sert l'idempotence et le support.
+/// Deux anti-rejeux. L'identifiant d'EVENEMENT (cle primaire) : RevenueCat
+/// renvoie un webhook tant qu'il n'a pas recu de 2xx. Et la TRANSACTION du
+/// store (`store`, `transactionId`) : une meme transaction peut produire deux
+/// evenements distincts (deux projets, une reimportation). L'insertion de la
+/// ligne et le credit du joueur vont dans la meme transaction.
+///
+/// La ligne survit au compte (`SetNull`) : c'est une trace de vente.
 model TokenPurchase {
-  eventId     String   @id
-  playerId    String
-  productId   String
-  tokens      Int
+  eventId        String    @id
+  transactionId  String
   /// APP_STORE, PLAY_STORE...
-  store       String
+  store          String
+  /// Le joueur credite ; `null` si l'achat n'a pu etre attribue, ou si le
+  /// compte a ete supprime depuis.
+  playerId       String?
+  /// L'identifiant d'acheteur que RevenueCat a transmis, tel quel.
+  appUserId      String
+  productId      String
+  /// Jetons credites (0 pour un achat non attribue).
+  tokens         Int
+  /// CREDITED, ou UNATTRIBUTED (voir `reason`).
+  status         String
+  /// UNKNOWN_PRODUCT, UNKNOWN_BUYER, UNKNOWN_PLAYER : pourquoi le support doit trancher.
+  reason         String?
   /// PRODUCTION ou SANDBOX
-  environment String
-  createdAt   DateTime @default(now())
+  environment    String
+  createdAt      DateTime  @default(now())
+  /// Remboursement : quand, par quel evenement, et combien de jetons repris
+  /// (au plus ce qui restait en bourse ; le reste avait ete depense).
+  refundedAt     DateTime?
+  refundEventId  String?
+  refundedTokens Int       @default(0)
 
-  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  player Player? @relation(fields: [playerId], references: [id], onDelete: SetNull)
 
+  @@unique([store, transactionId])
   @@index([playerId])
+  @@index([status])
 }

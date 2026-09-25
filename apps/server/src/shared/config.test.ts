@@ -160,6 +160,25 @@ describe('administration', () => {
     expect(loadConfig({ ...validEnv, REVENUECAT_SANDBOX: '1' }).revenuecatSandbox).toBe(true);
   });
 
+  // En production, un achat de test credite serait un jeton gratuit pour tout testeur.
+  it('refuse les achats de test en production', () => {
+    expect(() =>
+      loadConfig({ ...validEnv, NODE_ENV: 'production', REVENUECAT_SANDBOX: '1' }),
+    ).toThrow(/REVENUECAT_SANDBOX/);
+  });
+
+  /*
+    RevenueCat recopie le secret tel qu'on l'a colle, souvent precede de
+    « Bearer ». Le meme prefixe dans la variable ferait refuser TOUS les achats.
+  */
+  it('normalise le secret du webhook : sans prefixe Bearer ni espaces', () => {
+    const secret = 'x'.repeat(40);
+    expect(
+      loadConfig({ ...validEnv, REVENUECAT_WEBHOOK_AUTH: ` Bearer ${secret}\n` })
+        .revenuecatWebhookAuth,
+    ).toBe(secret);
+  });
+
   it('ferme le panneau quand aucun secret n est pose', () => {
     expect(loadConfig(validEnv).adminToken).toBe('');
   });

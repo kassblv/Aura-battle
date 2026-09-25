@@ -133,6 +133,14 @@ const configSchema = z.object({
   revenuecatWebhookAuth: z
     .string()
     .default('')
+    // Colle tel quel depuis le tableau de bord, il porte souvent « Bearer » et
+    // un saut de ligne : les garder ferait refuser TOUS les achats.
+    .transform((raw) =>
+      raw
+        .trim()
+        .replace(/^Bearer\s+/i, '')
+        .trim(),
+    )
     .refine(
       (value) => value.length === 0 || value.length >= 32,
       'REVENUECAT_WEBHOOK_AUTH doit faire au moins 32 caracteres, ou rester vide',
@@ -263,6 +271,12 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
   if (parsed.data.metricsEnabled && parsed.data.metricsToken.length === 0) {
     throw new ConfigError(
       "Configuration invalide :\n  - AURA_METRICS_TOKEN : requis des que AURA_METRICS=1, sinon les releves de charge sont lisibles et effacables par n'importe qui",
+    );
+  }
+
+  if (parsed.data.nodeEnv === 'production' && parsed.data.revenuecatSandbox) {
+    throw new ConfigError(
+      "Configuration invalide :\n  - REVENUECAT_SANDBOX : refuse en production, un achat de test credite y serait un jeton gratuit pour tout testeur de l'application",
     );
   }
 

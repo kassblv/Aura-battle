@@ -58,19 +58,31 @@ export class PaymentsController {
         throw new BadRequestException({ code: 'INVALID_PAYLOAD' });
       case 'ignore':
         return { ok: true };
-      case 'refund':
-        // Pas de debit automatique : les jetons ont pu etre depenses, et un
-        // solde negatif n'existe pas. Le support tranche (ADR 0016).
+      case 'unattributed': {
+        const { kind: _kind, ...purchase } = decision;
+        await this.ledger.recordUnattributed(purchase);
         this.log.warn(
-          `remboursement de jetons a traiter : evenement ${decision.eventId}, joueur ${decision.playerId}, produit ${decision.productId}`,
+          `achat de jetons non attribue (${decision.reason}) : evenement ${decision.eventId}, produit ${decision.productId}`,
         );
         return { ok: true };
+      }
+      case 'refund': {
+        const { kind: _kind, ...refund } = decision;
+        const outcome = await this.ledger.refund(refund);
+        if (outcome.kind === 'refunded' && outcome.owed > 0) {
+          // Des jetons deja depenses : la reprise s'arrete a zero, le support tranche.
+          this.log.warn(
+            `remboursement de jetons : ${String(outcome.taken)} repris, ${String(outcome.owed)} deja depenses (transaction ${decision.transactionId})`,
+          );
+        }
+        return { ok: true };
+      }
       case 'credit': {
         const { kind: _kind, ...credit } = decision;
         const outcome = await this.ledger.grant(credit);
-        if (outcome === 'unknown_player') {
+        if (outcome === 'unattributed') {
           this.log.warn(
-            `achat de jetons pour un joueur inconnu : evenement ${decision.eventId}, produit ${decision.productId}`,
+            `achat de jetons pour un joueur inconnu, inscrit pour le support : evenement ${decision.eventId}`,
           );
         }
         return { ok: true };
