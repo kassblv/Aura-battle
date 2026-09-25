@@ -43,6 +43,7 @@ import { QueueScreen } from './QueueScreen.jsx';
 import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
 import { useViewportWidth } from './useViewport.js';
+import { greetingStore, markGreeted, wasGreeted } from './greeting.js';
 import { devPoseFrom } from './devPose.js';
 import { memeGallery, stepMeme } from './memes.js';
 import { tryOn } from './tryOn.js';
@@ -390,7 +391,11 @@ export function App(): JSX.Element {
    * chaque lancement : un jeu qui redemande la meme chose a chaque ouverture
    * apprend a son joueur a fermer la fenetre sans lire.
    */
-  const [greeted, setGreeted] = useState(false);
+  const [greeted, setGreetedState] = useState(() => wasGreeted(greetingStore()));
+  const setGreeted = useCallback((value: boolean): void => {
+    if (value) markGreeted(greetingStore());
+    setGreetedState(value);
+  }, []);
   const showOnboarding = !greeted && session.phase === 'ready' && needsOnboarding(session.identity);
 
   const [nav, setNav] = useState<Navigation>(openingScreen);
