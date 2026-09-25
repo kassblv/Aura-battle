@@ -43,6 +43,7 @@ import { QueueScreen } from './QueueScreen.jsx';
 import { useOnlineMatch } from './useOnlineMatch.js';
 import { useSession } from './useSession.js';
 import { useViewportWidth } from './useViewport.js';
+import { devPoseFrom } from './devPose.js';
 import { memeGallery, stepMeme } from './memes.js';
 import { tryOn } from './tryOn.js';
 import { leagueLabel } from './leagues.js';
@@ -403,7 +404,10 @@ export function App(): JSX.Element {
    * est un mouvement, une vignette ne le montre pas.
    */
   const gallery = useMemo(() => memeGallery(), []);
-  const [memeId, setMemeId] = useState(() => gallery[0]?.animationId ?? '');
+  const [memeId, setMemeId] = useState(
+    () =>
+      devPoseFrom(window.location.search, import.meta.env.DEV) ?? gallery[0]?.animationId ?? '',
+  );
   const meme = gallery.find((card) => card.animationId === memeId) ?? gallery[0]!;
   /**
    * L'article porte a l'essai dans la boutique.
