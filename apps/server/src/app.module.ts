@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AdminModule } from './modules/admin/admin.module.js';
+import { AnalyticsModule } from './modules/analytics/analytics.module.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { HealthModule } from './modules/health/health.module.js';
 import { ChallengesModule } from './modules/challenges/challenges.module.js';
@@ -31,6 +32,7 @@ import { MetricsModule } from './shared/metrics.module.js';
     ChallengesModule,
     PaymentsModule,
     SeasonModule,
+    AnalyticsModule,
     AdminModule,
   ],
 })

@@ -54,6 +54,13 @@ export const ADMIN_PAGE = `<!doctype html>
   button { cursor: pointer; font-weight: 700; }
   .note { color: var(--muted); font-size: 12px; margin-top: 18px; line-height: 1.5; }
   .bad { color: var(--down); }
+  .indic { display: grid; grid-template-columns: minmax(0, 1fr) 90px 70px 90px 170px; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .indic:last-child { border-bottom: 0; }
+  .indic.tete { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .indic .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .indic .val { font-weight: 700; }
+  .verdict { display: flex; align-items: baseline; gap: 7px; justify-content: flex-end; font-weight: 600; }
+  .verdict.met { color: var(--ok); } .verdict.missed { color: var(--down); } .verdict.insufficient { color: var(--muted); font-weight: 400; }
 </style>
 </head>
 <body>
@@ -73,10 +80,20 @@ export const ADMIN_PAGE = `<!doctype html>
       <div class="card"><h2>Serveur</h2><div id="serveur"></div></div>
     </div>
     <div class="card" style="margin-top:12px"><h2>Erreurs (24 h)</h2><div id="erreurs"></div></div>
+    <div class="card" style="margin-top:12px">
+      <h2>Indicateurs produit</h2>
+      <div id="indicateurs"></div>
+      <p class="note" id="indicateurs-note"></p>
+    </div>
     <p class="note">
       Le compteur d’erreurs vit en mémoire : il repart de zéro à chaque redémarrage.
       C’est pour ça qu’il se lit à côté de la durée de fonctionnement — les deux
       ensemble ne trompent personne.
+    </p>
+    <p class="note">
+      Indicateurs : jours UTC, jour en cours exclu ; « 7 jours » = J-7 à J-1. Seuils de
+      docs/00-vision.md. Sous 20 observations, aucun verdict. Tout est calculé dans
+      notre base : aucune donnée ne part chez un tiers.
     </p>
   </div>
 </main>
@@ -122,6 +139,70 @@ export const ADMIN_PAGE = `<!doctype html>
     b.textContent = txt(valeur);
     d.append(a, b);
     return d;
+  }
+
+  const VERDICTS = { met: 'atteint', missed: 'manqué', insufficient: 'échantillon insuffisant' };
+
+  function nombre(v, chiffres) {
+    return v.toLocaleString('fr-FR', { maximumFractionDigits: chiffres });
+  }
+
+  /** Une valeur selon son unité : part en %, durée en s, sinon un nombre. */
+  function mesure(v, unite) {
+    if (v === null || v === undefined) return '—';
+    if (unite === 'ratio') return nombre(v * 100, 1) + ' %';
+    if (unite === 'ms') return nombre(v / 1000, 1) + ' s';
+    return nombre(v, 2);
+  }
+
+  function cellule(texte, classe) {
+    const c = document.createElement('span');
+    if (classe) c.className = classe;
+    c.textContent = texte;
+    return c;
+  }
+
+  function indicateur(i) {
+    const d = document.createElement('div');
+    d.className = 'indic';
+    const verdict = document.createElement('span');
+    verdict.className = 'verdict ' + i.verdict;
+    if (i.verdict !== 'insufficient') {
+      const p = document.createElement('i');
+      p.className = 'dot ' + (i.verdict === 'met' ? 'ok' : 'down');
+      verdict.append(p);
+    }
+    verdict.append(VERDICTS[i.verdict] || i.verdict);
+    d.append(
+      cellule(i.label, 'name'),
+      cellule(mesure(i.value, i.unit), 'num val'),
+      cellule('n = ' + i.n, 'num detail'),
+      cellule((i.comparison === 'gte' ? '≥ ' : '≤ ') + mesure(i.threshold, i.unit), 'num detail'),
+      verdict,
+    );
+    return d;
+  }
+
+  function dessinerIndicateurs(r) {
+    const tete = document.createElement('div');
+    tete.className = 'indic tete';
+    tete.append(cellule('Indicateur'), cellule('Valeur', 'num'), cellule('Effectif', 'num'), cellule('Seuil', 'num'), cellule('Verdict', 'num'));
+    $('indicateurs').replaceChildren(tete, ...r.indicators.map(indicateur));
+    $('indicateurs-note').textContent =
+      'Matchs contre un fantôme (7 jours) : ' + mesure(r.ghostShare.value, 'ratio') +
+      ' (n = ' + r.ghostShare.n + ') · calculé ' + new Date(r.at).toLocaleTimeString('fr-FR');
+    $('indicateurs-note').classList.remove('bad');
+  }
+
+  async function chargerIndicateurs(secret) {
+    try {
+      const r = await fetch('/admin/indicators', { headers: { authorization: 'Bearer ' + secret } });
+      if (!r.ok) throw new Error('Indicateurs illisibles (' + r.status + ').');
+      dessinerIndicateurs(await r.json());
+    } catch (e) {
+      $('indicateurs-note').textContent = e.message;
+      $('indicateurs-note').classList.add('bad');
+    }
   }
 
   async function charger(secret) {
@@ -182,6 +263,11 @@ export const ADMIN_PAGE = `<!doctype html>
         try { dessiner(await charger(secret)); }
         catch (e) { $('sub').textContent = e.message; $('sub').classList.add('bad'); }
       }, 15000);
+      // Des agregats sur toute la base : une fois a l'ouverture, puis toutes
+      // les cinq minutes. Ils bougent a l'echelle du jour, pas de la seconde.
+      chargerIndicateurs(secret);
+      clearInterval(window.__ti);
+      window.__ti = setInterval(() => chargerIndicateurs(secret), 300000);
     } catch (e) {
       $('sub').textContent = e.message;
       $('sub').classList.add('bad');

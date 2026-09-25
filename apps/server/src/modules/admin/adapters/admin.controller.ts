@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 import { CONFIG, type ServerConfig } from '../../../shared/config.js';
 import { constantTimeEquals } from '../../../shared/constant-time.js';
+import { IndicatorsService } from '../../analytics/application/indicators.service.js';
+import type { IndicatorReport } from '../../analytics/domain/indicators.js';
 import { AdminStatusService, type AdminStatus } from '../application/admin-status.service.js';
 import { ADMIN_PAGE } from './admin-page.js';
 
@@ -32,6 +34,7 @@ export class AdminController {
   constructor(
     @Inject(AdminStatusService) private readonly status: AdminStatusService,
     @Inject(CONFIG) private readonly config: ServerConfig,
+    @Inject(IndicatorsService) private readonly indicators: IndicatorsService,
   ) {}
 
   /**
@@ -55,6 +58,21 @@ export class AdminController {
     this.requireEnabled();
     this.authorize(authorization);
     return this.status.read();
+  }
+
+  /**
+   * Les indicateurs produit de docs/00 (spec 2026-09-26), calcules a l'heure
+   * du serveur. Meme garde que l'etat : sans secret, la route n'existe pas.
+   *
+   * Des agregats sur toute la base : c'est pour cela qu'ils ne partent pas
+   * avec `/admin/status`, que le panneau relit toutes les quinze secondes.
+   */
+  @Get('indicators')
+  @Header('cache-control', 'no-store')
+  async readIndicators(@Headers('authorization') authorization?: string): Promise<IndicatorReport> {
+    this.requireEnabled();
+    this.authorize(authorization);
+    return this.indicators.report();
   }
 
   private requireEnabled(): void {

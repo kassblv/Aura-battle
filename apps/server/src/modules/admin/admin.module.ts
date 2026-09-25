@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { Module } from '@nestjs/common';
 import { CONFIG, type ServerConfig } from '../../shared/config.js';
 import { RedisModule } from '../../shared/redis.module.js';
+import { AnalyticsModule } from '../analytics/analytics.module.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { AdminController } from './adapters/admin.controller.js';
 import { RealAdminProbes } from './adapters/admin-probes.js';
@@ -35,7 +36,8 @@ const BUILT_AT: string | null = (() => {
 })();
 
 @Module({
-  imports: [AuthModule, RedisModule],
+  // `AnalyticsModule` pour les indicateurs produit, lus derriere le meme secret.
+  imports: [AuthModule, RedisModule, AnalyticsModule],
   controllers: [AdminController],
   providers: [
     RealAdminProbes,

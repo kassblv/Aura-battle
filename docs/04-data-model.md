@@ -152,6 +152,7 @@ model MatchSeat {
   mmrBefore  Float?
   mmrAfter   Float?
   lpDelta    Int?
+  queueWaitMs Int?                            // attente en file (ms), null : invitation ou fantôme
   match      Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
   player     Player? @relation(fields: [playerId], references: [id])
   @@id([matchId, seat])
@@ -233,6 +234,17 @@ model SeasonClaim {
   @@id([playerId, seasonId, tier, track])
 }
 
+model ProductEvent {
+  playerId  String
+  matchId   String
+  kind      String                            // clip_shared (productEventSchema, protocole 2.5.0)
+  createdAt DateTime @default(now())          // heure serveur de réception
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  @@id([playerId, matchId, kind])
+  @@index([matchId, kind])
+}
+
 model SuspicionFlag {
   id        String   @id @default(uuid())
   playerId  String
@@ -259,6 +271,13 @@ Un prix de zéro sous une autre rareté est refusé par un test de `@aura/conten
 ## Passe de saison : réclamer sans payer deux fois
 
 Le palier se **déduit** de `SeasonProgress.xp` (`seasonTierFor`), il n'est pas stocké. Une réclamation insère `SeasonClaim` **puis** crédite, dans une transaction : la clé primaire `(playerId, seasonId, tier, track)` refuse la seconde avant tout crédit. Un cosmétique accordé s'écrit dans `InventoryItem` avec `source = 'pass'` ; s'il est déjà possédé au moment de l'écriture, la ligne n'est pas écrite et le joueur reçoit ses pièces à la place. L'achat du premium marque `premiumAt` (conditionné à `premiumAt IS NULL`) puis débite les jetons (conditionné à `hardCurrency >= prix`), dans une transaction.
+
+## Indicateurs produit : ce qu'on ajoute, et rien de plus
+
+Les indicateurs de `docs/00` se déduisent presque tous de ce qui existe déjà (`Player.createdAt`, `Match`, `MatchSeat`) ; définitions dans la spec `docs/superpowers/specs/2026-09-26-indicateurs-produit-design.md`. Deux ajouts seulement :
+
+- **`MatchSeat.queueWaitMs`** : l'attente en file du siège, en millisecondes, heure serveur, mesurée à l'appariement (`enqueuedAtMs` du ticket) et écrite avec le match. **Nulle** pour qui n'a pas fait la queue — les deux sièges d'une invitation, et le siège d'un fantôme (le joueur face à lui a bien la sienne). Zéro à la place de nul tirerait la médiane vers un appariement instantané qui n'a pas eu lieu.
+- **`ProductEvent`** : ce que seul le client sait (aujourd'hui, `clip_shared`). La clé primaire `(playerId, matchId, kind)` borne la table par construction ; l'insertion est un `INSERT … SELECT` depuis `MatchSeat`, donc rien n'est écrit pour un joueur qui ne siégeait pas à ce match, et un renvoi est sans effet (`ON CONFLICT DO NOTHING`). `kind` est une chaîne : la liste des sortes se décide dans `@aura/protocol` (`PRODUCT_EVENT_KINDS`), validée à l'entrée de `POST /events`. La ligne suit le joueur et le match (`Cascade`).
 
 ## Loadout : un kind par emplacement
 
