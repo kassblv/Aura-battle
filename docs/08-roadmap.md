@@ -68,7 +68,7 @@ Référence : prototype, `docs/02-architecture.md`.
 rendu existaient ; ce qui manquait était le chemin entre eux — et un trou de
 sécurité au milieu. Un skin payant habille désormais **un** amplificateur, le
 serveur le résout seul, et la boutique les vend. Détail dans « Effets d'aura : la chaîne cassée » ci-dessous.
-- [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains) ✅ — **page `/dev/animation-viewer` : non faite** (la galerie de mèmes de l'accueil la remplace pour l'usage courant, pas pour le débogage image par image)
+- [ ] `AnimationPlayer` lisant `@aura/content` (Catmull-Rom, ressorts, angles, mains) ✅ — la visionneuse existe depuis le 2026-09-25 sous la forme `?pose=<id>` (développement seulement) ; figer une image se fait en avançant l'horloge par pas de 16 ms (`docs/07`)
 - [x] Client réseau : synchronisation d'horloge, reconnexion automatique, reprise de `match:state`
 - [x] Écrans : accueil ✅ (avec galerie de mèmes jouée par le personnage), créer/rejoindre une invitation ✅, attente ✅, match ✅, résultat ✅, revanche ✅ — en solo elle relance une partie sur une nouvelle graine, en ligne elle remet en file (l'adversaire précédent n'a aucune raison d'être encore là)
 - [x] Recharge et timing mesurés avec `performance.now()` et envoyés selon le protocole
@@ -253,7 +253,7 @@ Spec : `docs/superpowers/specs/2026-09-24-poses-cinq-familles-design.md`, ADR 00
   règle que les LP, pour la même raison.
 - [ ] Passe de saison (gratuit + premium) — **le niveau lui sert de socle** : il
   compte déjà ce qu'une saison devrait récompenser.
-- [ ] Achats intégrés via RevenueCat, reçus validés côté serveur
+- [x] Achats intégrés via RevenueCat : reçus validés par RevenueCat, jetons crédités par le serveur via webhook, avec double anti-rejeu (ADR 0016, 2026-09-25). Reste l'ouverture des ventes côté comptes stores.
 
 ### M9 — Partage
 - [ ] Spike : export d'un clip vertical de la révélation (MediaRecorder sur le canvas ou rendu serveur), choix en ADR
