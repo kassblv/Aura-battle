@@ -357,6 +357,18 @@ describe('abandon', () => {
     expect(end.winner).toBe('b');
     expect(end.reason).toBe('forfeit');
   });
+
+  /* Un joueur banni en plein match le perd par forfait (ADR 0018). */
+  it('forfeitPlayer retrouve le siege du joueur et le fait abandonner', () => {
+    expect(runtime.forfeitPlayer(SEATS.b)).toBe(true);
+    const [end] = notifier.to(SEATS.a, 'match:end') as [ServerMessage<'match:end'>];
+    expect(end.winner).toBe('a');
+    expect(end.reason).toBe('forfeit');
+  });
+
+  it('forfeitPlayer ne fait rien pour un joueur sans match', () => {
+    expect(runtime.forfeitPlayer('personne')).toBe(false);
+  });
 });
 
 describe('reprise apres reconnexion', () => {

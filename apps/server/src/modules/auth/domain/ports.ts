@@ -1,3 +1,5 @@
+import type { PlayerBan } from './ban.js';
+
 /**
  * Ports du module d'authentification (architecture hexagonale, docs/02).
  *
@@ -23,6 +25,12 @@ export class DeviceIdentityConflictError extends Error {
 export interface PlayerRecord {
   readonly id: string;
   readonly displayName: string;
+  /**
+   * Bannissement en cours ou passe (ADR 0018). Renseigne par les lectures qui
+   * precedent l'ouverture d'une session (`findById`, `findByDeviceHash`) ;
+   * absent ailleurs.
+   */
+  readonly ban?: PlayerBan | null;
 }
 
 export interface RefreshTokenRecord {
@@ -331,4 +339,16 @@ export interface Clock {
  */
 export interface CredentialsVersionReader {
   credentialsVersion(playerId: string): Promise<number | null>;
+}
+
+/**
+ * Ce que le verificateur partage relit a chaque jeton d'acces : la version des
+ * identifiants ET le bannissement, en une lecture. `null` si le joueur
+ * n'existe plus.
+ */
+export interface PlayerAccessReader {
+  accessStateOf(playerId: string): Promise<{
+    readonly credentialsVersion: number;
+    readonly ban: PlayerBan | null;
+  } | null>;
 }

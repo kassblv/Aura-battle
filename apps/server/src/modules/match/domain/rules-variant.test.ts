@@ -1,7 +1,7 @@
 import { serializeServerMessage } from '@aura/protocol';
 import { RULE_VARIANTS, variantForWeek, weekIndexOf } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
-import { rulesVariantFor } from './rules-variant.js';
+import { isForcibleVariant, rulesVariantFor, weekEventAt, weekStartMs } from './rules-variant.js';
 
 const DAY_MS = 86_400_000;
 
@@ -28,6 +28,69 @@ describe('rulesVariantFor — la variante de la semaine, en partie rapide seulem
       const atMs = NORMAL_WEEK_MS + week * 7 * DAY_MS;
       expect(rulesVariantFor('CASUAL', atMs)).toBe(variantForWeek(weekIndexOf(atMs)));
     }
+  });
+});
+
+/*
+  Forcage depuis le panneau (ADR 0018) : la variante forcee de la semaine
+  l'emporte sur la rotation, en partie rapide seulement.
+*/
+describe('rulesVariantFor — semaine forcee depuis le panneau', () => {
+  const forced = RULE_VARIANTS[1]!.id;
+
+  it('prend la variante forcee plutot que la rotation', () => {
+    expect(rulesVariantFor('CASUAL', VARIANT_WEEK_MS, forced)).toBe(forced);
+    expect(rulesVariantFor('CASUAL', NORMAL_WEEK_MS, forced)).toBe(forced);
+  });
+
+  it('peut forcer une semaine normale au milieu de la rotation', () => {
+    expect(rulesVariantFor('CASUAL', VARIANT_WEEK_MS, 'normal')).toBe('normal');
+  });
+
+  it('sans forcage, la rotation', () => {
+    expect(rulesVariantFor('CASUAL', VARIANT_WEEK_MS, null)).toBe(RULE_VARIANTS[0]!.id);
+  });
+
+  it.each(['RANKED', 'INVITE', 'SOLO'] as const)('%s ignore le forcage', (mode) => {
+    expect(rulesVariantFor(mode, VARIANT_WEEK_MS, forced)).toBe('normal');
+  });
+
+  it('ignore un forcage qui ne nomme plus aucune variante', () => {
+    expect(rulesVariantFor('CASUAL', NORMAL_WEEK_MS, 'retiree')).toBe('normal');
+    expect(rulesVariantFor('CASUAL', VARIANT_WEEK_MS, 'retiree')).toBe(RULE_VARIANTS[0]!.id);
+  });
+});
+
+describe('isForcibleVariant', () => {
+  it('accepte normal et chaque variante declaree, rien d autre', () => {
+    expect(isForcibleVariant('normal')).toBe(true);
+    for (const variant of RULE_VARIANTS) expect(isForcibleVariant(variant.id)).toBe(true);
+    expect(isForcibleVariant('inconnue')).toBe(false);
+    expect(isForcibleVariant('')).toBe(false);
+  });
+});
+
+describe('semaines', () => {
+  it('weekStartMs est le lundi 00:00 UTC de weekIndexOf', () => {
+    for (const week of [0, 1, 2, 2_000, 2_960]) {
+      const start = weekStartMs(week);
+      expect(new Date(start).getUTCDay()).toBe(1);
+      expect(new Date(start).getUTCHours()).toBe(0);
+      expect(weekIndexOf(start)).toBe(week);
+      expect(weekIndexOf(start - 1)).toBe(week - 1);
+    }
+  });
+
+  it('weekEventAt : la semaine, sa variante et sa fin', () => {
+    const at = Date.UTC(2026, 8, 26, 15);
+    const week = weekIndexOf(at);
+    expect(weekEventAt(at, null)).toEqual({
+      week,
+      variant: variantForWeek(week),
+      endsAt: new Date(weekStartMs(week + 1)).toISOString(),
+    });
+    expect(weekEventAt(at, 'normal').variant).toBe('normal');
+    expect(weekEventAt(at, 'retiree').variant).toBe(variantForWeek(week));
   });
 });
 

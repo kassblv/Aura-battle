@@ -17,6 +17,7 @@ import {
 } from './adapters/prisma-repositories.js';
 import { RedisAttemptLimiter } from './adapters/redis-attempt-limiter.js';
 import { EmailAuthService, LIMITS } from './application/email.js';
+import { PlayerBanEvents } from './application/ban-events.js';
 import { CredentialsEvents } from './application/credentials-events.js';
 import { FreshAccessTokenVerifier } from './application/fresh-token.js';
 import { IpRateLimit } from './application/ip-rate-limit.js';
@@ -57,9 +58,13 @@ import { SocketAuthenticator } from './application/socket-auth.js';
     */
     {
       provide: FreshAccessTokenVerifier,
-      inject: [JwtAccessTokenVerifier, PrismaPlayerRepository],
-      useFactory: (verifier: JwtAccessTokenVerifier, players: PrismaPlayerRepository) =>
-        new FreshAccessTokenVerifier(verifier, players),
+      inject: [JwtAccessTokenVerifier, PrismaPlayerRepository, SystemClock],
+      // Relit aussi le bannissement (ADR 0018), dans la meme lecture que la version.
+      useFactory: (
+        verifier: JwtAccessTokenVerifier,
+        players: PrismaPlayerRepository,
+        clock: SystemClock,
+      ) => new FreshAccessTokenVerifier(verifier, players, clock),
     },
     {
       provide: SocketAuthenticator,
@@ -84,6 +89,8 @@ import { SocketAuthenticator } from './application/socket-auth.js';
       useFactory: (players: PrismaPlayerRepository) => new RecoveryService({ players }),
     },
     CredentialsEvents,
+    // Un seul exemplaire : le panneau publie, le module match s'abonne.
+    PlayerBanEvents,
     {
       provide: IpRateLimit,
       inject: [RedisService, CONFIG],
@@ -185,6 +192,7 @@ import { SocketAuthenticator } from './application/socket-auth.js';
     PrismaService,
     'ACCESS_TOKEN_VERIFIER',
     CredentialsEvents,
+    PlayerBanEvents,
   ],
 })
 export class AuthModule {}

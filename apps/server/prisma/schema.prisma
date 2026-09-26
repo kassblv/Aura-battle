@@ -29,7 +29,15 @@ model Player {
   /// finissent par se contredire, et c'est toujours celle qu'on n'a pas mise a
   /// jour qui s'affiche.
   xp                 Int       @default(0)
+  /// Bannissement (ADR 0018) : `bannedAt` non nul = banni, jusqu'a
+  /// `bannedUntil`, ou definitivement si `bannedUntil` est nul. Une colonne
+  /// d'instant plutot qu'une date sentinelle lointaine : « definitif » se lit,
+  /// il ne se devine pas a une annee 9999. Applique au rafraichissement de
+  /// session, a l'authentification, a chaque jeton d'acces et au handshake.
+  bannedAt           DateTime?
   bannedUntil        DateTime?
+  /// Motif du bannissement, obligatoire a l'ecriture ; efface a la levee.
+  banReason          String?
   /// Version des identifiants, incrementee a chaque changement de mot de passe.
   ///
   /// Chaque jeton d'acces porte la version en cours a son emission (claim
@@ -435,18 +443,68 @@ enum FlagGroup {
 /// sert a ouvrir un match (spec 2026-09-26 « Bulle d'intention en test A/B »).
 ///
 /// Une TRACE, pas une decision : le groupe se recalcule du hachage
-/// `sha256(drapeau:joueur)`. La ligne n'existe que pour comparer les groupes
-/// en SQL (`GET /admin/experiments`). Cle `(playerId, flag)` : la premiere
-/// inscription fait foi (`ON CONFLICT DO NOTHING`). `flag` est un nom declare
-/// en code (`FLAGS`), jamais une saisie.
+/// `sha256(drapeau:joueur)` (epoque 1) ou `sha256(drapeau#epoque:joueur)`. La
+/// ligne n'existe que pour comparer les groupes en SQL (`GET /admin/experiments`,
+/// epoque en cours seulement). Cle `(playerId, flag, epoch)` : la premiere
+/// inscription d'une mesure fait foi (`ON CONFLICT DO NOTHING`), et une nouvelle
+/// mesure repart de zero. `flag` est un nom declare en code (`FLAGS`), jamais
+/// une saisie.
 model FlagAssignment {
   playerId   String
   flag       String
+  /// Numero de la mesure (`FlagSetting.epoch`) ; les lignes d'avant les
+  /// epoques valent 1.
+  epoch      Int       @default(1)
   group      FlagGroup
   assignedAt DateTime  @default(now())
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
 
-  @@id([playerId, flag])
-  @@index([flag, group])
+  @@id([playerId, flag, epoch])
+  @@index([flag, epoch, group])
+}
+
+/// Le reglage d'un drapeau (panneau qui gere, ADR 0018) : la part en vigueur
+/// et la MESURE en cours. L'environnement (`FLAG_*_ROLLOUT`) ne donne que la
+/// valeur de depart, inscrite si la ligne manque. Chaque noeud relit la table
+/// toutes les trente secondes.
+model FlagSetting {
+  /// Nom declare en code (`FLAGS`), jamais une saisie.
+  flag             String   @id
+  /// Part exposee en vigueur, 0 a 100 (0 : coupe).
+  rollout          Int
+  /// Part de la mesure en cours, 1 a 100 : celle que « rallumer » retrouve.
+  measureRollout   Int
+  /// Numero de la mesure ; il monte a chaque nouvelle mesure.
+  epoch            Int      @default(1)
+  measureStartedAt DateTime
+  updatedAt        DateTime @updatedAt
+}
+
+/// L'evenement d'une semaine force depuis le panneau (ADR 0018). Sans ligne,
+/// la rotation de `@aura/rules` (`variantForWeek`) decide.
+model RuleEventOverride {
+  /// Numero de semaine UTC (`weekIndexOf`, lundi 00:00 UTC).
+  week      Int      @id
+  /// Un identifiant de `RULE_VARIANTS`, ou `normal`.
+  variant   String
+  updatedAt DateTime @updatedAt
+}
+
+/// Journal d'administration (ADR 0018) : chaque ecriture du panneau y laisse
+/// une ligne, DANS LA MEME TRANSACTION que l'ecriture. Pas d'auteur : un seul
+/// secret aujourd'hui, le journal dit quoi, pas qui.
+model AdminAction {
+  id     String   @id @default(uuid())
+  at     DateTime @default(now())
+  /// `flag.pause`, `flag.resume`, `flag.new-measure`, `event.override`,
+  /// `player.ban`, `player.unban`.
+  action String
+  /// Drapeau, semaine ou joueur vise.
+  target String
+  before Json?
+  after  Json?
+  reason String?
+
+  @@index([at])
 }

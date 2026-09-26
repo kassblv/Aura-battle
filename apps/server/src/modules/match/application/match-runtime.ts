@@ -898,6 +898,20 @@ export class MatchRuntime {
     this.apply(match, { type: 'PLAYER_FORFEIT', seat, atMs: this.clock.now() });
   }
 
+  /**
+   * Fait abandonner un joueur, ou qu'il soit assis (bannissement, ADR 0018).
+   *
+   * Le meme evenement `PLAYER_FORFEIT` qu'un abandon : le moteur de regles
+   * decide de la suite, le serveur ne reimplemente rien. Rend `false` si le
+   * joueur n'occupe aucun siege.
+   */
+  forfeitPlayer(playerId: string): boolean {
+    const found = this.locate(playerId);
+    if (found === null) return false;
+    this.forfeit(found.match.matchId, found.seat);
+    return true;
+  }
+
   /** Echeance de phase : c'est le serveur qui decide quand elle tombe. */
   private handleTimeout(matchId: string): void {
     const match = this.matches.get(matchId);

@@ -5,6 +5,7 @@ import {
   hashSecret,
 } from '../domain/credentials.js';
 import type { AppLog } from '../../../shared/log-port.js';
+import { isBanActive } from '../domain/ban.js';
 import { DeviceIdentityConflictError } from '../domain/ports.js';
 import type {
   AccessTokenSigner,
@@ -30,6 +31,8 @@ export interface Session {
 }
 
 export type SessionFailure =
+  /** Le joueur est banni (ADR 0018) : aucune session ne s'ouvre. */
+  | 'BANNED'
   | 'DEVICE_ALREADY_LINKED'
   /** La version des identifiants a change entre la preuve et le rattachement. */
   | 'CREDENTIALS_CHANGED'
@@ -74,6 +77,7 @@ export class SessionService {
     const deviceHash = hashSecret(deviceSecret);
     const existing = await this.deps.players.findByDeviceHash(deviceHash);
     const player = existing ?? (await this.createOrAdopt(deviceHash));
+    this.refuseBanned(player);
 
     if (existing !== null) {
       await this.deps.players.touchLastSeen(player.id);
@@ -144,6 +148,8 @@ export class SessionService {
     if (player === null) {
       throw new SessionError('INVALID_REFRESH_TOKEN');
     }
+    // Le jeton n'est PAS consomme : le bannissement leve, il resservira.
+    this.refuseBanned(player);
 
     /*
       Consommer et remplacer en un seul geste atomique (ADR 0013). Lire puis
@@ -190,6 +196,9 @@ export class SessionService {
     if (!DEVICE_SECRET_PATTERN.test(deviceSecret)) {
       throw new SessionError('INVALID_DEVICE_SECRET');
     }
+    // Avant tout rattachement : un banni ne gagne pas un appareil de plus.
+    const target = await this.deps.players.findById(playerId);
+    if (target !== null) this.refuseBanned(target);
     const refreshToken = generateRefreshToken();
     const joined = await this.deps.players.joinDevice({
       playerId,
@@ -225,8 +234,14 @@ export class SessionService {
   async openForPlayer(playerId: string): Promise<Session> {
     const player = await this.deps.players.findById(playerId);
     if (player === null) throw new SessionError('INVALID_DEVICE_SECRET');
+    this.refuseBanned(player);
     await this.deps.players.touchLastSeen(player.id);
     return this.issue(player);
+  }
+
+  /** Refuse un joueur banni a cet instant (ADR 0018). */
+  private refuseBanned(player: PlayerRecord): void {
+    if (isBanActive(player.ban, this.deps.clock.now())) throw new SessionError('BANNED');
   }
 
   private async issue(player: {

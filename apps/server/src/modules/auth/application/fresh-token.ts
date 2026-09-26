@@ -1,4 +1,5 @@
-import type { CredentialsVersionReader } from '../domain/ports.js';
+import { isBanActive } from '../domain/ban.js';
+import type { Clock, CredentialsVersionReader, PlayerAccessReader } from '../domain/ports.js';
 import type { AccessTokenVerifier, VerifiedToken } from './socket-auth.js';
 
 /**
@@ -22,10 +23,27 @@ export class CredentialsChangedError extends Error {
   }
 }
 
+/**
+ * Le joueur est banni (ADR 0018). Distinct d'un jeton invalide : le handshake
+ * le dit au client au lieu de l'inviter a rafraichir une session qui ne se
+ * rafraichira plus.
+ */
+export class PlayerBannedError extends Error {
+  constructor() {
+    super('BANNED');
+    this.name = 'PlayerBannedError';
+  }
+}
+
 export class FreshAccessTokenVerifier implements AccessTokenVerifier {
   constructor(
     private readonly inner: AccessTokenVerifier,
-    private readonly players: CredentialsVersionReader,
+    /**
+     * Avec `accessStateOf`, le bannissement est relu dans la meme lecture que
+     * la version. Sans (doubles de test anciens), la version seule.
+     */
+    private readonly players: CredentialsVersionReader & Partial<PlayerAccessReader>,
+    private readonly clock: Clock = { now: () => new Date() },
   ) {}
 
   async verify(token: string): Promise<VerifiedToken> {
@@ -34,12 +52,24 @@ export class FreshAccessTokenVerifier implements AccessTokenVerifier {
     // que de laisser chaque route s'en souvenir.
     if (verified.sub === '') throw new CredentialsChangedError();
 
-    const current = await this.players.credentialsVersion(verified.sub);
+    const state =
+      this.players.accessStateOf === undefined
+        ? await this.versionOnly(verified.sub)
+        : await this.players.accessStateOf(verified.sub);
     // Sans claim `cv` : un jeton signe avant son introduction, qui vaut
     // version 0 — celle de tout joueur qui n'a jamais change de mot de passe.
-    if (current === null || (verified.cv ?? 0) !== current) {
-      throw new CredentialsChangedError();
-    }
+    if (state === null) throw new CredentialsChangedError();
+    if ((verified.cv ?? 0) !== state.credentialsVersion) throw new CredentialsChangedError();
+    // Un jeton d'acces vit quinze minutes : sans ce controle, un banni
+    // garderait la main jusqu'a son expiration.
+    if (isBanActive(state.ban, this.clock.now())) throw new PlayerBannedError();
     return verified;
+  }
+
+  private async versionOnly(
+    playerId: string,
+  ): Promise<{ credentialsVersion: number; ban: null } | null> {
+    const version = await this.players.credentialsVersion(playerId);
+    return version === null ? null : { credentialsVersion: version, ban: null };
   }
 }

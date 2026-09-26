@@ -133,6 +133,18 @@ describe('client statique', () => {
   });
 });
 
+/*
+  Le build de l'application admin (ADR 0018). Vide par defaut : le module admin
+  cherche alors `apps/admin/dist` a cote des sources du serveur.
+*/
+describe('dossier de l application admin', () => {
+  it('vide par defaut, retenu quand il est pose, espaces = absence', () => {
+    expect(loadConfig(validEnv).adminDir).toBe('');
+    expect(loadConfig({ ...validEnv, ADMIN_DIR: ' /repo/admin ' }).adminDir).toBe('/repo/admin');
+    expect(loadConfig({ ...validEnv, ADMIN_DIR: '   ' }).adminDir).toBe('');
+  });
+});
+
 describe('administration', () => {
   /*
     Vide par defaut, et le panneau reste alors FERME. Un tableau de bord
@@ -194,6 +206,11 @@ describe('administration', () => {
   */
   it('refuse un secret trop court plutot que de faire semblant', () => {
     expect(() => loadConfig({ ...validEnv, ADMIN_TOKEN: 'court' })).toThrow(ConfigError);
+    // Colle avec un espace ou un retour a la ligne (Coolify, copier-coller) :
+    // le panneau resterait ferme sur un 401 que rien n'explique.
+    expect(loadConfig({ ...validEnv, ADMIN_TOKEN: ` ${'x'.repeat(40)}\n` }).adminToken).toBe(
+      'x'.repeat(40),
+    );
   });
 });
 

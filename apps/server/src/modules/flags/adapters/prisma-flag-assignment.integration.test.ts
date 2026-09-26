@@ -3,6 +3,7 @@ import { PrismaPg } from '@prisma/adapter-pg';
 import { PrismaClient } from '@prisma/client';
 import { afterAll, describe, expect, it } from 'vitest';
 import { PrismaFlagAssignmentStore } from './prisma-flag-assignment.store.js';
+import { PrismaFlagSettingsStore } from './prisma-flag-settings.store.js';
 
 /**
  * Inscription des affectations contre Postgres : premiere inscription qui
@@ -56,12 +57,19 @@ describe.skipIf(prisma === null)('PrismaFlagAssignmentStore, contre Postgres', (
       select: { id: true },
     });
     try {
-      await store.record({ playerId: id, flag: 'intentBubble', group: 'treatment', atMs: AT });
+      await store.record({
+        playerId: id,
+        flag: 'intentBubble',
+        group: 'treatment',
+        epoch: 1,
+        atMs: AT,
+      });
       // Un renvoi, meme contradictoire, ne change rien : la premiere fait foi.
       await store.record({
         playerId: id,
         flag: 'intentBubble',
         group: 'control',
+        epoch: 1,
         atMs: AT + 60_000,
       });
       // Un joueur qui n'existe pas (compte supprime entre-temps) : rien, sans erreur.
@@ -69,15 +77,127 @@ describe.skipIf(prisma === null)('PrismaFlagAssignmentStore, contre Postgres', (
         playerId: `inconnu-${randomUUID()}`,
         flag: 'intentBubble',
         group: 'control',
+        epoch: 1,
         atMs: AT,
       });
+      // Une nouvelle mesure : une seconde ligne, la premiere ne bouge pas.
+      await store.record({
+        playerId: id,
+        flag: 'intentBubble',
+        group: 'control',
+        epoch: 2,
+        atMs: AT + 120_000,
+      });
 
-      const rows = await prisma!.flagAssignment.findMany({ where: { playerId: id } });
+      const rows = await prisma!.flagAssignment.findMany({
+        where: { playerId: id },
+        orderBy: { epoch: 'asc' },
+      });
       expect(rows).toEqual([
-        { playerId: id, flag: 'intentBubble', group: 'treatment', assignedAt: new Date(AT) },
+        {
+          playerId: id,
+          flag: 'intentBubble',
+          epoch: 1,
+          group: 'treatment',
+          assignedAt: new Date(AT),
+        },
+        {
+          playerId: id,
+          flag: 'intentBubble',
+          epoch: 2,
+          group: 'control',
+          assignedAt: new Date(AT + 120_000),
+        },
       ]);
     } finally {
       await prisma!.player.delete({ where: { id } });
     }
+  });
+});
+
+describe.skipIf(prisma === null)('PrismaFlagSettingsStore, contre Postgres', () => {
+  /*
+    Un nom de drapeau propre au test : la table est partagee avec le serveur de
+    developpement, et le vrai `intentBubble` y vit sa vie.
+  */
+  const flag = `testFlag${randomUUID().slice(0, 8)}` as never;
+  const initial = {
+    flag,
+    rollout: 30,
+    measureRollout: 30,
+    epoch: 1,
+    measureStartedAtMs: AT,
+  };
+
+  afterAll(async () => {
+    await prisma?.flagSetting.deleteMany({ where: { flag } });
+    await prisma?.adminAction.deleteMany({ where: { target: flag } });
+  });
+
+  it('initialise une fois, ne remplace jamais, et journalise dans la meme transaction', async () => {
+    const store = new PrismaFlagSettingsStore(prisma as never);
+    const first = await store.loadAll([initial]);
+    expect(first.find((state) => state.flag === flag)).toEqual(initial);
+
+    // Une seconde initialisation avec une autre part ne change rien.
+    const again = await store.loadAll([{ ...initial, rollout: 90, measureRollout: 90 }]);
+    expect(again.find((state) => state.flag === flag)?.rollout).toBe(30);
+
+    const after = await store.transition(
+      flag,
+      (current) => ({ ...current, epoch: current.epoch + 1, rollout: 10, measureRollout: 10 }),
+      (before, next) => ({
+        action: 'flag.new-measure',
+        target: flag,
+        before: { epoch: before.epoch },
+        after: { epoch: next.epoch },
+        reason: 'test',
+        atMs: AT + 1_000,
+      }),
+    );
+    expect(after).toMatchObject({ epoch: 2, rollout: 10 });
+    const reread = await store.loadAll([]);
+    expect(reread.find((state) => state.flag === flag)).toMatchObject({ epoch: 2, rollout: 10 });
+
+    const audits = await prisma!.adminAction.findMany({ where: { target: flag } });
+    expect(audits).toHaveLength(1);
+    expect(audits[0]).toMatchObject({
+      action: 'flag.new-measure',
+      before: { epoch: 1 },
+      after: { epoch: 2 },
+      reason: 'test',
+      at: new Date(AT + 1_000),
+    });
+  });
+
+  it('un journal qui echoue annule l ecriture', async () => {
+    const store = new PrismaFlagSettingsStore(prisma as never);
+    await expect(
+      store.transition(
+        flag,
+        (current) => ({ ...current, rollout: 0 }),
+        () => ({
+          action: 'flag.pause',
+          target: flag,
+          before: null,
+          after: null,
+          reason: null,
+          atMs: Number.NaN,
+        }),
+      ),
+    ).rejects.toThrow();
+    const reread = await store.loadAll([]);
+    expect(reread.find((state) => state.flag === flag)?.rollout).toBe(10);
+  });
+
+  it('un drapeau sans reglage ne se change pas', async () => {
+    const store = new PrismaFlagSettingsStore(prisma as never);
+    await expect(
+      store.transition(
+        'inexistant' as never,
+        (current) => current,
+        () => ({ action: 'x', target: 'x', before: null, after: null, reason: null, atMs: AT }),
+      ),
+    ).rejects.toThrow();
   });
 });

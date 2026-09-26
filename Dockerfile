@@ -32,6 +32,7 @@ ENV CI=true
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY apps/mobile/package.json apps/mobile/
+COPY apps/admin/package.json apps/admin/
 COPY packages/rules/package.json packages/rules/
 COPY packages/protocol/package.json packages/protocol/
 COPY packages/content/package.json packages/content/
@@ -50,7 +51,9 @@ COPY . .
 
 # Le client d'abord, le serveur ensuite : `turbo run build` suit les
 # dependances de l'espace de travail, donc les paquets partages sont compiles
-# avant ceux qui les consomment.
+# avant ceux qui les consomment. L'application d'administration (`apps/admin`,
+# ADR 0018) est construite par la meme commande : c'est un paquet de
+# l'espace de travail comme les autres, avec son script `build`.
 # `prisma generate` ne touche aucune base — il lit le schema et ecrit un
 # client. Mais `prisma.config.ts` evalue `env('DATABASE_URL')` a l'import, donc
 # la commande refuse de demarrer sans elle.
@@ -91,6 +94,7 @@ ENV CI=true
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/server/package.json apps/server/
 COPY apps/mobile/package.json apps/mobile/
+COPY apps/admin/package.json apps/admin/
 COPY packages/rules/package.json packages/rules/
 COPY packages/protocol/package.json packages/protocol/
 COPY packages/content/package.json packages/content/
@@ -148,6 +152,10 @@ ENV NODE_ENV=production
 ENV PORT=3000
 # Le client vit a cote du serveur dans l'image : `main.ts` le sert depuis la.
 ENV CLIENT_DIR=/repo/client
+# L'application d'administration aussi, a part : elle n'entre jamais dans le
+# dossier du client des joueurs. Le module admin la sert sous `/admin/`, et
+# seulement quand `ADMIN_TOKEN` est pose (ADR 0018).
+ENV ADMIN_DIR=/repo/admin
 
 COPY --from=prod-deps /repo/node_modules ./node_modules
 COPY --from=prod-deps /repo/apps/server/node_modules ./apps/server/node_modules
@@ -174,6 +182,7 @@ COPY --from=build /repo/packages/content/dist packages/content/dist
 # compile et doit etre copie tel quel (regle d'or n°5).
 COPY --from=build /repo/packages/content/animations packages/content/animations
 COPY --from=build /repo/apps/mobile/dist ./client
+COPY --from=build /repo/apps/admin/dist ./admin
 
 COPY docker/entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh

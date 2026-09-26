@@ -345,7 +345,8 @@ export class MatchGateway implements OnGatewayConnection {
       this.emit(socket, 'error', {
         code: result.code,
         message: result.message,
-        retryable: result.code === 'UNAUTHORIZED',
+        // Un banni n'a rien a reessayer : rafraichir sa session lui sera refuse.
+        retryable: result.code === 'UNAUTHORIZED' && result.banned !== true,
       });
       socket.disconnect(true);
       return;
@@ -454,6 +455,19 @@ export class MatchGateway implements OnGatewayConnection {
     if (!socket.connected) return;
 
     this.notifier.register(state.playerId, socket, displayName, league, wearing);
+
+    /*
+      Un bannissement tombe pendant les lectures ci-dessus ne trouvait aucune
+      socket a fermer — et celle-ci, enregistree maintenant, n'etait jamais
+      reverifiee. On relit donc apres l'enregistrement : un bannissement
+      anterieur est vu ici, un bannissement posterieur trouvera la socket.
+    */
+    const still = await this.auth.authenticate(socket.handshake.auth);
+    if (!still.ok && still.banned === true) {
+      this.runtime.forfeitPlayer(state.playerId);
+      this.notifier.disconnectPlayer(state.playerId);
+      return;
+    }
 
     // Revenu a temps : le compte a rebours d'abandon est desarme.
     this.runtime.notePlayerReconnected(state.playerId);

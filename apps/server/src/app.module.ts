@@ -7,6 +7,7 @@ import { ChallengesModule } from './modules/challenges/challenges.module.js';
 import { InventoryModule } from './modules/inventory/inventory.module.js';
 import { MatchModule } from './modules/match/match.module.js';
 import { PaymentsModule } from './modules/payments/payments.module.js';
+import { RuleEventsModule } from './modules/rule-events/rule-events.module.js';
 import { SeasonModule } from './modules/season/season.module.js';
 import { ConfigModule } from './shared/config.module.js';
 import { LoggerModule } from './shared/logger.module.js';
@@ -33,6 +34,7 @@ import { MetricsModule } from './shared/metrics.module.js';
     PaymentsModule,
     SeasonModule,
     AnalyticsModule,
+    RuleEventsModule,
     AdminModule,
   ],
 })

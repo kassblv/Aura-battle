@@ -429,3 +429,59 @@ describe('joinWithDevice', () => {
     ).rejects.toBeInstanceOf(SessionError);
   });
 });
+
+/*
+  Bannissement (ADR 0018) : `Player.bannedUntil` existait sans etre lu. Un
+  banni n'ouvre plus de session — ni par son appareil, ni par
+  rafraichissement, ni par une preuve (code, mot de passe) — tant que le
+  bannissement court. A son terme, ou leve, tout revient.
+*/
+describe('bannissement', () => {
+  /** Bannit un joueur dans le double : ses deux index portent le bannissement. */
+  const ban = (playerId: string, until: Date | null): void => {
+    const player = players.byId.get(playerId)!;
+    const banned: PlayerRecord = { ...player, ban: { at: clock.now(), until } };
+    players.byId.set(playerId, banned);
+    for (const [hash, record] of players.byDeviceHash) {
+      if (record.id === playerId) players.byDeviceHash.set(hash, banned);
+    }
+  };
+
+  it('refuse l appareil d un banni, sans rien emettre', async () => {
+    const secret = generateDeviceSecret();
+    const opened = await service.authenticateDevice(secret);
+    ban(opened.player.id, null);
+    const before = refreshTokens.rows.size;
+
+    await expect(service.authenticateDevice(secret)).rejects.toMatchObject({ reason: 'BANNED' });
+    expect(refreshTokens.rows.size).toBe(before);
+  });
+
+  it('refuse le rafraichissement d un banni', async () => {
+    const opened = await service.authenticateDevice(generateDeviceSecret());
+    ban(opened.player.id, new Date(clock.now().getTime() + 3_600_000));
+    await expect(service.refresh(opened.refreshToken)).rejects.toMatchObject({ reason: 'BANNED' });
+  });
+
+  it('refuse le rattachement par preuve d un banni', async () => {
+    const opened = await service.authenticateDevice(generateDeviceSecret());
+    ban(opened.player.id, null);
+    await expect(
+      service.joinWithDevice(opened.player.id, 0, generateDeviceSecret()),
+    ).rejects.toMatchObject({ reason: 'BANNED' });
+    expect(players.linked).toHaveLength(0);
+    await expect(service.openForPlayer(opened.player.id)).rejects.toMatchObject({
+      reason: 'BANNED',
+    });
+  });
+
+  it('un bannissement echu ne refuse plus rien', async () => {
+    const secret = generateDeviceSecret();
+    const opened = await service.authenticateDevice(secret);
+    ban(opened.player.id, new Date(clock.now().getTime() + 60_000));
+    clock.advanceSeconds(61);
+    await expect(service.authenticateDevice(secret)).resolves.toMatchObject({
+      player: { id: opened.player.id },
+    });
+  });
+});

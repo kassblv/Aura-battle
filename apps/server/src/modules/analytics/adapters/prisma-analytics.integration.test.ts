@@ -142,15 +142,17 @@ function scenario() {
       group: 'treatment' | 'control',
       assignedAtMs: number,
       flag = 'intentBubble',
+      epoch = 1,
     ): Promise<void> {
       await prisma!.flagAssignment.create({
-        data: { playerId, flag, group, assignedAt: new Date(assignedAtMs) },
+        data: { playerId, flag, epoch, group, assignedAt: new Date(assignedAtMs) },
       });
     },
 
-    readCohort(group: 'treatment' | 'control') {
+    readCohort(group: 'treatment' | 'control', epoch = 1) {
       return new PrismaIndicatorsReader(prisma as never).readCohort(this.now, {
         flag: 'intentBubble',
+        epoch,
         group,
       });
     },
@@ -469,6 +471,27 @@ describe.skipIf(!reachable)('experiences, contre Postgres', () => {
         matchesPerActiveDay: { value: 1, n: 1 },
         abandonRate: { value: 1, n: 1 },
       });
+    } finally {
+      await s.cleanup();
+    }
+  });
+});
+
+describe.skipIf(!reachable)('mesures successives, contre Postgres', () => {
+  it('ne lit que les inscriptions de la mesure demandee', async () => {
+    const s = scenario();
+    try {
+      const a = await s.player(s.at(-5));
+      const b = await s.player(s.at(-5));
+      await s.assign(a, 'treatment', s.at(-6), 'intentBubble', 1);
+      // `a` est re-inscrit a la mesure 2, dans l'autre groupe ; `b` n'y est que la.
+      await s.assign(a, 'control', s.at(-2), 'intentBubble', 2);
+      await s.assign(b, 'treatment', s.at(-2), 'intentBubble', 2);
+
+      expect((await s.readCohort('treatment', 1)).players).toBe(1);
+      expect((await s.readCohort('control', 1)).players).toBe(0);
+      expect((await s.readCohort('treatment', 2)).players).toBe(1);
+      expect((await s.readCohort('control', 2)).players).toBe(1);
     } finally {
       await s.cleanup();
     }

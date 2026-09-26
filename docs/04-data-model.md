@@ -13,7 +13,9 @@ model Player {
   lastSeenAt   DateTime @default(now())
   softCurrency Int      @default(0)
   hardCurrency Int      @default(0)
-  bannedUntil  DateTime?
+  bannedAt     DateTime?                      // non nul = banni (ADR 0018)
+  bannedUntil  DateTime?                      // fin du bannissement ; nul avec bannedAt = definitif
+  banReason    String?                        // motif, obligatoire a l'ecriture, efface a la levee
   identities   AuthIdentity[]
   ratings      Rating[]
   inventory    InventoryItem[]
@@ -251,11 +253,38 @@ enum FlagGroup { treatment control }
 model FlagAssignment {
   playerId   String
   flag       String                           // nom declare en code (FLAGS, module flags)
+  epoch      Int       @default(1)            // la mesure (FlagSetting.epoch) ; lignes anterieures = 1
   group      FlagGroup
   assignedAt DateTime  @default(now())        // heure serveur de la premiere inscription
   player     Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
-  @@id([playerId, flag])
-  @@index([flag, group])
+  @@id([playerId, flag, epoch])
+  @@index([flag, epoch, group])
+}
+
+model FlagSetting {                           // reglage d'un drapeau (ADR 0018)
+  flag             String   @id               // nom declare en code, jamais une saisie
+  rollout          Int                        // part en vigueur, 0..100 (0 : coupe)
+  measureRollout   Int                        // part de la mesure en cours, 1..100
+  epoch            Int      @default(1)       // numero de la mesure
+  measureStartedAt DateTime
+  updatedAt        DateTime @updatedAt
+}
+
+model RuleEventOverride {                     // evenement force depuis le panneau (ADR 0018)
+  week      Int      @id                      // semaine UTC (weekIndexOf, lundi)
+  variant   String                            // id de RULE_VARIANTS, ou normal
+  updatedAt DateTime @updatedAt
+}
+
+model AdminAction {                           // journal d'administration (ADR 0018)
+  id     String   @id @default(uuid())
+  at     DateTime @default(now())
+  action String                               // flag.pause, event.override, player.ban...
+  target String                               // drapeau, week:<n>, identifiant de joueur
+  before Json?
+  after  Json?
+  reason String?
+  @@index([at])
 }
 
 model SuspicionFlag {
@@ -298,7 +327,16 @@ Spec `docs/superpowers/specs/2026-09-26-bulle-intention-ab-design.md`.
 
 - **Le groupe ne se lit jamais en base** : il se recalcule, `sha256(drapeau:joueur) mod 100 < part` (`modules/flags/domain/flags.ts`). L'ouverture d'un match reste ainsi entièrement synchrone.
 - **`FlagAssignment`** en garde la trace, pour comparer les groupes en SQL (`GET /admin/experiments`). Inscrite la première fois que l'affectation **sert** : à l'ouverture d'une partie rapide ou d'une invitation, pour chaque siège réel, témoin compris ; jamais en classé, jamais pour un fantôme. `INSERT … SELECT` depuis `Player` avec `ON CONFLICT DO NOTHING` : la première inscription fait foi (groupe et date), un joueur inconnu n'insère rien. Sans attente : une base muette coûte une trace, jamais un duel. Changer la part ne réécrit pas les lignes : elles disent le groupe **au moment de l'inscription**.
+- **Mesures successives** (panneau qui gère, ADR 0018). Le réglage vit en base (`FlagSetting`) ; l'environnement (`FLAG_INTENT_BUBBLE_ROLLOUT`) ne fait qu'initialiser une ligne absente, à l'époque 1. Changer de part, c'est **ouvrir une nouvelle mesure** : l'époque monte et le hachage devient `sha256(drapeau#époque:joueur)` — l'époque 1 garde exactement `sha256(drapeau:joueur)`, donc les inscriptions d'avant le panneau restent valides. `FlagAssignment.epoch` fait partie de la clé : un joueur est ré-inscrit à chaque mesure, et `GET /admin/experiments` ne lit que l'époque en cours. Couper (`rollout = 0`) et rallumer (`rollout = measureRollout`) ne changent pas d'époque. Chaque nœud relit `FlagSetting` toutes les 30 s ; tant qu'il ne l'a jamais lu, il n'expose ni n'inscrit personne.
 - **`Match.intentBubble`** : la bulle était active dans ce match (tous les sièges réels exposés, mode rapide ou invitation). **Le rejeu doit la lire** pour activer `intent.enabled` : contrairement à la variante de la semaine, elle n'est pas portée par `rulesVersion`, et sans elle le moteur refuserait les `INTENT_SHOWN` du journal et perdrait les +10.
+
+## Panneau d'administration : chaque écriture laisse une trace
+
+ADR 0018, spec `docs/superpowers/specs/2026-09-26-panneau-admin-gestion-design.md`.
+
+- **`AdminAction`** : une ligne par écriture du panneau (drapeau, événement forcé, bannissement, levée), **dans la même transaction** que l'écriture — le journal échoue, l'écriture n'a pas lieu. `before`/`after` gardent l'état lisible (JSON), `reason` le motif saisi. Pas d'auteur : un seul secret aujourd'hui. Index sur `at` : le panneau lit les 100 dernières.
+- **`RuleEventOverride`** : une ligne par semaine forcée ; sans ligne, la rotation décide. L'ouverture d'un match lit un cache relu toutes les 30 s ; une variante qui ne nomme plus rien (retirée du code) est ignorée. Écriture sous verrou de la ligne, pour que l'état « avant » du journal soit celui qu'on remplace.
+- **Bannissement** : `Player.bannedAt` non nul = banni, jusqu'à `bannedUntil`, définitivement si `bannedUntil` est nul — une colonne d'instant plutôt qu'une date sentinelle lointaine. `banReason` est obligatoire à l'écriture. Lu par la session (appareil, preuve, rafraîchissement : 403 `BANNED`), par le vérificateur partagé des jetons d'accès (dans la même lecture que `credentialsVersion`) et donc au handshake.
 
 ## Loadout : un kind par emplacement
 

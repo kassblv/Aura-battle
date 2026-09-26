@@ -1,11 +1,16 @@
 import { randomUUID } from 'node:crypto';
 import { CONTENT_VERSION } from '@aura/content';
 import { PROTOCOL_VERSION } from '@aura/protocol';
-import { RULES_VERSION, type Seat } from '@aura/rules';
+import { RULES_VERSION, weekIndexOf, type Seat } from '@aura/rules';
 import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
 import { intentBubbleEligible, intentBubbleFor } from '../domain/intent-bubble.js';
-import type { MatchClock, MatchNotifier, PlayerFlags } from '../domain/ports.js';
+import type {
+  MatchClock,
+  MatchNotifier,
+  PlayerFlags,
+  WeekEventOverrides,
+} from '../domain/ports.js';
 import { rulesVariantFor } from '../domain/rules-variant.js';
 import type { MatchSeats, SeatWearing } from './match-runtime.js';
 
@@ -163,6 +168,11 @@ export class MatchOpener {
      * d'intention — ce que faisait le jeu avant le test A/B.
      */
     private readonly flags: PlayerFlags | null = null,
+    /**
+     * Semaines forcees depuis le panneau (ADR 0018), lues en memoire. Absentes,
+     * la rotation seule — ce que faisait le jeu avant le panneau.
+     */
+    private readonly events: WeekEventOverrides | null = null,
   ) {}
 
   /**
@@ -220,8 +230,7 @@ export class MatchOpener {
       fantome de partie rapide la recoit aussi — il rejoue ses choix sous les
       regles de CE match, que son adversaire voit annoncees.
     */
-    const rulesVariant =
-      this.clock === null ? 'normal' : rulesVariantFor(request.mode, this.clock.now());
+    const rulesVariant = this.rulesVariantOf(request.mode);
     /*
       Decidee une fois aussi, pour la meme raison. APRES le controle des sieges :
       une ouverture refusee n'inscrit personne a l'experience. Synchrone : le
@@ -355,6 +364,17 @@ export class MatchOpener {
     if (ghost?.seat !== 'b') this.evict(seats.b);
 
     return matchId;
+  }
+
+  /**
+   * La variante de ce match : la semaine forcee depuis le panneau, sinon la
+   * rotation. Le forcage n'est meme pas lu hors partie rapide.
+   */
+  private rulesVariantOf(mode: MatchMode): string {
+    if (this.clock === null) return 'normal';
+    const atMs = this.clock.now();
+    if (mode !== 'CASUAL') return rulesVariantFor(mode, atMs);
+    return rulesVariantFor(mode, atMs, this.events?.overrideFor(weekIndexOf(atMs)) ?? null);
   }
 
   /**

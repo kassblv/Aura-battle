@@ -158,6 +158,8 @@ const configSchema = z.object({
   adminToken: z
     .string()
     .default('')
+    // Un espace colle avec le secret fermerait le panneau sans explication.
+    .transform((raw) => raw.trim())
     .refine(
       (value) => value.length === 0 || value.length >= 32,
       'ADMIN_TOKEN doit faire au moins 32 caracteres, ou rester vide',
@@ -176,6 +178,16 @@ const configSchema = z.object({
    * fichiers sur un chemin qui n existe pas.
    */
   clientDir: z
+    .string()
+    .default('')
+    .transform((raw) => raw.trim()),
+  /**
+   * Dossier du build de l'application d'administration (`apps/admin`, ADR
+   * 0018), servie sous `/admin/`. Vide par defaut : le module admin cherche
+   * alors `apps/admin/dist` a cote des sources du serveur — le bon chemin en
+   * developpement. L'image pose le sien.
+   */
+  adminDir: z
     .string()
     .default('')
     .transform((raw) => raw.trim()),
@@ -282,6 +294,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     revenuecatSandbox: env.REVENUECAT_SANDBOX,
     commit: env.SOURCE_COMMIT,
     clientDir: env.CLIENT_DIR,
+    adminDir: env.ADMIN_DIR,
     trustProxy: env.TRUST_PROXY,
     authRateLimit: env.AUTH_RATE_LIMIT,
     flagIntentBubbleRollout: env.FLAG_INTENT_BUBBLE_ROLLOUT,

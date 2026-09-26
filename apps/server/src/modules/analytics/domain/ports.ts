@@ -46,9 +46,14 @@ export interface ExperimentsReader {
   readCohort(nowMs: number, cohort: ExperimentCohort): Promise<ExperimentGroupReading>;
 }
 
-/** Les experiences declarees, avec leur part en vigueur (module `flags`). */
+/** Les experiences declarees, avec leur part et leur mesure en vigueur (module `flags`). */
 export interface DeclaredExperiments {
-  declared(): readonly { readonly flag: string; readonly rollout: number }[];
+  declared(): readonly {
+    readonly flag: string;
+    readonly rollout: number;
+    readonly epoch: number;
+    readonly measureStartedAtMs: number;
+  }[];
 }
 
 /** Horloge : le module recoit le temps, il ne le lit pas. */

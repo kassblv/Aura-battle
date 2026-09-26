@@ -18,6 +18,8 @@ export const API_PREFIXES = [
   '/admin',
   '/auth',
   '/challenges',
+  // `GET /events/week` (protocole 2.7.0) : une route d'API, jamais la page.
+  '/events',
   '/health',
   '/inventory',
   '/leaderboard',

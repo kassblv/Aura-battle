@@ -1,5 +1,6 @@
 import { PROTOCOL_VERSION } from '@aura/protocol';
 import { describe, expect, it } from 'vitest';
+import { PlayerBannedError } from './fresh-token.js';
 import { SocketAuthenticator, type AccessTokenVerifier } from './socket-auth.js';
 
 /** Verificateur de jeton en memoire : pas de cryptographie dans ces tests. */
@@ -90,5 +91,25 @@ describe('SocketAuthenticator — le handshake est la premiere barriere', () => 
 
     const codes = [inconnu, vide, sansSujet].map((r) => (r.ok ? 'ok' : r.code));
     expect(new Set(codes)).toEqual(new Set(['UNAUTHORIZED']));
+  });
+});
+
+/*
+  Bannissement (ADR 0018). Le protocole n'a pas (encore) de code `BANNED` dans
+  `ERROR_CODES` : le refus part en `UNAUTHORIZED`, message `BANNED`, et marque
+  `banned` pour que la passerelle ne le dise pas « reessayable ».
+*/
+describe('SocketAuthenticator — bannissement', () => {
+  it('refuse un banni, en le distinguant d un jeton invalide', async () => {
+    const banned = new SocketAuthenticator({
+      verify: () => Promise.reject(new PlayerBannedError()),
+    });
+    const result = await banned.authenticate(handshake());
+    expect(result).toEqual({ ok: false, code: 'BANNED', message: 'compte suspendu', banned: true });
+  });
+
+  it('un jeton invalide n est pas un bannissement', async () => {
+    const result = await authenticator.authenticate(handshake({ token: 'jwt.faux' }));
+    expect(result).not.toHaveProperty('banned');
   });
 });

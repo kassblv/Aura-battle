@@ -22,6 +22,8 @@ services:
       - NODE_ENV=production
       - PORT=3000
       - CLIENT_DIR=/repo/client
+      # L'application d'administration, a part du client des joueurs (ADR 0018).
+      - ADMIN_DIR=/repo/admin
       # Le Traefik de Coolify parle a l'app depuis le reseau Docker, donc depuis
       # une adresse privee : on croit ces adresses-la, et seulement elles. Sans
       # ce reglage tous les joueurs partageraient l'adresse IP de Traefik, donc
@@ -40,8 +42,9 @@ services:
       # Le commit deploye, pour que le panneau puisse dire QUELLE version
       # tourne — la premiere question devant un comportement inattendu.
       - SOURCE_COMMIT=${SOURCE_COMMIT}
-      # Part exposee de la bulle d'intention (test A/B, docs/10), 0 a 100.
-      # Vide : 50, la part declaree en code. 0 coupe l'experience.
+      # Part de DEPART de la bulle d'intention (test A/B, docs/10), 0 a 100 :
+      # n'initialise que la ligne `FlagSetting` absente. Ensuite, le panneau
+      # regle la part (couper, rallumer, nouvelle mesure). Vide : 50.
       - FLAG_INTENT_BUBBLE_ROLLOUT=${FLAG_INTENT_BUBBLE_ROLLOUT:-}
     volumes:
       # Le marqueur de sauvegarde vit sur l'HOTE, ecrit par le cron

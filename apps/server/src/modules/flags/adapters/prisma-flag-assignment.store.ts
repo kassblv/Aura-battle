@@ -8,8 +8,9 @@ import type { FlagAssignmentEntry, FlagAssignmentStore } from '../domain/ports.j
  *
  * Une seule instruction : la ligne est tiree de `Player`, donc un joueur
  * inconnu (compte supprime entre l'ouverture et l'ecriture) n'insere rien au
- * lieu de lever une erreur de cle etrangere ; la cle `(playerId, flag)` rend
- * un renvoi sans effet. Requete brute parce que Prisma n'exprime pas un
+ * lieu de lever une erreur de cle etrangere ; la cle `(playerId, flag, epoch)`
+ * rend un renvoi sans effet dans une mesure, et laisse une nouvelle mesure
+ * inscrire a nouveau. Requete brute parce que Prisma n'exprime pas un
  * `INSERT … SELECT … ON CONFLICT DO NOTHING` ; toutes les valeurs sont des
  * parametres.
  */
@@ -20,11 +21,12 @@ export class PrismaFlagAssignmentStore implements FlagAssignmentStore {
 
   async record(entry: FlagAssignmentEntry): Promise<void> {
     await this.prisma.$executeRaw`
-      INSERT INTO "FlagAssignment" ("playerId", "flag", "group", "assignedAt")
-      SELECT p.id, ${entry.flag}, ${entry.group}::"FlagGroup", ${utcTimestamp(entry.atMs)}
+      INSERT INTO "FlagAssignment" ("playerId", "flag", "epoch", "group", "assignedAt")
+      SELECT p.id, ${entry.flag}, ${entry.epoch}::int, ${entry.group}::"FlagGroup",
+             ${utcTimestamp(entry.atMs)}
       FROM "Player" p
       WHERE p.id = ${entry.playerId}
-      ON CONFLICT ("playerId", "flag") DO NOTHING
+      ON CONFLICT ("playerId", "flag", "epoch") DO NOTHING
     `;
   }
 }

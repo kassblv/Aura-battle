@@ -568,6 +568,54 @@ describe('MatchOpener — variante de la semaine', () => {
 });
 
 /**
+ * Semaine forcee depuis le panneau (ADR 0018) : lue a l'ouverture, par un port
+ * synchrone — l'ouverture ne peut rien attendre.
+ */
+describe('MatchOpener — semaine forcee', () => {
+  /** Lundi 12 janvier 1970 : semaine 1, « Ultime express » par rotation. */
+  const VARIANT_WEEK_MS = Date.UTC(1970, 0, 12, 12);
+  const asked: number[] = [];
+  const events = {
+    overrideFor: (week: number): string | null => {
+      asked.push(week);
+      return week === 1 ? 'contres' : null;
+    },
+  };
+
+  const openAt = (atMs: number, mode: 'RANKED' | 'CASUAL' | 'INVITE'): string | null => {
+    opener = new MatchOpener(
+      runtime,
+      notifier,
+      presence,
+      queue,
+      null,
+      { now: () => atMs },
+      null,
+      events,
+    );
+    return opener.open({ playerA: 'p1', playerB: 'p2', mode });
+  };
+
+  it('applique la variante forcee de la semaine a une partie rapide', () => {
+    asked.length = 0;
+    openAt(VARIANT_WEEK_MS, 'CASUAL');
+    expect(asked).toEqual([1]);
+    expect(runtime.opened[0]?.rulesVariant).toBe('contres');
+    expect(notifier.foundBy('p1')?.rulesVariant).toBe('contres');
+  });
+
+  it.each(['RANKED', 'INVITE'] as const)('%s ignore le forcage', (mode) => {
+    openAt(VARIANT_WEEK_MS, mode);
+    expect(runtime.opened[0]?.rulesVariant).toBe('normal');
+  });
+
+  it('une autre semaine suit la rotation', () => {
+    openAt(VARIANT_WEEK_MS + 14 * 86_400_000, 'CASUAL');
+    expect(runtime.opened[0]?.rulesVariant).toBe('brillance');
+  });
+});
+
+/**
  * Bulle d'intention en test A/B (spec 2026-09-26) : l'ouverture decide une
  * fois, annonce `match:found.intentBubble` et le transmet au runtime.
  */

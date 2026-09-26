@@ -6,9 +6,10 @@ import type { IndicatorReadings } from '../../analytics/domain/indicators.js';
 import { ExperimentsService } from '../../analytics/application/experiments.service.js';
 import type { ExperimentGroupReading } from '../../analytics/domain/experiments.js';
 import { IndicatorsService } from '../../analytics/application/indicators.service.js';
+import { AdminGate } from '../application/admin-gate.js';
 import { AdminStatusService } from '../application/admin-status.service.js';
-import { ADMIN_PAGE } from './admin-page.js';
 import { AdminController } from './admin.controller.js';
+import { AdminGuard } from './admin.guard.js';
 
 /**
  * `GET /admin/indicators` : meme garde que `/admin/status` — 404 sans secret
@@ -50,6 +51,11 @@ beforeAll(async () => {
     controllers: [AdminController],
     providers: [
       { provide: CONFIG, useValue: config },
+      {
+        provide: AdminGate,
+        useValue: new AdminGate({ token: () => config.adminToken, now: () => NOW }),
+      },
+      AdminGuard,
       { provide: AdminStatusService, useValue: { read: () => Promise.resolve({}) } },
       {
         provide: IndicatorsService,
@@ -72,7 +78,11 @@ beforeAll(async () => {
               return Promise.resolve(GROUP);
             },
           },
-          experiments: { declared: () => [{ flag: 'intentBubble', rollout: 50 }] },
+          experiments: {
+            declared: () => [
+              { flag: 'intentBubble', rollout: 50, epoch: 2, measureStartedAtMs: NOW - 86_400_000 },
+            ],
+          },
           clock: { now: () => new Date(NOW) },
         }),
       },
@@ -150,16 +160,6 @@ describe('GET /admin/indicators', () => {
   });
 });
 
-describe('panneau : section Indicateurs', () => {
-  it('interroge la route des indicateurs avec le meme secret que l etat', () => {
-    expect(ADMIN_PAGE).toContain('<h2>Indicateurs');
-    expect(ADMIN_PAGE).toContain(
-      "fetch('/admin/indicators', { headers: { authorization: 'Bearer ' + secret } })",
-    );
-    expect(ADMIN_PAGE).toContain('échantillon insuffisant');
-  });
-});
-
 const experiments = (authorization?: string) =>
   app.inject({
     method: 'GET',
@@ -188,20 +188,23 @@ describe('GET /admin/experiments', () => {
     expect(reply.json()).toEqual({
       at: '2026-09-26T09:30:00.000Z',
       experiments: [
-        { flag: 'intentBubble', rollout: 50, groups: { treatment: GROUP, control: GROUP } },
+        {
+          flag: 'intentBubble',
+          rollout: 50,
+          epoch: 2,
+          measureStartedAt: '2026-09-25T09:30:00.000Z',
+          groups: { treatment: GROUP, control: GROUP },
+        },
       ],
     });
     expect(cohortReads.sort()).toEqual(['intentBubble:control', 'intentBubble:treatment']);
   });
-});
 
-describe('panneau : section Experiences', () => {
-  it('interroge la route des experiences avec le meme secret, sans innerHTML', () => {
-    expect(ADMIN_PAGE).toContain('<h2>Expériences');
-    expect(ADMIN_PAGE).toContain(
-      "fetch('/admin/experiments', { headers: { authorization: 'Bearer ' + secret } })",
-    );
-    // Des donnees venues de la base ne s'ecrivent jamais comme du balisage.
-    expect(ADMIN_PAGE).not.toMatch(/innerHTML|outerHTML|insertAdjacentHTML|document\.write/);
+  it('la garde ne lit rien avant de refuser : 404, puis 401', async () => {
+    config.adminToken = '';
+    expect((await experiments(`Bearer ${SECRET}`)).statusCode).toBe(404);
+    config.adminToken = SECRET;
+    expect((await experiments('Bearer faux')).statusCode).toBe(401);
+    expect(cohortReads).toEqual([]);
   });
 });

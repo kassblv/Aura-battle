@@ -10,8 +10,11 @@ const reading = (players: number): ExperimentGroupReading => ({
   abandonRate: { value: 0.1, n: 10 },
 });
 
+const MEASURE_AT = Date.UTC(2026, 8, 20);
+
 function build(start = Date.UTC(2026, 8, 26, 9)) {
   let now = start;
+  let epoch = 2;
   const calls: { nowMs: number; cohort: ExperimentCohort }[] = [];
   let failNext = false;
   const service = new ExperimentsService({
@@ -25,12 +28,17 @@ function build(start = Date.UTC(2026, 8, 26, 9)) {
         return Promise.resolve(reading(cohort.group === 'treatment' ? 12 : 11));
       },
     },
-    experiments: { declared: () => [{ flag: 'intentBubble', rollout: 50 }] },
+    experiments: {
+      declared: () => [
+        { flag: 'intentBubble', rollout: 50, epoch, measureStartedAtMs: MEASURE_AT },
+      ],
+    },
     clock: { now: () => new Date(now) },
   });
   return {
     service,
     calls,
+    newMeasure: () => (epoch += 1),
     advance: (ms: number) => (now += ms),
     failOnce: () => (failNext = true),
   };
@@ -47,13 +55,16 @@ describe('ExperimentsService', () => {
         {
           flag: 'intentBubble',
           rollout: 50,
+          epoch: 2,
+          measureStartedAt: '2026-09-20T00:00:00.000Z',
           groups: { treatment: reading(12), control: reading(11) },
         },
       ],
     });
+    // La mesure EN COURS seulement : une ancienne mesure ne se melange pas.
     expect(calls.map((c) => c.cohort)).toEqual([
-      { flag: 'intentBubble', group: 'treatment' },
-      { flag: 'intentBubble', group: 'control' },
+      { flag: 'intentBubble', epoch: 2, group: 'treatment' },
+      { flag: 'intentBubble', epoch: 2, group: 'control' },
     ]);
     expect(new Set(calls.map((c) => c.nowMs))).toEqual(new Set([Date.UTC(2026, 8, 26, 9)]));
   });
@@ -67,6 +78,16 @@ describe('ExperimentsService', () => {
     advance(1);
     await service.report();
     expect(calls).toHaveLength(4);
+  });
+
+  it('une nouvelle mesure invalide le rapport garde', async () => {
+    const { service, calls, newMeasure } = build();
+    await service.report();
+    newMeasure();
+    const report = await service.report();
+    expect(calls).toHaveLength(4);
+    expect(report.experiments[0]?.epoch).toBe(3);
+    expect(calls[3]?.cohort.epoch).toBe(3);
   });
 
   it('ne garde pas un echec', async () => {

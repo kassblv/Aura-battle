@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { CredentialsChangedError, FreshAccessTokenVerifier } from './fresh-token.js';
+import {
+  CredentialsChangedError,
+  FreshAccessTokenVerifier,
+  PlayerBannedError,
+} from './fresh-token.js';
 import type { VerifiedToken } from './socket-auth.js';
 
 /** Jeton `sub@cv` : le verificateur interne est un double lisible. */
@@ -56,5 +60,39 @@ describe('FreshAccessTokenVerifier', () => {
     const { sut, reads } = verifier(0);
     await expect(sut.verify('@0')).rejects.toBeInstanceOf(CredentialsChangedError);
     expect(reads).toEqual([]);
+  });
+});
+
+/*
+  Bannissement (ADR 0018) : un jeton d'acces deja emis vit encore quinze
+  minutes. Le verificateur partage relit le bannissement avec la version des
+  identifiants — une seule lecture — et refuse le jeton d'un banni partout :
+  routes HTTP et handshake.
+*/
+describe('FreshAccessTokenVerifier — bannissement', () => {
+  const NOW = new Date('2026-09-26T12:00:00Z');
+  const banned = (until: Date | null) =>
+    new FreshAccessTokenVerifier(
+      inner,
+      {
+        credentialsVersion: () => Promise.resolve(0),
+        accessStateOf: () =>
+          Promise.resolve({ credentialsVersion: 0, ban: { at: new Date(0), until } }),
+      },
+      { now: () => NOW },
+    );
+
+  it('refuse le jeton d un banni definitif', async () => {
+    await expect(banned(null).verify('p1@0')).rejects.toBeInstanceOf(PlayerBannedError);
+  });
+
+  it('refuse le jeton d un banni temporaire tant que le bannissement court', async () => {
+    await expect(banned(new Date(NOW.getTime() + 1)).verify('p1@0')).rejects.toBeInstanceOf(
+      PlayerBannedError,
+    );
+  });
+
+  it('accepte le jeton une fois le bannissement echu', async () => {
+    await expect(banned(NOW).verify('p1@0')).resolves.toEqual({ sub: 'p1', cv: 0 });
   });
 });

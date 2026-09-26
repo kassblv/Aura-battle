@@ -117,6 +117,17 @@ export interface PlayerFlags {
   enroll(flag: 'intentBubble', playerId: string): ExperimentGroup;
 }
 
+/**
+ * Les semaines dont l'evenement est force depuis le panneau (ADR 0018).
+ *
+ * **Synchrone** : lu a l'ouverture d'un match, qui ne peut rien attendre. Le
+ * module `rule-events` le realise par un cache relu toutes les trente
+ * secondes. `null` : pas de forcage, la rotation decide.
+ */
+export interface WeekEventOverrides {
+  overrideFor(week: number): string | null;
+}
+
 /** Ecriture d'un match acheve. */
 export interface MatchRepository {
   save(record: MatchRecord): Promise<void>;

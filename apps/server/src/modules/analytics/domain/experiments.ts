@@ -20,6 +20,8 @@ export const EXPERIMENT_GROUPS: readonly ExperimentGroup[] = Object.freeze([
 /** Un groupe d'une experience : qui en fait partie. */
 export interface ExperimentCohort {
   readonly flag: string;
+  /** La mesure : une nouvelle mesure repart de zero inscription (panneau qui gere). */
+  readonly epoch: number;
   readonly group: ExperimentGroup;
 }
 
@@ -37,6 +39,9 @@ export interface ExperimentLine {
   readonly flag: string;
   /** Part exposee en vigueur sur ce noeud, en pour cent. */
   readonly rollout: number;
+  /** La mesure lue : la mesure EN COURS, jamais un melange avec les precedentes. */
+  readonly epoch: number;
+  readonly measureStartedAt: string;
   readonly groups: Readonly<Record<ExperimentGroup, ExperimentGroupReading>>;
 }
 

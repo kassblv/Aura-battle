@@ -39,6 +39,15 @@ import { ProfileError, ProfileService } from '../application/profile.js';
 import { RecoveryError, RecoveryService } from '../application/recovery.js';
 import { SessionError, SessionService } from '../application/session.js';
 
+/**
+ * Refus pour bannissement (ADR 0018) : `403 BANNED`, distinct d'une session
+ * invalide — le client ne doit pas boucler sur un rafraichissement qui ne
+ * reussira pas. Rien sur le motif ni la duree : ce n'est pas a une reponse
+ * d'API de l'annoncer.
+ */
+const banned = (): ForbiddenException =>
+  new ForbiddenException({ code: 'BANNED', message: 'compte suspendu' });
+
 /** Ce que la route de profil rend : le joueur, tel qu'il s'appelle desormais. */
 export interface ProfileResponse {
   readonly id: string;
@@ -363,6 +372,7 @@ export class AuthController {
     try {
       return await this.sessions.joinWithDevice(playerId, provenVersion, deviceSecret);
     } catch (cause) {
+      if (cause instanceof SessionError && cause.reason === 'BANNED') throw banned();
       if (cause instanceof SessionError && cause.reason === 'CREDENTIALS_CHANGED') {
         // La preuve portait sur un secret qui vient d'etre change : elle ne
         // vaut plus rien, et la reponse est celle d'une preuve fausse.
@@ -478,6 +488,7 @@ export class AuthController {
       return await run();
     } catch (cause) {
       if (cause instanceof SessionError) {
+        if (cause.reason === 'BANNED') throw banned();
         if (cause.reason === 'INVALID_DEVICE_SECRET') {
           throw new BadRequestException({
             code: 'INVALID_PAYLOAD',

@@ -1,4 +1,5 @@
 import { isCompatibleProtocol, parseHandshake, type ErrorCode } from '@aura/protocol';
+import { PlayerBannedError } from './fresh-token.js';
 
 /**
  * Authentification du handshake Socket.IO (docs/03-pvp-protocol.md).
@@ -23,7 +24,16 @@ export interface AccessTokenVerifier {
 
 export type SocketAuthResult =
   | { readonly ok: true; readonly playerId: string }
-  | { readonly ok: false; readonly code: ErrorCode; readonly message: string };
+  | {
+      readonly ok: false;
+      readonly code: ErrorCode;
+      readonly message: string;
+      /**
+       * Refus pour bannissement (ADR 0018). `ERROR_CODES` n'a pas de `BANNED` :
+       * le refus part en `UNAUTHORIZED`, message `BANNED`, non reessayable.
+       */
+      readonly banned?: true;
+    };
 
 const refuse = (code: ErrorCode, message: string): SocketAuthResult => ({
   ok: false,
@@ -54,7 +64,10 @@ export class SocketAuthenticator {
         return refuse('UNAUTHORIZED', 'session invalide');
       }
       return { ok: true, playerId: token.sub };
-    } catch {
+    } catch (cause: unknown) {
+      if (cause instanceof PlayerBannedError) {
+        return { ok: false, code: 'BANNED', message: 'compte suspendu', banned: true };
+      }
       // Message volontairement uniforme : il ne doit pas apprendre a un
       // attaquant si le jeton est expire, mal signe ou inexistant. Le detail
       // reste dans le journal du serveur.

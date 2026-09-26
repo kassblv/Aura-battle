@@ -1,9 +1,11 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
+import { banFromColumns, type PlayerBan } from '../domain/ban.js';
 import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
 import type {
   CredentialsVersionReader,
+  PlayerAccessReader,
   EmailIdentityRecord,
   EmailIdentityRepository,
   PlayerRecord,
@@ -24,13 +26,33 @@ import type {
 /** Appareils rattaches a un meme joueur, au plus (ADR 0013). */
 export const MAX_DEVICES = 10;
 
+/** Un joueur et son bannissement : ce que lisent les chemins qui ouvrent une session. */
+const PLAYER_WITH_BAN = {
+  id: true,
+  displayName: true,
+  bannedAt: true,
+  bannedUntil: true,
+} as const;
+
+const withBan = (row: {
+  id: string;
+  displayName: string;
+  bannedAt: Date | null;
+  bannedUntil: Date | null;
+}): PlayerRecord => ({
+  id: row.id,
+  displayName: row.displayName,
+  ban: banFromColumns(row.bannedAt, row.bannedUntil),
+});
+
 @Injectable()
 export class PrismaPlayerRepository
   implements
     PlayerRepository,
     RecoveryIdentityRepository,
     EmailIdentityRepository,
-    CredentialsVersionReader
+    CredentialsVersionReader,
+    PlayerAccessReader
 {
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir auth.controller.ts).
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
@@ -38,16 +60,33 @@ export class PrismaPlayerRepository
   async findByDeviceHash(deviceHash: string): Promise<PlayerRecord | null> {
     const identity = await this.prisma.authIdentity.findUnique({
       where: { provider_subject: { provider: 'DEVICE', subject: deviceHash } },
-      select: { player: { select: { id: true, displayName: true } } },
+      select: { player: { select: PLAYER_WITH_BAN } },
     });
-    return identity?.player ?? null;
+    return identity === null ? null : withBan(identity.player);
   }
 
   async findById(playerId: string): Promise<PlayerRecord | null> {
-    return this.prisma.player.findUnique({
+    const player = await this.prisma.player.findUnique({
       where: { id: playerId },
-      select: { id: true, displayName: true },
+      select: PLAYER_WITH_BAN,
     });
+    return player === null ? null : withBan(player);
+  }
+
+  /** Version des identifiants et bannissement, en une lecture (verificateur partage). */
+  async accessStateOf(
+    playerId: string,
+  ): Promise<{ credentialsVersion: number; ban: PlayerBan | null } | null> {
+    const player = await this.prisma.player.findUnique({
+      where: { id: playerId },
+      select: { credentialsVersion: true, bannedAt: true, bannedUntil: true },
+    });
+    return player === null
+      ? null
+      : {
+          credentialsVersion: player.credentialsVersion,
+          ban: banFromColumns(player.bannedAt, player.bannedUntil),
+        };
   }
 
   /**

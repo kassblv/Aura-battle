@@ -8,6 +8,9 @@ import { PrismaService } from '../../shared/prisma.service.js';
 import { AuthModule } from '../auth/auth.module.js';
 import { FeatureFlags } from '../flags/application/feature-flags.js';
 import { FlagsModule } from '../flags/flags.module.js';
+import { RuleEventsService } from '../rule-events/application/rule-events.service.js';
+import { RuleEventsModule } from '../rule-events/rule-events.module.js';
+import { PlayerBanEvents } from '../auth/application/ban-events.js';
 import { CredentialsEvents } from '../auth/application/credentials-events.js';
 import { GhostNotifier } from '../matchmaking/adapters/ghost-notifier.js';
 import { PrismaGhostStore } from '../matchmaking/adapters/prisma-ghost.store.js';
@@ -49,6 +52,7 @@ import { PLAYER_WARDROBE, type PlayerWardrobe } from './domain/wardrobe.js';
 import { PrismaMatchRepository } from './adapters/prisma-match.repository.js';
 import { SocketNotifier } from './adapters/socket-notifier.js';
 import { SystemMatchClock, TimeoutScheduler } from './adapters/timeout-scheduler.js';
+import { enforceBans } from './application/ban-enforcement.js';
 import { InviteService } from './application/invites.js';
 import { MatchOpener } from './application/match-opener.js';
 import { MatchRuntime } from './application/match-runtime.js';
@@ -73,11 +77,22 @@ import { MatchRuntime } from './application/match-runtime.js';
 /** Jeton du provider qui declare les compteurs vivants du module. */
 const MATCH_GAUGES = Symbol('MATCH_GAUGES');
 
+/** Jeton du provider qui applique un bannissement aux matchs et sockets (ADR 0018). */
+const BAN_ENFORCEMENT = Symbol('BAN_ENFORCEMENT');
+
 @Module({
   // `InventoryStoreModule` : le depot d'inventaire, en un seul exemplaire
   // partage avec `InventoryModule` — donc un seul cache du catalogue.
   // `FlagsModule` : l'affectation aux experiences, lue a l'ouverture des matchs.
-  imports: [AuthModule, RedisModule, ChallengesModule, InventoryStoreModule, FlagsModule],
+  // `RuleEventsModule` : les semaines forcees depuis le panneau, lues a l'ouverture.
+  imports: [
+    AuthModule,
+    RedisModule,
+    ChallengesModule,
+    InventoryStoreModule,
+    FlagsModule,
+    RuleEventsModule,
+  ],
   controllers: [LeaderboardController],
   providers: [
     {
@@ -343,6 +358,7 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
         PinoLoggerService,
         SystemMatchClock,
         FeatureFlags,
+        RuleEventsService,
       ],
       useFactory: (
         runtime: MatchRuntime,
@@ -353,11 +369,13 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
         clock: SystemMatchClock,
         // Le groupe de chaque joueur, donc la bulle d'intention (test A/B).
         flags: FeatureFlags,
+        // Les semaines forcees depuis le panneau (ADR 0018), lues en memoire.
+        events: RuleEventsService,
       ) =>
         // `SocketNotifier` tient les deux roles : envoyer un message, et dire
         // qui est la et sous quel nom. Ce sont deux ports distincts, parce que
         // ce sont deux questions distinctes.
-        new MatchOpener(runtime, notifier, notifier, queue, logger, clock, flags),
+        new MatchOpener(runtime, notifier, notifier, queue, logger, clock, flags, events),
     },
 
     {
@@ -421,6 +439,16 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
     },
 
     MatchGateway,
+
+    // Un bannissement : forfait du match en cours, puis sockets fermees (ADR 0018).
+    {
+      provide: BAN_ENFORCEMENT,
+      inject: [PlayerBanEvents, MatchRuntime, SocketNotifier],
+      useFactory: (bans: PlayerBanEvents, runtime: MatchRuntime, notifier: SocketNotifier) => {
+        enforceBans(bans, runtime, notifier);
+        return true;
+      },
+    },
 
     /**
      * Compteurs vivants publies a la sonde de charge (jalon M7).

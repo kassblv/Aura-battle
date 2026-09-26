@@ -162,7 +162,7 @@ describe.skipIf(!reachable)('contrainte d unicite de l identite d appareil', () 
 
     // Et le perdant retrouve bien le joueur du gagnant : la chaine complete de
     // l'adoption, de la contrainte jusqu'au cas d'usage.
-    expect(await players.findByDeviceHash(deviceHash)).toEqual(winner);
+    expect(await players.findByDeviceHash(deviceHash)).toEqual({ ...winner, ban: null });
   });
 
   it('ne laisse pas fuir le deviceHash dans un journal, ni par l erreur ni par sa cause', async () => {
@@ -277,7 +277,10 @@ describe.skipIf(!reachable)('code de recuperation, contre une vraie base', () =>
     await repository.setRecoveryIdentity(player.id, 'hash_recovery_autre');
     // Le compte invite continue de s'ouvrir depuis le navigateur d'origine :
     // lier un compte AJOUTE une ligne, sans rien deplacer (docs/04).
-    await expect(repository.findByDeviceHash(deviceHash)).resolves.toEqual(player);
+    await expect(repository.findByDeviceHash(deviceHash)).resolves.toEqual({
+      ...player,
+      ban: null,
+    });
   });
 });
 
@@ -675,7 +678,10 @@ describe.skipIf(!reachable)('la preuve d appareil ne se fabrique pas', () => {
       await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'DEVICE' } }),
     ).toBe(MAX_DEVICES);
     await expect(players.findByDeviceHash(hashSecret(first))).resolves.toBeNull();
-    await expect(players.findByDeviceHash(hashSecret(later.at(-1)!))).resolves.toEqual(player);
+    await expect(players.findByDeviceHash(hashSecret(later.at(-1)!))).resolves.toEqual({
+      ...player,
+      ban: null,
+    });
   });
 });
 
@@ -799,5 +805,43 @@ describe.skipIf(!reachable)('rattachements concurrents', () => {
     expect(
       await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'DEVICE' } }),
     ).toBe(MAX_DEVICES);
+  });
+});
+
+/*
+  Bannissement (ADR 0018), contre une vraie base : les lectures qui precedent
+  une session portent le bannissement, et le verificateur partage refuse le
+  jeton d'un banni dans la meme lecture que la version.
+*/
+describe.skipIf(!reachable)('bannissement lu en base', () => {
+  it('findById, findByDeviceHash et accessStateOf portent le bannissement', async () => {
+    const players = buildRepository();
+    const secret = generateDeviceSecret();
+    created.add(hashSecret(secret));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(secret),
+      displayName: 'Banni',
+    });
+    expect((await players.findById(player.id))?.ban).toBeNull();
+    await expect(players.accessStateOf(player.id)).resolves.toEqual({
+      credentialsVersion: 0,
+      ban: null,
+    });
+
+    const at = new Date('2026-09-26T10:00:00Z');
+    const until = new Date('2099-01-01T00:00:00Z');
+    await prisma!.player.update({
+      where: { id: player.id },
+      data: { bannedAt: at, bannedUntil: until, banReason: 'test' },
+    });
+    expect((await players.findById(player.id))?.ban).toEqual({ at, until });
+    expect((await players.findByDeviceHash(hashSecret(secret)))?.ban).toEqual({ at, until });
+    await expect(players.accessStateOf(player.id)).resolves.toEqual({
+      credentialsVersion: 0,
+      ban: { at, until },
+    });
+    await expect(players.accessStateOf(`inconnu_${randomUUID()}`)).resolves.toBeNull();
+
+    await expect(realVerifier(players).verify(`${player.id}:0`)).rejects.toThrow('BANNED');
   });
 });

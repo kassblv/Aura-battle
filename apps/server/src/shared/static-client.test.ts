@@ -33,11 +33,12 @@ describe('servesIndex', () => {
     }
   });
 
-  it('couvre les sept chemins que le serveur expose', () => {
+  it('couvre les chemins que le serveur expose en lecture', () => {
     expect([...API_PREFIXES].sort()).toEqual([
       '/admin',
       '/auth',
       '/challenges',
+      '/events',
       '/health',
       '/inventory',
       '/leaderboard',

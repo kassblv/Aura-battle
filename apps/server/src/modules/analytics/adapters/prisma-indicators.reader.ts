@@ -64,6 +64,7 @@ function cohortScope(cohort: ExperimentCohort, nowMs: number): Scope {
     SELECT 1 FROM "FlagAssignment" fa
     WHERE fa."playerId" = ${playerColumn}
       AND fa.flag = ${cohort.flag}
+      AND fa.epoch = ${cohort.epoch}::int
       AND fa."group" = ${cohort.group}::"FlagGroup"
       AND fa."assignedAt" < ${utcTimestamp(nowMs)}
   )`;
@@ -158,6 +159,7 @@ export class PrismaIndicatorsReader implements IndicatorsReader, ExperimentsRead
       SELECT count(*)::int AS n
       FROM "FlagAssignment" fa
       WHERE fa.flag = ${cohort.flag}
+        AND fa.epoch = ${cohort.epoch}::int
         AND fa."group" = ${cohort.group}::"FlagGroup"
         AND fa."assignedAt" < ${utcTimestamp(nowMs)}
     `;
