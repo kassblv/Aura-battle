@@ -267,6 +267,8 @@ export const AUTH_ERROR_CODES = [
   'TOO_MANY_ATTEMPTS',
   /** Trop de hachages en cours : reessayer dans un instant. */
   'BUSY',
+  /** Compte suspendu depuis le panneau (ADR 0018), en `403`. */
+  'BANNED',
 ] as const;
 
 export type AuthErrorCode = (typeof AUTH_ERROR_CODES)[number];

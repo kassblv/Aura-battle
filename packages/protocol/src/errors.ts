@@ -18,6 +18,8 @@ export const ERROR_CODES = [
   'ALREADY_IN_QUEUE',
   /** Un des deux joueurs occupe deja un siege : aucun ne peut en tenir deux. */
   'ALREADY_IN_MATCH',
+  /** Compte suspendu depuis le panneau (ADR 0018) : ne pas reessayer. */
+  'BANNED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

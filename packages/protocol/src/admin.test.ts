@@ -75,3 +75,15 @@ describe('joueurs', () => {
     );
   });
 });
+
+/*
+  Un joueur banni depuis le panneau doit l'apprendre comme tel — pas comme un
+  jeton perime, qui ferait reessayer le client en boucle.
+*/
+describe('bannissement', () => {
+  it('a son code, sur le socket comme en HTTP', async () => {
+    const { ERROR_CODES, AUTH_ERROR_CODES } = await import('./index.js');
+    expect(ERROR_CODES).toContain('BANNED');
+    expect(AUTH_ERROR_CODES).toContain('BANNED');
+  });
+});
