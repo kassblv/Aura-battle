@@ -77,6 +77,32 @@ describe('FeatureFlags', () => {
     expect(flags.enroll('intentBubble', 'p4')).toBe('treatment');
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(warnings).toHaveLength(1);
-    expect(warnings[0]).toContain('p4');
+    // Jamais l'identifiant du joueur : un journal ne doit pas defaire une
+    // suppression de compte (voir prisma-match.repository.ts).
+    expect(warnings[0]).not.toContain('p4');
+    expect(warnings[0]).toContain('intentBubble');
+  });
+
+  /*
+    La ligne existe des la premiere inscription : la reecrire a chaque match
+    ferait croitre la charge en base avec le nombre de matchs, pas de joueurs.
+  */
+  it('n inscrit qu une fois par joueur et par drapeau', () => {
+    const store = new MemoryStore();
+    const flags = new FeatureFlags({ rollouts: { intentBubble: 100 }, clock, store });
+    flags.enroll('intentBubble', 'p5');
+    flags.enroll('intentBubble', 'p5');
+    expect(store.entries).toHaveLength(1);
+  });
+
+  it('reessaie au match suivant si l inscription a echoue', async () => {
+    const store = new MemoryStore();
+    store.failure = new Error('base indisponible');
+    const flags = new FeatureFlags({ rollouts: { intentBubble: 100 }, clock, store });
+    flags.enroll('intentBubble', 'p6');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    store.failure = null;
+    flags.enroll('intentBubble', 'p6');
+    expect(store.entries).toHaveLength(2);
   });
 });

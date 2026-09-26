@@ -4,6 +4,12 @@ import { FLAG_NAMES, groupOf, type FlagGroup, type FlagName } from '../domain/fl
 import type { FlagAssignmentStore, FlagClock } from '../domain/ports.js';
 
 /**
+ * Borne de la memoire des inscriptions : au-dela, on oublie tout et l'on
+ * reinscrit — un `ON CONFLICT DO NOTHING` de plus par joueur, rien de faux.
+ */
+const MAX_REMEMBERED = 100_000;
+
+/**
  * Les interrupteurs d'experience, a la part en vigueur (spec 2026-09-26).
  *
  * **Tout est synchrone cote appelant.** L'ouverture d'un match ne peut rien
@@ -38,6 +44,9 @@ export class FeatureFlags {
     this.assign = deps.assign ?? ((flag, playerId) => groupOf(flag, playerId, this.rollouts[flag]));
   }
 
+  /** Affectations deja inscrites par ce noeud (cles `drapeau:joueur`). */
+  private readonly enrolled = new Set<string>();
+
   /** Le groupe d'un joueur, sans rien inscrire. */
   groupOf(flag: FlagName, playerId: string): FlagGroup {
     return this.assign(flag, playerId);
@@ -51,13 +60,19 @@ export class FeatureFlags {
    */
   enroll(flag: FlagName, playerId: string): FlagGroup {
     const group = this.assign(flag, playerId);
-    if (this.store !== null) {
+    const key = `${flag}:${playerId}`;
+    // La ligne existe des la premiere inscription : on ne la reecrit pas a
+    // chaque match. Un echec retire la cle, et le match suivant reessaie.
+    if (this.store !== null && !this.enrolled.has(key)) {
+      if (this.enrolled.size >= MAX_REMEMBERED) this.enrolled.clear();
+      this.enrolled.add(key);
       void this.store
         .record({ playerId, flag, group, atMs: this.clock.now() })
         .catch((cause: unknown) => {
-          this.log?.warn(
-            `affectation « ${flag} » non inscrite pour ${playerId} : ${describeCause(cause)}`,
-          );
+          this.enrolled.delete(key);
+          // Jamais l'identifiant du joueur : un journal ne doit pas defaire
+          // une suppression de compte.
+          this.log?.warn(`affectation « ${flag} » non inscrite : ${describeCause(cause)}`);
         });
     }
     return group;

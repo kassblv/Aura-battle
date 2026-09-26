@@ -883,8 +883,8 @@ export class MatchRuntime {
    * Le runtime ne verifie RIEN lui-meme — ni la phase, ni le verrouillage, ni
    * l'annonce deja faite, ni que la bulle est active : c'est le moteur qui en
    * decide (regle d'or n°1), et son refus se lit a l'absence d'effet. Un refus
-   * est compte au siege comme tout evenement refuse, et ne dit rien a
-   * personne : un client honnete n'annonce jamais hors de ces conditions.
+   * ne dit rien a personne et n'est PAS compte comme suspect : une annonce
+   * honnete peut arriver juste apres la resolution de la manche.
    */
   showIntent(matchId: string, seat: Seat, style: Style): void {
     const match = this.matches.get(matchId);
@@ -918,7 +918,10 @@ export class MatchRuntime {
     const seat: Seat | null = 'seat' in event ? event.seat : null;
 
     if (step.state === match.state) {
-      if (seat !== null) match.rejected[seat] += 1;
+      // Une annonce refusee n'est pas comptee : elle est sujette a une course
+      // de reseau honnete (l'adversaire verrouille en second pendant que le
+      // paquet voyage, et la manche se resout avant son arrivee).
+      if (seat !== null && event.type !== 'INTENT_SHOWN') match.rejected[seat] += 1;
     } else if (this.hasRoomInJournal(match, seat)) {
       match.journal.push({ atMs, event });
       if (seat === null) match.phaseEntries += 1;

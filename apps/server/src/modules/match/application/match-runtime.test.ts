@@ -1782,6 +1782,21 @@ describe('bulle d intention', () => {
     expect(shown(SEATS.b)).toEqual([]);
   });
 
+  /*
+    Une annonce qui arrive juste apres la resolution (l'adversaire a verrouille
+    en second pendant que le paquet voyageait) est une course de reseau, pas
+    une faute : elle ne doit pas nourrir le compteur de suspicion du siege.
+  */
+  it('ne compte pas une annonce tardive comme un refus suspect', () => {
+    build(true);
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', choice(1), null);
+    runtime.lockChoice(MATCH_ID, 'b', choice(1), null);
+    runtime.showIntent(MATCH_ID, 'a', 'calme');
+    runtime.forfeit(MATCH_ID, 'b');
+    expect(repository.saved[0]?.rejectedEvents).toEqual({ a: 0, b: 0 });
+  });
+
   it('ignore toute annonce dans un match sans bulle', () => {
     build(false);
     advanceTo('choice');
