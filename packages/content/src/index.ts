@@ -22,3 +22,4 @@ export * from './pricing.js';
 export * from './validate.js';
 export * from './tokenPacks.js';
 export * from './seasonPass.js';
+export * from './registry.js';
