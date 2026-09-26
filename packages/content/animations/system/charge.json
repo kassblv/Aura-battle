@@ -1,0 +1,41 @@
+{
+  "id": "anim.system.none.charge",
+  "version": 1,
+  "name": {
+    "fr": "Charge"
+  },
+  "move": {
+    "style": "system",
+    "tier": null
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 4,
+    "weights": null,
+    "ease": false
+  },
+  "flags": {
+    "expression": "angry"
+  },
+  "hands": [
+    ["fist", "in"],
+    ["fist", "in"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [3, -136],
+        "neck": [0, -120],
+        "hip": [0, -70],
+        "le": [-16, -98],
+        "lh": [-10, -74],
+        "re": [16, -98],
+        "rh": [12, -74],
+        "lk": [-18, -36],
+        "lf": [-24, 0],
+        "rk": [18, -36],
+        "rf": [24, 0]
+      }
+    }
+  ]
+}

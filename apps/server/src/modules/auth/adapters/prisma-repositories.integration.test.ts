@@ -1,0 +1,803 @@
+import { randomUUID } from 'node:crypto';
+import { Writable } from 'node:stream';
+import { PrismaPg } from '@prisma/adapter-pg';
+import { Prisma, PrismaClient } from '@prisma/client';
+import { afterAll, describe, expect, it } from 'vitest';
+import { loadConfig } from '../../../shared/config.js';
+import { createLogger, PinoLoggerService } from '../../../shared/logger.js';
+import { type EmailAuthError, EmailAuthService } from '../application/email.js';
+import { fakePasswordHasher } from '../application/email-testing.js';
+import { FreshAccessTokenVerifier } from '../application/fresh-token.js';
+import { RecoveryError } from '../application/recovery.js';
+import { SessionService } from '../application/session.js';
+import { generateDeviceSecret, hashSecret } from '../domain/credentials.js';
+import { DeviceIdentityConflictError, EmailIdentityConflictError } from '../domain/ports.js';
+import { MemoryAttemptLimiter } from './memory-attempt-limiter.js';
+import {
+  MAX_DEVICES,
+  PrismaPlayerRepository,
+  PrismaRefreshTokenRepository,
+} from './prisma-repositories.js';
+
+/**
+ * Test d'integration : c'est la **contrainte d'unicite de Postgres** qui doit
+ * produire `P2002`, pas un double qui le recite.
+ *
+ * Le test unitaire voisin prouve le branchement de l'adaptateur en lui tendant
+ * une erreur `P2002` toute faite. Il ne prouve pas que deux insertions du meme
+ * `deviceHash` produisent ce code-la : un faux Prisma ne demontre que le faux.
+ * Or toute la correction de course repose dessus — si la base repondait
+ * `P2003`, ou si la contrainte disparaissait d'une migration, la chaine
+ * casserait sans qu'aucun test unitaire ne bouge.
+ *
+ * Meme convention que `modules/match/adapters/prisma-match.integration.test.ts`
+ * (chargement du `.env`, garde-fou d'hote local, saut propre si la base est
+ * injoignable), a laquelle on se refere pour les tests du garde-fou lui-meme.
+ */
+
+try {
+  process.loadEnvFile(new URL('../../../../../../.env', import.meta.url));
+} catch {
+  // En CI les variables viennent de l'environnement.
+}
+
+const databaseUrl = process.env.DATABASE_URL ?? '';
+
+/**
+ * Ce test **ecrit et supprime** des lignes : il ne doit jamais viser autre
+ * chose qu'une base locale. Un `.env` de preprod oublie suffirait a le faire
+ * « marcher » sur de vraies donnees.
+ */
+const LOCAL_HOSTS = new Set(['localhost', '127.0.0.1', '::1', 'host.docker.internal']);
+
+function isLocalDatabase(url: string): boolean {
+  try {
+    return LOCAL_HOSTS.has(new URL(url).hostname);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * La joignabilite se decide **au chargement du module** : `describe.skipIf` est
+ * evalue a la collecte, donc avant tout `beforeAll`.
+ */
+async function connect(): Promise<PrismaClient | null> {
+  if (databaseUrl === '' || !isLocalDatabase(databaseUrl)) return null;
+  try {
+    const client = new PrismaClient({ adapter: new PrismaPg({ connectionString: databaseUrl }) });
+    await client.$queryRaw`select 1`;
+    return client;
+  } catch {
+    return null;
+  }
+}
+
+const prisma = await connect();
+const reachable = prisma !== null;
+
+/**
+ * Identites creees par les tests, effacees a la fin **quoi qu'il arrive**.
+ *
+ * Un nettoyage pose en derniere ligne d'un test est saute des que ce test
+ * echoue : c'est exactement le moment ou l'on relance, et une base qui garde
+ * les restes de l'essai precedent fait echouer le suivant pour une raison qui
+ * n'a plus rien a voir avec le code.
+ */
+const created = new Set<string>();
+
+afterAll(async () => {
+  if (prisma !== null && created.size > 0) {
+    await prisma.player.deleteMany({
+      where: {
+        identities: { some: { provider: 'DEVICE', subject: { in: [...created] } } },
+      },
+    });
+  }
+  await prisma?.$disconnect();
+});
+
+function buildRepository(): PrismaPlayerRepository {
+  return new PrismaPlayerRepository(prisma as never);
+}
+
+/** Une identite d'appareil jamais vue, effacee a la fin de la suite. */
+function newDeviceHash(): string {
+  const deviceHash = `test_${randomUUID()}`;
+  created.add(deviceHash);
+  return deviceHash;
+}
+
+/** Capture les lignes ecrites par le logger, comme dans `shared/logger.test.ts`. */
+function capture(): { lines: string[]; stream: Writable } {
+  const lines: string[] = [];
+  const stream = new Writable({
+    write(chunk: Buffer, _encoding, callback) {
+      lines.push(chunk.toString());
+      callback();
+    },
+  });
+  return { lines, stream };
+}
+
+describe.skipIf(!reachable)('contrainte d unicite de l identite d appareil', () => {
+  it('traduit la collision reelle des deux ouvertures de session en conflit de domaine', async () => {
+    // Deux onglets, un double appui, un reessai reseau : les deux appels ne
+    // trouvent rien et creent en meme temps. C'est Postgres qui arbitre.
+    const deviceHash = newDeviceHash();
+    // Nom unique au test : la base de developpement est partagee, et compter
+    // les « Aura Perdante » du monde entier dirait autre chose que ce qu'on
+    // veut savoir.
+    const loserName = `Aura Perdante ${deviceHash}`;
+    const players = buildRepository();
+
+    const winner = await players.createWithDeviceIdentity({
+      deviceHash,
+      displayName: 'Aura Gagnante',
+    });
+
+    const thrown = await players
+      .createWithDeviceIdentity({ deviceHash, displayName: loserName })
+      .catch((error: unknown) => error);
+
+    expect(thrown).toBeInstanceOf(DeviceIdentityConflictError);
+
+    // La cause vient bien de la contrainte `(provider, subject)` : c'est ce
+    // maillon-la — le code d'erreur reel de la base — que le test unitaire ne
+    // peut pas verifier.
+    const cause = (thrown as Error).cause;
+    expect(cause).toBeInstanceOf(Prisma.PrismaClientKnownRequestError);
+    expect((cause as Prisma.PrismaClientKnownRequestError).code).toBe('P2002');
+    expect(JSON.stringify((cause as Prisma.PrismaClientKnownRequestError).meta)).toContain(
+      'AuthIdentity',
+    );
+
+    // Le perdant ne laisse rien derriere lui : ni identite en double, ni joueur
+    // orphelin. La creation imbriquee est atomique, et seule une vraie base
+    // peut le montrer.
+    expect(
+      await prisma!.authIdentity.count({ where: { provider: 'DEVICE', subject: deviceHash } }),
+    ).toBe(1);
+    expect(await prisma!.player.count({ where: { displayName: loserName } })).toBe(0);
+
+    // Et le perdant retrouve bien le joueur du gagnant : la chaine complete de
+    // l'adoption, de la contrainte jusqu'au cas d'usage.
+    expect(await players.findByDeviceHash(deviceHash)).toEqual(winner);
+  });
+
+  it('ne laisse pas fuir le deviceHash dans un journal, ni par l erreur ni par sa cause', async () => {
+    // L'erreur du domaine transporte la cause Prisma. Si cette cause citait la
+    // valeur en conflit — Postgres, lui, la met dans son `DETAIL` —, une seule
+    // ligne de journal suffirait a publier l'identifiant d'appareil d'un
+    // joueur, c'est-a-dire ce qui distingue son telephone de tous les autres.
+    // Deux protections doivent tenir, et ce test les verifie separement.
+    const deviceHash = newDeviceHash();
+    const players = buildRepository();
+    await players.createWithDeviceIdentity({ deviceHash, displayName: 'Aura Gagnante' });
+
+    const thrown = (await players
+      .createWithDeviceIdentity({ deviceHash, displayName: 'Aura Perdante' })
+      .catch((error: unknown) => error)) as Error;
+    const cause = thrown.cause as Prisma.PrismaClientKnownRequestError;
+
+    // 1. Prisma ne recopie pas la valeur refusee : il nomme la contrainte, la
+    //    table et le modele, jamais le `subject`. Si une version future se
+    //    mettait a recopier le `DETAIL` de Postgres, ce test vire au rouge
+    //    avant que le journal ne le fasse en production.
+    const brut = JSON.stringify({
+      message: cause.message,
+      stack: cause.stack,
+      meta: cause.meta,
+    });
+    expect(brut).not.toContain(deviceHash);
+
+    // 2. L'adaptateur de journalisation ne suit pas la chaine des causes : il
+    //    ecrit `name`, `message` et `stack`, rien d'autre. Meme une cause
+    //    bavarde resterait donc hors du journal.
+    const { lines, stream } = capture();
+    const logger = new PinoLoggerService(
+      createLogger(
+        loadConfig({
+          DATABASE_URL: databaseUrl,
+          REDIS_URL: 'redis://localhost:6379',
+          JWT_SECRET: 'un-secret-assez-long',
+          NODE_ENV: 'test',
+        }),
+        stream,
+      ),
+    );
+    logger.error(thrown);
+    logger.error(cause);
+
+    const sortie = lines.join('');
+    expect(sortie).not.toContain(deviceHash);
+    // Le journal reste utile malgre tout : l'erreur n'a pas disparu.
+    expect(sortie).toContain('DEVICE_IDENTITY_CONFLICT');
+  });
+});
+
+describe.skipIf(reachable)('base indisponible', () => {
+  it('signale pourquoi le test d integration a ete saute', () => {
+    // Un saut silencieux laisse croire a une couverture qui n'existe pas.
+    console.warn(
+      "[integration] base injoignable ou non locale sur DATABASE_URL — lancez `docker compose up -d` pour executer les tests d'identite d'appareil",
+    );
+    expect(reachable).toBe(false);
+  });
+});
+
+describe.skipIf(!reachable)('code de recuperation, contre une vraie base', () => {
+  /*
+    C'est Postgres qui doit remplacer l'ancien code, pas un double qui le
+    recite. `setRecoveryIdentity` fait une suppression PUIS une creation dans
+    une transaction, parce que la contrainte d'unicite porte sur
+    `(provider, subject)` et non sur `(provider, playerId)` : il n'existe
+    aucune cle sur laquelle poser un `upsert`. Si cette transaction ne tenait
+    pas, un joueur se retrouverait avec deux codes vivants — ou aucun.
+  */
+  it('retrouve le joueur par son code', async () => {
+    const repository = buildRepository();
+    const player = await repository.createWithDeviceIdentity({
+      deviceHash: newDeviceHash(),
+      displayName: 'Testeuse',
+    });
+
+    await repository.setRecoveryIdentity(player.id, 'hash_recovery_un');
+    await expect(repository.findByRecoveryHash('hash_recovery_un')).resolves.toEqual(player);
+  });
+
+  it('remplace le code precedent plutot que de l ajouter', async () => {
+    const repository = buildRepository();
+    const player = await repository.createWithDeviceIdentity({
+      deviceHash: newDeviceHash(),
+      displayName: 'Testeur',
+    });
+
+    await repository.setRecoveryIdentity(player.id, 'hash_recovery_ancien');
+    await repository.setRecoveryIdentity(player.id, 'hash_recovery_nouveau');
+
+    await expect(repository.findByRecoveryHash('hash_recovery_nouveau')).resolves.toEqual(player);
+    // L'ancien n'ouvre plus rien : c'est ce qui rend un code revocable.
+    await expect(repository.findByRecoveryHash('hash_recovery_ancien')).resolves.toBeNull();
+
+    const identities = await prisma!.authIdentity.count({
+      where: { playerId: player.id, provider: 'RECOVERY' },
+    });
+    expect(identities).toBe(1);
+  });
+
+  it('ne touche pas a l identite d appareil', async () => {
+    const repository = buildRepository();
+    const deviceHash = newDeviceHash();
+    const player = await repository.createWithDeviceIdentity({
+      deviceHash,
+      displayName: 'Intacte',
+    });
+
+    await repository.setRecoveryIdentity(player.id, 'hash_recovery_autre');
+    // Le compte invite continue de s'ouvrir depuis le navigateur d'origine :
+    // lier un compte AJOUTE une ligne, sans rien deplacer (docs/04).
+    await expect(repository.findByDeviceHash(deviceHash)).resolves.toEqual(player);
+  });
+});
+
+describe.skipIf(!reachable)('identite email, contre une vraie base', () => {
+  const newEmail = (): string => `test_${randomUUID()}@exemple.test`;
+
+  async function newPlayer(name = 'Joueuse') {
+    return buildRepository().createWithDeviceIdentity({
+      deviceHash: newDeviceHash(),
+      displayName: name,
+    });
+  }
+
+  it('rattache une adresse, la retrouve, et ne rend jamais une autre ligne', async () => {
+    const repository = buildRepository();
+    const player = await newPlayer();
+    const email = newEmail();
+
+    await expect(repository.linkEmailIdentity(player.id, email, '$argon2id$un')).resolves.toBe(
+      'LINKED',
+    );
+    const expected = {
+      playerId: player.id,
+      email,
+      secretHash: '$argon2id$un',
+      credentialsVersion: 0,
+    };
+    await expect(repository.findByEmail(email)).resolves.toEqual(expected);
+    await expect(repository.findEmailOf(player.id)).resolves.toEqual(expected);
+    await expect(repository.findByEmail(newEmail())).resolves.toBeNull();
+  });
+
+  /*
+    C'est Postgres qui doit refuser qu'une adresse serve deux comptes : la
+    contrainte `(provider, subject)`, traduite en erreur du domaine.
+  */
+  it('refuse une adresse deja prise par un autre joueur', async () => {
+    const repository = buildRepository();
+    const first = await newPlayer('Premiere');
+    const second = await newPlayer('Seconde');
+    const email = newEmail();
+
+    await repository.linkEmailIdentity(first.id, email, '$argon2id$a');
+    const thrown = await repository
+      .linkEmailIdentity(second.id, email, '$argon2id$b')
+      .catch((error: unknown) => error);
+    expect(thrown).toBeInstanceOf(EmailIdentityConflictError);
+    await expect(repository.findEmailOf(second.id)).resolves.toBeNull();
+  });
+
+  /*
+    La contrainte d'unicite ne dit rien d'un joueur a deux adresses : c'est le
+    verrou de la ligne du joueur qui l'empeche. Deux appels lances ENSEMBLE,
+    comme un double appui sur « Valider » : un seul doit gagner.
+  */
+  it('ne laisse pas deux appels simultanes poser deux adresses au meme joueur', async () => {
+    const repository = buildRepository();
+    const player = await newPlayer();
+
+    /*
+      Des connexions deja ouvertes, sinon le test ne prouve rien : la premiere
+      transaction se termine pendant que les autres attendent encore leur
+      connexion, et la course n'a jamais lieu. Verifie en retirant le verrou —
+      avec ce prechauffage, les huit appels posent huit adresses.
+    */
+    await Promise.all(Array.from({ length: 8 }, () => prisma!.$queryRaw`select 1 as x`));
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 8 }, (_, i) =>
+        repository.linkEmailIdentity(player.id, newEmail(), `$argon2id$${String(i)}`),
+      ),
+    );
+
+    expect(outcomes.filter((o) => o === 'LINKED')).toHaveLength(1);
+    expect(
+      await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'EMAIL' } }),
+    ).toBe(1);
+  });
+
+  it('change le hache, garde l adresse, et remplace le code de recuperation', async () => {
+    const repository = buildRepository();
+    const player = await newPlayer();
+    const email = newEmail();
+    await repository.linkEmailIdentity(player.id, email, '$argon2id$ancien');
+    const oldCode = `hash_recovery_${randomUUID()}`;
+    const newCode = `hash_recovery_${randomUUID()}`;
+    await repository.setRecoveryIdentity(player.id, oldCode);
+
+    await expect(
+      repository.setPasswordHash(player.id, '$argon2id$nouveau', null, new Date(), newCode),
+    ).resolves.toBe(true);
+    await expect(repository.findByEmail(email)).resolves.toEqual({
+      playerId: player.id,
+      email,
+      secretHash: '$argon2id$nouveau',
+      credentialsVersion: 1,
+    });
+
+    /*
+      Quatrieme relecture (B2) : l'ancien code n'ouvre plus rien — un intrus
+      qui connaissait l'ancien mot de passe a pu se le faire delivrer. Le neuf,
+      pose dans la meme transaction, ouvre le compte ; il vient d'etre delivre,
+      donc il ne prouvera un changement de mot de passe qu'une heure plus tard.
+    */
+    await expect(repository.findRecoveryIdentity(oldCode)).resolves.toBeNull();
+    const fresh = await repository.findRecoveryIdentity(newCode);
+    expect(fresh?.player.id).toBe(player.id);
+    expect(Date.now() - fresh!.issuedAt.getTime()).toBeLessThan(60_000);
+    // Un seul code, et son hache de mot de passe reste nul : la colonne
+    // n'appartient qu'aux identites email.
+    const codes = await prisma!.authIdentity.findMany({
+      where: { playerId: player.id, provider: 'RECOVERY' },
+      select: { secretHash: true },
+    });
+    expect(codes).toEqual([{ secretHash: null }]);
+  });
+
+  it('rend faux quand le joueur n a pas d adresse', async () => {
+    const player = await newPlayer();
+    await expect(
+      buildRepository().setPasswordHash(
+        player.id,
+        '$argon2id$x',
+        null,
+        new Date(),
+        `hash_recovery_${randomUUID()}`,
+      ),
+    ).resolves.toBe(false);
+  });
+});
+
+/*
+  Relecture de securite, point 2, contre une vraie base : un appareil rattache
+  avant le changement de mot de passe ne rouvre plus le compte. C'est le
+  chemin complet — la ligne DEVICE supprimee, puis `authenticateDevice` avec
+  l'ancien secret, qui ne retrouve plus le joueur.
+*/
+describe.skipIf(!reachable)('changer de mot de passe detache les appareils', () => {
+  it('un appareil rattache avant le changement ne rouvre plus le compte', async () => {
+    const repository = buildRepository();
+    const mine = generateDeviceSecret();
+    const intruder = generateDeviceSecret();
+    created.add(hashSecret(mine));
+    created.add(hashSecret(intruder));
+
+    const player = await repository.createWithDeviceIdentity({
+      deviceHash: hashSecret(mine),
+      displayName: 'Victime',
+    });
+    await repository.linkDeviceIdentity(player.id, hashSecret(intruder));
+    await repository.linkEmailIdentity(
+      player.id,
+      `test_${randomUUID()}@exemple.test`,
+      '$argon2id$a',
+    );
+    await repository.setRecoveryIdentity(player.id, `hash_recovery_${randomUUID()}`);
+
+    await expect(
+      repository.setPasswordHash(
+        player.id,
+        '$argon2id$b',
+        hashSecret(mine),
+        new Date(),
+        `hash_recovery_${randomUUID()}`,
+      ),
+    ).resolves.toBe(true);
+
+    const sessions = realSessions(repository);
+
+    // L'appareil qui a change le mot de passe rouvre toujours le compte...
+    expect((await sessions.authenticateDevice(mine)).player.id).toBe(player.id);
+    // ... celui de l'intrus ouvre un compte invite NEUF, plus celui-ci.
+    const reopened = await sessions.authenticateDevice(intruder);
+    expect(reopened.player.id).not.toBe(player.id);
+    await prisma!.player.delete({ where: { id: reopened.player.id } });
+
+    // Le code de recuperation, lui, reste : c'est la porte de secours.
+    expect(
+      await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'RECOVERY' } }),
+    ).toBe(1);
+  });
+});
+
+/** Le vrai service de session sur les vrais depots ; le jeton est `sub:cv`, lisible. */
+function realSessions(players: PrismaPlayerRepository): SessionService {
+  return new SessionService({
+    players,
+    refreshTokens: new PrismaRefreshTokenRepository(prisma as never),
+    signer: {
+      sign: ({ playerId, credentialsVersion }) =>
+        Promise.resolve(`${playerId}:${String(credentialsVersion)}`),
+    },
+    clock: { now: () => new Date() },
+    accessTtlSeconds: 900,
+    refreshTtlSeconds: 3_600,
+  });
+}
+
+/** Le verificateur partage, sur la vraie base, pour les jetons `sub:cv` ci-dessus. */
+function realVerifier(players: PrismaPlayerRepository): FreshAccessTokenVerifier {
+  return new FreshAccessTokenVerifier(
+    {
+      verify: (token) => {
+        const [sub = '', cv = '0'] = token.split(':');
+        return Promise.resolve({ sub, cv: Number(cv) });
+      },
+    },
+    players,
+  );
+}
+
+/*
+  Troisieme relecture, contre une vraie base : apres un changement de mot de
+  passe, l'intrus ne peut plus rien faire de ce qu'il detenait.
+*/
+describe.skipIf(!reachable)('l intrus ne se reinstalle pas apres un changement', () => {
+  async function victim() {
+    const players = buildRepository();
+    const secret = generateDeviceSecret();
+    created.add(hashSecret(secret));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(secret),
+      displayName: 'Victime',
+    });
+    await players.linkEmailIdentity(player.id, `test_${randomUUID()}@exemple.test`, '$argon2id$a');
+    return { players, player, secret };
+  }
+
+  it('incremente la version et revoque les jetons dans la meme transaction', async () => {
+    const { players, player, secret } = await victim();
+    const tokens = new PrismaRefreshTokenRepository(prisma as never);
+    const before = await tokens.create({
+      playerId: player.id,
+      tokenHash: `test_${randomUUID()}`,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    expect(before.credentialsVersion).toBe(0);
+
+    await players.setPasswordHash(
+      player.id,
+      '$argon2id$b',
+      hashSecret(secret),
+      new Date(),
+      `hash_recovery_${randomUUID()}`,
+    );
+    await expect(players.credentialsVersion(player.id)).resolves.toBe(1);
+    expect((await tokens.findByHash(before.tokenHash))?.revokedAt).not.toBeNull();
+  });
+
+  /*
+    Scenario d'attaque 2 : l'intrus lance une rafale de renouvellements
+    PENDANT que le joueur change son mot de passe. Quel que soit l'ordre dans
+    lequel Postgres les range, aucun jeton d'acces obtenu par l'intrus n'est
+    utilisable ensuite, et aucun jeton de rafraichissement ne se renouvelle.
+  */
+  it('une rafale de renouvellements pendant le changement ne laisse rien d utilisable', async () => {
+    const { players, player, secret } = await victim();
+    const sessions = realSessions(players);
+    const verifier = realVerifier(players);
+
+    // L'intrus detient plusieurs sessions (jetons voles ou ouverts avant).
+    const stolen = await Promise.all(
+      Array.from({ length: 8 }, () => sessions.openForPlayer(player.id)),
+    );
+    await Promise.all(Array.from({ length: 10 }, () => prisma!.$queryRaw`select 1 as x`));
+
+    const burst = stolen.map((session) =>
+      sessions.refresh(session.refreshToken).then(
+        (fresh) => fresh,
+        () => null,
+      ),
+    );
+    const change = players.setPasswordHash(
+      player.id,
+      '$argon2id$b',
+      hashSecret(secret),
+      new Date(),
+      `hash_recovery_${randomUUID()}`,
+    );
+    const [refreshed] = await Promise.all([Promise.all(burst), change]);
+
+    const accessTokens = [
+      ...stolen.map((session) => session.accessToken),
+      ...refreshed.flatMap((session) => (session === null ? [] : [session.accessToken])),
+    ];
+    for (const token of accessTokens) {
+      await expect(verifier.verify(token)).rejects.toThrow('CREDENTIALS_CHANGED');
+    }
+    for (const session of refreshed) {
+      if (session !== null) await expect(sessions.refresh(session.refreshToken)).rejects.toThrow();
+    }
+
+    // L'appareil du joueur, lui, obtient une session valable.
+    const mine = await sessions.authenticateDevice(secret);
+    await expect(verifier.verify(mine.accessToken)).resolves.toMatchObject({ sub: player.id });
+  });
+
+  it('ne laisse qu un renouvellement concurrent consommer le jeton', async () => {
+    const { player } = await victim();
+    const tokens = new PrismaRefreshTokenRepository(prisma as never);
+    const stored = await tokens.create({
+      playerId: player.id,
+      tokenHash: `test_${randomUUID()}`,
+      expiresAt: new Date(Date.now() + 60_000),
+    });
+    await Promise.all(Array.from({ length: 6 }, () => prisma!.$queryRaw`select 1 as x`));
+
+    const outcomes = await Promise.all(
+      Array.from({ length: 6 }, () =>
+        tokens.rotate({
+          id: stored.id,
+          playerId: player.id,
+          credentialsVersion: stored.credentialsVersion,
+          replacedByHash: `test_${randomUUID()}`,
+          expiresAt: new Date(Date.now() + 60_000),
+          at: new Date(),
+        }),
+      ),
+    );
+    expect(outcomes.filter((o) => o.outcome === 'ROTATED')).toHaveLength(1);
+    expect(outcomes.filter((o) => o.outcome === 'REUSED')).toHaveLength(5);
+  });
+});
+
+/*
+  Scenario d'attaque 1 : l'intrus n'a qu'un jeton vole. Il ne peut plus
+  fabriquer la preuve d'appareil — la route `device/link` a disparu, et le
+  seul chemin qui rattache un appareil exige le code ou le mot de passe.
+*/
+describe.skipIf(!reachable)('la preuve d appareil ne se fabrique pas', () => {
+  it('un secret que l intrus invente ne prouve rien, et rien ne le rattache', async () => {
+    const players = buildRepository();
+    const owner = generateDeviceSecret();
+    created.add(hashSecret(owner));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(owner),
+      displayName: 'Invitee',
+    });
+    const email = new EmailAuthService({
+      identities: players,
+      hasher: fakePasswordHasher().hasher,
+      limiter: new MemoryAttemptLimiter({ windowMs: 60_000, now: () => 0 }),
+      recovery: {
+        prove: () => Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
+        fresh: () => ({ code: 'AURA-NEUF', hash: `hash_recovery_${randomUUID()}` }),
+      },
+      clock: { now: () => new Date() },
+      events: { publish: () => undefined },
+      traceKey: 'une-cle-de-test-assez-longue',
+      log: { warn: () => undefined },
+    });
+
+    const intruder = generateDeviceSecret();
+    const reason = (promise: Promise<unknown>) =>
+      promise.then(
+        () => 'accepte',
+        (error: unknown) => (error as EmailAuthError).reason,
+      );
+    expect(
+      await reason(
+        email.link(
+          player.id,
+          `intrus_${randomUUID()}@exemple.test`,
+          'aura du soir',
+          '203.0.113.1',
+          intruder,
+        ),
+      ),
+    ).toBe('DEVICE_PROOF_REQUIRED');
+    expect(
+      await reason(email.authorizeRecoveryIssue(player.id, undefined, '203.0.113.1', intruder)),
+    ).toBe('DEVICE_PROOF_REQUIRED');
+
+    // Le secret du joueur, lui, prouve.
+    await expect(
+      email.authorizeRecoveryIssue(player.id, undefined, '203.0.113.1', owner),
+    ).resolves.toBeUndefined();
+  });
+
+  it('borne les appareils a dix, en detachant les plus anciens', async () => {
+    const players = buildRepository();
+    const first = generateDeviceSecret();
+    created.add(hashSecret(first));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(first),
+      displayName: 'Nomade',
+    });
+    const later = Array.from({ length: MAX_DEVICES + 1 }, () => generateDeviceSecret());
+    for (const secret of later) {
+      created.add(hashSecret(secret));
+      await players.linkDeviceIdentity(player.id, hashSecret(secret));
+    }
+
+    expect(
+      await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'DEVICE' } }),
+    ).toBe(MAX_DEVICES);
+    await expect(players.findByDeviceHash(hashSecret(first))).resolves.toBeNull();
+    await expect(players.findByDeviceHash(hashSecret(later.at(-1)!))).resolves.toEqual(player);
+  });
+});
+
+/*
+  Quatrieme relecture (B1), scenario d'attaque contre une vraie base : une
+  connexion dont la verification passe AVANT un changement de mot de passe ne
+  doit pas rattacher son appareil APRES.
+*/
+describe.skipIf(!reachable)('une connexion en vol pendant le changement de mot de passe', () => {
+  async function victimWithEmail() {
+    const players = buildRepository();
+    const owner = generateDeviceSecret();
+    created.add(hashSecret(owner));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(owner),
+      displayName: 'Victime',
+    });
+    const email = `test_${randomUUID()}@exemple.test`;
+    const { hasher } = fakePasswordHasher();
+    await players.linkEmailIdentity(player.id, email, await hasher.hash('ancien mot de passe'));
+    const service = new EmailAuthService({
+      identities: players,
+      hasher,
+      limiter: new MemoryAttemptLimiter({ windowMs: 60_000, now: () => 0 }),
+      recovery: {
+        prove: () => Promise.reject(new RecoveryError('INVALID_RECOVERY_CODE')),
+        fresh: () => ({ code: 'AURA-NEUF', hash: `hash_recovery_${randomUUID()}` }),
+      },
+      clock: { now: () => new Date() },
+      events: { publish: () => undefined },
+      traceKey: 'une-cle-de-test-assez-longue',
+      log: { warn: () => undefined },
+    });
+    return { players, player, owner, email, service };
+  }
+
+  it('echoue si le changement est committe entre la verification et le rattachement', async () => {
+    const { players, player, owner, email, service } = await victimWithEmail();
+    const sessions = realSessions(players);
+    const tokensBefore = await prisma!.refreshToken.count({ where: { playerId: player.id } });
+
+    // 1. La connexion de l'intrus verifie l'ANCIEN mot de passe : elle passe.
+    const proven = await service.login(email, 'ancien mot de passe', '203.0.113.7');
+    expect(proven).toEqual({ playerId: player.id, credentialsVersion: 0 });
+
+    // 2. Le joueur change son mot de passe, committe.
+    await players.setPasswordHash(
+      player.id,
+      '$argon2id$nouveau',
+      hashSecret(owner),
+      new Date(),
+      `hash_recovery_${randomUUID()}`,
+    );
+
+    // 3. Le rattachement de l'intrus arrive ensuite : refuse, rien d'ecrit.
+    const intruder = generateDeviceSecret();
+    created.add(hashSecret(intruder));
+    await expect(
+      sessions.joinWithDevice(player.id, proven.credentialsVersion, intruder),
+    ).rejects.toMatchObject({ reason: 'CREDENTIALS_CHANGED' });
+    await expect(players.findByDeviceHash(hashSecret(intruder))).resolves.toBeNull();
+    expect(await prisma!.refreshToken.count({ where: { playerId: player.id } })).toBe(tokensBefore);
+  });
+
+  /*
+    La meme course, lancee pour de vrai en parallele, plusieurs fois : quel que
+    soit l'ordre que Postgres choisit, l'appareil de l'intrus n'est jamais
+    rattache a la fin, et aucun jeton qu'il aurait recu n'est utilisable.
+  */
+  it('ne laisse jamais l appareil de l intrus rattache, quel que soit l ordre', async () => {
+    for (let round = 0; round < 8; round++) {
+      const { players, player, owner } = await victimWithEmail();
+      const sessions = realSessions(players);
+      const verifier = realVerifier(players);
+      const intruder = generateDeviceSecret();
+      created.add(hashSecret(intruder));
+      await Promise.all(Array.from({ length: 4 }, () => prisma!.$queryRaw`select 1 as x`));
+
+      const [joined] = await Promise.all([
+        sessions.joinWithDevice(player.id, 0, intruder).then(
+          (session) => session,
+          () => null,
+        ),
+        players.setPasswordHash(
+          player.id,
+          '$argon2id$nouveau',
+          hashSecret(owner),
+          new Date(),
+          `hash_recovery_${randomUUID()}`,
+        ),
+      ]);
+
+      await expect(players.findByDeviceHash(hashSecret(intruder))).resolves.toBeNull();
+      if (joined !== null) {
+        await expect(verifier.verify(joined.accessToken)).rejects.toThrow('CREDENTIALS_CHANGED');
+        await expect(sessions.refresh(joined.refreshToken)).rejects.toThrow();
+      }
+    }
+  });
+});
+
+/* Quatrieme relecture (M1) : deux rattachements concurrents ne depassent pas le plafond. */
+describe.skipIf(!reachable)('rattachements concurrents', () => {
+  it('ne depasse jamais dix appareils, meme en parallele', async () => {
+    const players = buildRepository();
+    const first = generateDeviceSecret();
+    created.add(hashSecret(first));
+    const player = await players.createWithDeviceIdentity({
+      deviceHash: hashSecret(first),
+      displayName: 'Nomade',
+    });
+    await Promise.all(Array.from({ length: 8 }, () => prisma!.$queryRaw`select 1 as x`));
+    const sessions = realSessions(players);
+    await Promise.all(
+      Array.from({ length: MAX_DEVICES + 5 }, () => {
+        const secret = generateDeviceSecret();
+        created.add(hashSecret(secret));
+        return sessions.joinWithDevice(player.id, 0, secret);
+      }),
+    );
+    expect(
+      await prisma!.authIdentity.count({ where: { playerId: player.id, provider: 'DEVICE' } }),
+    ).toBe(MAX_DEVICES);
+  });
+});

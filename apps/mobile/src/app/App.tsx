@@ -1,0 +1,1113 @@
+import { useCallback, useEffect, useMemo, useRef, useState, type JSX } from 'react';
+import type { AudioCue } from '../audio/cues.js';
+import { useArena, type ArenaControls } from '../arena/useArena.js';
+import { useAudio, type AudioControls } from './useAudio.js';
+import {
+  appStateWatcher,
+  deepLinkWatcher,
+  loadCapacitorApp,
+  loadHapticDriver,
+  hideSplash,
+  lockLandscapeNative,
+  SPLASH_MAX_MS,
+  type Unwatch,
+} from '../platform/capacitor.js';
+import { createHaptics } from '../platform/haptics.js';
+import { lockLandscape } from '../platform/orientation.js';
+import {
+  defaultLook,
+  equip,
+  equipDance,
+  equipSignature,
+  type Look,
+  type LookSlot,
+  type Wardrobe,
+} from './wardrobe.js';
+import { MatchScreen, type DanceChoice } from './MatchScreen.jsx';
+import { useSoloMatch } from './useMatch.js';
+import { navigate, openingScreen, type Navigation } from './navigation.js';
+import { needsOnboarding } from './onboarding.js';
+import { OnboardingScreen } from './OnboardingScreen.jsx';
+import { newProfile, type PlayerProfile } from './profile.js';
+import { nextTrying, type ShopState } from './shop.js';
+import { useInventory } from './useInventory.js';
+import { LeaderboardScreen } from './LeaderboardScreen.jsx';
+import { SettingsScreen } from './SettingsScreen.jsx';
+import { homeClusters } from '../ui/layout.js';
+import { ChallengesScreen } from './ChallengesScreen.jsx';
+import { panelLayout } from './panel.js';
+import { useChallenges } from './useChallenges.js';
+import { SeasonScreen } from './SeasonScreen.jsx';
+import { useSeason, type SeasonCelebration } from './useSeason.js';
+import { ShopScreen } from './ShopScreen.jsx';
+import { InviteScreen } from './InviteScreen.jsx';
+import { QueueScreen } from './QueueScreen.jsx';
+import { useOnlineMatch } from './useOnlineMatch.js';
+import { useSession } from './useSession.js';
+import { useViewportWidth } from './useViewport.js';
+import { greetingStore, markGreeted, wasGreeted } from './greeting.js';
+import { useTokenStore } from './useTokenStore.js';
+import { devPoseFrom } from './devPose.js';
+import { memeGallery, stepMeme } from './memes.js';
+import { tryOn } from './tryOn.js';
+import { leagueLabel } from './leagues.js';
+import { inviteFromUrl } from './deepLink.js';
+import { emptyRecord, recordMatch } from './record.js';
+import { settlementOf } from './settlement.js';
+import {
+  createQualityGovernor,
+  type QualitySetting,
+  type QualityTier,
+} from '../platform/quality.js';
+import { browserStore, loadProgress, saveProgress } from './persist.js';
+import { HomeScreen, ProfileScreen } from './screens.jsx';
+import { weekEvent } from '../match/rules.js';
+import { WardrobeScreen } from './WardrobeScreen.jsx';
+
+/**
+ * La coque de l application.
+ *
+ * L arene 3D vit sous tous les ecrans et ne se demonte jamais : la reconstruire
+ * a chaque navigation couterait une seconde de chargement par appui. Hors
+ * match, elle devient une vitrine — un seul personnage, camera rapprochee —
+ * ce qui donne au vestiaire une raison d exister : on voit ce qu on change.
+ */
+
+export function App(): JSX.Element {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  /**
+   * Le son vit aussi longtemps que l application, comme l arene.
+   *
+   * Il se deverrouille au premier geste du joueur, ou qu il soit : le monter a
+   * l entree du match arriverait apres ce geste-la, et iOS resterait muet tout
+   * le premier duel.
+   */
+  /**
+   * Ce que le joueur a deja fait, relu une seule fois au demarrage.
+   *
+   * Sans ce rangement, equiper un meme ou acheter une danse s'oubliait au
+   * rechargement — et le joueur n'en conclut pas que c'est provisoire, il en
+   * conclut que le jeu ne l'a pas ecoute.
+   */
+  const store = useMemo(() => browserStore(), []);
+  const saved = useMemo(() => loadProgress(store), [store]);
+
+  const audio = useAudio();
+
+  /**
+   * La qualite graphique.
+   *
+   * Un seul gouverneur pour l arene, qui le nourrit de ses ecarts d image et
+   * applique ses descentes, et pour l ecran Reglages, qui le pilote a la main.
+   * Deux objets afficheraient un palier et en dessineraient un autre.
+   *
+   * L etat React qui suit n est la que pour **montrer** le palier : c est le
+   * gouverneur qui fait foi, pas lui.
+   */
+  const quality = useRef(
+    createQualityGovernor({
+      ...(saved?.quality === undefined ? {} : { setting: saved.quality }),
+      ...(saved?.qualityTier === undefined ? {} : { start: saved.qualityTier }),
+    }),
+  );
+  const [qualitySetting, setQualitySetting] = useState<QualitySetting>(quality.current.setting);
+  const [qualityTier, setQualityTier] = useState<QualityTier>(quality.current.tier);
+
+  /**
+   * Le code de recuperation fraichement delivre.
+   *
+   * Vit en memoire, le temps que l'ecran reste ouvert. Le ranger serait le
+   * ranger en clair, a l'endroit meme dont le code existe pour compenser la
+   * fragilite.
+   */
+  const [recoveryCode, setRecoveryCode] = useState<string | null>(null);
+
+  /** Relue a chaque changement de taille : `panelLayout` en depend. */
+  const viewportWidth = useViewportWidth();
+
+  /**
+   * Son et vibration d'un repere : ceux de l'arene comme ceux des gestes de la
+   * main de cartes. Le toucher double le son — meme fait, deux sens ;
+   * `hapticFor` decide lesquels meritent le moteur (`platform/haptics.ts`).
+   */
+  const playCue = useCallback(
+    (cue: AudioCue) => {
+      audio.engine.cue(cue);
+      haptics.current.cue(cue);
+    },
+    [audio],
+  );
+
+  const arena = useArena(
+    canvasRef,
+    playCue,
+    quality.current,
+    useCallback((tier: QualityTier) => {
+      setQualityTier(tier);
+    }, []),
+  );
+
+  /**
+   * Le paysage, impose quand la plateforme le permet (ADR 0008).
+   *
+   * Deux tentatives, parce qu aucune ne suffit seule : au montage, ce qui
+   * marche dans une WebView ou une application installee ; puis au premier
+   * geste, parce que les navigateurs mobiles exigent generalement le plein
+   * ecran, qu un geste seul peut avoir accorde. Un refus est le cas normal et
+   * ne mene nulle part — l avertissement « tourne ton telephone » reste la
+   * pour ca.
+   */
+  useEffect(() => {
+    /*
+      Le greffon natif d'abord, l'API web en repli.
+
+      En natif le verrou est fiable ; dans un navigateur il exige generalement
+      le plein ecran et n'existe pas partout. Tenter le natif en premier evite
+      de demander un plein ecran dont on n'a pas besoin — et hors application,
+      `lockLandscapeNative` rend `false` sans rien faire.
+    */
+    const lock = async (): Promise<void> => {
+      if (await lockLandscapeNative()) return;
+      await lockLandscape();
+    };
+
+    void lock();
+    const onGesture = (): void => {
+      void lock();
+    };
+    window.addEventListener('pointerdown', onGesture, { once: true, passive: true });
+    return () => {
+      window.removeEventListener('pointerdown', onGesture);
+    };
+  }, []);
+
+  /**
+   * Le retour haptique.
+   *
+   * Cree une fois, comme le son : le pilote natif arrive de facon asynchrone
+   * et se pose dedans quand il est la. Hors application, il n'arrive jamais et
+   * le jeu ne vibre pas — ce qui est le comportement attendu sur un ordinateur.
+   */
+  const haptics = useRef(createHaptics(null));
+
+  useEffect(() => {
+    let cancelled = false;
+    void loadHapticDriver().then((driver) => {
+      if (!cancelled && driver !== null) haptics.current = createHaptics(driver);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const session = useSession();
+
+  /**
+   * La teinte de peau, seule preference d'apparence restee locale.
+   *
+   * Ce n'est pas un cosmetique : ni identifiant, ni prix, ni ligne au
+   * catalogue. Rien a verifier cote serveur, donc rien a lui demander.
+   */
+  const [skin, setSkin] = useState<string>(saved?.look.skin ?? defaultLook().skin);
+
+  /**
+   * L'inventaire vient du SERVEUR.
+   *
+   * Il a longtemps vecu dans `localStorage` — un inventaire qu'on s'offrait
+   * soi-meme, perdu en changeant d'appareil. Avec le code de recuperation,
+   * garder son compte sans garder ses achats n'avait plus de sens.
+   *
+   * La progression locale n'est pas reprise : la bourse se creditait
+   * elle-meme, elle n'a jamais rien valu. Ce qui a une valeur pour le joueur,
+   * c'est son apparence — et le serveur la lui rend, pour ce qu'il possede.
+   */
+  const inventory = useInventory(session.accessToken, skin);
+
+  // Les packs de jetons (ADR 0016) : apres un achat, le webhook credite, et on
+  // relit la bourse.
+  const tokenShop = useTokenStore(
+    session.identity?.playerId ?? null,
+    inventory.wallet.hard,
+    inventory.refresh,
+  );
+
+  const wardrobe: Wardrobe = useMemo(
+    () => ({ look: inventory.look, owned: inventory.owned }),
+    [inventory.look, inventory.owned],
+  );
+
+  const looks = useMemo(
+    () => ({
+      a: wardrobe.look,
+      b: { ...defaultLook(), outfit: 'outfit.rouge', hair: 'hair.pics', aura: '#ffcf3f' },
+    }),
+    [wardrobe.look],
+  );
+
+  /**
+   * Le lien de jeu vit aussi longtemps que l application.
+   *
+   * Le monter a l entree de l ecran d invitation et le demonter a la sortie
+   * couperait la socket entre la creation d un code et l arrivee de
+   * l adversaire — c est-a-dire exactement pendant l attente.
+   */
+  const online = useOnlineMatch(
+    session.accessToken,
+    session.identity?.displayName ?? null,
+    looks,
+    arena,
+    audio,
+    inventory.owned,
+  );
+
+  /**
+   * Changer la danse d un mouvement depuis le panneau de choix.
+   *
+   * Par le serveur, comme au vestiaire : il juge la possession, puis previent
+   * le match en cours — la danse vaut des la revelation suivante. Stable pour
+   * ne pas faire redessiner la bande de commandes a chaque image.
+   */
+  const equipMatchDance = useCallback(
+    (animationId: string) => {
+      void inventory.equip(
+        equipDance({ look: inventory.look, owned: inventory.owned }, animationId).look,
+      );
+    },
+    [inventory],
+  );
+  const danceChoice = useMemo(
+    () => ({ wardrobe, onEquip: equipMatchDance }),
+    [wardrobe, equipMatchDance],
+  );
+
+  /** Le serveur a ouvert un match : on quitte l ecran d invitation pour l arene. */
+  const inDuel = online.view.phase !== 'idle';
+
+  /**
+   * Un lien d'invitation rejoint des que la connexion le permet.
+   *
+   * On attend l'etat `online` : envoyer `invite:join` sur une socket qui n'est
+   * pas encore etablie le perdrait en silence, et le joueur resterait devant un
+   * ecran d'attente sans savoir pourquoi.
+   */
+  /**
+   * L'ecran de demarrage s'efface quand le JEU est pret.
+   *
+   * `launchAutoHide` est a `false` : entre le moment ou la WebView est prete
+   * et celui ou l'arene rend sa premiere image, il y a Three.js, les
+   * animations et la scene — sans cette attente, le joueur voit un ecran noir
+   * a la place du splash.
+   *
+   * Et un delai maximal, parce qu'un splash qu'on efface a la main est un
+   * splash qui peut ne jamais s'effacer. C'est la pire panne possible, et elle
+   * est muette : le jeu tourne derriere, personne ne le voit.
+   */
+  useEffect(() => {
+    if (session.phase === 'opening') {
+      const safety = window.setTimeout(() => {
+        void hideSplash();
+      }, SPLASH_MAX_MS);
+      return () => {
+        window.clearTimeout(safety);
+      };
+    }
+    void hideSplash();
+    return undefined;
+  }, [session.phase]);
+
+  /**
+   * Le cycle de vie de l'application native, et les liens ouverts en cours de route.
+   *
+   * Deux apports que le web n'a pas. Au retour au premier plan, la socket
+   * laissee derriere se croit ouverte alors que le serveur a ferme : on la
+   * verifie. Et un lien d'invitation touche dans une conversation alors que le
+   * jeu tourne deja n'arrive PAS par l'adresse de la page — la WebView ne
+   * navigue pas, le systeme livre l'adresse par un evenement. Sans cet
+   * ecouteur, le joueur voit son jeu passer au premier plan sans rien de plus.
+   *
+   * Hors application, `loadCapacitorApp` rend `null` et rien de tout cela ne
+   * s'arme : c'est le cas normal, pas une panne.
+   */
+  useEffect(() => {
+    let stopState: Unwatch | null = null;
+    let stopLinks: Unwatch | null = null;
+    let cancelled = false;
+
+    void loadCapacitorApp().then((app) => {
+      if (cancelled || app === null) return;
+      stopState = appStateWatcher(app, {
+        onResume: () => {
+          online.wake();
+        },
+        onPause: () => {
+          // Rien a couper : le serveur tient la manche pendant 45 s, et
+          // raccrocher nous-memes transformerait une notification lue en
+          // forfait.
+        },
+      });
+      stopLinks = deepLinkWatcher(app, (code) => {
+        invited.current = code;
+        setNav((current) => navigate(current, 'invite'));
+        online.joinInvite(code);
+      });
+    });
+
+    return () => {
+      cancelled = true;
+      void stopState?.();
+      void stopLinks?.();
+    };
+  }, [online]);
+
+  useEffect(() => {
+    const code = invited.current;
+    if (code === null || online.status !== 'online') return;
+    invited.current = null;
+    // L'adresse est nettoyee : un rechargement ne doit pas rejouer la jonction,
+    // et le code n'a plus rien a faire dans la barre d'adresse.
+    window.history.replaceState(null, '', '/');
+    setNav((current) => navigate(current, 'invite'));
+    online.joinInvite(code);
+  }, [online]);
+
+  /**
+   * Les recompenses du dernier match, creditees une seule fois.
+   *
+   * Le serveur fait autorite : le client ne calcule rien, il encaisse ce qu'on
+   * lui annonce. Et il efface l'annonce apres l'avoir encaissee — une
+   * recompense qui reste posee dans l'etat serait creditee a chaque rendu, et
+   * le joueur s'enrichirait en regardant son ecran de resultat.
+   */
+  const { refresh: refreshInventory } = inventory;
+  useEffect(() => {
+    const settled = online.settled;
+    if (settled === null) return;
+    /*
+      La recompense n'est PLUS creditee ici.
+
+      Le serveur l'ecrit maintenant dans la bourse qu'il tient (`WalletCredit`).
+      L'ajouter aussi de ce cote-ci la compterait deux fois a l'ecran, jusqu'a
+      la prochaine lecture qui la ferait mysterieusement diminuer.
+    */
+    const settlement = settlementOf(settled, online.view.ended?.winner ?? null);
+    setLeague(settlement.league);
+    setRecord((current) => recordMatch(current, settlement.outcome));
+    if (settlement.rereadWallet) refreshInventory();
+    online.clearSettled();
+  }, [online, refreshInventory]);
+
+  /**
+   * L inscription est facultative et **ne se represente pas**.
+   *
+   * Une fois passee — nommee ou remise a plus tard — on ne la remontre pas a
+   * chaque lancement : un jeu qui redemande la meme chose a chaque ouverture
+   * apprend a son joueur a fermer la fenetre sans lire.
+   */
+  const [greeted, setGreetedState] = useState(() => wasGreeted(greetingStore()));
+  const setGreeted = useCallback((value: boolean): void => {
+    if (value) markGreeted(greetingStore());
+    setGreetedState(value);
+  }, []);
+  const showOnboarding = !greeted && session.phase === 'ready' && needsOnboarding(session.identity);
+
+  const [nav, setNav] = useState<Navigation>(openingScreen);
+
+  /**
+   * Le meme montre sur l accueil.
+   *
+   * Une aura battle est un clash ou deux personnes rejouent des memes : ce que
+   * le joueur vient voir, c est SON mouvement joue par son propre personnage.
+   * La galerie pilote donc l arene, et non une grille de vignettes — un mème
+   * est un mouvement, une vignette ne le montre pas.
+   */
+  const gallery = useMemo(() => memeGallery(), []);
+  const [memeId, setMemeId] = useState(
+    () => devPoseFrom(window.location.search, import.meta.env.DEV) ?? gallery[0]?.animationId ?? '',
+  );
+  const meme = gallery.find((card) => card.animationId === memeId) ?? gallery[0]!;
+  /**
+   * L'article porte a l'essai dans la boutique.
+   *
+   * Il ne touche jamais au vestiaire : essayer n'est pas equiper, et refermer
+   * la boutique doit rendre le joueur a lui-meme sans qu'il ait rien a
+   * annuler.
+   */
+  const [trying, setTrying] = useState<string | null>(null);
+
+  /**
+   * Classe ou partie rapide.
+   *
+   * Les deux se jouent exactement pareil : seul change ce qu'on risque. Le
+   * client demandait `casual` en dur a trois endroits, donc la ligue d'un
+   * joueur ne pouvait jamais bouger, quoi qu'il gagne.
+   */
+  const [mode, setMode] = useState<'ranked' | 'casual'>('ranked');
+
+  /**
+   * Le code porte par le lien qui a ouvert l'application.
+   *
+   * Lu une seule fois : le lien decrit l'intention du LANCEMENT, pas un etat.
+   * Le relire a chaque rendu rejouerait la jonction apres chaque partie, et le
+   * joueur serait renvoye au meme duel sans jamais pouvoir en chercher un
+   * autre.
+   */
+  const invited = useRef<string | null>(inviteFromUrl(window.location.href));
+
+  /**
+   * La ligue, telle que le serveur l'a annoncee au dernier match fini.
+   *
+   * Le client ne la calcule jamais : il la reçoit dans `match:end` et la
+   * garde, faute de quoi elle disparaitrait au rechargement — et le joueur
+   * verrait « Non classé » apres avoir gagne sa place.
+   */
+  const [league, setLeague] = useState<string>(saved?.league ?? '');
+
+  /**
+   * Ce que le joueur a fait, compte depuis les fins de match confirmees.
+   *
+   * Aucun de ces chiffres n'est invente : chacun vient d'un `match:end`.
+   */
+  const [record, setRecord] = useState(saved?.record ?? emptyRecord());
+
+  /*
+    Les defis se relisent APRES chaque match, pas seulement a l'ouverture.
+
+    `record.matches` compte les parties terminees : il change exactement quand
+    la progression a pu bouger. Sans ce rappel, le joueur reviendrait de sa
+    partie avec les chiffres d'avant et croirait que rien n'a compte — alors
+    que la seule chose qui fait avancer un defi est precisement ce qu'il vient
+    de faire.
+  */
+  const challenges = useChallenges(session.accessToken, record.matches);
+
+  /*
+    Le passe de saison se relit apres chaque match, comme les defis : l'XP de
+    saison vient d'y bouger. Chaque gain accorde se fete (son, vibration) et
+    relit l'inventaire, qui tient la bourse et les possessions — on ne recopie
+    jamais la bourse du passe dans celle de l'inventaire.
+  */
+  const onSeasonGranted = useCallback(
+    (party: SeasonCelebration) => {
+      playCue({ type: 'reward', size: party.size });
+      refreshInventory();
+    },
+    [playCue, refreshInventory],
+  );
+  const season = useSeason(
+    session.accessToken,
+    session.identity?.playerId ?? null,
+    record.matches,
+    onSeasonGranted,
+  );
+
+  /*
+    Ce que l'ecran de fin annonce.
+
+    Reduit ici a ce dont il a besoin — un nom et un montant. Lui passer les
+    `ChallengeView` entiers lui donnerait `progress`, `claimed` et le reste,
+    donc l'occasion d'afficher un jour quelque chose que ce moment-la n'a pas
+    a montrer.
+  */
+  const questsDone = useMemo(
+    () =>
+      challenges.justCompleted.map((quest) => ({
+        id: quest.id,
+        name: quest.name,
+        reward: quest.reward,
+      })),
+    [challenges.justCompleted],
+  );
+  /**
+   * La bourse et les possessions vivent ici en attendant le jalon M5.
+   *
+   * Elles partiront du serveur : un inventaire tenu par le client est un
+   * inventaire qu'on s'offre soi-meme.
+   */
+  const shop: ShopState = useMemo(
+    () => ({ wallet: inventory.wallet, owned: inventory.owned }),
+    [inventory.wallet, inventory.owned],
+  );
+
+  /**
+   * On range apres coup, jamais pendant le rendu.
+   *
+   * Ecrire dans `localStorage` pendant un rendu le rendrait impur, et React
+   * rejoue les rendus. L'effet, lui, ne s'execute qu'une fois l'etat arrete.
+   */
+  useEffect(() => {
+    saveProgress(store, {
+      // L'apparence et la bourse vivent sur le serveur ; ce qui reste ici est
+      // ce qu'il ne connait pas — la teinte de peau, et des chiffres d'ecran.
+      look: { ...defaultLook(), skin },
+      owned: [],
+      wallet: { soft: 0, hard: 0 },
+      ...(league === '' ? {} : { league }),
+      ...(record.matches === 0 ? {} : { record }),
+      quality: qualitySetting,
+      qualityTier,
+    });
+  }, [store, skin, league, record, qualitySetting, qualityTier]);
+
+  /**
+   * Le profil.
+   *
+   * Tout a zero tant que le serveur n'envoie pas de statistiques (jalon M5).
+   * Montrer des chiffres inventes a un joueur qui vient de s'inscrire lui
+   * apprendrait, des le premier ecran, a ne pas croire ce que le jeu affiche.
+   */
+  const profile: PlayerProfile = useMemo(() => {
+    const fresh = newProfile(
+      session.identity?.displayName ?? 'Invité',
+      session.identity?.playerId ?? 'anonyme',
+    );
+    return {
+      ...fresh,
+      wallet: shop.wallet,
+      league: leagueLabel(league),
+      lp: record.lp,
+      matches: record.matches,
+      wins: record.wins,
+      currentStreak: record.currentStreak,
+      bestStreak: record.bestStreak,
+      xp: record.xp,
+    };
+  }, [session.identity, shop.wallet, league, record]);
+
+  /*
+    La boutique et le vestiaire ouvrent un panneau LARGE, et l arene recule le
+    personnage dans ce qui reste.
+
+    Ailleurs, un panneau de droite laisse la moitie gauche inutilisee et peut
+    donc s elargir sans rien couter. Ici cette moitie porte le personnage
+    habille de ce qu on essaie : l elargir cacherait exactement ce qu on vient
+    voir. `setSidePanel` decale la projection — pas la camera — pour recentrer
+    le sujet dans la zone libre, ce qui rend la largeur gratuite.
+
+    Zero partout ailleurs, et notamment pendant un match : un cadrage decale
+    pendant un choc d auras deplacerait la scene sous les yeux du joueur.
+  */
+  const panel = useMemo(() => panelLayout(viewportWidth), [viewportWidth]);
+
+  /*
+    Les deux grappes de l'accueil, de part et d'autre du personnage.
+
+    Leur largeur ne vient pas de celle de l'ecran mais de la CLAIRIERE que la
+    silhouette laisse au milieu : elle se tient toujours au meme endroit du
+    cadre, donc en parts de largeur (voir `ui/layout.ts`).
+  */
+  const clusters = useMemo(() => homeClusters(viewportWidth), [viewportWidth]);
+  // Le passe aussi : on y essaie les cosmetiques de la piste sur le personnage.
+  const panelOpen = nav.screen === 'shop' || nav.screen === 'wardrobe' || nav.screen === 'season';
+  arena.sidePanel.current = panelOpen && !inDuel ? panel.width : 0;
+
+  /**
+   * Hors match, l arene montre le personnage du joueur, habille en direct.
+   *
+   * « Hors match » se juge sur ce qui se joue, pas sur le nom de l ecran : un
+   * duel en ligne tourne sur l ecran d invitation, et n y penser qu a travers
+   * `nav.screen` remettait la vitrine par-dessus le duel a chaque rendu — un
+   * seul combattant a l ecran pendant que le HUD jouait la manche.
+   */
+  if (nav.screen !== 'match' && !inDuel) {
+    // Ce qu'on essaie prend le pas sur ce qu'on porte, et seulement a l'ecran.
+    const shown = tryOn(looks.a, meme.animationId, panelOpen ? trying : null);
+    arena.presentation.current = {
+      fighters: {
+        a: { animationId: shown.animationId, look: shown.look },
+        b: { animationId: 'anim.system.none.charge', look: looks.b },
+      },
+      hype: 0.35,
+    };
+    arena.showcase.current = true;
+  }
+
+  const go = useCallback((screen: Navigation['screen']) => {
+    setNav((current) => navigate(current, screen));
+  }, []);
+
+  /**
+   * Equiper passe par le serveur, sauf la teinte de peau.
+   *
+   * Le serveur refuse ce qu'on ne possede pas : sans cet aller-retour,
+   * l'ecran de vestiaire d'un client modifie serait la boutique entiere,
+   * gratuite.
+   */
+  const onEquip = useCallback(
+    (slot: LookSlot, id: string) => {
+      if (slot === 'skin') {
+        setSkin(id);
+        return;
+      }
+      void inventory.equip(equip({ look: inventory.look, owned: inventory.owned }, slot, id).look);
+    },
+    [inventory],
+  );
+
+  /*
+    Quitter ou rejouer efface l'annonce des defis.
+
+    Elle appartient au match qu'on vient de finir. Sans cet effacement, elle
+    survivrait a la partie suivante et feliciterait le joueur une seconde fois
+    pour la meme chose — et il n'y a rien de plus sur pour apprendre a
+    quelqu'un a ne plus lire un message.
+  */
+  const { dismissCompleted } = challenges;
+  const { dismissReached } = season;
+
+  const { dismissEnded } = online;
+  const leaveMatch = useCallback(() => {
+    dismissCompleted();
+    dismissReached();
+    dismissEnded();
+    setNav((current) => navigate({ ...current, matchRunning: false }, 'home'));
+  }, [dismissCompleted, dismissReached, dismissEnded]);
+
+  /*
+    Les gestes de fin de match, STABLES.
+
+    Ecrits en ligne dans le rendu, ils changeaient d identite a chaque image —
+    `useOnlineMatch` redessine l application a chaque image pendant un duel —
+    et annulaient la memoisation de l ecran de match : trente boutons
+    reconcilies soixante fois par seconde en pleine phase de choix.
+  */
+  const { joinQueue } = online;
+  const requeue = useCallback(() => {
+    // En ligne, « rejouer » c est se remettre en file : l adversaire
+    // precedent n a aucune raison d etre encore la.
+    dismissCompleted();
+    dismissReached();
+    dismissEnded();
+    joinQueue(mode);
+  }, [dismissCompleted, dismissReached, dismissEnded, joinQueue, mode]);
+  const requeueFromInvite = useCallback(() => {
+    // Depuis une invitation aussi, « rejouer » passe par la file : celui qui
+    // avait donne le code n a pas forcement envie d'un second duel, et
+    // l attendre laisserait le joueur devant rien.
+    dismissCompleted();
+    dismissReached();
+    dismissEnded();
+    setNav((current) => navigate(current, 'queue'));
+    joinQueue(mode);
+  }, [dismissCompleted, dismissReached, dismissEnded, joinQueue, mode]);
+  const goHome = useCallback(() => {
+    dismissReached();
+    dismissEnded();
+    setNav((current) => navigate(current, 'home'));
+  }, [dismissReached, dismissEnded]);
+
+  return (
+    <div className="app">
+      <div className="rotate">
+        <div className="rotate__phone" />
+        <h2>Tourne ton téléphone</h2>
+        <p>Aura Battle se joue en paysage, à deux mains.</p>
+      </div>
+
+      <div className="stage">
+        <canvas ref={canvasRef} className="stage__canvas" />
+
+        {showOnboarding && session.identity !== null && (
+          <OnboardingScreen
+            guestName={session.identity.displayName}
+            busy={session.busy}
+            error={session.error}
+            onSubmit={(displayName) => {
+              void session.rename(displayName).then((done) => {
+                if (done) setGreeted(true);
+              });
+            }}
+            onLink={(email, password) => session.linkEmail(email, password)}
+            onSkip={() => {
+              setGreeted(true);
+            }}
+            onRestore={(code) => {
+              void session.claimRecovery(code).then((ok) => {
+                if (ok) setGreeted(true);
+              });
+            }}
+            onLogin={(email, password) => {
+              void session.loginEmail(email, password).then((ok) => {
+                if (ok) setGreeted(true);
+              });
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'home' && (
+          <HomeScreen
+            clusters={clusters}
+            questsReady={challenges.claimable}
+            onChallenges={() => {
+              go('challenges');
+            }}
+            seasonReady={season.claimable}
+            seasonUrgent={season.urgent}
+            onSeason={() => {
+              // Relu a l'ouverture : l'etat a pu changer sur un autre appareil.
+              season.refresh();
+              go('season');
+            }}
+            profile={profile}
+            mode={mode}
+            weekEvent={weekEvent(online.serverNow())}
+            onToggleMode={() => {
+              setMode((current) => (current === 'ranked' ? 'casual' : 'ranked'));
+            }}
+            onPlay={() => {
+              go('match');
+            }}
+            onProfile={() => {
+              go('profile');
+            }}
+            onSettings={() => {
+              go('settings');
+            }}
+            onLeaderboard={() => {
+              go('leaderboard');
+            }}
+            onWardrobe={() => {
+              go('wardrobe');
+            }}
+            onShop={() => {
+              go('shop');
+            }}
+            onOnline={() => {
+              go('queue');
+              online.joinQueue(mode);
+            }}
+            onInvite={() => {
+              go('invite');
+            }}
+            meme={meme}
+            onStepMeme={(delta) => {
+              setMemeId((current) => stepMeme(gallery, current, delta));
+            }}
+            memeOwned={meme.free || wardrobe.owned.has(meme.animationId)}
+            memeEquipped={wardrobe.look.signature === meme.animationId}
+            onEquipMeme={() => {
+              // Le meme de l accueil est la danse SIGNATURE : jouee a chaque
+              // victoire, et vue par l adversaire. Il devient aussi la danse
+              // de son mouvement, comme la galerie le faisait deja.
+              void inventory.equip(
+                equipSignature({ look: inventory.look, owned: inventory.owned }, meme.animationId)
+                  .look,
+              );
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'shop' && (
+          <ShopScreen
+            state={shop}
+            tokenShop={tokenShop}
+            trying={trying}
+            onTry={(id) => {
+              // Retoucher un article possede le repose (se comparer sans lui) ;
+              // un article a acheter reste a l'essai, sa barre d'achat aussi.
+              setTrying((current) => nextTrying(current, id, shop.owned.has(id)));
+            }}
+            onBuy={(id, currency) => {
+              /*
+                L'achat part au serveur et rend l'inventaire complet.
+
+                Rien n'est calcule de ce cote-ci : le prix, la bourse et la
+                liste des possessions viennent tous de la meme reponse, donc
+                aucun des trois ne peut diverger de ce que la base contient.
+                La boutique et le vestiaire lisent cette meme liste, donc ce
+                qu'on achete devient portable sur-le-champ.
+              */
+              void inventory.buy(id, currency);
+            }}
+            onClose={() => {
+              setTrying(null);
+              go('home');
+            }}
+            layout={panel}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'profile' && (
+          <ProfileScreen
+            profile={profile}
+            {...(session.phase === 'ready'
+              ? {
+                  rename: {
+                    busy: session.busy,
+                    error: session.error,
+                    onRename: (name: string) => session.rename(name),
+                  },
+                }
+              : {})}
+            onClose={() => {
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'leaderboard' && (
+          <LeaderboardScreen
+            accessToken={session.accessToken}
+            onClose={() => {
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'challenges' && (
+          <ChallengesScreen
+            challenges={challenges.challenges}
+            busy={challenges.busy}
+            error={challenges.error}
+            synced={challenges.synced}
+            onClaim={(challengeId) => {
+              void challenges.claim(challengeId).then((reward) => {
+                // La bourse vit dans l'inventaire : une recompense encaissee
+                // la change, donc on relit plutot que d'additionner ici — deux
+                // comptes du meme argent finissent toujours par differer.
+                if (reward !== null) inventory.refresh();
+              });
+            }}
+            onClose={() => {
+              challenges.clearError();
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'season' && (
+          <SeasonScreen
+            season={season.state}
+            owned={inventory.owned}
+            // A la minute : l'heure ne sert qu'aux jours restants, et une
+            // valeur neuve a chaque rendu recalculerait la piste pour rien.
+            now={Math.floor(Date.now() / 60_000) * 60_000}
+            busy={season.busy}
+            error={season.error}
+            celebration={season.celebration}
+            trying={trying}
+            layout={panel}
+            onClaim={season.claim}
+            onClaimAll={season.claimAll}
+            onBuyPremium={season.buyPremium}
+            onTry={(id) => {
+              // Retoucher l'article le repose : se comparer sans lui.
+              setTrying((current) => (current === id ? null : id));
+            }}
+            onClose={() => {
+              setTrying(null);
+              season.clearError();
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'settings' && (
+          <SettingsScreen
+            setting={qualitySetting}
+            tier={qualityTier}
+            onQuality={(next) => {
+              quality.current.select(next);
+              setQualitySetting(next);
+              setQualityTier(quality.current.tier);
+            }}
+            onClose={() => {
+              go('home');
+            }}
+            account={{
+              online: session.phase === 'ready',
+              busy: session.busy,
+              error: session.error,
+              code: recoveryCode,
+              issue: (currentPassword) => {
+                void session.issueRecovery(currentPassword).then(setRecoveryCode);
+              },
+              claim: (code) => {
+                void session.claimRecovery(code).then((ok) => {
+                  // Le compte retrouve remplace celui de ce navigateur : la
+                  // progression locale n'est plus la sienne. On repart de
+                  // l'accueil plutot que de laisser a l'ecran des chiffres qui
+                  // appartiennent a quelqu'un d'autre.
+                  if (ok) go('home');
+                });
+              },
+              email: session.email,
+              linkEmail: (email, password) => session.linkEmail(email, password),
+              changePassword: (proof, password) => session.changePassword(proof, password),
+              loginEmail: (email, password) => {
+                // Meme consequence qu'un code : retour a l'accueil.
+                void session.loginEmail(email, password).then((ok) => {
+                  if (ok) go('home');
+                });
+              },
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'wardrobe' && (
+          <WardrobeScreen
+            wardrobe={wardrobe}
+            onEquip={onEquip}
+            onEquipDance={equipMatchDance}
+            trying={trying}
+            onTry={setTrying}
+            onSeason={() => {
+              setTrying(null);
+              go('season');
+            }}
+            onShop={(id) => {
+              // L essai suit le joueur en boutique : l article y est deja
+              // enfile, et la barre d achat propose ◈ ou 💎.
+              setTrying(id);
+              go('shop');
+            }}
+            onClose={() => {
+              setTrying(null);
+              go('home');
+            }}
+            layout={panel}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'queue' && !inDuel && (
+          <QueueScreen
+            status={online.status}
+            elapsedMs={online.queue?.elapsedMs ?? 0}
+            searchRange={online.queue?.searchRange ?? 0}
+            onCancel={() => {
+              online.leaveQueue();
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'queue' && inDuel && (
+          <MatchScreen
+            view={online.view}
+            actions={online.actions}
+            nowMs={online.nowMs}
+            clock={online.clock}
+            opponentName={online.opponentName}
+            opponentIsGhost={online.opponentIsGhost}
+            onLeave={leaveMatch}
+            onRematch={requeue}
+            rematchLabel="Rejouer"
+            questsDone={questsDone}
+            seasonReached={season.justReached}
+            onPreview={online.preview}
+            dances={danceChoice}
+            onCue={playCue}
+            arenaFrames={arena.onFrame}
+            onClipShared={online.reportClipShared}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'invite' && !inDuel && (
+          <InviteScreen
+            status={online.status}
+            code={online.inviteCode}
+            error={online.error}
+            onCreate={online.createInvite}
+            onJoin={online.joinInvite}
+            onClose={() => {
+              go('home');
+            }}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'invite' && inDuel && (
+          <MatchScreen
+            view={online.view}
+            actions={online.actions}
+            nowMs={online.nowMs}
+            clock={online.clock}
+            opponentName={online.opponentName}
+            opponentIsGhost={online.opponentIsGhost}
+            onLeave={goHome}
+            onRematch={requeueFromInvite}
+            rematchLabel="Rejouer"
+            questsDone={questsDone}
+            seasonReached={season.justReached}
+            onPreview={online.preview}
+            dances={danceChoice}
+            onCue={playCue}
+            arenaFrames={arena.onFrame}
+            onClipShared={online.reportClipShared}
+          />
+        )}
+
+        {!showOnboarding && nav.screen === 'match' && (
+          <SoloMatchScreen
+            looks={looks}
+            arena={arena}
+            audio={audio}
+            onLeave={leaveMatch}
+            ownedEffects={inventory.owned}
+            questsDone={questsDone}
+            onQuestsSeen={dismissCompleted}
+            dances={danceChoice}
+            onCue={playCue}
+          />
+        )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Le match solo.
+ *
+ * Extrait dans son propre composant parce que `useSoloMatch` demarre une boucle
+ * de rendu : monte au niveau de `App`, elle tournerait meme a l accueil.
+ */
+function SoloMatchScreen({
+  looks,
+  arena,
+  audio,
+  onLeave,
+  ownedEffects,
+  questsDone,
+  onQuestsSeen,
+  dances,
+  onCue,
+}: {
+  readonly looks: Readonly<Record<'a' | 'b', Look>>;
+  readonly arena: ArenaControls;
+  readonly audio: AudioControls;
+  readonly onLeave: () => void;
+  /** Ce que le joueur possede : l effet d aura de son palier en depend. */
+  readonly ownedEffects: Iterable<string>;
+  /** Defis termines pendant ce match, annonces sur l ecran de fin. */
+  readonly questsDone: readonly {
+    readonly id: string;
+    readonly name: string;
+    readonly reward: number;
+  }[];
+  /** Efface l annonce : elle appartient au match qu on vient de finir. */
+  readonly onQuestsSeen: () => void;
+  readonly dances: DanceChoice;
+  readonly onCue: (cue: AudioCue) => void;
+}): JSX.Element {
+  const session = useSoloMatch(looks, arena, audio, ownedEffects);
+  const { restart } = session;
+  const rematch = useCallback(() => {
+    onQuestsSeen();
+    restart();
+  }, [onQuestsSeen, restart]);
+  return (
+    <MatchScreen
+      view={session.view}
+      actions={session.actions}
+      nowMs={session.nowMs}
+      clock={session.clock}
+      opponentName="Nova"
+      onLeave={onLeave}
+      onRematch={rematch}
+      rematchLabel="Rejouer"
+      questsDone={questsDone}
+      onPreview={session.preview}
+      dances={dances}
+      onCue={onCue}
+      arenaFrames={arena.onFrame}
+    />
+  );
+}

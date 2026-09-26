@@ -1,0 +1,64 @@
+{
+  "id": "anim.provoc.t2.mewing",
+  "version": 1,
+  "name": {
+    "fr": "Mewing"
+  },
+  "icon": "🗿",
+  "move": {
+    "style": "provoc",
+    "tier": 2
+  },
+  "rarity": "default",
+  "framing": {
+    "shot": "bust"
+  },
+  "loop": {
+    "duration": 1.8,
+    "weights": [0.3, 0.7],
+    "ease": true
+  },
+  "flags": {
+    "expression": "smug"
+  },
+  "hands": [
+    ["relax", "in"],
+    ["point", "in"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [2, -151],
+        "neck": [0, -132],
+        "hip": [0, -80],
+        "le": [-16, -106],
+        "lh": [-8, -84],
+        "re": [20, -124],
+        "rh": [12, -141],
+        "lk": [-8, -40],
+        "lf": [-12, 0],
+        "rk": [12, -40],
+        "rf": [18, 0]
+      },
+      "rot": -0.08,
+      "hy": -0.45
+    },
+    {
+      "joints": {
+        "head": [3, -153],
+        "neck": [0, -133],
+        "hip": [0, -80],
+        "le": [-16, -106],
+        "lh": [-8, -84],
+        "re": [22, -126],
+        "rh": [20, -145],
+        "lk": [-8, -40],
+        "lf": [-12, 0],
+        "rk": [12, -40],
+        "rf": [18, 0]
+      },
+      "rot": 0.04,
+      "hy": -0.15
+    }
+  ]
+}

@@ -1,0 +1,64 @@
+{
+  "id": "anim.calme.t2.lookaway",
+  "version": 1,
+  "name": {
+    "fr": "Regard au loin"
+  },
+  "icon": "👀",
+  "move": {
+    "style": "calme",
+    "tier": 2
+  },
+  "rarity": "default",
+  "framing": {
+    "shot": "bust"
+  },
+  "loop": {
+    "duration": 4.4,
+    "weights": [0.26, 0.74],
+    "ease": true
+  },
+  "flags": {
+    "expression": "neutral"
+  },
+  "hands": [
+    ["relax", "in"],
+    ["open", "down"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [4, -150],
+        "neck": [1, -132],
+        "hip": [0, -80],
+        "le": [-10, -108],
+        "lh": [-12, -82],
+        "re": [24, -138],
+        "rh": [17, -163],
+        "lk": [-12, -40],
+        "lf": [-24, 0],
+        "rk": [14, -40],
+        "rf": [22, 0]
+      },
+      "rot": 0.1,
+      "hy": 0.45
+    },
+    {
+      "joints": {
+        "head": [5, -150],
+        "neck": [1, -132],
+        "hip": [0, -80],
+        "le": [-10, -108],
+        "lh": [-12, -82],
+        "re": [24, -138],
+        "rh": [17, -163],
+        "lk": [-12, -40],
+        "lf": [-24, 0],
+        "rk": [14, -40],
+        "rf": [22, 0]
+      },
+      "rot": -0.14,
+      "hy": -0.45
+    }
+  ]
+}

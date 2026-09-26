@@ -1,0 +1,452 @@
+// Modele de donnees d'Aura Battle (docs/04-data-model.md).
+//
+// Une note sur les sieges : docs/04 esquissait `enum Seat { LEFT RIGHT }`, mais
+// l'ADR 0006 tranche pour `a` et `b`. « Gauche » et « droite » decrivent une
+// position a l'ecran, relative au spectateur ; un siege est une identite, et
+// elle doit rester lisible dans un journal relu six mois plus tard.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+// Prisma 7 : l'URL de connexion ne vit plus dans le schema. Elle est declaree
+// dans `prisma.config.ts` pour les commandes de migration, et passee au client
+// via un adaptateur de driver (voir src/shared/prisma.service.ts).
+datasource db {
+  provider = "postgresql"
+}
+
+/// Un joueur. Cree sans inscription : le premier lancement suffit.
+model Player {
+  id                 String    @id @default(uuid())
+  displayName        String
+  createdAt          DateTime  @default(now())
+  lastSeenAt         DateTime  @default(now())
+  softCurrency       Int       @default(0)
+  hardCurrency       Int       @default(0)
+  /// Experience cumulee. Le niveau s'en DEDUIT (`levelFor`, @aura/rules) au
+  /// lieu d'etre stocke a cote : deux colonnes qui decrivent la meme chose
+  /// finissent par se contredire, et c'est toujours celle qu'on n'a pas mise a
+  /// jour qui s'affiche.
+  xp                 Int       @default(0)
+  bannedUntil        DateTime?
+  /// Version des identifiants, incrementee a chaque changement de mot de passe.
+  ///
+  /// Chaque jeton d'acces porte la version en cours a son emission (claim
+  /// `cv`), chaque jeton de rafraichissement aussi : un jeton d'une autre
+  /// version est refuse. Un compteur plutot qu'une date, parce qu'une date se
+  /// compare a la seconde pres (`iat`) et laissait une fenetre (ADR 0013).
+  credentialsVersion Int       @default(0)
+
+  identities      AuthIdentity[]
+  refreshTokens   RefreshToken[]
+  ratings         Rating[]
+  inventory       InventoryItem[]
+  loadout         Loadout?
+  matchSeats      MatchSeat[]
+  challenges      PlayerChallenge[]
+  tokenPurchases  TokenPurchase[]
+  seasonProgress  SeasonProgress[]
+  seasonClaims    SeasonClaim[]
+  productEvents   ProductEvent[]
+  flagAssignments FlagAssignment[]
+}
+
+/// Une facon de prouver qu'on est ce joueur.
+///
+/// Un compte invite n'est pas un compte au rabais : c'est une identite DEVICE.
+/// Lier plus tard Apple ou Google ajoute une ligne ici, sans rien deplacer —
+/// le joueur garde son historique, son classement et ses achats.
+model AuthIdentity {
+  id         String       @id @default(uuid())
+  playerId   String
+  provider   AuthProvider
+  /// Identifiant d'appareil, `sub` Apple ou `sub` Google. Stocke hache pour DEVICE.
+  /// Pour EMAIL : l'adresse normalisee (rognee, en minuscules), en clair — c'est
+  /// un identifiant qu'on cherche, pas un secret.
+  subject    String
+  /// Hache argon2id du mot de passe, pour EMAIL seulement.
+  ///
+  /// Une colonne a part plutot que dans `subject` : `subject` est ce qu'on
+  /// CHERCHE (unique), le hache est ce qu'on VERIFIE (sale, donc impossible a
+  /// chercher). Nulle pour tous les autres fournisseurs.
+  secretHash String?
+  createdAt  DateTime     @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, subject])
+  @@index([playerId])
+}
+
+enum AuthProvider {
+  DEVICE
+  /// Code de recuperation : une deuxieme facon de prouver qu'on est ce joueur.
+  ///
+  /// Un compte invite vit dans le stockage du navigateur, qui se vide pour un
+  /// rien sur ordinateur. Le code est delivre par le serveur, note par le
+  /// joueur, et le presenter ailleurs y rattache le meme compte.
+  RECOVERY
+  /// Email et mot de passe : retrouver son compte depuis un autre appareil.
+  ///
+  /// L'adresse est un identifiant, jamais verifiee ni ecrite a personne. Un
+  /// mot de passe oublie se rattrape par le code de recuperation.
+  EMAIL
+  APPLE
+  GOOGLE
+}
+
+/// Jeton de rafraichissement, stocke hache et revocable.
+///
+/// On ne garde jamais le jeton lui-meme : une base lue par un tiers ne doit pas
+/// livrer de quoi se connecter. La rotation a chaque usage rend un vol
+/// detectable — un jeton deja consomme qui revient signale une copie.
+model RefreshToken {
+  id                 String    @id @default(uuid())
+  playerId           String
+  tokenHash          String    @unique
+  createdAt          DateTime  @default(now())
+  expiresAt          DateTime
+  revokedAt          DateTime?
+  /// Renseigne quand ce jeton a ete remplace par rotation.
+  replacedBy         String?
+  /// `Player.credentialsVersion` au moment de l'emission : un changement de
+  /// mot de passe rend ce jeton impossible a renouveler.
+  credentialsVersion Int       @default(0)
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@index([playerId, expiresAt])
+}
+
+model Season {
+  id       String   @id @default(uuid())
+  number   Int      @unique
+  startsAt DateTime
+  endsAt   DateTime
+
+  ratings        Rating[]
+  seasonProgress SeasonProgress[]
+  seasonClaims   SeasonClaim[]
+}
+
+model Rating {
+  playerId     String
+  seasonId     String
+  mmr          Float  @default(1000)
+  /// Deviation de classement, si Glicko-2 (decision au jalon M5).
+  rd           Float  @default(350)
+  leaguePoints Int    @default(0)
+  league       League @default(SANS_AURA)
+  placements   Int    @default(0)
+  wins         Int    @default(0)
+  losses       Int    @default(0)
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id])
+
+  @@id([playerId, seasonId])
+  @@index([seasonId, leaguePoints])
+}
+
+enum League {
+  SANS_AURA
+  NAISSANTE
+  STABLE
+  RAYONNANTE
+  LEGENDAIRE
+  INFINIE
+}
+
+model Match {
+  id             String      @id @default(uuid())
+  mode           MatchMode
+  rulesVersion   String
+  contentVersion String
+  /// Graine du match : rejouer le meme match demande cette valeur et rien d'autre.
+  seed           String
+  status         MatchStatus @default(IN_PROGRESS)
+  endReason      String?
+  winnerSeat     Seat?
+  isGhost        Boolean     @default(false)
+  /// La bulle d'intention etait active dans ce match (test A/B, spec
+  /// 2026-09-26) : partie rapide ou invitation, tous les sieges reels exposes.
+  intentBubble   Boolean     @default(false)
+  startedAt      DateTime    @default(now())
+  endedAt        DateTime?
+  /// Journal compact des evenements, pour rejouer un match en cas de litige.
+  events         Json?
+
+  seats         MatchSeat[]
+  rounds        MatchRound[]
+  productEvents ProductEvent[]
+
+  @@index([startedAt])
+}
+
+enum MatchMode {
+  RANKED
+  CASUAL
+  INVITE
+  SOLO
+}
+
+enum MatchStatus {
+  IN_PROGRESS
+  ENDED
+  ABORTED
+}
+
+/// Sieges d'un match. Voir ADR 0006 : une identite, pas une position a l'ecran.
+enum Seat {
+  A
+  B
+}
+
+model MatchSeat {
+  matchId     String
+  seat        Seat
+  /// Null pour un fantome (rejeu d'un enregistrement, jalon M5).
+  playerId    String?
+  ghostOfId   String?
+  mmrBefore   Float?
+  mmrAfter    Float?
+  lpDelta     Int?
+  /// Attente en file du siege, en millisecondes (heure serveur), mesuree a
+  /// l'appariement. Nulle pour qui n'a pas fait la queue : invitation, et
+  /// siege d'un fantome. Sert l'indicateur « attente mediane en file classee »
+  /// (docs/00) ; zero a la place de nul fausserait la mediane.
+  queueWaitMs Int?
+
+  match  Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  player Player? @relation(fields: [playerId], references: [id])
+
+  @@id([matchId, seat])
+  @@index([playerId])
+}
+
+model MatchRound {
+  matchId String
+  round   Int
+  /// `RoundResult` de @aura/rules, tel quel.
+  result  Json
+
+  match Match @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@id([matchId, round])
+}
+
+model GhostRecording {
+  id           String   @id @default(uuid())
+  playerId     String
+  mmr          Float
+  rulesVersion String
+  /// Choix, timings et profils de recharge, manche par manche.
+  rounds       Json
+  createdAt    DateTime @default(now())
+
+  @@index([rulesVersion, mmr])
+}
+
+/// Un cosmetique achetable. L'identifiant est celui du fichier de contenu.
+model CosmeticItem {
+  id            String       @id
+  kind          CosmeticKind
+  rarity        String
+  priceSoft     Int?
+  priceHard     Int?
+  availableFrom DateTime?
+  availableTo   DateTime?
+
+  inventory InventoryItem[]
+}
+
+enum CosmeticKind {
+  ANIMATION
+  AURA_EFFECT
+  AURA_COLOR
+  OUTFIT
+  HAIR
+  BANNER
+}
+
+model InventoryItem {
+  playerId   String
+  itemId     String
+  acquiredAt DateTime @default(now())
+  /// shop, pass, challenge, gift
+  source     String
+
+  player Player       @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  item   CosmeticItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, itemId])
+}
+
+/// Progression d'un defi quotidien, pour un joueur et un jour.
+///
+/// `day` est le numero de jour UTC (`dayIndexOf`), pas une date : la journee
+/// commence a la meme seconde pour tout le monde, et un entier se compare sans
+/// se demander de quel fuseau il vient.
+///
+/// La SELECTION du jour n'est pas stockee — elle se recalcule a partir de
+/// `day` (`challengesForDay`, deterministe). Seule la progression a besoin
+/// d'une ligne, et une ligne n'apparait que quand le joueur avance.
+///
+/// La cle est `(playerId, day, challengeId)` : c'est elle qui rend deux
+/// parties terminees en meme temps incapables de creer deux lignes pour le
+/// meme defi. L'upsert s'y appuie plutot que sur une lecture suivie d'une
+/// ecriture.
+model PlayerChallenge {
+  playerId    String
+  day         Int
+  challengeId String
+  progress    Int       @default(0)
+  /// Non nul des que la recompense est encaissee. Une date plutot qu'un
+  /// booleen : savoir QUAND vaut mieux que savoir seulement que oui.
+  claimedAt   DateTime?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, day, challengeId])
+  @@index([playerId, day])
+}
+
+/// Le passe de saison d'un joueur, pour une saison (docs/01, passe de saison).
+///
+/// `xp` monte a chaque fin de match, dans la transaction qui credite
+/// l'experience du joueur (`PrismaRatingRepository.credit`). Les paliers s'en
+/// DEDUISENT (`seasonTierFor`, @aura/content), comme le niveau de `Player.xp`.
+///
+/// `premiumAt` : la piste premium, achetee en jetons. Une date plutot qu'un
+/// booleen, comme `claimedAt` : savoir QUAND vaut mieux que savoir que oui.
+model SeasonProgress {
+  playerId  String
+  seasonId  String
+  xp        Int       @default(0)
+  premiumAt DateTime?
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id])
+
+  @@id([playerId, seasonId])
+}
+
+/// Une recompense du passe, reclamee.
+///
+/// La cle primaire EST la garde contre la double reclamation : deux onglets
+/// qui reclament le meme palier au meme instant, et la seconde insertion
+/// echoue avant tout credit (la ligne s'ecrit AVANT le credit, dans la meme
+/// transaction). `track` vaut `free` ou `premium`.
+model SeasonClaim {
+  playerId  String
+  seasonId  String
+  tier      Int
+  track     String
+  claimedAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id])
+
+  @@id([playerId, seasonId, tier, track])
+}
+
+model Loadout {
+  playerId String @id
+  /// Animation equipee par mouvement, effet par amplificateur, tenue, coiffure.
+  data     Json
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+}
+
+/// Un achat de jetons en argent reel, recu par le webhook de RevenueCat
+/// (ADR 0016) : credite, ou inscrit pour le support s'il n'a pu l'etre.
+///
+/// Deux anti-rejeux. L'identifiant d'EVENEMENT (cle primaire) : RevenueCat
+/// renvoie un webhook tant qu'il n'a pas recu de 2xx. Et la TRANSACTION du
+/// store (`store`, `transactionId`) : une meme transaction peut produire deux
+/// evenements distincts (deux projets, une reimportation). L'insertion de la
+/// ligne et le credit du joueur vont dans la meme transaction.
+///
+/// La ligne survit au compte (`SetNull`) : c'est une trace de vente.
+model TokenPurchase {
+  eventId        String    @id
+  transactionId  String
+  /// APP_STORE, PLAY_STORE...
+  store          String
+  /// Le joueur credite ; `null` si l'achat n'a pu etre attribue, ou si le
+  /// compte a ete supprime depuis.
+  playerId       String?
+  /// L'identifiant d'acheteur que RevenueCat a transmis, tel quel.
+  appUserId      String
+  productId      String
+  /// Jetons credites (0 pour un achat non attribue).
+  tokens         Int
+  /// CREDITED, ou UNATTRIBUTED (voir `reason`).
+  status         String
+  /// UNKNOWN_PRODUCT, UNKNOWN_BUYER, UNKNOWN_PLAYER : pourquoi le support doit trancher.
+  reason         String?
+  /// PRODUCTION ou SANDBOX
+  environment    String
+  createdAt      DateTime  @default(now())
+  /// Remboursement : quand, par quel evenement, et combien de jetons repris
+  /// (au plus ce qui restait en bourse ; le reste avait ete depense).
+  refundedAt     DateTime?
+  refundEventId  String?
+  refundedTokens Int       @default(0)
+
+  player Player? @relation(fields: [playerId], references: [id], onDelete: SetNull)
+
+  @@unique([store, transactionId])
+  @@index([playerId])
+  @@index([status])
+}
+
+/// Un evenement produit envoye par le client (`POST /events`, protocole 2.5.0).
+///
+/// Ne passe par ici que ce que SEUL le client sait — qu'un clip est parti ;
+/// tout le reste des indicateurs se deduit de `Player`, `Match` et
+/// `MatchSeat`. Aucune donnee ne quitte nos serveurs (docs/10).
+///
+/// La cle primaire `(playerId, matchId, kind)` borne la table par
+/// construction : un renvoi ne cree rien. L'insertion n'a lieu que si le
+/// joueur a occupe un siege du match. `kind` est une chaine validee a l'entree
+/// par `productEventSchema` : une sorte nouvelle se decide dans le protocole.
+model ProductEvent {
+  playerId  String
+  matchId   String
+  kind      String
+  createdAt DateTime @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match  Match  @relation(fields: [matchId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, matchId, kind])
+  @@index([matchId, kind])
+}
+
+/// Groupe d'un joueur dans une experience (module `flags`).
+enum FlagGroup {
+  treatment
+  control
+}
+
+/// L'affectation d'un joueur a un drapeau, inscrite la premiere fois qu'elle
+/// sert a ouvrir un match (spec 2026-09-26 « Bulle d'intention en test A/B »).
+///
+/// Une TRACE, pas une decision : le groupe se recalcule du hachage
+/// `sha256(drapeau:joueur)`. La ligne n'existe que pour comparer les groupes
+/// en SQL (`GET /admin/experiments`). Cle `(playerId, flag)` : la premiere
+/// inscription fait foi (`ON CONFLICT DO NOTHING`). `flag` est un nom declare
+/// en code (`FLAGS`), jamais une saisie.
+model FlagAssignment {
+  playerId   String
+  flag       String
+  group      FlagGroup
+  assignedAt DateTime  @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, flag])
+  @@index([flag, group])
+}

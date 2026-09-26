@@ -1,0 +1,42 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: aura-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-aura}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-aura}
+      POSTGRES_DB: ${POSTGRES_DB:-aura}
+    ports:
+      # 5433 cote hote, et non 5432 : un PostgreSQL natif occupe deja le port
+      # 5432 sur 127.0.0.1 et ::1. Docker publie bien sur 0.0.0.0, mais macOS
+      # resout « localhost » vers l'installation locale en premier, et la
+      # connexion n'arrive jamais au conteneur. On deplace notre port plutot
+      # que d'arreter le service de quelqu'un d'autre.
+      - '5433:5432'
+    volumes:
+      - aura-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-aura} -d ${POSTGRES_DB:-aura}']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: aura-redis
+    restart: unless-stopped
+    command: ['redis-server', '--appendonly', 'yes']
+    ports:
+      - '6379:6379'
+    volumes:
+      - aura-redis-data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  aura-postgres-data:
+  aura-redis-data:

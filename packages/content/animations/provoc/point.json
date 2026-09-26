@@ -1,0 +1,60 @@
+{
+  "id": "anim.provoc.t1.point",
+  "version": 1,
+  "name": {
+    "fr": "Doigt pointé"
+  },
+  "icon": "👉",
+  "move": {
+    "style": "provoc",
+    "tier": 1
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 1.7,
+    "weights": [0.18, 0.82],
+    "ease": true
+  },
+  "flags": {
+    "expression": "neutral"
+  },
+  "hands": [
+    ["fist", "in"],
+    ["point", "down"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [3, -150],
+        "neck": [1, -132],
+        "hip": [0, -80],
+        "le": [-18, -106],
+        "lh": [-6, -84],
+        "re": [24, -128],
+        "rh": [48, -133],
+        "lk": [-10, -40],
+        "lf": [-20, 0],
+        "rk": [14, -40],
+        "rf": [24, 0]
+      },
+      "rot": 0.05
+    },
+    {
+      "joints": {
+        "head": [6, -149],
+        "neck": [3, -131],
+        "hip": [0, -80],
+        "le": [-18, -106],
+        "lh": [-6, -84],
+        "re": [28, -130],
+        "rh": [58, -138],
+        "lk": [-10, -40],
+        "lf": [-20, 0],
+        "rk": [15, -40],
+        "rf": [24, 0]
+      },
+      "rot": -0.05,
+      "hy": -0.12
+    }
+  ]
+}
