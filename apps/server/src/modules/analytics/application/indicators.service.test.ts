@@ -75,3 +75,17 @@ describe('IndicatorsService — rapport garde une minute', () => {
     expect(reads()).toBe(2);
   });
 });
+
+/*
+  Une horloge serveur qui recule (resynchronisation NTP) rendait l'age du
+  rapport negatif — donc « frais » tout le temps du recul.
+*/
+describe('IndicatorsService — horloge qui recule', () => {
+  it('recalcule plutot que de servir un rapport venu du futur', async () => {
+    const { service, reads, advance } = setup();
+    await service.report();
+    advance(-10 * 60_000);
+    await service.report();
+    expect(reads()).toBe(2);
+  });
+});

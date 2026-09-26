@@ -87,6 +87,10 @@ colorer un verdict.
   supprimées) ; lint, typecheck, tests ; relecture de sécurité : aucun point
   critique ni important. Mineur corrigé : le rapport est gardé une minute
   (huit agrégats sur toute la base par calcul).
+- [x] Relecture finale (opus) : les sept définitions vérifiées une à une, aucun
+  point critique ni important. Mineurs corrigés : le cache ne sert plus un
+  rapport « venu du futur » quand l'horloge serveur recule (test), et le
+  commentaire du lecteur dit désormais quelles fenêtres restent ouvertes.
 
 ## Limites connues
 
@@ -97,6 +101,9 @@ colorer un verdict.
 - **Un partage envoyé dans les millisecondes qui suivent `match:end`** peut
   arriver avant l'écriture du match en base : il n'est pas compté. L'indicateur
   est sous-estimé, jamais gonflé.
+- **Un partage vers une autre application** peut faire tuer le jeu par le
+  système pendant la feuille de partage : la promesse meurt avec le processus,
+  l'événement n'est pas envoyé. Sous-estimation marginale.
 - Les matchs antérieurs à la migration n'ont pas de `queueWaitMs`.
 - Pas d'index sur `Match.endedAt` ni `Player.createdAt` : à poser quand la base
   grossira (le cache d'une minute suffit d'ici là).

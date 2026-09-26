@@ -29,7 +29,9 @@ export class IndicatorsService {
 
   report(): Promise<IndicatorReport> {
     const nowMs = this.clock.now().getTime();
-    if (this.cached !== null && nowMs - this.cached.atMs < INDICATORS_CACHE_MS) {
+    // Un age negatif (horloge serveur reculee) n'est pas « frais » : on recalcule.
+    const age = this.cached === null ? -1 : nowMs - this.cached.atMs;
+    if (this.cached !== null && age >= 0 && age < INDICATORS_CACHE_MS) {
       return this.cached.report;
     }
     const report = this.compute(nowMs);

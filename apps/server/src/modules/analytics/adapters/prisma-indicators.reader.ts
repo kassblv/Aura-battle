@@ -20,8 +20,12 @@ import { utcTimestamp } from './sql-time.js';
  * - **Match PvP** : `RANKED`, `CASUAL` ou `INVITE`, fantomes compris — le
  *   joueur, lui, a joue ; leur part est rendue a cote (`ghostShare`).
  * - **Siege d'un joueur reel** : `playerId` non nul (un fantome n'en a pas).
- * - **Toutes les fenetres sont bornees des deux cotes.** C'est ce qui rend le
- *   calcul rejouable a un instant donne, et ce qui isole les tests.
+ * - **Les fenetres de COHORTE et de MATCH sont bornees des deux cotes** : c'est
+ *   ce qui isole les tests. Deux exceptions assumees, cote consequence : le
+ *   `clip_shared` d'un match de la fenetre compte meme envoye apres elle (un
+ *   partage fait a 00:05 d'un match fini a 23:58), et le premier match d'un
+ *   compte de la fenetre compte meme joue aujourd'hui. Un recalcul a un instant
+ *   passe peut donc differer legerement de celui fait a l'epoque.
  *
  * Chaque indicateur est une requete a part : huit lectures d'agregat, a la
  * demande d'un administrateur, jamais sur le chemin d'un joueur.
