@@ -166,3 +166,28 @@ describe('bulle d intention — une annonce est une action', () => {
     expect(step.state.pending.a.acted).toBe(false);
   });
 });
+
+/*
+  Relecture finale : un siege qui annonce puis laisse filer le verrouillage
+  joue la famille tiree d'office. Si elle tombe sur celle annoncee, le bonus
+  recompenserait un choix que le joueur n'a pas fait.
+*/
+describe('bulle d intention — pas de bonus sur un choix par defaut', () => {
+  it('ne tient pas une bulle sans verrouillage', () => {
+    let step = toChoice(ON);
+    const defaultStyle = step.state.roundContext!.defaultStyle;
+    // b verrouille la famille que la famille par defaut bat, pour que a gagne.
+    const beaten = ON.styleBeats[defaultStyle][0]!;
+    step = reduce(step.state, announce('a', defaultStyle, step.state), ON);
+    step = reduce(
+      step.state,
+      lock('b', { move: { style: beaten, tier: 0 }, amplifier: 0, useUltimate: false }, step.state),
+      ON,
+    );
+    step = reduce(step.state, timeout(step.state), ON);
+    const effect = step.effects.find((e) => e.type === 'ROUND_RESOLVED');
+    if (effect?.type !== 'ROUND_RESOLVED') throw new Error('manche non resolue');
+    expect(effect.result.winner).toBe('a');
+    expect(effect.result.seats.a.intentKept).toBe(false);
+  });
+});

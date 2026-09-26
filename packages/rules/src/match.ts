@@ -348,7 +348,9 @@ function resolveCurrentRound(state: MatchState, atMs: number, config: BalanceCon
       boostPercent: state.pending[seat].boostPercent,
       previousMoves: state.seats[seat].moves,
       shiny: context.shiny[seat],
-      intent: state.pending[seat].intent,
+      // Pas de bulle tenue sur un choix par defaut : le joueur n'a pas choisi
+      // la famille tiree d'office, meme si elle tombe sur celle annoncee.
+      intent: locked === null ? null : state.pending[seat].intent,
     };
   };
 
