@@ -187,7 +187,7 @@ score = arrondi(final)
 
 ## 10. Bulle d'intention (optionnelle, à tester en bêta)
 
-Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de choix, chaque joueur peut afficher publiquement une famille (vraie ou bluff). S'il gagne la manche avec la famille annoncée : +10 de jauge d'Ultime. Activée par feature flag, désactivée par défaut.
+Mécanique inspirée de la bulle de pensée du prototype : pendant la phase de choix, chaque joueur peut afficher publiquement une famille (vraie ou bluff). S'il gagne la manche avec la famille annoncée : +10 de jauge d'Ultime (`BALANCE.intent.ultimateBonus`, plafonné comme le reste). **Une seule annonce par manche**, avant son verrouillage — la première fait foi. Activée par feature flag, désactivée par défaut (`BALANCE.intent.enabled`) : le serveur l'active match par match, en test A/B, en partie rapide et en invitation seulement (spec `docs/superpowers/specs/2026-09-26-bulle-intention-ab-design.md`).
 
 ## 11. Méta hors match
 

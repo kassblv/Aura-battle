@@ -91,6 +91,11 @@ export interface PendingSeat {
   readonly locked: { readonly choice: Choice; readonly timingTapAtMs: number | null } | null;
   /** Le siege a-t-il agi durant cette manche ? */
   readonly acted: boolean;
+  /**
+   * La famille annoncee par la bulle d'intention cette manche, ou `null`
+   * (docs/01 §10). Publique des l'annonce ; la premiere fait foi.
+   */
+  readonly intent: Style | null;
 }
 
 export interface RoundContext {
@@ -139,7 +144,13 @@ export type MatchEvent =
       readonly timingTapAtMs: number | null;
       readonly atMs: number;
     }
-  | { readonly type: 'PLAYER_FORFEIT'; readonly seat: Seat; readonly atMs: number };
+  | { readonly type: 'PLAYER_FORFEIT'; readonly seat: Seat; readonly atMs: number }
+  | {
+      readonly type: 'INTENT_SHOWN';
+      readonly seat: Seat;
+      readonly style: Style;
+      readonly atMs: number;
+    };
 
 export type MatchEffect =
   | {
@@ -150,7 +161,14 @@ export type MatchEffect =
     }
   | { readonly type: 'ROUND_RESOLVED'; readonly round: number; readonly result: RoundResult }
   | { readonly type: 'CHOICE_REJECTED'; readonly seat: Seat; readonly reason: ChoiceRejection }
-  | { readonly type: 'MATCH_ENDED'; readonly result: MatchResult };
+  | { readonly type: 'MATCH_ENDED'; readonly result: MatchResult }
+  /** Une annonce acceptee : publique, a relayer a l'adversaire (§10). */
+  | {
+      readonly type: 'INTENT_SHOWN';
+      readonly seat: Seat;
+      readonly style: Style;
+      readonly round: number;
+    };
 
 export interface MatchStep {
   readonly state: MatchState;
@@ -183,6 +201,7 @@ const emptyPending = (): PendingSeat => ({
   recharge: null,
   locked: null,
   acted: false,
+  intent: null,
 });
 
 const initialSeat = (config: BalanceConfig): SeatState => ({
@@ -329,6 +348,7 @@ function resolveCurrentRound(state: MatchState, atMs: number, config: BalanceCon
       boostPercent: state.pending[seat].boostPercent,
       previousMoves: state.seats[seat].moves,
       shiny: context.shiny[seat],
+      intent: state.pending[seat].intent,
     };
   };
 
@@ -516,5 +536,39 @@ export function reduce(
 
     case 'PLAYER_FORFEIT':
       return endMatch(state, opponentOf(event.seat), 'forfeit');
+
+    case 'INTENT_SHOWN':
+      return handleIntentShown(state, event, config);
   }
+}
+
+/**
+ * Une annonce de bulle d'intention (§10). Refusee EN SILENCE — pas d'effet —
+ * si la bulle est coupee pour ce match, hors de la phase de choix, apres le
+ * verrouillage du siege, ou si le siege a deja annonce : la premiere fait foi,
+ * sinon annoncer les cinq familles garantirait le bonus.
+ */
+function handleIntentShown(
+  state: MatchState,
+  event: Extract<MatchEvent, { type: 'INTENT_SHOWN' }>,
+  config: BalanceConfig,
+): MatchStep {
+  const pending = state.pending[event.seat];
+  if (
+    !config.intent.enabled ||
+    state.phase !== 'choice' ||
+    event.atMs >= state.phaseEndsAtMs ||
+    pending.locked !== null ||
+    pending.intent !== null ||
+    !config.styles.includes(event.style)
+  ) {
+    return { state, effects: [] };
+  }
+  return {
+    state: {
+      ...state,
+      pending: { ...state.pending, [event.seat]: { ...pending, intent: event.style } },
+    },
+    effects: [{ type: 'INTENT_SHOWN', seat: event.seat, style: event.style, round: state.round }],
+  };
 }

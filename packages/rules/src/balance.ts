@@ -95,6 +95,16 @@ export interface BalanceConfig {
     readonly gainOnRoundLost: number;
     readonly multiplier: number;
   };
+  /**
+   * Bulle d'intention (docs/01 §10) : une annonce publique par manche, vraie
+   * ou bluff. `enabled` est faux dans `BALANCE` ; le serveur l'active match par
+   * match (test A/B).
+   */
+  readonly intent: {
+    readonly enabled: boolean;
+    /** Jauge d'Ultime gagnee en remportant la manche avec la famille annoncee. */
+    readonly ultimateBonus: number;
+  };
   /** Multiplicateur applique quand on rejoue un mouvement deja joue dans le match. */
   readonly repeatMultiplier: number;
   /**
@@ -191,6 +201,7 @@ export const BALANCE: BalanceConfig = deepFreeze({
     gainOnRoundLost: 25,
     multiplier: 1.5,
   },
+  intent: { enabled: false, ultimateBonus: 10 },
   repeatMultiplier: 0.7,
   /*
     Cent d'experience pour le premier palier : cinq matchs environ, donc le

@@ -1,7 +1,7 @@
 import { BALANCE, type BalanceConfig } from './balance.js';
 import { beats } from './counters.js';
 import type { TimingResult } from './timing.js';
-import type { Choice, Move, Seat } from './types.js';
+import type { Choice, Move, Seat, Style } from './types.js';
 
 /**
  * Resolution d'une manche (docs/01-game-design.md §7).
@@ -20,6 +20,8 @@ export interface RoundSeatInput {
   readonly previousMoves: readonly Move[];
   /** La case brillante de ce siege pour la manche, ou `null` (docs/01). */
   readonly shiny: Move | null;
+  /** La famille annoncee par la bulle d'intention, ou `null` (docs/01 §10). */
+  readonly intent?: Style | null;
 }
 
 export interface RoundSeatOutcome {
@@ -53,6 +55,11 @@ export interface RoundSeatOutcome {
    */
   readonly usedUltimate: boolean;
   readonly energySpent: number;
+  /**
+   * A gagne la manche avec la famille annoncee par sa bulle (docs/01 §10) :
+   * le bonus est compris dans `ultimateGain`. La mise en scene en a besoin.
+   */
+  readonly intentKept: boolean;
   /** Jauge d'Ultime gagnee a l'issue de la manche. */
   readonly ultimateGain: number;
 }
@@ -117,7 +124,7 @@ export function resolveRound(
     counters: boolean,
     isCountered: boolean,
     counterBlocked: boolean,
-  ): Omit<RoundSeatOutcome, 'ultimateGain'> => {
+  ): Omit<RoundSeatOutcome, 'ultimateGain' | 'intentKept'> => {
     const repeated = isRepeat(seat.choice.move, seat.previousMoves);
     const shiny =
       seat.shiny !== null &&
@@ -164,24 +171,36 @@ export function resolveRound(
           : 'b'
         : null;
 
-  /** Gains de jauge : parfait, contre reussi, manche perdue (§6). Ils se cumulent. */
+  /** La bulle tenue : gagner avec la famille qu'on a annoncee (§10). */
+  const intentKeptFor = (seat: RoundSeatInput, thisSeat: Seat): boolean =>
+    config.intent.enabled &&
+    winner === thisSeat &&
+    seat.intent !== undefined &&
+    seat.intent !== null &&
+    seat.intent === seat.choice.move.style;
+
+  /** Gains de jauge : parfait, contre reussi, manche perdue (§6), bulle tenue (§10). Ils se cumulent. */
   const ultimateGainFor = (
     seat: RoundSeatInput,
-    outcome: Omit<RoundSeatOutcome, 'ultimateGain'>,
+    outcome: Omit<RoundSeatOutcome, 'ultimateGain' | 'intentKept'>,
     thisSeat: Seat,
+    intentKept: boolean,
   ): number => {
     let gain = 0;
     if (seat.timing.quality === 'perfect') gain += config.ultimate.gainOnPerfect;
     if (outcome.countered) gain += config.ultimate.gainOnCounter;
     if (winner !== null && winner !== thisSeat) gain += config.ultimate.gainOnRoundLost;
+    if (intentKept) gain += config.intent.ultimateBonus;
     return Math.min(gain, config.ultimate.gaugeMax);
   };
 
+  const aKept = intentKeptFor(a, 'a');
+  const bKept = intentKeptFor(b, 'b');
   return {
     winner,
     seats: {
-      a: { ...aOutcome, ultimateGain: ultimateGainFor(a, aOutcome, 'a') },
-      b: { ...bOutcome, ultimateGain: ultimateGainFor(b, bOutcome, 'b') },
+      a: { ...aOutcome, intentKept: aKept, ultimateGain: ultimateGainFor(a, aOutcome, 'a', aKept) },
+      b: { ...bOutcome, intentKept: bKept, ultimateGain: ultimateGainFor(b, bOutcome, 'b', bKept) },
     },
   };
 }
