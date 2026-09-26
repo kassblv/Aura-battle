@@ -1,6 +1,6 @@
 import { onlineErrorText } from './onlineErrors.js';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import type { Choice, RechargeTap } from '@aura/rules';
+import type { Choice, RechargeTap, Style } from '@aura/rules';
 import { createGameClient, type GameClient } from '../net/client.js';
 import type { ServerMessage } from '@aura/protocol';
 import { createSocketTransport } from '../net/socketTransport.js';
@@ -336,6 +336,11 @@ export function useOnlineMatch(
       // le contraire afficherait un verrouillage qui n a pas eu lieu.
       return true;
     }, []),
+    // La bulle d'intention : le pilote n'envoie rien si le match n'en a pas,
+    // si j'ai deja annonce ou si j'ai verrouille.
+    announce: useCallback((style: Style) => {
+      matchRef.current?.showIntent(style);
+    }, []),
   };
 
   const joinQueue = useCallback((mode: 'ranked' | 'casual') => {
@@ -449,6 +454,7 @@ const EMPTY_VIEW: MatchView = {
   taps: [],
   meterPeriodMs: 0,
   opponentLocked: false,
+  intent: null,
   lastRound: null,
   ended: null,
 };

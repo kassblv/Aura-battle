@@ -26,10 +26,25 @@ const round = (over: Partial<RoundView> = {}): RoundView => ({
   revealFirst: 'adversaire',
   opponentQuality: 'good',
   opponentUltimate: false,
+  myIntentKept: false,
   ...over,
 });
 
 describe('revealScene', () => {
+  /*
+    La bulle tenue (2.6.0) : j'ai gagne avec la famille annoncee. Le badge
+    arrive APRES le bandeau du contre, a l'instant ou la manche se decide.
+  */
+  it('annonce la bulle tenue et son bonus, apres le bandeau du contre', () => {
+    const scene = revealScene(round({ myIntentKept: true }), bare);
+    expect(scene.kept?.bonus).toBe(BALANCE.intent.ultimateBonus);
+    expect(scene.kept!.atMs).toBeGreaterThan(scene.calloutAtMs);
+  });
+
+  it('se tait quand la bulle n a pas ete tenue', () => {
+    expect(revealScene(round(), bare).kept).toBeNull();
+  });
+
   it('montre ma pose et celle de l adversaire, avec leur pictogramme', () => {
     const scene = revealScene(round(), bare);
     expect(scene.mine).toMatchObject({ name: 'Roue', icon: '🤸', family: 'acrobatie', tier: 2 });

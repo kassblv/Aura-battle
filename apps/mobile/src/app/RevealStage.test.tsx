@@ -31,6 +31,7 @@ const scene = (over: Partial<RevealScene> = {}): RevealScene => ({
   },
   callout: { kind: 'counter', by: 'moi', winner: 'acrobatie', loser: 'prouesse', multiplier: 1.35 },
   calloutAtMs: 1550,
+  kept: null,
   ...over,
 });
 
@@ -80,6 +81,19 @@ describe('RevealStage', () => {
     expect(html).toContain('✨ ×1,2');
   });
 
+  it('pose le badge de la bulle tenue, a part du bandeau du contre', () => {
+    const html = render(scene({ kept: { bonus: 10, atMs: 2000 } }));
+    expect(count(html, /class="reveal__kept"/g)).toBe(1);
+    expect(html).toContain('Bulle tenue');
+    expect(html).toContain('+10');
+    // Deux elements distincts : le badge ne vit pas dans le bandeau.
+    expect(html).toMatch(/reveal__callout[\s\S]*<\/div>[\s\S]*reveal__kept/);
+  });
+
+  it('pas de badge sans bulle tenue', () => {
+    expect(render(scene())).not.toContain('reveal__kept');
+  });
+
   it('se tait sans bandeau', () => {
     expect(render(scene({ callout: null }))).not.toContain('reveal__callout');
   });
@@ -110,6 +124,7 @@ describe('RevealStage', () => {
           revealFirst: 'adversaire',
           opponentQuality: 'good',
           opponentUltimate: false,
+          myIntentKept: false,
         },
         { look: defaultLook(), owned: new Set() },
         variantConfig(variant),

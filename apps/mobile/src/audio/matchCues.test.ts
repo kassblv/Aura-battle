@@ -24,6 +24,7 @@ function round(over: Partial<RoundView> = {}): RoundView {
     revealFirst: 'adversaire',
     opponentQuality: 'good',
     opponentUltimate: false,
+    myIntentKept: false,
     ...over,
   };
 }
@@ -42,6 +43,7 @@ function view(phase: MatchView['phase'], over: Partial<MatchView> = {}): MatchVi
     taps: [],
     meterPeriodMs: 0,
     opponentLocked: false,
+    intent: null,
     lastRound: null,
     ended: null,
     ...over,

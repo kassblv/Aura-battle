@@ -41,6 +41,7 @@ const round = (over: Partial<RoundView> = {}): RoundView => ({
   revealFirst: 'adversaire',
   opponentQuality: 'good',
   opponentUltimate: false,
+  myIntentKept: false,
   ...over,
 });
 

@@ -246,3 +246,68 @@ describe('les regles du match dans la vue', () => {
     expect(view.event).toBeNull();
   });
 });
+
+describe('bulle d intention dans la vue', () => {
+  const online = (over: Record<string, unknown>): OnlineMatch =>
+    ({ state: { ...EMPTY_ONLINE_STATE, seat: 'a', ...over } }) as unknown as OnlineMatch;
+
+  it('rien quand le match n a pas de bulle', () => {
+    expect(viewOfOnline(online({ phase: 'choice' })).intent).toBeNull();
+  });
+
+  it('le solo n a pas de bulle', () => {
+    expect(viewOfSolo(solo()).intent).toBeNull();
+  });
+
+  it('expose les deux annonces et le droit d annoncer', () => {
+    const view = viewOfOnline(
+      online({ intentBubble: true, phase: 'choice', intents: { mine: null, theirs: 'hype' } }),
+    );
+    expect(view.intent).toEqual({ mine: null, theirs: 'hype', canAnnounce: true });
+  });
+
+  it('retire le droit d annoncer : deja annonce, envoye, verrouille ou hors choix', () => {
+    const base = { intentBubble: true, phase: 'choice' };
+    const can = (over: Record<string, unknown>): boolean | undefined =>
+      viewOfOnline(online({ ...base, ...over })).intent?.canAnnounce;
+    expect(can({ intents: { mine: 'calme', theirs: null } })).toBe(false);
+    expect(can({ intentSent: true })).toBe(false);
+    expect(can({ lockedSelf: true })).toBe(false);
+    expect(can({ phase: 'recharge' })).toBe(false);
+  });
+
+  it('dit si MA bulle a ete tenue, selon mon siege', () => {
+    const side = (intentKept?: boolean) => ({
+      move: { style: 'calme', tier: 1 },
+      amp: 0,
+      ult: false,
+      cosmetic: { animationId: 'anim.calme.t1.x', effectId: 'fx.glow' },
+      recharge: { points: 1, bestCombo: 1, boostPct: 0, ultGain: 0, energyGain: 0 },
+      timing: { quality: 'good' as const, error: 0.1 },
+      repeat: false,
+      counter: false,
+      countered: false,
+      counterBlocked: false,
+      base: 30,
+      final: 30,
+      energyAfter: 10,
+      ultAfter: 0,
+      ...(intentKept === undefined ? {} : { intentKept }),
+    });
+    const lastRound = (a: boolean | undefined, b: boolean | undefined) => ({
+      matchId: 'm_1',
+      round: 1,
+      sides: { a: side(a), b: side(b) },
+      winner: 'b',
+      roundsWon: { a: 0, b: 1 },
+      timeline: { revealFirst: 'a' },
+    });
+    const kept = (seat: 'a' | 'b', a?: boolean, b?: boolean): boolean | undefined =>
+      viewOfOnline(online({ seat, phase: 'reveal', lastRound: lastRound(a, b) })).lastRound
+        ?.myIntentKept;
+    expect(kept('b', false, true)).toBe(true);
+    expect(kept('a', false, true)).toBe(false);
+    // Un serveur d'avant 2.6.0 ne dit rien : pas de badge.
+    expect(kept('a')).toBe(false);
+  });
+});

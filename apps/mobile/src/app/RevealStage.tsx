@@ -136,6 +136,8 @@ export const RevealStage = memo(function RevealStage({
     for (const card of [scene.mine, scene.theirs]) {
       if (card.shiny) schedule(card.atMs + 120, { type: 'card', action: 'shiny' });
     }
+    // La bulle tenue tinte comme une brillante : c'est un gain, il s'entend.
+    if (scene.kept !== null) schedule(scene.kept.atMs, { type: 'card', action: 'shiny' });
     return () => {
       for (const timer of timers) clearTimeout(timer);
     };
@@ -156,6 +158,21 @@ export const RevealStage = memo(function RevealStage({
           style={at(scene.calloutAtMs, elapsedMs)}
         >
           <Callout callout={callout} opponentName={opponentName} />
+        </div>
+      )}
+      {/*
+        Sous ma carte, pas dans le bandeau : le bonus est le mien, et le centre
+        appartient au bandeau puis au verdict, qui s'y pose juste apres.
+      */}
+      {scene.kept !== null && (
+        <div className="reveal__kept" role="status" style={at(scene.kept.atMs, elapsedMs)}>
+          <b className="reveal__kept-title">
+            <span className="reveal__kept-icon" aria-hidden="true">
+              💭
+            </span>{' '}
+            Bulle tenue
+          </b>
+          <span className="reveal__kept-gain">+{scene.kept.bonus} Ultime</span>
         </div>
       )}
     </div>

@@ -16,6 +16,7 @@ const base: MatchView = {
   taps: [],
   meterPeriodMs: 1_700,
   opponentLocked: false,
+  intent: null,
   lastRound: null,
   ended: null,
 };
@@ -27,6 +28,18 @@ describe('renderKey', () => {
     expect(key({ event: { id: 'contres', name: 'Contres tranchants', pitch: '' } })).not.toBe(
       key(),
     );
+  });
+
+  /*
+    La bulle d'intention (2.6.0) se dessine : le geste, les deux bulles, le
+    badge de la revelation. Chacun de ses changements doit redessiner.
+  */
+  it('change avec la bulle d intention : presence, annonces, droit d annoncer', () => {
+    const on = { mine: null, theirs: null, canAnnounce: true } as const;
+    expect(key({ intent: on })).not.toBe(key());
+    expect(key({ intent: { ...on, theirs: 'hype' } })).not.toBe(key({ intent: on }));
+    expect(key({ intent: { ...on, mine: 'calme' } })).not.toBe(key({ intent: on }));
+    expect(key({ intent: { ...on, canAnnounce: false } })).not.toBe(key({ intent: on }));
   });
 
   it('change quand ma case brillante arrive', () => {
@@ -117,10 +130,13 @@ describe('renderKey', () => {
       revealFirst: 'adversaire' as const,
       opponentQuality: 'good' as const,
       opponentUltimate: false,
+      myIntentKept: false,
     };
     expect(key({ lastRound: won })).not.toBe(key());
     expect(key({ lastRound: { ...won, round: 2 } })).not.toBe(key({ lastRound: won }));
     expect(key({ lastRound: { ...won, winner: null } })).not.toBe(key({ lastRound: won }));
+    // Le badge « Bulle tenue » se dessine avec la revelation.
+    expect(key({ lastRound: { ...won, myIntentKept: true } })).not.toBe(key({ lastRound: won }));
   });
 
   /**
@@ -148,6 +164,7 @@ describe('renderKey', () => {
       revealFirst: 'adversaire' as const,
       opponentQuality: 'good' as const,
       opponentUltimate: false,
+      myIntentKept: false,
     };
     expect(
       key({ lastRound: { ...one, myQuality: 'miss', myUltimate: true, countered: true } }),

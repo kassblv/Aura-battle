@@ -42,6 +42,7 @@ import { useRevealClip, type ArenaFrames } from '../clip/useRevealClip.js';
 import { revealScene } from './reveal.js';
 import { multiplierLabel } from '../match/rules.js';
 import { RevealStage } from './RevealStage.js';
+import { IntentBubbles } from './IntentBubble.js';
 import { scheduleVerdictRender } from './verdictTimer.js';
 import { danceOptions, defaultLook, type Wardrobe } from './wardrobe.js';
 
@@ -104,6 +105,11 @@ export interface MatchActions {
    * solo l'ignore : il joue deja la pose presélectionnee de la case.
    */
   lock(choice: Choice, chargeAtMs: number, tapAtMs: number, poseId: string): boolean;
+  /**
+   * Annonce une famille dans la bulle d'intention (2.6.0). Absente : le mode
+   * n'a pas de bulle (solo). Le pilote en ligne ignore une seconde annonce.
+   */
+  readonly announce?: (style: Style) => void;
 }
 
 export type { MeterZonesView };
@@ -575,6 +581,27 @@ function MatchScreenBody({
     [style, tier, shownFamily, equipDance, wardrobe, chooseStyle, onCue],
   );
 
+  /*
+    La bulle d'intention (2.6.0) : le geste n'a de sens que pendant le choix,
+    tant que je n'ai ni annonce ni verrouille — `locked` est mon verrouillage
+    LOCAL, que le pilote ne connait qu'une fois le message parti.
+  */
+  const intent = view.intent;
+  const canAnnounce = choosing && intent !== null && intent.canAnnounce && !locked;
+  const announceAction = actions.announce;
+  const announce = useCallback(
+    (next: Style): void => {
+      announceAction?.(next);
+      onCue?.({ type: 'card', action: 'pick' });
+    },
+    [announceAction, onCue],
+  );
+  // L'adversaire vient d'annoncer : ca s'entend, meme les yeux sur les cartes.
+  const theirIntent = intent?.theirs ?? null;
+  useEffect(() => {
+    if (theirIntent !== null) cueRef.current?.({ type: 'card', action: 'flip' });
+  }, [theirIntent]);
+
   const tapSlot = (slot: number): void => {
     const orbIndex = orbOn.current[slot];
     // Un emplacement vide n est pas tapable : la feuille de style le masque et
@@ -755,8 +782,19 @@ function MatchScreenBody({
           deniedTier={deniedTier}
           onTab={openFamily}
           onCard={pickCard}
+          canAnnounce={canAnnounce}
+          intentBonus={rules.intent.ultimateBonus}
+          onAnnounce={announce}
         />
       </div>
+
+      {/*
+        Les bulles de pensee, au-dessus des tetes, le temps du choix : a la
+        revelation, les cartes jouees disent la verite a leur place.
+      */}
+      {choosing && intent !== null && (
+        <IntentBubbles mine={intent.mine} theirs={intent.theirs} opponentName={opponentName} />
+      )}
 
       {view.phase === 'reveal' && scene !== null && (
         <RevealStage
@@ -959,6 +997,7 @@ function sameFrame(previous: MatchScreenProps, next: MatchScreenProps): boolean 
     renderKey(previous.view) === renderKey(next.view) &&
     previous.actions.tap === next.actions.tap &&
     previous.actions.lock === next.actions.lock &&
+    previous.actions.announce === next.actions.announce &&
     previous.clock === next.clock &&
     previous.opponentName === next.opponentName &&
     previous.rematchLabel === next.rematchLabel &&
@@ -1022,6 +1061,9 @@ const ControlBand = memo(function ControlBand({
   deniedTier,
   onTab,
   onCard,
+  canAnnounce,
+  intentBonus,
+  onAnnounce,
 }: {
   readonly tier: Tier;
   readonly amplifier: AmplifierLevel;
@@ -1055,6 +1097,9 @@ const ControlBand = memo(function ControlBand({
   readonly deniedTier: Tier | null;
   readonly onTab: (family: Style) => void;
   readonly onCard: (card: HandCard) => void;
+  readonly canAnnounce: boolean;
+  readonly intentBonus: number;
+  readonly onAnnounce: (family: Style) => void;
 }): JSX.Element {
   const bet = betFor(tier, amplifier, cap, rules);
   /** Energie qui manque pour jouer l amplificateur regarde. */
@@ -1127,6 +1172,9 @@ const ControlBand = memo(function ControlBand({
         deniedTier={deniedTier}
         onTab={onTab}
         onCard={onCard}
+        canAnnounce={canAnnounce}
+        intentBonus={intentBonus}
+        onAnnounce={onAnnounce}
       />
 
       {/* A droite : l amplificateur, en grille de trois colonnes sur deux rangees. */}

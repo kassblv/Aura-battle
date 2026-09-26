@@ -3679,6 +3679,8 @@ body {
   deux cartes tombe donc sur `.gauge-hit`, et verrouille — le geste actuel.
 */
 .hand {
+  /* Repere du geste d'annonce, qui flotte au-dessus des onglets. */
+  position: relative;
   flex: 1 1 0;
   min-width: 0;
   display: flex;
@@ -4233,6 +4235,330 @@ body {
   55% {
     opacity: 1;
     scale: 0.92;
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * Bulle d'intention (2.6.0, test A/B) : le geste, les bulles, le badge
+ * ------------------------------------------------------------------ */
+
+/*
+  Le geste flotte AU-DESSUS des onglets de la main, dans l'espace libre entre
+  les deux combattants. Pas dans la rangee d'onglets : a 667 px la main n'a que
+  255 px et ses cinq onglets en prennent 250. Au-dessus, il ne recouvre ni une
+  carte, ni la jauge, ni les grappes — et n'ajoute rien a la hauteur de la
+  bande. Ouvert, la rangee des familles se pose sur la ligne du bouton : deux
+  rangees de 46 px entre le bandeau « Choix » et les onglets, mesure a
+  667x375 et 844x390.
+
+  La bande est transparente aux appuis (`.controls`) : seuls les boutons les
+  prennent. La legende, elle, laisse passer — un appui a cote tombe sur
+  `.gauge-hit`, comme partout ailleurs dans la bande.
+*/
+.intent {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 50%;
+  translate: -50% 0;
+  width: calc(5 * var(--touch) + 4 * 5px);
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  /* Serre : a 667x375, ouvert, la rangee affleure le bandeau « Choix ». */
+  gap: 4px;
+  pointer-events: none;
+}
+.intent__bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Un nuage de pensee : blanc, comme la bulle du prototype, et il respire. */
+.intent__toggle {
+  pointer-events: auto;
+  font: inherit;
+  flex: none;
+  min-height: var(--touch);
+  height: var(--touch);
+  min-width: var(--touch);
+  padding: 0 14px 0 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #2a1b55;
+  font-weight: 800;
+  font-size: 13px;
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--accent) 55%, transparent),
+    0 8px 20px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  position: relative;
+  animation: intent-breathe 2.2s ease-in-out infinite;
+  transition: scale var(--d-tap) var(--e-over);
+}
+/* La petite bulle qui fait d'un bouton une pensee. */
+.intent__toggle::after {
+  content: '';
+  position: absolute;
+  left: 8px;
+  bottom: -7px;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+}
+.intent__toggle[aria-expanded='true'] {
+  padding: 0;
+  width: var(--touch);
+  animation: none;
+  background: var(--chip);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+}
+.intent__toggle[aria-expanded='true']::after {
+  display: none;
+}
+.intent__toggle:active {
+  scale: 0.94;
+}
+.intent__toggle-icon {
+  font-size: 16px;
+  line-height: 1;
+}
+/*
+  Le 💭 est blanc : pose tel quel sur le nuage blanc, il disparaissait. Un
+  disque d'accent le fait lire, et rappelle la couleur du jeu.
+*/
+.intent__toggle[aria-expanded='false'] .intent__toggle-icon {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+.intent__toggle-text {
+  letter-spacing: 0.02em;
+}
+
+/* La legende : sur un fond, jamais posee nue sur la foule. */
+.intent__hint {
+  margin: 0;
+  padding: 4px 8px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  border: 1px solid var(--hud-line);
+  font-size: 10px;
+  line-height: 1.25;
+  color: var(--muted);
+}
+.intent__hint b {
+  color: var(--ink);
+}
+
+.intent__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 5px;
+}
+.intent__pick {
+  pointer-events: auto;
+  font: inherit;
+  width: var(--touch);
+  min-height: var(--touch);
+  height: var(--touch);
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  font-size: 22px;
+  line-height: 1;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+  cursor: pointer;
+  animation: intent-pop 260ms var(--e-over) backwards;
+  animation-delay: calc(var(--i, 0) * 35ms);
+  transition: scale var(--d-tap) var(--e-over);
+}
+.intent__pick:active {
+  scale: 0.88;
+}
+
+@keyframes intent-breathe {
+  50% {
+    scale: 1.05;
+  }
+}
+@keyframes intent-pop {
+  from {
+    opacity: 0;
+    scale: 0.3;
+    translate: 0 18px;
+  }
+}
+
+/*
+  Les bulles au-dessus des tetes, pendant le choix.
+
+  Les combattants se tiennent a ±1,45 m ; projetes par la camera de choix,
+  leur tete tombe a 41 % (moi) et 43 % (l'adversaire) de la HAUTEUR de
+  l'ecran de part et d'autre du centre — mesure a 844x390 et 667x375 :
+  262/590 et 180/495 px. D'ou des `vh` et non des `vw` : l'ecart suit le
+  champ vertical, pas la largeur. Chaque bulle se decale de 30 px vers le
+  centre, comme celle du prototype, et laisse ses petites bulles tomber vers
+  la tete. En haut, sous le bandeau du score : jamais sur la bande de
+  commandes, qui vit dans le dernier cinquieme.
+*/
+.intent-bubble {
+  position: absolute;
+  top: calc(var(--safe-top) + 26px);
+  translate: -50% 0;
+  pointer-events: none;
+  animation: intent-bob 2.4s ease-in-out infinite;
+}
+.intent-bubble[data-side='moi'] {
+  left: calc(50% - 41vh + 30px);
+}
+.intent-bubble[data-side='adversaire'] {
+  left: calc(50% + 43vh - 30px);
+}
+.intent-bubble__cloud {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-width: 54px;
+  height: 46px;
+  padding: 0 8px;
+  border-radius: 23px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #2a1b55;
+  box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+  transform-origin: 50% 100%;
+  animation: intent-bubble-in 420ms var(--e-over) backwards;
+}
+/* L'adverse est LE sujet : un liseré qui accroche l'oeil. */
+.intent-bubble[data-side='adversaire'] .intent-bubble__cloud {
+  box-shadow:
+    0 0 0 2px var(--gold-ink),
+    0 0 18px color-mix(in srgb, var(--gold-ink) 55%, transparent),
+    0 6px 16px rgba(0, 0, 0, 0.4);
+}
+.intent-bubble[data-side='moi'] .intent-bubble__cloud {
+  opacity: 0.9;
+}
+.intent-bubble__icon {
+  font-size: 20px;
+  line-height: 1;
+}
+.intent-bubble__name {
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  line-height: 1.2;
+}
+.intent-bubble__dot {
+  position: absolute;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.94);
+  animation: intent-bubble-in 420ms var(--e-over) backwards;
+}
+.intent-bubble__dot--big {
+  width: 9px;
+  height: 9px;
+  top: 49px;
+  animation-delay: 60ms;
+}
+.intent-bubble__dot--small {
+  width: 5px;
+  height: 5px;
+  top: 60px;
+  animation-delay: 120ms;
+}
+/* Les petites bulles descendent vers la tete : a gauche pour moi, a droite en face. */
+.intent-bubble[data-side='moi'] .intent-bubble__dot--big {
+  left: 8px;
+}
+.intent-bubble[data-side='moi'] .intent-bubble__dot--small {
+  left: 0;
+}
+.intent-bubble[data-side='adversaire'] .intent-bubble__dot--big {
+  right: 8px;
+}
+.intent-bubble[data-side='adversaire'] .intent-bubble__dot--small {
+  right: 0;
+}
+
+@keyframes intent-bubble-in {
+  from {
+    opacity: 0;
+    scale: 0.2;
+  }
+}
+@keyframes intent-bob {
+  50% {
+    translate: -50% -3px;
+  }
+}
+
+/*
+  Le badge de la bulle tenue, sous MA carte : le bonus est le mien, et le
+  centre appartient au bandeau du contre puis au verdict. Sous le badge de la
+  brillante (qui deborde de 14 px sous la carte), jamais dessus.
+*/
+.reveal__kept {
+  position: absolute;
+  left: var(--safe-left);
+  /* 18 px sous la carte : sous le badge de la brillante, au-dessus de l'ancienne bande. */
+  top: calc(var(--safe-top) + 44px + 108px + 18px);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 5px 10px 6px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  color: #2a1b55;
+  box-shadow:
+    0 0 0 2px var(--gold-ink),
+    0 8px 18px rgba(0, 0, 0, 0.45);
+  white-space: nowrap;
+  animation: reveal-burst 520ms var(--e-over) backwards;
+  animation-delay: var(--at);
+}
+.reveal__kept-title {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 800;
+}
+/* Meme disque que le geste : le 💭 blanc ne se lit pas sur le badge blanc. */
+.reveal__kept-icon {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  font-size: 12px;
+}
+.reveal__kept-gain {
+  font-family: var(--display);
+  font-size: 15px;
+  color: #b07a00;
+}
+
+/* Moins d'animation : les boucles s'arretent, les entrees restent instantanees. */
+@media (prefers-reduced-motion: reduce) {
+  .intent__toggle,
+  .intent-bubble {
+    animation: none !important;
   }
 }
 

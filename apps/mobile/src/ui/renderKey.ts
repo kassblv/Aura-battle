@@ -67,6 +67,10 @@ export function renderKey(view: KeyedView): string {
     view.me.roundsWon,
     view.opponent.roundsWon,
     view.opponentLocked,
+    // La bulle d'intention : le geste, les deux bulles.
+    view.intent === null
+      ? '-'
+      : [tag(view.intent.mine), tag(view.intent.theirs), view.intent.canAnnounce].join(':'),
     view.orbs.length,
     view.taps.length,
     view.meterPeriodMs,
@@ -82,6 +86,7 @@ export function renderKey(view: KeyedView): string {
           last.opponentScore,
           last.myShiny,
           last.opponentShiny,
+          last.myIntentKept,
         ].join(':'),
     view.ended === null ? '-' : tag(view.ended.winner),
   ].join('|');

@@ -99,6 +99,9 @@ describe('styles.css', () => {
       '.rail__btn',
       '.launch__alt',
       '.clipshare__btn',
+      // La bulle d'intention : un geste en pleine phase de choix, au pouce.
+      '.intent__toggle',
+      '.intent__pick',
     ];
     for (const selector of interactives) {
       const block = css.slice(css.indexOf(`${selector} {`));

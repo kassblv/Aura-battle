@@ -616,3 +616,194 @@ describe('createOnlineMatch : l evenement de la semaine', () => {
     expect(match.state.rulesVariant).toBe('ultime');
   });
 });
+
+/*
+  Bulle d'intention (2.6.0, test A/B). Le serveur dit si le match l'a ; les
+  annonces arrivent par `intent:shown`, aux deux sieges, et une reprise les
+  rappelle dans `match:state.intents`. Le client ne decide rien : il range, et
+  n'envoie une annonce que quand elle a une chance d'etre retenue.
+*/
+describe('bulle d intention', () => {
+  const found = (seat: 'a' | 'b', intentBubble?: true): Record<string, unknown> => ({
+    matchId: MATCH,
+    seat,
+    opponent: { displayName: 'Nova', league: 'Or II', cosmetics: {} },
+    protocolVersion: PROTOCOL_VERSION,
+    rulesVersion: '1.0.0',
+    contentVersion: '1.0.0',
+    ghost: false,
+    ...(intentBubble === undefined ? {} : { intentBubble }),
+  });
+  const choiceStart = (round = 1): Record<string, unknown> => ({
+    matchId: MATCH,
+    round,
+    endsAt: 520_000,
+    meter: { period: 1300, zone: 0.4, perfect: 0.09, center: 0.5 },
+    energy: 8,
+    ult: 0,
+  });
+  const intro = (round: number): Record<string, unknown> => ({
+    matchId: MATCH,
+    round,
+    endsAt: 502_000,
+    roundsWon: { a: 0, b: 0 },
+    energy: 8,
+    ult: 0,
+  });
+  const snapshot = (over: Record<string, unknown> = {}): Record<string, unknown> => ({
+    matchId: MATCH,
+    seat: 'b',
+    phase: 'choice',
+    round: 2,
+    endsAt: 512_000,
+    roundsWon: { a: 1, b: 0 },
+    energy: 6,
+    ult: 0,
+    opponentLocked: false,
+    history: [],
+    ...over,
+  });
+  const intentsSent = (sent: readonly { name: string; payload: unknown }[]) =>
+    sent.filter((m) => m.name === 'intent:show').map((m) => m.payload as Record<string, unknown>);
+
+  it('ne connait pas de bulle tant que le serveur ne l annonce pas', () => {
+    const { match, emit } = harness();
+    emit('match:found', found('a'));
+    expect(match.state.intentBubble).toBe(false);
+    expect(match.state.intents).toEqual({ mine: null, theirs: null });
+  });
+
+  it('retient la bulle annoncee par match:found', () => {
+    const { match, emit } = harness();
+    emit('match:found', found('a', true));
+    expect(match.state.intentBubble).toBe(true);
+  });
+
+  it('range chaque annonce du bon cote selon mon siege', () => {
+    const { match, emit } = harness();
+    emit('match:found', found('b', true));
+    emit('choice:start', choiceStart());
+    emit('intent:shown', { matchId: MATCH, round: 1, seat: 'a', style: 'provoc' });
+    expect(match.state.intents).toEqual({ mine: null, theirs: 'provoc' });
+    emit('intent:shown', { matchId: MATCH, round: 1, seat: 'b', style: 'calme' });
+    expect(match.state.intents).toEqual({ mine: 'calme', theirs: 'provoc' });
+  });
+
+  it('ignore une annonce d une autre manche', () => {
+    const { match, emit } = harness();
+    emit('match:found', found('a', true));
+    emit('round:intro', intro(2));
+    emit('intent:shown', { matchId: MATCH, round: 1, seat: 'b', style: 'hype' });
+    expect(match.state.intents.theirs).toBeNull();
+  });
+
+  it('oublie les annonces a chaque nouvelle manche, pas la bulle', () => {
+    const { match, emit } = harness();
+    emit('match:found', found('a', true));
+    emit('choice:start', choiceStart());
+    emit('intent:shown', { matchId: MATCH, round: 1, seat: 'b', style: 'hype' });
+    emit('intent:shown', { matchId: MATCH, round: 1, seat: 'a', style: 'calme' });
+    emit('round:intro', intro(2));
+    expect(match.state.intents).toEqual({ mine: null, theirs: null });
+    expect(match.state.intentBubble).toBe(true);
+  });
+
+  it('reprend bulle et annonces de l instantane, selon mon siege', () => {
+    const { match, emit } = harness();
+    emit('match:state', snapshot({ intentBubble: true, intents: { a: 'hype', b: 'acrobatie' } }));
+    expect(match.state.intentBubble).toBe(true);
+    // Je suis `b` : l'annonce de `a` est celle de l'adversaire.
+    expect(match.state.intents).toEqual({ mine: 'acrobatie', theirs: 'hype' });
+  });
+
+  it('garde la bulle a la reprise du meme match, pas d un autre', () => {
+    const { match, emit } = harness();
+    emit('match:found', found('b', true));
+    emit('match:state', snapshot());
+    expect(match.state.intentBubble).toBe(true);
+    expect(match.state.intents).toEqual({ mine: null, theirs: null });
+    emit('match:state', snapshot({ matchId: 'm_22222222-2222-4222-8222-222222222222' }));
+    expect(match.state.intentBubble).toBe(false);
+  });
+
+  it('annonce avec le numero d ordre des autres actions', () => {
+    const { match, emit, sent } = harness();
+    emit('match:found', found('a', true));
+    emit('choice:start', choiceStart());
+    match.tap([{ atMs: 100, orbIndex: 0 }]);
+    match.showIntent('prouesse');
+    const [intent] = intentsSent(sent);
+    const tapSeq = (sent.find((m) => m.name === 'recharge:taps')?.payload as { seq: number }).seq;
+    expect(intent).toEqual({ matchId: MATCH, round: 1, seq: tapSeq + 1, style: 'prouesse' });
+    expect(match.state.intentSent).toBe(true);
+  });
+
+  it('n annonce rien sans bulle', () => {
+    const { match, emit, sent } = harness();
+    emit('match:found', found('a'));
+    emit('choice:start', choiceStart());
+    match.showIntent('calme');
+    expect(intentsSent(sent)).toHaveLength(0);
+  });
+
+  it('n annonce qu une fois par manche, meme avant la confirmation', () => {
+    const { match, emit, sent } = harness();
+    emit('match:found', found('a', true));
+    emit('choice:start', choiceStart());
+    match.showIntent('calme');
+    match.showIntent('hype');
+    expect(intentsSent(sent)).toHaveLength(1);
+    emit('intent:shown', { matchId: MATCH, round: 1, seat: 'a', style: 'calme' });
+    match.showIntent('hype');
+    expect(intentsSent(sent)).toHaveLength(1);
+  });
+
+  it('n annonce plus rien apres une annonce deja confirmee (reprise)', () => {
+    const { match, emit, sent } = harness();
+    emit('match:state', snapshot({ intentBubble: true, intents: { b: 'calme' } }));
+    match.showIntent('hype');
+    expect(intentsSent(sent)).toHaveLength(0);
+  });
+
+  it('n annonce plus rien apres mon verrouillage', () => {
+    const { match, emit, sent } = harness();
+    emit('match:found', found('a', true));
+    emit('choice:start', choiceStart());
+    match.lock(
+      { move: { style: 'calme', tier: 1 }, amplifier: 0, useUltimate: false },
+      'anim.calme.t1.pocket',
+      0,
+      500,
+    );
+    expect(match.state.lockedSelf).toBe(true);
+    match.showIntent('hype');
+    expect(intentsSent(sent)).toHaveLength(0);
+  });
+
+  it('n annonce que pendant la phase de choix', () => {
+    const { match, emit, sent } = harness();
+    emit('match:found', found('a', true));
+    emit('round:intro', intro(1));
+    match.showIntent('hype');
+    expect(intentsSent(sent)).toHaveLength(0);
+  });
+
+  it('peut annoncer de nouveau a la manche suivante', () => {
+    const { match, emit, sent } = harness();
+    emit('match:found', found('a', true));
+    emit('choice:start', choiceStart(1));
+    match.showIntent('calme');
+    match.lock(
+      { move: { style: 'calme', tier: 1 }, amplifier: 0, useUltimate: false },
+      'anim.calme.t1.pocket',
+      0,
+      500,
+    );
+    emit('round:intro', intro(2));
+    expect(match.state.intentSent).toBe(false);
+    expect(match.state.lockedSelf).toBe(false);
+    emit('choice:start', choiceStart(2));
+    match.showIntent('hype');
+    expect(intentsSent(sent).map((p) => p.round)).toEqual([1, 2]);
+  });
+});

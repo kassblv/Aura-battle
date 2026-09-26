@@ -2,6 +2,7 @@ import { styleName, tierName, type Style, type Tier } from '@aura/content';
 import { memo, useEffect, useRef, type CSSProperties, type JSX } from 'react';
 import { multiplierLabel } from '../match/rules.js';
 import type { FamilyTab, HandCard } from './hand.js';
+import { IntentPicker } from './IntentBubble.js';
 
 /**
  * La main de cartes de la phase de choix (chantier n°2).
@@ -33,6 +34,15 @@ export interface PoseHandProps {
   readonly deniedTier: Tier | null;
   readonly onTab: (family: Style) => void;
   readonly onCard: (card: HandCard) => void;
+  /**
+   * Le geste d'annonce de la bulle d'intention a un sens : le match a la
+   * bulle, et je n'ai ni annonce ni verrouille. Absent : aucun geste.
+   */
+  readonly canAnnounce?: boolean;
+  /** Gain d'Ultime d'une bulle tenue, dit par le geste. */
+  readonly intentBonus?: number;
+  /** Stable d'un rendu a l'autre, comme les autres rappels. */
+  readonly onAnnounce?: ((family: Style) => void) | undefined;
 }
 
 /** Le badge d'une carte : variantes possedees et a debloquer. */
@@ -88,6 +98,9 @@ export const PoseHand = memo(function PoseHand({
   deniedTier,
   onTab,
   onCard,
+  canAnnounce = false,
+  intentBonus = 0,
+  onAnnounce,
 }: PoseHandProps): JSX.Element {
   const fanRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -96,6 +109,9 @@ export const PoseHand = memo(function PoseHand({
 
   return (
     <div className="hand" data-locked={locked}>
+      {canAnnounce && onAnnounce !== undefined && (
+        <IntentPicker tabs={tabs} bonus={intentBonus} onAnnounce={onAnnounce} />
+      )}
       <div className="hand__tabs" role="group" aria-label="Familles">
         {tabs.map((tab) => (
           <button

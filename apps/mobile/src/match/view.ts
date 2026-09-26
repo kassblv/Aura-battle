@@ -3,6 +3,7 @@ import {
   type Move,
   type Orb,
   type RechargeTap,
+  type Style,
   type TimingQuality,
 } from '@aura/rules';
 import type { OnlineMatch } from './online.js';
@@ -86,6 +87,30 @@ export interface RoundView {
   readonly revealFirst: 'moi' | 'adversaire';
   readonly opponentQuality: TimingQuality;
   readonly opponentUltimate: boolean;
+  /**
+   * J'ai gagne la manche avec la famille que j'avais annoncee : la bulle est
+   * tenue, et son bonus d'Ultime est deja compris dans ce que le serveur a
+   * credite. Toujours faux en solo, et sans bulle.
+   */
+  readonly myIntentKept: boolean;
+}
+
+/**
+ * La bulle d'intention (2.6.0, test A/B), telle que l'ecran la montre.
+ *
+ * `null` dans un match sans bulle — le solo, le classe, le groupe temoin : il
+ * n'y a alors ni geste, ni bulle, ni badge.
+ */
+export interface IntentView {
+  /** Ma famille annoncee cette manche, confirmee par le serveur. */
+  readonly mine: Style | null;
+  /** Celle de l'adversaire, vraie ou bluff : c'est tout l'interet. */
+  readonly theirs: Style | null;
+  /**
+   * Le geste d'annonce a encore un sens : phase de choix, rien annonce ni
+   * envoye, pas verrouille. L'ecran y ajoute son propre verrouillage local.
+   */
+  readonly canAnnounce: boolean;
 }
 
 export interface MatchView {
@@ -110,6 +135,8 @@ export interface MatchView {
   readonly taps: readonly RechargeTap[];
   readonly meterPeriodMs: number;
   readonly opponentLocked: boolean;
+  /** La bulle d'intention, ou `null` quand le match n'en a pas. */
+  readonly intent: IntentView | null;
   readonly lastRound: RoundView | null;
   readonly ended: {
     readonly winner: 'moi' | 'adversaire' | null;
@@ -175,6 +202,8 @@ export function viewOfSolo(match: SoloMatch): MatchView {
     // Le moteur local resout la manche des que les deux ont verrouille : il n y
     // a donc pas d instant ou l un attend l autre.
     opponentLocked: false,
+    // Pas de bulle en solo en v1 : l'IA ne sait pas encore bluffer.
+    intent: null,
     lastRound:
       last === undefined
         ? null
@@ -202,6 +231,7 @@ export function viewOfSolo(match: SoloMatch): MatchView {
             revealFirst: 'adversaire',
             opponentQuality: last.seats.b.timing.quality,
             opponentUltimate: last.seats.b.usedUltimate,
+            myIntentKept: false,
           },
     ended:
       state.result === null
@@ -243,6 +273,17 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
     taps: state.sentTaps,
     meterPeriodMs: state.meter?.period ?? 0,
     opponentLocked: state.opponentLocked,
+    intent: state.intentBubble
+      ? {
+          mine: state.intents.mine,
+          theirs: state.intents.theirs,
+          canAnnounce:
+            state.phase === 'choice' &&
+            state.intents.mine === null &&
+            !state.intentSent &&
+            !state.lockedSelf,
+        }
+      : null,
     lastRound:
       last === null
         ? null
@@ -269,6 +310,7 @@ export function viewOfOnline(match: OnlineMatch): MatchView {
             revealFirst: last.timeline.revealFirst === seat ? 'moi' : 'adversaire',
             opponentQuality: last.sides[other].timing.quality,
             opponentUltimate: last.sides[other].ult,
+            myIntentKept: last.sides[seat].intentKept ?? false,
           },
     ended:
       state.result === null

@@ -1,4 +1,4 @@
-import { type Choice, type Move, type Seat } from '@aura/rules';
+import { type Choice, type Move, type Seat, type Style } from '@aura/rules';
 import type { RechargeTap } from '@aura/rules';
 import type { ServerMessage } from '@aura/protocol';
 import type { GameClient } from '../net/client.js';
@@ -64,6 +64,22 @@ export interface OnlineState {
    * se relisent dans `@aura/rules`.
    */
   readonly rulesVariant: string | null;
+  /**
+   * La bulle d'intention est active dans ce match (2.6.0, test A/B). Le
+   * serveur le dit a l'ouverture et le rappelle a la reprise ; absente, pas de
+   * bulle du tout — ni geste, ni bulle adverse, ni badge.
+   */
+  readonly intentBubble: boolean;
+  /**
+   * Les annonces de la manche en cours, en « moi / adversaire ». Publiques par
+   * nature : `intent:shown` part aux deux sieges des qu'une annonce est faite.
+   * Remises a zero a chaque manche.
+   */
+  readonly intents: OnlineIntents;
+  /** Mon annonce de la manche est partie (confirmee ou non) : une seule par manche. */
+  readonly intentSent: boolean;
+  /** J'ai verrouille cette manche : plus d'annonce possible. */
+  readonly lockedSelf: boolean;
   readonly phase: OnlinePhase;
   readonly round: number;
   /** Fin de la phase, **en heure locale**. */
@@ -89,6 +105,13 @@ export interface OnlineState {
   readonly result: ServerMessage<'match:end'> | null;
 }
 
+export interface OnlineIntents {
+  readonly mine: Style | null;
+  readonly theirs: Style | null;
+}
+
+const NO_INTENTS: OnlineIntents = Object.freeze({ mine: null, theirs: null });
+
 export interface OnlineMatch {
   readonly state: OnlineState;
   /** Instants relatifs au debut de la phase de recharge. */
@@ -102,6 +125,15 @@ export interface OnlineMatch {
    * qui suivrait l armement de moins de 120 ms ne peut pas etre un geste.
    */
   lock(choice: Choice, poseId: string, chargeAtMs: number, tapAtMs: number | null): void;
+  /**
+   * Annonce une famille — vraie ou bluff — dans la bulle d'intention.
+   *
+   * Sans effet si le match n'a pas de bulle, hors phase de choix, apres mon
+   * verrouillage, ou si j'ai deja annonce cette manche : le serveur ne retient
+   * que la premiere annonce, et une seconde qui partirait quand meme ne ferait
+   * que brouiller ce que l'ecran croit avoir dit.
+   */
+  showIntent(style: Style): void;
   forfeit(): void;
   /**
    * Oublie un match TERMINE, pour que l ecran suivant reparte de rien.
@@ -134,6 +166,10 @@ export const EMPTY_ONLINE_STATE: OnlineState = {
   opponentIsGhost: false,
   opponentCosmetics: {},
   rulesVariant: null,
+  intentBubble: false,
+  intents: NO_INTENTS,
+  intentSent: false,
+  lockedSelf: false,
   phase: 'idle',
   round: 1,
   phaseEndsAtMs: 0,
@@ -148,6 +184,15 @@ export const EMPTY_ONLINE_STATE: OnlineState = {
   lastRound: null,
   result: null,
 };
+
+/** Les annonces d'un instantane (par siege), rangees en « moi / adversaire ». */
+function intentsFor(
+  intents: { readonly a?: Style | undefined; readonly b?: Style | undefined } | undefined,
+  seat: Seat,
+): OnlineIntents {
+  if (intents === undefined) return NO_INTENTS;
+  return { mine: intents[seat] ?? null, theirs: intents[seat === 'a' ? 'b' : 'a'] ?? null };
+}
 
 export function createOnlineMatch(client: GameClient): OnlineMatch {
   let state: OnlineState = EMPTY_ONLINE_STATE;
@@ -175,6 +220,7 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       opponentIsGhost: data.ghost,
       opponentCosmetics: data.opponent.cosmetics,
       rulesVariant: data.rulesVariant ?? null,
+      intentBubble: data.intentBubble === true,
     };
   });
 
@@ -208,6 +254,10 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       // La brillante de la manche precedente ne vaut plus rien.
       shiny: null,
       lastRound: null,
+      // Les annonces valent pour UNE manche.
+      intents: NO_INTENTS,
+      intentSent: false,
+      lockedSelf: false,
     };
   });
 
@@ -241,6 +291,20 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
   client.on('opponent:locked', (data) => {
     adopt(data.matchId);
     state = { ...state, opponentLocked: true };
+  });
+
+  client.on('intent:shown', (data) => {
+    adopt(data.matchId);
+    // Une annonce d'une autre manche est perimee : elle ne doit rien afficher.
+    if (data.round !== state.round || state.seat === null) return;
+    const mine = data.seat === state.seat;
+    state = {
+      ...state,
+      intents: mine
+        ? { ...state.intents, mine: data.style }
+        : { ...state.intents, theirs: data.style },
+      intentSent: state.intentSent || mine,
+    };
   });
 
   client.on('round:result', (data) => {
@@ -301,6 +365,12 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
       */
       rulesVariant:
         data.rulesVariant ?? (state.matchId === data.matchId ? state.rulesVariant : null),
+      // Meme discipline que la variante : l'instantane d'abord, puis ce que
+      // l'ouverture de CE match avait annonce.
+      intentBubble:
+        data.intentBubble === true || (state.matchId === data.matchId && state.intentBubble),
+      intents: intentsFor(data.intents, data.seat),
+      intentSent: intentsFor(data.intents, data.seat).mine !== null,
       phase: data.phase,
       round: data.round,
       phaseEndsAtMs: toLocal(data.endsAt),
@@ -354,6 +424,27 @@ export function createOnlineMatch(client: GameClient): OnlineMatch {
         ult: choice.useUltimate,
         timing: { chargeAt: chargeAtMs, tapAt: tapAtMs },
       });
+      state = { ...state, lockedSelf: true };
+    },
+
+    showIntent(style) {
+      if (
+        state.matchId === null ||
+        !state.intentBubble ||
+        state.phase !== 'choice' ||
+        state.intentSent ||
+        state.intents.mine !== null ||
+        state.lockedSelf
+      ) {
+        return;
+      }
+      client.send('intent:show', {
+        matchId: state.matchId,
+        round: state.round,
+        seq: seq++,
+        style,
+      });
+      state = { ...state, intentSent: true };
     },
 
     forfeit() {

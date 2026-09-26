@@ -1,6 +1,6 @@
 import type { Style, Tier } from '@aura/content';
 import { BALANCE, beats, type BalanceConfig, type Move } from '@aura/rules';
-import { CLASH_AT_MS, REVEAL_FIRST_AT_MS, REVEAL_GAP_MS } from '../arena/round.js';
+import { CLASH_AT_MS, REVEAL_FIRST_AT_MS, REVEAL_GAP_MS, VICTORY_AT_MS } from '../arena/round.js';
 import { poseIcon } from '../content/animations.js';
 import type { RoundView } from '../match/view.js';
 import { memeGallery } from './memes.js';
@@ -51,6 +51,12 @@ export interface RevealScene {
   readonly theirs: RevealCard;
   readonly callout: RevealCallout | null;
   readonly calloutAtMs: number;
+  /**
+   * Ma bulle d'intention tenue (2.6.0) : j'ai gagne avec la famille annoncee.
+   * `bonus` est ce que la jauge d'Ultime y a gagne, deja credite par le
+   * serveur ; `atMs`, l'instant de la victoire — apres le bandeau du contre.
+   */
+  readonly kept: { readonly bonus: number; readonly atMs: number } | null;
 }
 
 const gallery = memeGallery();
@@ -125,5 +131,6 @@ export function revealScene(
     },
     callout: calloutOf(round, rules),
     calloutAtMs: CLASH_AT_MS,
+    kept: round.myIntentKept ? { bonus: rules.intent.ultimateBonus, atMs: VICTORY_AT_MS } : null,
   };
 }

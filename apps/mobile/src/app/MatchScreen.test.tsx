@@ -23,6 +23,7 @@ const view = (variant: string | null, over: Partial<MatchView> = {}): MatchView 
   taps: [],
   meterPeriodMs: 1_700,
   opponentLocked: false,
+  intent: null,
   lastRound: null,
   ended: null,
   ...over,

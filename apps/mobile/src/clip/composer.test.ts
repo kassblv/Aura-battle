@@ -26,6 +26,7 @@ const view: RoundView = {
   revealFirst: 'adversaire',
   opponentQuality: 'good',
   opponentUltimate: false,
+  myIntentKept: false,
 };
 
 /** Un contexte 2D qui retient ce qu on lui fait peindre. */
