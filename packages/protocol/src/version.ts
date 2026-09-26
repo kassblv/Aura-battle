@@ -87,7 +87,12 @@
   `round:result.sides.*.intentKept`. Tous facultatifs. `intent:show` et
   `intent:shown` existaient deja.
 */
-export const PROTOCOL_VERSION = '2.6.0';
+/*
+  2.7.0 — `GET /events/week` (`weekEventSchema`) : l'accueil lit l'evenement de
+  la semaine au serveur, qui peut le forcer depuis le panneau (ADR 0018). Et le
+  contrat admin (`admin.ts`). Routes AJOUTEES : pas de rupture.
+*/
+export const PROTOCOL_VERSION = '2.7.0';
 
 const MAJOR = /^(\d+)\./;
 

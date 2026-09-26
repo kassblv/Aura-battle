@@ -13,11 +13,10 @@ import {
   timingQualitySchema,
   parseFailure,
   unknownMessage,
+  rulesVariantSchema,
   type ParseResult,
 } from './primitives.js';
 
-/** Un identifiant de variante de regles (`RULE_VARIANTS`, @aura/rules). */
-const rulesVariantSchema = z.string().regex(/^[a-z][a-z0-9-]{0,23}$/);
 
 /**
  * Messages serveur -> client (docs/03-pvp-protocol.md).

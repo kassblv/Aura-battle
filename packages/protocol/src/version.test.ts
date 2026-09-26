@@ -6,8 +6,8 @@ describe('PROTOCOL_VERSION', () => {
     expect(PROTOCOL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('est en 2.6.0 : la bulle d intention en test A/B', () => {
-    expect(PROTOCOL_VERSION).toBe('2.6.0');
+  it('est en 2.7.0 : la semaine servie par le serveur, et le panneau qui ecrit', () => {
+    expect(PROTOCOL_VERSION).toBe('2.7.0');
   });
 });
 

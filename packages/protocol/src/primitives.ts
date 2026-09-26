@@ -44,6 +44,9 @@ export const contentIdSchema = z
   .max(120);
 
 /** Numero de manche, borne par le format du match. */
+/** Un identifiant de variante de regles (`RULE_VARIANTS`, @aura/rules). */
+export const rulesVariantSchema = z.string().regex(/^[a-z][a-z0-9-]{0,23}$/);
+
 export const roundSchema = z.number().int().min(1).max(BALANCE.match.maxRounds);
 
 /** Compteur d'action, croissant, pour rendre les renvois idempotents. */
