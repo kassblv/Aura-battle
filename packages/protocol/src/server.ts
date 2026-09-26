@@ -86,8 +86,9 @@ const roundSideSchema = z.strictObject({
    */
   shiny: z.boolean().optional(),
   /**
-   * La bulle d'intention tenue : gagnee avec la famille annoncee, bonus
-   * compris dans `ultGain` (2.6.0). Absent : pas de bulle, ou pas tenue.
+   * La bulle d'intention tenue : gagnee avec la famille annoncee (et
+   * verrouillee), bonus compris dans `ultAfter` (2.6.0). Envoye — vrai ou
+   * faux — des que la bulle est active ; absent sans bulle.
    */
   intentKept: z.boolean().optional(),
   base: z.number(),

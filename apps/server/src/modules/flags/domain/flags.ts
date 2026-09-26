@@ -15,8 +15,9 @@ import { createHash } from 'node:crypto';
 export const FLAGS = Object.freeze({
   /**
    * Bulle d'intention (docs/01 §10) : partie rapide et invitation seulement.
-   * Pendant le test, la part ne fait que monter (ou tombe a 0) : le groupe
-   * inscrit n'est jamais reecrit (docs/10).
+   * Pendant une mesure, la part est FIGEE (seul 0 est sur) : le groupe inscrit
+   * n'est jamais reecrit, et changer la part, dans un sens ou dans l'autre,
+   * melange les groupes (docs/10).
    */
   intentBubble: Object.freeze({ defaultRollout: 50 }),
 });

@@ -298,7 +298,7 @@ Spec `docs/superpowers/specs/2026-09-26-bulle-intention-ab-design.md`.
 
 - **Le groupe ne se lit jamais en base** : il se recalcule, `sha256(drapeau:joueur) mod 100 < part` (`modules/flags/domain/flags.ts`). L'ouverture d'un match reste ainsi entièrement synchrone.
 - **`FlagAssignment`** en garde la trace, pour comparer les groupes en SQL (`GET /admin/experiments`). Inscrite la première fois que l'affectation **sert** : à l'ouverture d'une partie rapide ou d'une invitation, pour chaque siège réel, témoin compris ; jamais en classé, jamais pour un fantôme. `INSERT … SELECT` depuis `Player` avec `ON CONFLICT DO NOTHING` : la première inscription fait foi (groupe et date), un joueur inconnu n'insère rien. Sans attente : une base muette coûte une trace, jamais un duel. Changer la part ne réécrit pas les lignes : elles disent le groupe **au moment de l'inscription**.
-- **`Match.intentBubble`** : la bulle était active dans ce match (tous les sièges réels exposés, mode rapide ou invitation).
+- **`Match.intentBubble`** : la bulle était active dans ce match (tous les sièges réels exposés, mode rapide ou invitation). **Le rejeu doit la lire** pour activer `intent.enabled` : contrairement à la variante de la semaine, elle n'est pas portée par `rulesVersion`, et sans elle le moteur refuserait les `INTENT_SHOWN` du journal et perdrait les +10.
 
 ## Loadout : un kind par emplacement
 

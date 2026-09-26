@@ -183,7 +183,7 @@ score = arrondi(final)
 ## 9. Délais et actions par défaut
 
 - Phase de choix sans verrouillage à l'échéance : pose offerte du palier 0 d'une famille tirée par la graine de la manche, A0, sans Ultime, timing « Raté ».
-- Deux manches consécutives sans aucune action du joueur : forfait.
+- Deux manches consécutives sans aucune action du joueur : forfait. Une action : un tap de recharge, un verrouillage, ou une annonce de bulle d'intention (§10) — qui parle à l'adversaire est présent.
 
 ## 10. Bulle d'intention (optionnelle, à tester en bêta)
 
