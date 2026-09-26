@@ -4271,6 +4271,9 @@ body {
 .intent__bar {
   display: flex;
   align-items: center;
+  /* Centree entre les deux combattants : a gauche, la pastille couvrait le
+     buste du mien (vu a 844x390 dans un vrai duel). */
+  justify-content: center;
   gap: 8px;
 }
 
@@ -4415,7 +4418,8 @@ body {
 */
 .intent-bubble {
   position: absolute;
-  top: calc(var(--safe-top) + 26px);
+  /* Sous le bandeau du score (46 px) : a 26 px, la bulle mordait sur son filet. */
+  top: calc(var(--safe-top) + 50px);
   translate: -50% 0;
   pointer-events: none;
   animation: intent-bob 2.4s ease-in-out infinite;

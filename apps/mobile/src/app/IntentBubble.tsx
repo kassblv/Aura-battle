@@ -74,7 +74,7 @@ export function IntentPickerView({
         </button>
         {open && (
           <p className="intent__hint">
-            <b>Vrai ou bluff ?</b> +{bonus} Ultime si tu gagnes avec
+            <b>Vrai ou bluff ?</b> Gagne avec elle : +{bonus} Ultime
           </p>
         )}
       </div>
