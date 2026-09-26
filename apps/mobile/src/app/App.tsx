@@ -61,7 +61,8 @@ import {
 } from '../platform/quality.js';
 import { browserStore, loadProgress, saveProgress } from './persist.js';
 import { HomeScreen, ProfileScreen } from './screens.jsx';
-import { weekEvent } from '../match/rules.js';
+import { announcedWeekEvent } from '../match/rules.js';
+import { useWeekEvent } from './useWeekEvent.js';
 import { WardrobeScreen } from './WardrobeScreen.jsx';
 
 /**
@@ -251,6 +252,7 @@ export function App(): JSX.Element {
    * couperait la socket entre la creation d un code et l arrivee de
    * l adversaire — c est-a-dire exactement pendant l attente.
    */
+  const servedWeek = useWeekEvent(session.accessToken);
   const online = useOnlineMatch(
     session.accessToken,
     session.identity?.displayName ?? null,
@@ -749,7 +751,7 @@ export function App(): JSX.Element {
             }}
             profile={profile}
             mode={mode}
-            weekEvent={weekEvent(online.serverNow())}
+            weekEvent={announcedWeekEvent(servedWeek, online.serverNow())}
             onToggleMode={() => {
               setMode((current) => (current === 'ranked' ? 'casual' : 'ranked'));
             }}

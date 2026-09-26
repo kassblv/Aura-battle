@@ -1,6 +1,6 @@
 import { BALANCE, RULE_VARIANTS, variantForWeek, weekIndexOf } from '@aura/rules';
 import { describe, expect, it } from 'vitest';
-import { matchRules, multiplierLabel, weekEvent } from './rules.js';
+import { announcedWeekEvent, matchRules, multiplierLabel, weekEvent } from './rules.js';
 
 const WEEK_MS = 7 * 86_400_000;
 
@@ -56,5 +56,33 @@ describe('multiplierLabel', () => {
   it('ecrit un multiplicateur a la francaise', () => {
     expect(multiplierLabel(1.35)).toBe('×1,35');
     expect(multiplierLabel(1.5)).toBe('×1,5');
+  });
+});
+
+/*
+  La semaine se lit au SERVEUR (`GET /events/week`) : il peut la forcer depuis
+  le panneau d'administration, ce que la rotation locale ignorerait. Le calcul
+  local ne sert que de repli : pas encore de reponse, ou une reponse perimee.
+*/
+describe('announcedWeekEvent', () => {
+  const endsAt = '2026-09-28T00:00:00.000Z';
+  const before = Date.parse(endsAt) - 1_000;
+
+  it('suit la semaine servie, meme forcee contre la rotation', () => {
+    expect(announcedWeekEvent({ week: 1, variant: 'contres', endsAt }, before)?.name).toBe(
+      'Contres tranchants',
+    );
+  });
+
+  it('dit « rien » quand le serveur a force une semaine normale', () => {
+    expect(announcedWeekEvent({ week: 1, variant: 'normal', endsAt }, before)).toBeNull();
+  });
+
+  it('retombe sur la rotation sans reponse, ou une fois la semaine servie finie', () => {
+    const later = Date.parse(endsAt) + 1_000;
+    expect(announcedWeekEvent(null, later)).toEqual(weekEvent(later));
+    expect(announcedWeekEvent({ week: 1, variant: 'contres', endsAt }, later)).toEqual(
+      weekEvent(later),
+    );
   });
 });

@@ -6,6 +6,7 @@ import {
   weekIndexOf,
   type BalanceConfig,
 } from '@aura/rules';
+import type { WeekEvent } from '@aura/protocol';
 
 /** L'evenement de la semaine qui regit un match : ce que l'ecran en dit. */
 export interface MatchEvent {
@@ -65,4 +66,16 @@ export function weekEvent(nowMs: number): MatchEvent | null {
 /** Un multiplicateur tel que l'ecran l'ecrit : `×1,35`, `×1,5`. */
 export function multiplierLabel(value: number): string {
   return `×${String(value).replace('.', ',')}`;
+}
+
+/**
+ * L'evenement a annoncer a l'accueil : celui que le SERVEUR a servi
+ * (`GET /events/week`) tant que sa semaine court — il peut etre force depuis
+ * le panneau d'administration —, sinon la rotation calculee a `nowMs`.
+ */
+export function announcedWeekEvent(served: WeekEvent | null, nowMs: number): MatchEvent | null {
+  if (served !== null && nowMs < Date.parse(served.endsAt)) {
+    return matchRules(served.variant).event;
+  }
+  return weekEvent(nowMs);
 }
