@@ -85,6 +85,11 @@ const roundSideSchema = z.strictObject({
    * l'envoie pas, et son absence vaut « non » (2.1.0, ajout compatible).
    */
   shiny: z.boolean().optional(),
+  /**
+   * La bulle d'intention tenue : gagnee avec la famille annoncee, bonus
+   * compris dans `ultGain` (2.6.0). Absent : pas de bulle, ou pas tenue.
+   */
+  intentKept: z.boolean().optional(),
   base: z.number(),
   final: z.number(),
   energyAfter: z.number().int().min(0),
@@ -140,6 +145,12 @@ export const SERVER_MESSAGES = {
      * `@aura/rules`, comme le serveur.
      */
     rulesVariant: rulesVariantSchema.optional(),
+    /**
+     * La bulle d'intention est active dans ce match (2.6.0, test A/B). Absente :
+     * pas de bulle — `true` seul est accepte, pour qu'un « non » ne se dise
+     * que d'une facon.
+     */
+    intentBubble: z.literal(true).optional(),
   }),
 
   // `energy` et `ult` sont ceux du destinataire, jamais de l'adversaire.
@@ -239,6 +250,14 @@ export const SERVER_MESSAGES = {
   'match:state': z.strictObject({
     /** La variante de regles de ce match (2.4.1) : elle survit a une reprise. */
     rulesVariant: rulesVariantSchema.optional(),
+    /** La bulle d'intention est active dans ce match (2.6.0). */
+    intentBubble: z.literal(true).optional(),
+    /**
+     * Les annonces de la manche en cours, des deux sieges (2.6.0). Publiques
+     * par nature — `intent:shown` les a deja diffusees — donc pas une fuite :
+     * une reprise ne doit simplement pas les perdre.
+     */
+    intents: z.strictObject({ a: styleSchema.optional(), b: styleSchema.optional() }).optional(),
     matchId: matchIdSchema,
     seat: seatSchema,
     phase: z.enum(['intro', 'recharge', 'choice', 'reveal', 'ended']),

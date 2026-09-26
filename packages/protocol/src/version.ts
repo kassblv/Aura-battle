@@ -81,7 +81,13 @@
   2.5.0 — `POST /events` (`productEventSchema`) : la mesure du partage de clip.
   Route AJOUTEE : un client 2.4 ne l'appelle pas. Pas de rupture.
 */
-export const PROTOCOL_VERSION = '2.5.0';
+/*
+  2.6.0 — la bulle d'intention en test A/B : `match:found.intentBubble`,
+  `match:state.intentBubble` et `match:state.intents`,
+  `round:result.sides.*.intentKept`. Tous facultatifs. `intent:show` et
+  `intent:shown` existaient deja.
+*/
+export const PROTOCOL_VERSION = '2.6.0';
 
 const MAJOR = /^(\d+)\./;
 

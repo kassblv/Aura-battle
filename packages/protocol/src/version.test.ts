@@ -6,8 +6,8 @@ describe('PROTOCOL_VERSION', () => {
     expect(PROTOCOL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('est en 2.5.0 : la mesure du partage de clip', () => {
-    expect(PROTOCOL_VERSION).toBe('2.5.0');
+  it('est en 2.6.0 : la bulle d intention en test A/B', () => {
+    expect(PROTOCOL_VERSION).toBe('2.6.0');
   });
 });
 

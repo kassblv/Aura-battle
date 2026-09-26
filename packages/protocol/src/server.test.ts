@@ -514,3 +514,55 @@ describe('serializeServerMessage', () => {
     expect(result.success).toBe(false);
   });
 });
+
+/*
+  2.6.0 : la bulle d'intention en test A/B. Le match l'annonce (absente : pas
+  de bulle), la reprise rappelle les annonces de la manche, et le resultat dit
+  si la bulle a ete tenue.
+*/
+describe('bulle d intention (2.6.0)', () => {
+  const found = {
+    matchId: 'm_01',
+    seat: 'a',
+    opponent: { displayName: 'Nova', league: 'bronze', cosmetics: {} },
+    protocolVersion: '2.6.0',
+    rulesVersion: '1.0.0',
+    contentVersion: '1',
+    ghost: false,
+  };
+  const state = {
+    matchId: 'm_01',
+    seat: 'a',
+    phase: 'choice',
+    round: 1,
+    endsAt: 1_700_000_000_000,
+    roundsWon: { a: 0, b: 0 },
+    energy: 10,
+    ult: 0,
+    opponentLocked: false,
+    history: [],
+  };
+
+  it('match:found annonce la bulle', () => {
+    expect(emitted('match:found', { ...found, intentBubble: true }).success).toBe(true);
+    expect(emitted('match:found', { ...found, intentBubble: false }).success).toBe(false);
+  });
+
+  it('match:state rappelle la bulle et les annonces de la manche', () => {
+    expect(
+      emitted('match:state', { ...state, intentBubble: true, intents: { b: 'hype' } }).success,
+    ).toBe(true);
+    expect(
+      emitted('match:state', { ...state, intentBubble: true, intents: { b: 'pas-une-famille' } })
+        .success,
+    ).toBe(false);
+  });
+
+  it('round:result dit si la bulle a ete tenue', () => {
+    const kept = {
+      ...roundResult,
+      sides: { ...roundResult.sides, a: { ...roundResult.sides.a, intentKept: true } },
+    };
+    expect(emitted('round:result', kept).success).toBe(true);
+  });
+});
