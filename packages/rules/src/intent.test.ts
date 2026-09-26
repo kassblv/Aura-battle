@@ -149,3 +149,20 @@ describe('bulle d intention — le bonus', () => {
     expect(BALANCE.intent).toEqual({ enabled: false, ultimateBonus: 10 });
   });
 });
+
+/*
+  « Deux manches consecutives sans aucune action : forfait » (§9). Annoncer
+  EST une action : un joueur qui parle a l'adversaire est present, meme s'il
+  laisse filer le verrouillage.
+*/
+describe('bulle d intention — une annonce est une action', () => {
+  it('marque le siege comme actif', () => {
+    const step = play((s) => [announce('a', 'hype', s)]);
+    expect(step.state.pending.a.acted).toBe(true);
+  });
+
+  it('une annonce refusee ne compte pas', () => {
+    const step = play((s) => [announce('a', 'hype', s)], BALANCE);
+    expect(step.state.pending.a.acted).toBe(false);
+  });
+});

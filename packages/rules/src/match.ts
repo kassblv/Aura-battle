@@ -567,7 +567,8 @@ function handleIntentShown(
   return {
     state: {
       ...state,
-      pending: { ...state.pending, [event.seat]: { ...pending, intent: event.style } },
+      // Annoncer est une action (§9) : un joueur qui parle est present.
+      pending: { ...state.pending, [event.seat]: { ...pending, intent: event.style, acted: true } },
     },
     effects: [{ type: 'INTENT_SHOWN', seat: event.seat, style: event.style, round: state.round }],
   };
