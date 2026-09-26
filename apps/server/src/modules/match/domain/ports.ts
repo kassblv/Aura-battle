@@ -98,6 +98,23 @@ export interface MatchRecord {
    * il tirerait la mediane vers un appariement instantane qui n'a pas eu lieu.
    */
   readonly queueWaitMs: Readonly<Record<'a' | 'b', number | null>>;
+  /** La bulle d'intention etait active dans ce match (test A/B, spec 2026-09-26). */
+  readonly intentBubble: boolean;
+}
+
+/** Groupe d'un joueur dans une experience (module `flags`). */
+export type ExperimentGroup = 'treatment' | 'control';
+
+/**
+ * Les experiences auxquelles un joueur est affecte (module `flags`, spec
+ * 2026-09-26). Realise par `FeatureFlags`.
+ *
+ * **Synchrone** : l'ouverture d'un match ne peut rien attendre. `enroll` rend
+ * le groupe ET en laisse une trace en base, sans qu'on l'attende — on ne
+ * l'appelle donc que la ou l'affectation sert a decider quelque chose.
+ */
+export interface PlayerFlags {
+  enroll(flag: 'intentBubble', playerId: string): ExperimentGroup;
 }
 
 /** Ecriture d'un match acheve. */

@@ -1,4 +1,5 @@
 import type { ProductEventKind } from '@aura/protocol';
+import type { ExperimentCohort, ExperimentGroupReading } from './experiments.js';
 import type { IndicatorReadings } from './indicators.js';
 
 /**
@@ -35,6 +36,19 @@ export interface ProductEventStore {
 /** Lecture des indicateurs, a un instant donne (heure serveur, jours UTC). */
 export interface IndicatorsReader {
   read(nowMs: number): Promise<IndicatorReadings>;
+}
+
+/**
+ * Lecture d'un groupe de test A/B, a un instant donne : les memes definitions
+ * que `IndicatorsReader`, restreintes aux joueurs du groupe.
+ */
+export interface ExperimentsReader {
+  readCohort(nowMs: number, cohort: ExperimentCohort): Promise<ExperimentGroupReading>;
+}
+
+/** Les experiences declarees, avec leur part en vigueur (module `flags`). */
+export interface DeclaredExperiments {
+  declared(): readonly { readonly flag: string; readonly rollout: number }[];
 }
 
 /** Horloge : le module recoit le temps, il ne le lit pas. */

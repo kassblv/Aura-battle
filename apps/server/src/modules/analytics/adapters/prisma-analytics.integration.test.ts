@@ -136,6 +136,25 @@ function scenario() {
       return id;
     },
 
+    /** Une affectation de test A/B ; supprimee avec le joueur (cascade). */
+    async assign(
+      playerId: string,
+      group: 'treatment' | 'control',
+      assignedAtMs: number,
+      flag = 'intentBubble',
+    ): Promise<void> {
+      await prisma!.flagAssignment.create({
+        data: { playerId, flag, group, assignedAt: new Date(assignedAtMs) },
+      });
+    },
+
+    readCohort(group: 'treatment' | 'control') {
+      return new PrismaIndicatorsReader(prisma as never).readCohort(this.now, {
+        flag: 'intentBubble',
+        group,
+      });
+    },
+
     async clip(playerId: string, matchId: string): Promise<void> {
       await prisma!.productEvent.create({ data: { playerId, matchId, kind: 'clip_shared' } });
     },
@@ -384,6 +403,72 @@ describe.skipIf(!reachable)('indicateurs produit, contre Postgres', () => {
 
       const { abandonRate } = (await s.read()).indicators;
       expect(abandonRate).toEqual({ value: 2 / 4, n: 4 });
+    } finally {
+      await s.cleanup();
+    }
+  });
+});
+
+/**
+ * Lecture du test A/B de la bulle d'intention (spec 2026-09-26) : les memes
+ * definitions que les indicateurs, restreintes aux joueurs affectes au groupe.
+ */
+describe.skipIf(!reachable)('experiences, contre Postgres', () => {
+  it('rend des mesures vides pour un groupe sans joueur', async () => {
+    const s = scenario();
+    expect(await s.readCohort('treatment')).toEqual({
+      players: 0,
+      retentionD1: { value: null, n: 0 },
+      retentionD7: { value: null, n: 0 },
+      matchesPerActiveDay: { value: null, n: 0 },
+      abandonRate: { value: null, n: 0 },
+    });
+  });
+
+  it('restreint chaque definition aux joueurs affectes au groupe', async () => {
+    const s = scenario();
+    try {
+      const t1 = await s.player(s.at(-5)); // traite, joue le lendemain (J1)
+      const t2 = await s.player(s.at(-5)); // traite, ne joue jamais
+      const t4 = await s.player(s.at(-10)); // traite, joue sept jours apres (J7)
+      const c1 = await s.player(s.at(-5)); // temoin, joue le lendemain
+      const u = await s.player(s.at(-5)); // jamais affecte : n'entre dans aucun groupe
+      const tard = await s.player(s.at(-5)); // affecte APRES « maintenant » : pas encore
+      const ailleurs = await s.player(s.at(-5)); // affecte a un autre drapeau
+
+      for (const id of [t1, t2, t4]) await s.assign(id, 'treatment', s.at(-6));
+      await s.assign(c1, 'control', s.at(-6));
+      await s.assign(tard, 'treatment', s.at(1));
+      await s.assign(ailleurs, 'treatment', s.at(-6), 'autreExperience');
+
+      await s.match({ mode: 'CASUAL', startedAtMs: s.at(-4), seats: [t1, u] });
+      await s.match({
+        mode: 'INVITE',
+        startedAtMs: s.at(-4, 11),
+        endReason: 'forfeit',
+        seats: [t1, c1],
+      });
+      await s.match({ mode: 'CASUAL', startedAtMs: s.at(-3), seats: [t4, u] });
+      await s.match({ mode: 'CASUAL', startedAtMs: s.at(-4, 12), seats: [tard, ailleurs] });
+
+      expect(await s.readCohort('treatment')).toEqual({
+        players: 3,
+        // t1, t2, t4 crees dans la fenetre J1 ; seul t1 joue le lendemain.
+        retentionD1: { value: 1 / 3, n: 3 },
+        // Seul t4 est assez ancien ; il joue a J+7.
+        retentionD7: { value: 1, n: 1 },
+        // Sieges de t1 (2) et t4 (1) sur deux journees-joueur.
+        matchesPerActiveDay: { value: 1.5, n: 2 },
+        // Les trois matchs ou un traite etait assis ; un forfait.
+        abandonRate: { value: 1 / 3, n: 3 },
+      });
+      expect(await s.readCohort('control')).toEqual({
+        players: 1,
+        retentionD1: { value: 1, n: 1 },
+        retentionD7: { value: null, n: 0 },
+        matchesPerActiveDay: { value: 1, n: 1 },
+        abandonRate: { value: 1, n: 1 },
+      });
     } finally {
       await s.cleanup();
     }

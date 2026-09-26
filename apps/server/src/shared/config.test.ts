@@ -227,3 +227,36 @@ describe('authRateLimit', () => {
     ).toThrow(/AUTH_RATE_LIMIT/);
   });
 });
+
+/**
+ * Part exposee de la bulle d'intention (spec 2026-09-26). Un entier de 0 a
+ * 100, et rien d'autre : une part mal lue exposerait tout le monde, ou
+ * personne, sans que rien ne le signale.
+ */
+describe('FLAG_INTENT_BUBBLE_ROLLOUT', () => {
+  it('vaut la part declaree en code quand rien n est pose', () => {
+    expect(loadConfig(validEnv).flagRollouts).toEqual({ intentBubble: 50 });
+  });
+
+  it.each([
+    ['0', 0],
+    ['100', 100],
+    [' 25 ', 25],
+  ])('lit %j comme %i', (raw, expected) => {
+    expect(
+      loadConfig({ ...validEnv, FLAG_INTENT_BUBBLE_ROLLOUT: raw }).flagRollouts.intentBubble,
+    ).toBe(expected);
+  });
+
+  it('vaut la valeur par defaut pour une variable laissee a blanc', () => {
+    expect(
+      loadConfig({ ...validEnv, FLAG_INTENT_BUBBLE_ROLLOUT: '' }).flagRollouts.intentBubble,
+    ).toBe(50);
+  });
+
+  it.each(['-1', '101', '12.5', 'moitie', '50%', '1e2'])('refuse %j au demarrage', (raw) => {
+    expect(() => loadConfig({ ...validEnv, FLAG_INTENT_BUBBLE_ROLLOUT: raw })).toThrow(
+      /FLAG_INTENT_BUBBLE_ROLLOUT/,
+    );
+  });
+});

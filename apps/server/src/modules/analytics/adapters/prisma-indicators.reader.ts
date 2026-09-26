@@ -2,8 +2,9 @@ import type { ProductEventKind } from '@aura/protocol';
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
+import type { ExperimentCohort, ExperimentGroupReading } from '../domain/experiments.js';
 import type { IndicatorReadings, Measure } from '../domain/indicators.js';
-import type { IndicatorsReader } from '../domain/ports.js';
+import type { ExperimentsReader, IndicatorsReader } from '../domain/ports.js';
 import { utcTimestamp } from './sql-time.js';
 
 /**
@@ -48,15 +49,47 @@ interface RatioRow {
 /** Une part, ou `null` quand il n'y a rien a diviser. */
 const ratio = ({ n, hits }: RatioRow): Measure => ({ value: n === 0 ? null : hits / n, n });
 
+/**
+ * Restriction a un groupe de test A/B, ou aucune.
+ *
+ * Rend la condition « ce joueur est affecte au groupe » pour une colonne
+ * d'identifiant de joueur. Affecte AVANT l'instant de lecture : un recalcul a
+ * un instant passe ne compte pas les joueurs arrives depuis — c'est aussi ce
+ * qui isole les tests, dont les « maintenant » sont en 1980.
+ */
+type Scope = ((playerColumn: Prisma.Sql) => Prisma.Sql) | null;
+
+function cohortScope(cohort: ExperimentCohort, nowMs: number): Scope {
+  return (playerColumn) => Prisma.sql`EXISTS (
+    SELECT 1 FROM "FlagAssignment" fa
+    WHERE fa."playerId" = ${playerColumn}
+      AND fa.flag = ${cohort.flag}
+      AND fa."group" = ${cohort.group}::"FlagGroup"
+      AND fa."assignedAt" < ${utcTimestamp(nowMs)}
+  )`;
+}
+
+/** `AND <restriction>` pour cette colonne, ou rien sans restriction. */
+const restrictTo = (scope: Scope, playerColumn: Prisma.Sql): Prisma.Sql =>
+  scope === null ? Prisma.empty : Prisma.sql`AND ${scope(playerColumn)}`;
+
+/** Les fenetres communes : jours UTC, « aujourd'hui » exclu. */
+function windowsAt(nowMs: number): {
+  dayStart: (offset: number) => Prisma.Sql;
+  week: { from: Prisma.Sql; to: Prisma.Sql };
+} {
+  const today = Math.floor(nowMs / DAY_MS);
+  const dayStart = (offset: number): Prisma.Sql => utcTimestamp((today + offset) * DAY_MS);
+  return { dayStart, week: { from: dayStart(-7), to: dayStart(0) } };
+}
+
 @Injectable()
-export class PrismaIndicatorsReader implements IndicatorsReader {
+export class PrismaIndicatorsReader implements IndicatorsReader, ExperimentsReader {
   // Jeton explicite : esbuild n'emet pas `design:paramtypes` (voir CLAUDE.md).
   constructor(@Inject(PrismaService) private readonly prisma: PrismaService) {}
 
   async read(nowMs: number): Promise<IndicatorReadings> {
-    const today = Math.floor(nowMs / DAY_MS);
-    const dayStart = (offset: number): Prisma.Sql => utcTimestamp((today + offset) * DAY_MS);
-    const week = { from: dayStart(-7), to: dayStart(0) };
+    const { dayStart, week } = windowsAt(nowMs);
 
     const [
       retentionD1,
@@ -69,14 +102,14 @@ export class PrismaIndicatorsReader implements IndicatorsReader {
       ghostShare,
     ] = await Promise.all([
       // Comptes crees de J-31 a J-2, actifs a J+1.
-      this.retention(1, dayStart(-31), dayStart(-1)),
+      this.retention(1, dayStart(-31), dayStart(-1), null),
       // Comptes crees de J-37 a J-8, actifs a J+7.
-      this.retention(7, dayStart(-37), dayStart(-7)),
-      this.matchesPerActiveDay(week.from, week.to),
+      this.retention(7, dayStart(-37), dayStart(-7), null),
+      this.matchesPerActiveDay(week.from, week.to, null),
       this.medianRankedWait(week.from, week.to),
       this.clipShare(week.from, week.to),
       this.inviteInstalls(dayStart(-30), dayStart(0)),
-      this.abandons(week.from, week.to),
+      this.abandons(week.from, week.to, null),
       this.ghostShare(week.from, week.to),
     ]);
 
@@ -95,11 +128,53 @@ export class PrismaIndicatorsReader implements IndicatorsReader {
   }
 
   /**
+   * Un groupe de test A/B (spec 2026-09-26) : les memes definitions et les
+   * memes fenetres que `read`, restreintes aux joueurs affectes au groupe.
+   *
+   * - Retention : les comptes du groupe ;
+   * - matchs par actif : les sieges et les journees des joueurs du groupe ;
+   * - abandon : les matchs ou au moins un joueur du groupe etait assis. Un
+   *   match entre un traite et un temoin compte donc dans les deux groupes —
+   *   il n'avait pas la bulle, ce qui est exactement ce qu'on compare.
+   */
+  async readCohort(nowMs: number, cohort: ExperimentCohort): Promise<ExperimentGroupReading> {
+    const { dayStart, week } = windowsAt(nowMs);
+    const scope = cohortScope(cohort, nowMs);
+    const [players, retentionD1, retentionD7, matchesPerActiveDay, abandonRate] = await Promise.all(
+      [
+        this.cohortSize(cohort, nowMs),
+        this.retention(1, dayStart(-31), dayStart(-1), scope),
+        this.retention(7, dayStart(-37), dayStart(-7), scope),
+        this.matchesPerActiveDay(week.from, week.to, scope),
+        this.abandons(week.from, week.to, scope),
+      ],
+    );
+    return { players, retentionD1, retentionD7, matchesPerActiveDay, abandonRate };
+  }
+
+  /** Joueurs affectes au groupe avant `nowMs`. */
+  private async cohortSize(cohort: ExperimentCohort, nowMs: number): Promise<number> {
+    const [row] = await this.prisma.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n
+      FROM "FlagAssignment" fa
+      WHERE fa.flag = ${cohort.flag}
+        AND fa."group" = ${cohort.group}::"FlagGroup"
+        AND fa."assignedAt" < ${utcTimestamp(nowMs)}
+    `;
+    return row?.n ?? 0;
+  }
+
+  /**
    * Parmi les comptes crees dans `[from, to)`, la part active `days` jours
    * apres le jour de leur creation. Actif le jour D : a occupe un siege d'un
    * match PvP commence le jour D.
    */
-  private async retention(days: number, from: Prisma.Sql, to: Prisma.Sql): Promise<Measure> {
+  private async retention(
+    days: number,
+    from: Prisma.Sql,
+    to: Prisma.Sql,
+    scope: Scope,
+  ): Promise<Measure> {
     const [row] = await this.prisma.$queryRaw<RatioRow[]>`
       SELECT count(*)::int AS n,
              count(*) FILTER (WHERE EXISTS (
@@ -115,6 +190,7 @@ export class PrismaIndicatorsReader implements IndicatorsReader {
         SELECT p.id, date_trunc('day', p."createdAt") AS day
         FROM "Player" p
         WHERE p."createdAt" >= ${from} AND p."createdAt" < ${to}
+          ${restrictTo(scope, Prisma.sql`p.id`)}
       ) c
     `;
     return ratio(row ?? { n: 0, hits: 0 });
@@ -124,7 +200,11 @@ export class PrismaIndicatorsReader implements IndicatorsReader {
    * Sieges PvP occupes par un joueur reel ÷ somme des actifs quotidiens.
    * L'effectif est cette somme : le nombre de journees-joueur observees.
    */
-  private async matchesPerActiveDay(from: Prisma.Sql, to: Prisma.Sql): Promise<Measure> {
+  private async matchesPerActiveDay(
+    from: Prisma.Sql,
+    to: Prisma.Sql,
+    scope: Scope,
+  ): Promise<Measure> {
     const [row] = await this.prisma.$queryRaw<{ seats: number; actorDays: number }[]>`
       SELECT count(*)::int AS seats,
              count(DISTINCT (s."playerId", date_trunc('day', m."startedAt")))::int AS "actorDays"
@@ -133,6 +213,7 @@ export class PrismaIndicatorsReader implements IndicatorsReader {
       WHERE s."playerId" IS NOT NULL
         AND ${PVP}
         AND m."startedAt" >= ${from} AND m."startedAt" < ${to}
+        ${restrictTo(scope, Prisma.sql`s."playerId"`)}
     `;
     const actorDays = row?.actorDays ?? 0;
     return { value: actorDays === 0 ? null : (row?.seats ?? 0) / actorDays, n: actorDays };
@@ -200,7 +281,7 @@ export class PrismaIndicatorsReader implements IndicatorsReader {
   }
 
   /** Matchs PvP termines dans la fenetre sur forfait ou deconnexion. */
-  private async abandons(from: Prisma.Sql, to: Prisma.Sql): Promise<Measure> {
+  private async abandons(from: Prisma.Sql, to: Prisma.Sql, scope: Scope): Promise<Measure> {
     const [row] = await this.prisma.$queryRaw<RatioRow[]>`
       SELECT count(*)::int AS n,
              count(*) FILTER (WHERE m."endReason" IN (${Prisma.join(ABANDON_REASONS)}))::int AS hits
@@ -208,6 +289,14 @@ export class PrismaIndicatorsReader implements IndicatorsReader {
       WHERE ${PVP}
         AND m.status = 'ENDED'
         AND m."endedAt" >= ${from} AND m."endedAt" < ${to}
+        ${
+          scope === null
+            ? Prisma.empty
+            : Prisma.sql`AND EXISTS (
+                SELECT 1 FROM "MatchSeat" gs
+                WHERE gs."matchId" = m.id AND ${scope(Prisma.sql`gs."playerId"`)}
+              )`
+        }
     `;
     return ratio(row ?? { n: 0, hits: 0 });
   }

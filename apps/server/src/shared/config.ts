@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { FLAGS, type FlagName } from '../modules/flags/domain/flags.js';
 
 /**
  * Configuration du serveur, validee au demarrage.
@@ -205,6 +206,23 @@ const configSchema = z.object({
     .string()
     .default('on')
     .transform((raw) => raw.trim() !== 'off'),
+  /**
+   * Part exposee de la bulle d'intention, en pour cent (spec 2026-09-26).
+   *
+   * Entier de 0 a 100 ecrit en chiffres, et rien d'autre : `z.coerce.number()`
+   * lirait `1e2` comme 100 et `' '` comme 0 — une part mal lue expose tout le
+   * monde ou personne sans que rien ne le signale. Vide : la part declaree en
+   * code (`FLAGS`). `0` coupe l'experience sans redeployer.
+   */
+  flagIntentBubbleRollout: z
+    .string()
+    .default('')
+    .transform((raw) => raw.trim())
+    .refine(
+      (raw) => raw === '' || (/^\d{1,3}$/.test(raw) && Number(raw) <= 100),
+      'FLAG_INTENT_BUBBLE_ROLLOUT doit etre un entier de 0 a 100, ou rester vide',
+    )
+    .transform((raw) => (raw === '' ? FLAGS.intentBubble.defaultRollout : Number(raw))),
   trustProxy: z
     .string()
     .default('')
@@ -220,7 +238,14 @@ const configSchema = z.object({
     ),
 });
 
-export type ServerConfig = Readonly<z.infer<typeof configSchema>>;
+type ParsedConfig = z.infer<typeof configSchema>;
+
+export type ServerConfig = Readonly<
+  Omit<ParsedConfig, 'flagIntentBubbleRollout'> & {
+    /** Part exposee de chaque drapeau (`modules/flags`), deja validee. */
+    readonly flagRollouts: Readonly<Record<FlagName, number>>;
+  }
+>;
 
 /** Jeton d'injection de la configuration. */
 export const CONFIG = Symbol('CONFIG');
@@ -259,6 +284,7 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     clientDir: env.CLIENT_DIR,
     trustProxy: env.TRUST_PROXY,
     authRateLimit: env.AUTH_RATE_LIMIT,
+    flagIntentBubbleRollout: env.FLAG_INTENT_BUBBLE_ROLLOUT,
   });
 
   if (!parsed.success) {
@@ -286,5 +312,9 @@ export function loadConfig(env: NodeJS.ProcessEnv): ServerConfig {
     );
   }
 
-  return Object.freeze(parsed.data);
+  const { flagIntentBubbleRollout, ...rest } = parsed.data;
+  return Object.freeze({
+    ...rest,
+    flagRollouts: Object.freeze({ intentBubble: flagIntentBubbleRollout }),
+  });
 }

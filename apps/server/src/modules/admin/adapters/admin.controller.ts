@@ -9,6 +9,8 @@ import {
 } from '@nestjs/common';
 import { CONFIG, type ServerConfig } from '../../../shared/config.js';
 import { constantTimeEquals } from '../../../shared/constant-time.js';
+import { ExperimentsService } from '../../analytics/application/experiments.service.js';
+import type { ExperimentReport } from '../../analytics/domain/experiments.js';
 import { IndicatorsService } from '../../analytics/application/indicators.service.js';
 import type { IndicatorReport } from '../../analytics/domain/indicators.js';
 import { AdminStatusService, type AdminStatus } from '../application/admin-status.service.js';
@@ -35,6 +37,7 @@ export class AdminController {
     @Inject(AdminStatusService) private readonly status: AdminStatusService,
     @Inject(CONFIG) private readonly config: ServerConfig,
     @Inject(IndicatorsService) private readonly indicators: IndicatorsService,
+    @Inject(ExperimentsService) private readonly experiments: ExperimentsService,
   ) {}
 
   /**
@@ -73,6 +76,21 @@ export class AdminController {
     this.requireEnabled();
     this.authorize(authorization);
     return this.indicators.report();
+  }
+
+  /**
+   * Les tests A/B en cours (spec 2026-09-26) : par drapeau et par groupe, les
+   * definitions des indicateurs restreintes aux joueurs du groupe. Meme garde,
+   * meme cache d'une minute, memes raisons.
+   */
+  @Get('experiments')
+  @Header('cache-control', 'no-store')
+  async readExperiments(
+    @Headers('authorization') authorization?: string,
+  ): Promise<ExperimentReport> {
+    this.requireEnabled();
+    this.authorize(authorization);
+    return this.experiments.report();
   }
 
   private requireEnabled(): void {

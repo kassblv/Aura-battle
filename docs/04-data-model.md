@@ -133,6 +133,7 @@ model Match {
   endReason      String?
   winnerSeat     Seat?
   isGhost        Boolean     @default(false)
+  intentBubble   Boolean     @default(false)  // bulle d'intention active (test A/B)
   startedAt      DateTime    @default(now())
   endedAt        DateTime?
   seats          MatchSeat[]
@@ -245,6 +246,18 @@ model ProductEvent {
   @@index([matchId, kind])
 }
 
+enum FlagGroup { treatment control }
+
+model FlagAssignment {
+  playerId   String
+  flag       String                           // nom declare en code (FLAGS, module flags)
+  group      FlagGroup
+  assignedAt DateTime  @default(now())        // heure serveur de la premiere inscription
+  player     Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  @@id([playerId, flag])
+  @@index([flag, group])
+}
+
 model SuspicionFlag {
   id        String   @id @default(uuid())
   playerId  String
@@ -278,6 +291,14 @@ Les indicateurs de `docs/00` se déduisent presque tous de ce qui existe déjà 
 
 - **`MatchSeat.queueWaitMs`** : l'attente en file du siège, en millisecondes, heure serveur, mesurée à l'appariement (`enqueuedAtMs` du ticket) et écrite avec le match. **Nulle** pour qui n'a pas fait la queue — les deux sièges d'une invitation, et le siège d'un fantôme (le joueur face à lui a bien la sienne). Zéro à la place de nul tirerait la médiane vers un appariement instantané qui n'a pas eu lieu.
 - **`ProductEvent`** : ce que seul le client sait (aujourd'hui, `clip_shared`). La clé primaire `(playerId, matchId, kind)` borne la table par construction ; l'insertion est un `INSERT … SELECT` depuis `MatchSeat`, donc rien n'est écrit pour un joueur qui ne siégeait pas à ce match, et un renvoi est sans effet (`ON CONFLICT DO NOTHING`). `kind` est une chaîne : la liste des sortes se décide dans `@aura/protocol` (`PRODUCT_EVENT_KINDS`), validée à l'entrée de `POST /events`. La ligne suit le joueur et le match (`Cascade`).
+
+## Tests A/B : une trace, pas une décision
+
+Spec `docs/superpowers/specs/2026-09-26-bulle-intention-ab-design.md`.
+
+- **Le groupe ne se lit jamais en base** : il se recalcule, `sha256(drapeau:joueur) mod 100 < part` (`modules/flags/domain/flags.ts`). L'ouverture d'un match reste ainsi entièrement synchrone.
+- **`FlagAssignment`** en garde la trace, pour comparer les groupes en SQL (`GET /admin/experiments`). Inscrite la première fois que l'affectation **sert** : à l'ouverture d'une partie rapide ou d'une invitation, pour chaque siège réel, témoin compris ; jamais en classé, jamais pour un fantôme. `INSERT … SELECT` depuis `Player` avec `ON CONFLICT DO NOTHING` : la première inscription fait foi (groupe et date), un joueur inconnu n'insère rien. Sans attente : une base muette coûte une trace, jamais un duel. Changer la part ne réécrit pas les lignes : elles disent le groupe **au moment de l'inscription**.
+- **`Match.intentBubble`** : la bulle était active dans ce match (tous les sièges réels exposés, mode rapide ou invitation).
 
 ## Loadout : un kind par emplacement
 

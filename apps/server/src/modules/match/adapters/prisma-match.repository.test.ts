@@ -156,6 +156,7 @@ function aRecord(overrides: Partial<MatchRecord> = {}): MatchRecord {
     droppedEvents: { a: 0, b: 0 },
     impossibleTaps: { a: 0, b: 0 },
     queueWaitMs: { a: null, b: null },
+    intentBubble: false,
     ...overrides,
   };
 }
@@ -226,6 +227,7 @@ describe('PrismaMatchRepository', () => {
       id: 'm_1',
       mode: 'RANKED',
       isGhost: false,
+      intentBubble: false,
       rulesVersion: '1.2.3',
       contentVersion: '4.5.6',
       seed: 'graine',
@@ -321,6 +323,13 @@ describe('PrismaMatchRepository', () => {
       { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: 4_200 },
       { matchId: 'm_1', seat: 'B', playerId: 'p_bob', ghostOfId: null, queueWaitMs: null },
     ]);
+  });
+
+  /** Test A/B de la bulle d'intention (spec 2026-09-26) : on sait quels matchs l'avaient. */
+  it('ecrit si la bulle d intention etait active', async () => {
+    await repository.save(aRecord({ mode: 'CASUAL', intentBubble: true }));
+
+    expect(prisma.callsTo('match.create')[0]?.args.data).toMatchObject({ intentBubble: true });
   });
 
   it('convertit le siege vainqueur, siege b compris', async () => {

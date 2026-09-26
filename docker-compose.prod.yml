@@ -40,6 +40,9 @@ services:
       # Le commit deploye, pour que le panneau puisse dire QUELLE version
       # tourne — la premiere question devant un comportement inattendu.
       - SOURCE_COMMIT=${SOURCE_COMMIT}
+      # Part exposee de la bulle d'intention (test A/B, docs/10), 0 a 100.
+      # Vide : 50, la part declaree en code. 0 coupe l'experience.
+      - FLAG_INTENT_BUBBLE_ROLLOUT=${FLAG_INTENT_BUBBLE_ROLLOUT:-}
     volumes:
       # Le marqueur de sauvegarde vit sur l'HOTE, ecrit par le cron
       # (`docker/backup.sh`). Monte en LECTURE SEULE : le panneau doit pouvoir

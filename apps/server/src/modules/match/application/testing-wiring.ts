@@ -21,7 +21,7 @@ import {
 } from '../../matchmaking/domain/ports.js';
 import { RATING_DIRECTORY, type RatingDirectory } from '../../rating/domain/ports.js';
 import { SocketNotifier } from '../adapters/socket-notifier.js';
-import type { MatchClock } from '../domain/ports.js';
+import type { MatchClock, PlayerFlags } from '../domain/ports.js';
 import { TimeoutScheduler, SystemMatchClock } from '../adapters/timeout-scheduler.js';
 import { MatchOpener } from './match-opener.js';
 import { MatchRuntime } from './match-runtime.js';
@@ -75,6 +75,11 @@ export function matchmakingTestProviders(
      * resultat selon la semaine ou on la lance.
      */
     rulesClock?: MatchClock;
+    /**
+     * Affectation aux experiences (bulle d'intention). Absente, aucune bulle :
+     * les suites d'avant le test A/B gardent exactement leurs messages.
+     */
+    flags?: PlayerFlags;
   } = {},
 ): Provider[] {
   const providers: Provider[] = [
@@ -105,7 +110,15 @@ export function matchmakingTestProviders(
       provide: MatchOpener,
       inject: [MatchRuntime, SocketNotifier, MatchmakingQueue],
       useFactory: (runtime: MatchRuntime, notifier: SocketNotifier, queue: MatchmakingQueue) =>
-        new MatchOpener(runtime, notifier, notifier, queue, null, options.rulesClock ?? null),
+        new MatchOpener(
+          runtime,
+          notifier,
+          notifier,
+          queue,
+          null,
+          options.rulesClock ?? null,
+          options.flags ?? null,
+        ),
     },
   ];
 

@@ -38,17 +38,18 @@ model Player {
   /// compare a la seconde pres (`iat`) et laissait une fenetre (ADR 0013).
   credentialsVersion Int       @default(0)
 
-  identities     AuthIdentity[]
-  refreshTokens  RefreshToken[]
-  ratings        Rating[]
-  inventory      InventoryItem[]
-  loadout        Loadout?
-  matchSeats     MatchSeat[]
-  challenges     PlayerChallenge[]
-  tokenPurchases TokenPurchase[]
-  seasonProgress SeasonProgress[]
-  seasonClaims   SeasonClaim[]
-  productEvents  ProductEvent[]
+  identities      AuthIdentity[]
+  refreshTokens   RefreshToken[]
+  ratings         Rating[]
+  inventory       InventoryItem[]
+  loadout         Loadout?
+  matchSeats      MatchSeat[]
+  challenges      PlayerChallenge[]
+  tokenPurchases  TokenPurchase[]
+  seasonProgress  SeasonProgress[]
+  seasonClaims    SeasonClaim[]
+  productEvents   ProductEvent[]
+  flagAssignments FlagAssignment[]
 }
 
 /// Une facon de prouver qu'on est ce joueur.
@@ -168,6 +169,9 @@ model Match {
   endReason      String?
   winnerSeat     Seat?
   isGhost        Boolean     @default(false)
+  /// La bulle d'intention etait active dans ce match (test A/B, spec
+  /// 2026-09-26) : partie rapide ou invitation, tous les sieges reels exposes.
+  intentBubble   Boolean     @default(false)
   startedAt      DateTime    @default(now())
   endedAt        DateTime?
   /// Journal compact des evenements, pour rejouer un match en cas de litige.
@@ -419,4 +423,30 @@ model ProductEvent {
 
   @@id([playerId, matchId, kind])
   @@index([matchId, kind])
+}
+
+/// Groupe d'un joueur dans une experience (module `flags`).
+enum FlagGroup {
+  treatment
+  control
+}
+
+/// L'affectation d'un joueur a un drapeau, inscrite la premiere fois qu'elle
+/// sert a ouvrir un match (spec 2026-09-26 « Bulle d'intention en test A/B »).
+///
+/// Une TRACE, pas une decision : le groupe se recalcule du hachage
+/// `sha256(drapeau:joueur)`. La ligne n'existe que pour comparer les groupes
+/// en SQL (`GET /admin/experiments`). Cle `(playerId, flag)` : la premiere
+/// inscription fait foi (`ON CONFLICT DO NOTHING`). `flag` est un nom declare
+/// en code (`FLAGS`), jamais une saisie.
+model FlagAssignment {
+  playerId   String
+  flag       String
+  group      FlagGroup
+  assignedAt DateTime  @default(now())
+
+  player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)
+
+  @@id([playerId, flag])
+  @@index([flag, group])
 }

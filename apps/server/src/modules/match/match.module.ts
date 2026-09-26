@@ -6,6 +6,8 @@ import { RedisModule } from '../../shared/redis.module.js';
 import { RedisService } from '../../shared/redis.js';
 import { PrismaService } from '../../shared/prisma.service.js';
 import { AuthModule } from '../auth/auth.module.js';
+import { FeatureFlags } from '../flags/application/feature-flags.js';
+import { FlagsModule } from '../flags/flags.module.js';
 import { CredentialsEvents } from '../auth/application/credentials-events.js';
 import { GhostNotifier } from '../matchmaking/adapters/ghost-notifier.js';
 import { PrismaGhostStore } from '../matchmaking/adapters/prisma-ghost.store.js';
@@ -74,7 +76,8 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
 @Module({
   // `InventoryStoreModule` : le depot d'inventaire, en un seul exemplaire
   // partage avec `InventoryModule` — donc un seul cache du catalogue.
-  imports: [AuthModule, RedisModule, ChallengesModule, InventoryStoreModule],
+  // `FlagsModule` : l'affectation aux experiences, lue a l'ouverture des matchs.
+  imports: [AuthModule, RedisModule, ChallengesModule, InventoryStoreModule, FlagsModule],
   controllers: [LeaderboardController],
   providers: [
     {
@@ -333,7 +336,14 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
      */
     {
       provide: MatchOpener,
-      inject: [MatchRuntime, SocketNotifier, MatchmakingQueue, PinoLoggerService, SystemMatchClock],
+      inject: [
+        MatchRuntime,
+        SocketNotifier,
+        MatchmakingQueue,
+        PinoLoggerService,
+        SystemMatchClock,
+        FeatureFlags,
+      ],
       useFactory: (
         runtime: MatchRuntime,
         notifier: SocketNotifier,
@@ -341,11 +351,13 @@ const MATCH_GAUGES = Symbol('MATCH_GAUGES');
         logger: PinoLoggerService,
         // L'heure serveur dit la semaine, donc la variante de la partie rapide.
         clock: SystemMatchClock,
+        // Le groupe de chaque joueur, donc la bulle d'intention (test A/B).
+        flags: FeatureFlags,
       ) =>
         // `SocketNotifier` tient les deux roles : envoyer un message, et dire
         // qui est la et sous quel nom. Ce sont deux ports distincts, parce que
         // ce sont deux questions distinctes.
-        new MatchOpener(runtime, notifier, notifier, queue, logger, clock),
+        new MatchOpener(runtime, notifier, notifier, queue, logger, clock, flags),
     },
 
     {

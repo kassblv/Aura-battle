@@ -2,7 +2,7 @@ import type { ServerMessage, ServerMessageName } from '@aura/protocol';
 import { PROTOCOL_VERSION } from '@aura/protocol';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { UNKNOWN_PLAYER_NAME } from '../domain/directory.js';
-import type { MatchNotifier } from '../domain/ports.js';
+import type { ExperimentGroup, MatchNotifier, PlayerFlags } from '../domain/ports.js';
 import {
   MatchOpener,
   type MatchStarter,
@@ -48,6 +48,7 @@ class FakeRuntime implements MatchStarter {
     } | null;
     rulesVariant: string | undefined;
     queueWaitMs: Partial<Record<'a' | 'b', number>> | undefined;
+    intentBubble: boolean | undefined;
     /** Messages deja partis au moment de l'ouverture : l'ordre compte. */
     sentBefore: number;
   }[] = [];
@@ -92,6 +93,7 @@ class FakeRuntime implements MatchStarter {
     } | null;
     rulesVariant?: string;
     queueWaitMs?: Partial<Record<'a' | 'b', number>>;
+    intentBubble?: boolean;
   }): boolean {
     if (this.refuse) return false;
     this.opened.push({
@@ -101,6 +103,7 @@ class FakeRuntime implements MatchStarter {
       ghost: input.ghost ?? null,
       rulesVariant: input.rulesVariant,
       queueWaitMs: input.queueWaitMs,
+      intentBubble: input.intentBubble,
       sentBefore: this.notifier.sent.length,
     });
     return true;
@@ -561,5 +564,90 @@ describe('MatchOpener — variante de la semaine', () => {
 
     expect(runtime.opened[0]?.rulesVariant).toBe('ultime');
     expect(notifier.foundBy('p1')?.rulesVariant).toBe('ultime');
+  });
+});
+
+/**
+ * Bulle d'intention en test A/B (spec 2026-09-26) : l'ouverture decide une
+ * fois, annonce `match:found.intentBubble` et le transmet au runtime.
+ */
+describe('MatchOpener — bulle d intention', () => {
+  class FakeFlags implements PlayerFlags {
+    readonly enrolled: string[] = [];
+    readonly control = new Set<string>();
+    enroll(_flag: 'intentBubble', playerId: string): ExperimentGroup {
+      this.enrolled.push(playerId);
+      return this.control.has(playerId) ? 'control' : 'treatment';
+    }
+  }
+
+  let flags: FakeFlags;
+  beforeEach(() => {
+    flags = new FakeFlags();
+    opener = new MatchOpener(runtime, notifier, presence, queue, null, null, flags);
+  });
+
+  it.each(['CASUAL', 'INVITE'] as const)(
+    'active la bulle en %s entre deux joueurs traites, et l annonce aux deux',
+    (mode) => {
+      open(mode);
+      expect(runtime.opened[0]?.intentBubble).toBe(true);
+      expect(notifier.foundBy('p1')?.intentBubble).toBe(true);
+      expect(notifier.foundBy('p2')?.intentBubble).toBe(true);
+      expect(flags.enrolled.sort()).toEqual(['p1', 'p2']);
+    },
+  );
+
+  it('n expose jamais le classe, et n y inscrit personne', () => {
+    open('RANKED');
+    expect(runtime.opened[0]?.intentBubble).toBe(false);
+    expect(notifier.foundBy('p1')).not.toHaveProperty('intentBubble');
+    expect(notifier.foundBy('p2')).not.toHaveProperty('intentBubble');
+    expect(flags.enrolled).toEqual([]);
+  });
+
+  it('un joueur temoin ferme la bulle pour les deux, et les deux sont inscrits', () => {
+    flags.control.add('p2');
+    open('CASUAL');
+    expect(runtime.opened[0]?.intentBubble).toBe(false);
+    expect(notifier.foundBy('p1')).not.toHaveProperty('intentBubble');
+    expect(notifier.foundBy('p2')).not.toHaveProperty('intentBubble');
+    expect(flags.enrolled.sort()).toEqual(['p1', 'p2']);
+  });
+
+  const GHOST_B = {
+    seat: 'b' as const,
+    sourcePlayerId: 'p_source',
+    mmr: 1_000,
+    recordingId: 'r_1',
+    displayName: 'Aura anonyme',
+    league: 'sans_aura',
+  };
+
+  it('contre un fantome, seul le joueur reel compte et seul lui est inscrit', () => {
+    opener.open({ playerA: 'p1', playerB: 'ghost_x', mode: 'CASUAL', ghost: GHOST_B });
+    expect(runtime.opened[0]?.intentBubble).toBe(true);
+    expect(notifier.foundBy('p1')?.intentBubble).toBe(true);
+    expect(flags.enrolled).toEqual(['p1']);
+  });
+
+  it('contre un fantome, un joueur temoin ne voit pas la bulle', () => {
+    flags.control.add('p1');
+    opener.open({ playerA: 'p1', playerB: 'ghost_x', mode: 'CASUAL', ghost: GHOST_B });
+    expect(runtime.opened[0]?.intentBubble).toBe(false);
+    expect(notifier.foundBy('p1')).not.toHaveProperty('intentBubble');
+  });
+
+  it('n inscrit personne quand l ouverture est refusee', () => {
+    runtime.busy.add('p2');
+    open('CASUAL');
+    expect(flags.enrolled).toEqual([]);
+  });
+
+  it('sans drapeaux cables, pas de bulle', () => {
+    opener = new MatchOpener(runtime, notifier, presence, queue);
+    open('CASUAL');
+    expect(runtime.opened[0]?.intentBubble).toBe(false);
+    expect(notifier.foundBy('p1')).not.toHaveProperty('intentBubble');
   });
 });

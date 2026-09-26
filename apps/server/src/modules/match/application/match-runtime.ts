@@ -25,6 +25,7 @@ import {
   type RechargeTap,
   type RoundResult,
   type Seat,
+  type Style,
 } from '@aura/rules';
 import { CONTENT_VERSION } from '@aura/content';
 import { describeCause } from '../../../shared/describe-cause.js';
@@ -172,6 +173,12 @@ interface LiveMatch {
    */
   readonly rulesVariant: string;
   readonly config: BalanceConfig;
+  /**
+   * Bulle d'intention active (test A/B, spec 2026-09-26). Decidee a
+   * l'ouverture et deja repercutee dans `config.intent.enabled` : ce champ ne
+   * sert qu'a ce qui se DIT (reprise, revelation) et a ce qui s'ecrit.
+   */
+  readonly intentBubble: boolean;
   readonly startedAtMs: number;
   /** Attente en file par siege, `null` pour qui n'a pas fait la queue. Ecrite telle quelle. */
   readonly queueWaitMs: Readonly<Record<Seat, number | null>>;
@@ -580,6 +587,11 @@ export class MatchRuntime {
      * file a l'appariement. Absente, personne n'a fait la queue : invitation.
      */
     queueWaitMs?: Partial<Record<Seat, number>>;
+    /**
+     * Bulle d'intention (test A/B, spec 2026-09-26), decidee par l'ouverture.
+     * Absente, non : le moteur refuse alors toute annonce en silence.
+     */
+    intentBubble?: boolean;
   }): boolean {
     if (this.matches.has(input.matchId)) return false;
     /**
@@ -603,7 +615,13 @@ export class MatchRuntime {
       requested !== undefined && RULE_VARIANTS.some((variant) => variant.id === requested)
         ? requested
         : 'normal';
-    const config = variantConfig(rulesVariant, this.config);
+    const intentBubble = input.intentBubble === true;
+    // La bulle se COMPOSE avec la variante : elle n'allume que son propre
+    // interrupteur, sur la config que la variante a deja produite.
+    const variant = variantConfig(rulesVariant, this.config);
+    const config: BalanceConfig = intentBubble
+      ? { ...variant, intent: { ...variant.intent, enabled: true } }
+      : variant;
     const step = createMatch(input.seed, {
       startedAtMs: this.clock.now(),
       config,
@@ -615,6 +633,7 @@ export class MatchRuntime {
       mode: input.mode ?? 'INVITE',
       rulesVariant,
       config,
+      intentBubble,
       startedAtMs: this.clock.now(),
       queueWaitMs: {
         a: waitOf(input.queueWaitMs?.a),
@@ -674,10 +693,13 @@ export class MatchRuntime {
     const match = this.matches.get(matchId);
     if (match === undefined) return null;
     const snapshot = matchStateFor(seat, match.state, matchId, this.facesGhost(match, seat));
-    // La variante survit a la reprise ; tue quand elle est normale, comme a l'ouverture.
-    return match.rulesVariant === 'normal'
-      ? snapshot
-      : { ...snapshot, rulesVariant: match.rulesVariant };
+    // La variante survit a la reprise ; tue quand elle est normale, comme a
+    // l'ouverture. La bulle aussi, et tue quand elle n'est pas active.
+    return {
+      ...snapshot,
+      ...(match.rulesVariant === 'normal' ? {} : { rulesVariant: match.rulesVariant }),
+      ...(match.intentBubble ? { intentBubble: true as const } : {}),
+    };
   }
 
   /**
@@ -855,6 +877,21 @@ export class MatchRuntime {
     return accepted;
   }
 
+  /**
+   * Une annonce de bulle d'intention (docs/01 §10, spec 2026-09-26).
+   *
+   * Le runtime ne verifie RIEN lui-meme — ni la phase, ni le verrouillage, ni
+   * l'annonce deja faite, ni que la bulle est active : c'est le moteur qui en
+   * decide (regle d'or n°1), et son refus se lit a l'absence d'effet. Un refus
+   * est compte au siege comme tout evenement refuse, et ne dit rien a
+   * personne : un client honnete n'annonce jamais hors de ces conditions.
+   */
+  showIntent(matchId: string, seat: Seat, style: Style): void {
+    const match = this.matches.get(matchId);
+    if (match === undefined) return;
+    this.apply(match, { type: 'INTENT_SHOWN', seat, style, atMs: this.clock.now() });
+  }
+
   forfeit(matchId: string, seat: Seat): void {
     const match = this.matches.get(matchId);
     if (match === undefined) return;
@@ -913,6 +950,22 @@ export class MatchRuntime {
           break;
         case 'MATCH_ENDED':
           this.announceEnd(match, effect.result);
+          break;
+        case 'INTENT_SHOWN':
+          /*
+            Aux DEUX sieges : l'adversaire recoit la bulle — c'est son but,
+            elle est publique des qu'elle est dite — et l'annonceur sa
+            confirmation, qui vaut accuse de reception. Rien d'autre que ce
+            que le joueur a choisi de dire.
+          */
+          for (const seat of SEATS) {
+            this.notifier.send(match.seats[seat], 'intent:shown', {
+              matchId: match.matchId,
+              round: effect.round,
+              seat: effect.seat,
+              style: effect.style,
+            });
+          }
           break;
       }
     }
@@ -1040,6 +1093,13 @@ export class MatchRuntime {
         final: outcome.score,
         energyAfter: match.state.seats[seat].energy,
         ultAfter: match.state.seats[seat].ultimateGauge,
+        /*
+          Present (vrai ou faux) des que la bulle est active, absent sinon :
+          un match sans bulle garde exactement la revelation d'avant, et un
+          match avec bulle dit explicitement « pas de bonus » plutot que de
+          laisser le client deviner a une absence.
+        */
+        ...(match.intentBubble ? { intentKept: outcome.intentKept } : {}),
       };
     };
 
@@ -1227,6 +1287,7 @@ export class MatchRuntime {
       rejectedEvents: { ...match.rejected },
       droppedEvents: { ...match.dropped },
       impossibleTaps: { ...match.impossibleTaps },
+      intentBubble: match.intentBubble,
     };
 
     void this.repository.save(record).catch(() => {

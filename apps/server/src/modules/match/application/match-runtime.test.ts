@@ -1699,3 +1699,193 @@ describe('variante de regles — une config par match', () => {
     expect(recorder.calls).toHaveLength(1);
   });
 });
+
+/**
+ * Bulle d'intention en test A/B (spec 2026-09-26). Le runtime ne decide rien :
+ * il allume `config.intent.enabled` pour un match expose, passe l'annonce au
+ * moteur, et relaie l'effet aux deux sieges.
+ */
+describe('bulle d intention', () => {
+  class RecordingRepository {
+    readonly saved: MatchRecord[] = [];
+    save(record: MatchRecord): Promise<void> {
+      this.saved.push(record);
+      return Promise.resolve();
+    }
+  }
+
+  let repository: RecordingRepository;
+
+  const build = (intentBubble: boolean, rulesVariant?: string): void => {
+    repository = new RecordingRepository();
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, repository);
+    runtime.createMatch({
+      matchId: MATCH_ID,
+      seed: 'graine',
+      seats: SEATS,
+      mode: 'CASUAL',
+      intentBubble,
+      ...(rulesVariant === undefined ? {} : { rulesVariant }),
+    });
+    notifier.clear();
+  };
+
+  const shown = (playerId: string): ServerMessage<'intent:shown'>[] =>
+    notifier.to(playerId, 'intent:shown') as ServerMessage<'intent:shown'>[];
+
+  const lastResult = (): ServerMessage<'round:result'> =>
+    (notifier.to(SEATS.a, 'round:result') as ServerMessage<'round:result'>[]).at(-1)!;
+
+  it('allume la bulle dans la config du match expose, et la compose avec la variante', () => {
+    build(true);
+    expect(runtime.configOf(MATCH_ID)?.intent.enabled).toBe(true);
+    build(true, 'ultime');
+    expect(runtime.configOf(MATCH_ID)?.intent.enabled).toBe(true);
+    expect(runtime.configOf(MATCH_ID)?.ultimate.gaugeMax).toBe(60);
+  });
+
+  it('laisse la config du runtime telle quelle sans bulle', () => {
+    build(false);
+    expect(runtime.configOf(MATCH_ID)).toBe(BALANCE);
+  });
+
+  it('relaie une annonce acceptee aux DEUX sieges', () => {
+    build(true);
+    advanceTo('choice');
+    runtime.showIntent(MATCH_ID, 'a', 'hype');
+
+    const expected = { matchId: MATCH_ID, round: 1, seat: 'a', style: 'hype' };
+    expect(shown(SEATS.a)).toEqual([expected]);
+    expect(shown(SEATS.b)).toEqual([expected]);
+  });
+
+  it('ignore la seconde annonce du meme siege : la premiere fait foi', () => {
+    build(true);
+    advanceTo('choice');
+    runtime.showIntent(MATCH_ID, 'a', 'hype');
+    runtime.showIntent(MATCH_ID, 'a', 'calme');
+    expect(shown(SEATS.b)).toHaveLength(1);
+    expect(runtime.snapshotFor(MATCH_ID, 'b')?.intents).toEqual({ a: 'hype' });
+  });
+
+  it('ignore une annonce apres le verrouillage du siege', () => {
+    build(true);
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', choice(1), null);
+    runtime.showIntent(MATCH_ID, 'a', 'calme');
+    expect(shown(SEATS.b)).toEqual([]);
+  });
+
+  it('ignore une annonce hors de la phase de choix', () => {
+    build(true);
+    runtime.showIntent(MATCH_ID, 'a', 'calme');
+    expect(shown(SEATS.b)).toEqual([]);
+  });
+
+  it('ignore toute annonce dans un match sans bulle', () => {
+    build(false);
+    advanceTo('choice');
+    runtime.showIntent(MATCH_ID, 'a', 'calme');
+    expect(notifier.namesFor(SEATS.a)).not.toContain('intent:shown');
+    expect(notifier.namesFor(SEATS.b)).not.toContain('intent:shown');
+  });
+
+  it('dit la bulle tenue a la revelation, et le bonus tombe dans la jauge', () => {
+    build(true);
+    advanceTo('choice');
+    const ultBefore = runtime.snapshotFor(MATCH_ID, 'a')!.ult;
+    runtime.showIntent(MATCH_ID, 'a', 'calme');
+    runtime.showIntent(MATCH_ID, 'b', 'calme');
+    // `a` gagne en calme (annonce tenue) ; `b` perd en calme (annonce vraie, mais perdue).
+    runtime.lockChoice(MATCH_ID, 'a', choice(3), null);
+    runtime.lockChoice(MATCH_ID, 'b', choice(0), null);
+
+    const result = lastResult();
+    expect(result.winner).toBe('a');
+    expect(result.sides.a.intentKept).toBe(true);
+    expect(result.sides.b.intentKept).toBe(false);
+    expect(result.sides.a.ultAfter).toBe(
+      Math.min(BALANCE.ultimate.gaugeMax, ultBefore + BALANCE.intent.ultimateBonus),
+    );
+  });
+
+  it('ne dit rien de la bulle a la revelation d un match qui ne l a pas', () => {
+    build(false);
+    advanceTo('choice');
+    runtime.lockChoice(MATCH_ID, 'a', choice(3), null);
+    runtime.lockChoice(MATCH_ID, 'b', choice(0), null);
+    expect(lastResult().sides.a).not.toHaveProperty('intentKept');
+    expect(lastResult().sides.b).not.toHaveProperty('intentKept');
+  });
+
+  it('rappelle la bulle et les annonces de la manche a la reprise', () => {
+    build(true);
+    advanceTo('choice');
+    expect(runtime.snapshotFor(MATCH_ID, 'a')?.intentBubble).toBe(true);
+    expect(runtime.snapshotFor(MATCH_ID, 'a')).not.toHaveProperty('intents');
+
+    runtime.showIntent(MATCH_ID, 'b', 'provoc');
+    expect(runtime.snapshotFor(MATCH_ID, 'a')?.intents).toEqual({ b: 'provoc' });
+    expect(runtime.snapshotFor(MATCH_ID, 'b')?.intents).toEqual({ b: 'provoc' });
+  });
+
+  it('tait la bulle a la reprise d un match qui ne l a pas', () => {
+    build(false);
+    advanceTo('choice');
+    const snapshot = runtime.snapshotFor(MATCH_ID, 'a');
+    expect(snapshot).not.toHaveProperty('intentBubble');
+    expect(snapshot).not.toHaveProperty('intents');
+  });
+
+  it('journalise l annonce (le rejeu en a besoin) et inscrit la bulle en base', () => {
+    build(true);
+    advanceTo('choice');
+    runtime.showIntent(MATCH_ID, 'a', 'hype');
+    runtime.forfeit(MATCH_ID, 'b');
+
+    const saved = repository.saved[0]!;
+    expect(saved.intentBubble).toBe(true);
+    expect(
+      saved.events.some((entry) => (entry.event as { type: string }).type === 'INTENT_SHOWN'),
+    ).toBe(true);
+  });
+
+  /**
+   * Contre un fantome (spec § « Exposition ») : le fantome n'annonce jamais,
+   * mais la bulle du joueur reel marche, bonus compris.
+   */
+  it('laisse le joueur annoncer contre un fantome, et lui donne le bonus', () => {
+    repository = new RecordingRepository();
+    runtime = new MatchRuntime(notifier, scheduler, clock, BALANCE, repository);
+    runtime.createMatch({
+      matchId: MATCH_ID,
+      seed: 'graine',
+      seats: { a: SEATS.a, b: 'ghost:rec_1:n' },
+      mode: 'CASUAL',
+      intentBubble: true,
+      ghost: {
+        seat: 'b',
+        mmr: 1_000,
+        sourcePlayerId: 'p_source',
+        displayName: 'Aura anonyme',
+        league: 'sans_aura',
+      },
+    });
+    advanceTo('choice');
+    const ultBefore = runtime.snapshotFor(MATCH_ID, 'a')!.ult;
+    runtime.showIntent(MATCH_ID, 'a', 'calme');
+    expect(shown(SEATS.a)).toEqual([{ matchId: MATCH_ID, round: 1, seat: 'a', style: 'calme' }]);
+
+    runtime.lockChoice(MATCH_ID, 'a', choice(3), null);
+    runtime.lockChoice(MATCH_ID, 'b', choice(0), null);
+    const result = lastResult();
+    expect(result.sides.a.intentKept).toBe(true);
+    expect(result.sides.a.ultAfter).toBe(ultBefore + BALANCE.intent.ultimateBonus);
+  });
+
+  it('inscrit l absence de bulle en base', () => {
+    build(false);
+    runtime.forfeit(MATCH_ID, 'b');
+    expect(repository.saved[0]?.intentBubble).toBe(false);
+  });
+});

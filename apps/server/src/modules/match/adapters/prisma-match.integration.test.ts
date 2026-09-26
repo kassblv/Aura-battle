@@ -270,6 +270,7 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
         droppedEvents: { a: 0, b: 0 },
         impossibleTaps: { a: 0, b: 0 },
         queueWaitMs: { a: null, b: null },
+        intentBubble: false,
       }),
     ).rejects.toThrow();
 
@@ -278,6 +279,29 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
     expect(await prisma!.matchRound.findMany({ where: { matchId } })).toHaveLength(0);
 
     await prisma!.player.delete({ where: { id: playerA } });
+  });
+
+  it('ecrit la bulle d intention d un match expose', async () => {
+    const [playerA, playerB] = [await createPlayer(), await createPlayer()];
+    const { runtime } = buildRuntime();
+    const matchId = `m_${randomUUID()}`;
+    try {
+      runtime.createMatch({
+        matchId,
+        seed: randomUUID(),
+        seats: { a: playerA, b: playerB },
+        mode: 'CASUAL',
+        intentBubble: true,
+      });
+      runtime.forfeit(matchId, 'b');
+      await settle();
+
+      const saved = await prisma!.match.findUnique({ where: { id: matchId } });
+      expect(saved?.intentBubble).toBe(true);
+    } finally {
+      await prisma!.match.deleteMany({ where: { id: matchId } });
+      await prisma!.player.deleteMany({ where: { id: { in: [playerA, playerB] } } });
+    }
   });
 
   it('ecrit l attente en file de chaque siege, et nulle pour une invitation', async () => {
@@ -308,6 +332,12 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
         );
       expect(await waits(queued)).toEqual([18_250, 3_000]);
       expect(await waits(invited)).toEqual([null, null]);
+      // Aucun des deux n'avait la bulle d'intention.
+      const bubbles = await prisma!.match.findMany({
+        where: { id: { in: [queued, invited] } },
+        select: { intentBubble: true },
+      });
+      expect(bubbles.map((match) => match.intentBubble)).toEqual([false, false]);
     } finally {
       await prisma!.match.deleteMany({ where: { id: { in: [queued, invited] } } });
       await prisma!.player.deleteMany({ where: { id: { in: [playerA, playerB] } } });

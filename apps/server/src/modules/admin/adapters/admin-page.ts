@@ -60,6 +60,12 @@ export const ADMIN_PAGE = `<!doctype html>
   .indic .num { text-align: right; font-variant-numeric: tabular-nums; }
   .indic .val { font-weight: 700; }
   .verdict { display: flex; align-items: baseline; gap: 7px; justify-content: flex-end; font-weight: 600; }
+  .exp { display: grid; grid-template-columns: minmax(0, 1fr) 150px 150px; gap: 10px; align-items: baseline; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
+  .exp:last-child { border-bottom: 0; }
+  .exp.tete { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .06em; }
+  .exp .num { text-align: right; font-variant-numeric: tabular-nums; }
+  .exp-titre { font-weight: 700; font-size: 14px; margin: 14px 0 4px; }
+  .exp-titre:first-child { margin-top: 0; }
   .verdict.met { color: var(--ok); } .verdict.missed { color: var(--down); } .verdict.insufficient { color: var(--muted); font-weight: 400; }
 </style>
 </head>
@@ -84,6 +90,11 @@ export const ADMIN_PAGE = `<!doctype html>
       <h2>Indicateurs produit</h2>
       <div id="indicateurs"></div>
       <p class="note" id="indicateurs-note"></p>
+    </div>
+    <div class="card" style="margin-top:12px">
+      <h2>Expériences</h2>
+      <div id="experiences"></div>
+      <p class="note" id="experiences-note"></p>
     </div>
     <p class="note">
       Le compteur d’erreurs vit en mémoire : il repart de zéro à chaque redémarrage.
@@ -205,6 +216,66 @@ export const ADMIN_PAGE = `<!doctype html>
     }
   }
 
+  const EXPERIENCES = { intentBubble: 'Bulle d’intention' };
+  const GROUPES = [['treatment', 'Exposé'], ['control', 'Témoin']];
+  const MESURES = [
+    ['retentionD1', 'Rétention J1', 'ratio'],
+    ['retentionD7', 'Rétention J7', 'ratio'],
+    ['matchesPerActiveDay', 'Matchs PvP par actif et par jour', 'perDay'],
+    ['abandonRate', 'Taux d’abandon', 'ratio'],
+  ];
+
+  function ligneExperience(cellules) {
+    const d = document.createElement('div');
+    d.className = 'exp';
+    d.append(...cellules);
+    return d;
+  }
+
+  /** Une mesure et son effectif : « 42,5 % (n = 30) ». */
+  function avecEffectif(m, unite) {
+    return mesure(m.value, unite) + ' (n = ' + m.n + ')';
+  }
+
+  function dessinerExperiences(r) {
+    const blocs = [];
+    for (const x of r.experiments) {
+      const titre = document.createElement('div');
+      titre.className = 'exp-titre';
+      titre.textContent = (EXPERIENCES[x.flag] || x.flag) + ' · part exposée ' + x.rollout + ' %';
+      const tete = document.createElement('div');
+      tete.className = 'exp tete';
+      tete.append(cellule('Mesure'), ...GROUPES.map((g) => cellule(g[1], 'num')));
+      const joueurs = ligneExperience([
+        cellule('Joueurs affectés', 'name'),
+        ...GROUPES.map((g) => cellule(txt(x.groups[g[0]].players), 'num val')),
+      ]);
+      const lignes = MESURES.map((m) =>
+        ligneExperience([
+          cellule(m[1], 'name'),
+          ...GROUPES.map((g) => cellule(avecEffectif(x.groups[g[0]][m[0]], m[2]), 'num')),
+        ]),
+      );
+      blocs.push(titre, tete, joueurs, ...lignes);
+    }
+    $('experiences').replaceChildren(...blocs);
+    $('experiences-note').textContent =
+      'Mêmes définitions que les indicateurs, restreintes aux joueurs du groupe. Abandon : matchs où un joueur du groupe était assis. Calculé ' +
+      new Date(r.at).toLocaleTimeString('fr-FR');
+    $('experiences-note').classList.remove('bad');
+  }
+
+  async function chargerExperiences(secret) {
+    try {
+      const r = await fetch('/admin/experiments', { headers: { authorization: 'Bearer ' + secret } });
+      if (!r.ok) throw new Error('Expériences illisibles (' + r.status + ').');
+      dessinerExperiences(await r.json());
+    } catch (e) {
+      $('experiences-note').textContent = e.message;
+      $('experiences-note').classList.add('bad');
+    }
+  }
+
   async function charger(secret) {
     const r = await fetch('/admin/status', { headers: { authorization: 'Bearer ' + secret } });
     if (r.status === 401) throw new Error('Secret refusé.');
@@ -266,8 +337,12 @@ export const ADMIN_PAGE = `<!doctype html>
       // Des agregats sur toute la base : une fois a l'ouverture, puis toutes
       // les cinq minutes. Ils bougent a l'echelle du jour, pas de la seconde.
       chargerIndicateurs(secret);
+      chargerExperiences(secret);
       clearInterval(window.__ti);
-      window.__ti = setInterval(() => chargerIndicateurs(secret), 300000);
+      window.__ti = setInterval(() => {
+        chargerIndicateurs(secret);
+        chargerExperiences(secret);
+      }, 300000);
     } catch (e) {
       $('sub').textContent = e.message;
       $('sub').classList.add('bad');

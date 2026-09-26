@@ -4,7 +4,8 @@ import { PROTOCOL_VERSION } from '@aura/protocol';
 import { RULES_VERSION, type Seat } from '@aura/rules';
 import { describeCause } from '../../../shared/describe-cause.js';
 import type { AppLog } from '../../../shared/log-port.js';
-import type { MatchClock, MatchNotifier } from '../domain/ports.js';
+import { intentBubbleEligible, intentBubbleFor } from '../domain/intent-bubble.js';
+import type { MatchClock, MatchNotifier, PlayerFlags } from '../domain/ports.js';
 import { rulesVariantFor } from '../domain/rules-variant.js';
 import type { MatchSeats, SeatWearing } from './match-runtime.js';
 
@@ -47,6 +48,8 @@ export interface MatchStarter {
     rulesVariant?: string;
     /** Attente en file par siege ; un siege absent n'a pas fait la queue. */
     queueWaitMs?: Partial<Record<Seat, number>>;
+    /** Bulle d'intention active (test A/B, spec 2026-09-26) ; absente, non. */
+    intentBubble?: boolean;
   }): boolean;
   /**
    * Enregistre ce que porte un siege, apres la creation.
@@ -155,6 +158,11 @@ export class MatchOpener {
      * joue en regles normales — ce que faisait le jeu avant les evenements.
      */
     private readonly clock: MatchClock | null = null,
+    /**
+     * Affectation aux experiences (module `flags`). Absente, aucune bulle
+     * d'intention — ce que faisait le jeu avant le test A/B.
+     */
+    private readonly flags: PlayerFlags | null = null,
   ) {}
 
   /**
@@ -214,6 +222,12 @@ export class MatchOpener {
     */
     const rulesVariant =
       this.clock === null ? 'normal' : rulesVariantFor(request.mode, this.clock.now());
+    /*
+      Decidee une fois aussi, pour la meme raison. APRES le controle des sieges :
+      une ouverture refusee n'inscrit personne a l'experience. Synchrone : le
+      groupe se calcule, l'inscription part sans qu'on l'attende.
+    */
+    const intentBubble = this.intentBubbleOf(request, seats);
 
     for (const seat of ['a', 'b'] as const satisfies readonly Seat[]) {
       // Rien a annoncer a un fantome : il n'y a personne au bout, et
@@ -251,6 +265,9 @@ export class MatchOpener {
         ghost: facingGhost,
         // Omise en regles normales : c'est ce qu'un client suppose sans elle.
         ...(rulesVariant === 'normal' ? {} : { rulesVariant }),
+        // Omise sans bulle : un joueur temoin recoit exactement ce qu'il
+        // recevait avant l'experience.
+        ...(intentBubble ? { intentBubble: true as const } : {}),
       });
     }
 
@@ -261,6 +278,7 @@ export class MatchOpener {
         seats,
         mode: request.mode,
         rulesVariant,
+        intentBubble,
         ...(request.queueWaitMs === undefined ? {} : { queueWaitMs: request.queueWaitMs }),
         ghost:
           ghost === undefined
@@ -337,6 +355,23 @@ export class MatchOpener {
     if (ghost?.seat !== 'b') this.evict(seats.b);
 
     return matchId;
+  }
+
+  /**
+   * La bulle d'intention est-elle active dans ce match (spec 2026-09-26) ?
+   *
+   * Le classe n'interroge meme pas les drapeaux : l'affectation n'y sert a
+   * rien, et elle ne s'inscrit que la ou elle sert. Le siege d'un fantome ne
+   * compte pas — ni pour la decision, ni pour l'inscription : ce n'est pas un
+   * joueur.
+   */
+  private intentBubbleOf(request: OpenRequest, seats: MatchSeats): boolean {
+    if (this.flags === null || !intentBubbleEligible(request.mode)) return false;
+    const flags = this.flags;
+    const groups = (['a', 'b'] as const satisfies readonly Seat[])
+      .filter((seat) => seat !== request.ghost?.seat)
+      .map((seat) => flags.enroll('intentBubble', seats[seat]));
+    return intentBubbleFor(request.mode, groups);
   }
 
   /** Sortie de file au mieux : une file muette n'empeche pas de jouer. */

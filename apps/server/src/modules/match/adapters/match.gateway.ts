@@ -742,6 +742,27 @@ export class MatchGateway implements OnGatewayConnection {
     );
   }
 
+  /**
+   * Bulle d'intention (docs/01 §10, spec 2026-09-26).
+   *
+   * Memes filtres que tout message de match : limite de debit et schema dans
+   * le filtre d'entree, siege dans ce match, manche en cours et `seq` neuf.
+   * Tout le reste — bulle active, phase de choix, pas encore verrouille,
+   * premiere annonce — est decide par le moteur ; un refus ne part nulle part.
+   */
+  @SubscribeMessage('intent:show')
+  intentShow(
+    @ConnectedSocket() socket: Socket,
+    @MessageBody() body: ClientMessage<'intent:show'>,
+  ): void {
+    const seat = this.seatIn(socket, body.matchId);
+    if (seat === null) return;
+
+    if (!this.runtime.acceptAction(body.matchId, seat, body.round, body.seq)) return;
+
+    this.runtime.showIntent(body.matchId, seat, body.style);
+  }
+
   @SubscribeMessage('match:forfeit')
   forfeit(
     @ConnectedSocket() socket: Socket,

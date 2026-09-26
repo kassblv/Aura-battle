@@ -206,6 +206,8 @@ export class PrismaMatchRepository implements MatchRepository {
               // Un match dont un siege etait un rejeu se lit comme tel en base,
               // sans qu'il faille deduire quoi que ce soit d'un `playerId` nul.
               isGhost: record.ghost !== null,
+              // Test A/B de la bulle d'intention : on sait quels matchs l'avaient.
+              intentBubble: record.intentBubble,
               startedAt: new Date(record.startedAtMs),
               endedAt: new Date(record.endedAtMs),
               events,

@@ -30,6 +30,21 @@ function revealedHistory(state: MatchState): ServerMessage<'match:state'>['histo
   }));
 }
 
+/**
+ * Les annonces de bulle d'intention de la manche en cours (2.6.0).
+ *
+ * Les DEUX sieges, et ce n'est pas une fuite : une annonce est publique des
+ * qu'elle est dite — `intent:shown` l'a deja diffusee aux deux joueurs. Ce
+ * n'est pas le choix verrouille, seulement ce que le joueur a choisi de dire.
+ * Omis quand personne n'a annonce, donc toujours dans un match sans bulle.
+ */
+function intentsOf(state: MatchState): Pick<ServerMessage<'match:state'>, 'intents'> {
+  const a = state.pending.a.intent;
+  const b = state.pending.b.intent;
+  if (a === null && b === null) return {};
+  return { intents: { ...(a === null ? {} : { a }), ...(b === null ? {} : { b }) } };
+}
+
 export function roundIntroFor(
   seat: Seat,
   state: MatchState,
@@ -124,6 +139,7 @@ export function matchStateFor(
     opponentLocked: state.pending[opponentOf(seat)].locked !== null,
     ghost: ghostOpponent,
     history: revealedHistory(state),
+    ...intentsOf(state),
   };
 
   if (context === undefined || context === null) {
