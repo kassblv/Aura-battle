@@ -673,6 +673,14 @@ body {
   color: var(--ink);
 }
 
+/* Compte suspendu : meme bandeau, rouge — c'est un refus, pas une fete. */
+.launch__suspended {
+  border-color: var(--danger, #ff5c7a);
+}
+.launch__suspended b {
+  color: var(--danger, #ff5c7a);
+}
+
 /* L'eclair sur le mode : la partie rapide a un evenement cette semaine. */
 .launch__badge {
   position: absolute;

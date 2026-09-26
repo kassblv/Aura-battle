@@ -35,6 +35,11 @@ export interface HomeProps {
    * variante du match, c'est le serveur qui la choisit.
    */
   readonly weekEvent?: MatchEvent | null;
+  /**
+   * Compte suspendu depuis le panneau (ADR 0018) : le serveur refuse la
+   * session. On le DIT — sinon le joueur croit a une panne de reseau.
+   */
+  readonly suspended?: boolean;
   readonly onToggleMode: () => void;
   /** Le meme actuellement joue par le personnage au centre. */
   readonly meme: MemeCard;
@@ -94,6 +99,7 @@ export function HomeScreen({
   profile,
   mode,
   weekEvent = null,
+  suspended = false,
   onToggleMode,
   meme,
   onStepMeme,
@@ -373,7 +379,13 @@ export function HomeScreen({
             En partie rapide seulement : le classe joue les regles normales, et
             annoncer un evenement sur un mode qui ne le joue pas serait faux.
           */}
-          {mode === 'casual' && weekEvent !== null && (
+          {suspended && (
+            <p className="launch__event launch__suspended" role="status">
+              <b>⛔ Compte suspendu</b>
+              <small>Le jeu en ligne est fermé pour ce compte. Le solo reste ouvert.</small>
+            </p>
+          )}
+          {!suspended && mode === 'casual' && weekEvent !== null && (
             <p className="launch__event">
               <b>⚡ Cette semaine : {weekEvent.name}</b>
               <small>{weekEvent.pitch}</small>

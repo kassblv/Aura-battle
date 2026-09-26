@@ -32,6 +32,8 @@ export interface SessionState {
   readonly phase: SessionPhase;
   readonly identity: StoredIdentity | null;
   readonly accessToken: string | null;
+  /** Compte suspendu depuis le panneau (ADR 0018) : le serveur refuse la session. */
+  readonly banned: boolean;
   /** Message a montrer quand un renommage echoue. */
   readonly error: string | null;
   readonly busy: boolean;
@@ -90,6 +92,7 @@ export function useSession(): SessionState {
   const [identity, setIdentity] = useState<StoredIdentity | null>(() => loadIdentity());
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [banned, setBanned] = useState(false);
   const [busy, setBusy] = useState(false);
   const [email, setEmail] = useState<EmailStatusResponse | null>(null);
 
@@ -110,8 +113,10 @@ export function useSession(): SessionState {
         setIdentity(next);
         setAccessToken(session.accessToken);
         setPhase('ready');
-      } catch {
+      } catch (cause: unknown) {
         if (cancelled) return;
+        // Suspendu depuis le panneau (ADR 0018) : hors ligne aussi, mais on le dit.
+        if (cause instanceof AuthError && cause.reason === 'BANNED') setBanned(true);
         /**
          * Hors ligne, on joue quand meme.
          *
@@ -345,6 +350,7 @@ export function useSession(): SessionState {
     phase,
     identity,
     accessToken,
+    banned,
     error,
     busy,
     rename,

@@ -17,12 +17,17 @@ const EVENT: MatchEvent = {
 
 const noop = (): void => undefined;
 
-const render = (mode: 'ranked' | 'casual', weekEvent: MatchEvent | null): string =>
+const render = (
+  mode: 'ranked' | 'casual',
+  weekEvent: MatchEvent | null,
+  suspended = false,
+): string =>
   renderToStaticMarkup(
     createElement(HomeScreen, {
       profile: newProfile('Kai', 'p_1'),
       mode,
       weekEvent,
+      suspended,
       onToggleMode: noop,
       meme: memeGallery()[0]!,
       onStepMeme: noop,
@@ -64,5 +69,27 @@ describe('HomeScreen : l evenement de la semaine', () => {
     const html = render('casual', null);
     expect(html).not.toContain('launch__event');
     expect(html).not.toContain('launch__badge');
+  });
+});
+
+/*
+  Compte suspendu depuis le panneau (ADR 0018) : le serveur refuse la session,
+  le jeu demarre hors ligne. Sans rien dire, le joueur croirait a une panne de
+  reseau et reessaierait sans fin. Le solo, lui, reste ouvert.
+*/
+describe('HomeScreen : compte suspendu', () => {
+  it('le dit, et dit que le solo reste ouvert', () => {
+    const html = render('casual', EVENT, true);
+    expect(html).toContain('launch__suspended');
+    expect(html).toContain('Compte suspendu');
+    expect(html).toContain('solo');
+  });
+
+  it('remplace l annonce de la semaine, qui ne le concerne plus', () => {
+    expect(render('casual', EVENT, true)).not.toContain('⚡ Cette semaine');
+  });
+
+  it('se tait pour un compte en regle', () => {
+    expect(render('casual', EVENT)).not.toContain('launch__suspended');
   });
 });

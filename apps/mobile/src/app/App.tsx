@@ -752,6 +752,7 @@ export function App(): JSX.Element {
             profile={profile}
             mode={mode}
             weekEvent={announcedWeekEvent(servedWeek, online.serverNow())}
+            suspended={session.banned}
             onToggleMode={() => {
               setMode((current) => (current === 'ranked' ? 'casual' : 'ranked'));
             }}
