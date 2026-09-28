@@ -1,9 +1,13 @@
-import type { ProductEventKind } from '@aura/protocol';
+import {
+  RECHARGE_INPUT_MODES,
+  type ProductEventKind,
+  type RechargeInputMode,
+} from '@aura/protocol';
 import { Inject, Injectable } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../../shared/prisma.service.js';
 import type { ExperimentCohort, ExperimentGroupReading } from '../domain/experiments.js';
-import type { IndicatorReadings, Measure } from '../domain/indicators.js';
+import type { IndicatorReadings, Measure, RechargeInputReading } from '../domain/indicators.js';
 import type { ExperimentsReader, IndicatorsReader } from '../domain/ports.js';
 import { utcTimestamp } from './sql-time.js';
 
@@ -28,7 +32,7 @@ import { utcTimestamp } from './sql-time.js';
  *   compte de la fenetre compte meme joue aujourd'hui. Un recalcul a un instant
  *   passe peut donc differer legerement de celui fait a l'epoque.
  *
- * Chaque indicateur est une requete a part : huit lectures d'agregat, a la
+ * Chaque indicateur est une requete a part : neuf lectures d'agregat, a la
  * demande d'un administrateur, jamais sur le chemin d'un joueur.
  */
 
@@ -40,6 +44,7 @@ const PVP = Prisma.sql`m.mode IN ('RANKED', 'CASUAL', 'INVITE')`;
 const ABANDON_REASONS = ['forfeit', 'disconnect'] as const;
 
 const CLIP_SHARED = 'clip_shared' satisfies ProductEventKind;
+const RECHARGE_INPUT = 'recharge_input' satisfies ProductEventKind;
 
 interface RatioRow {
   n: number;
@@ -101,6 +106,7 @@ export class PrismaIndicatorsReader implements IndicatorsReader, ExperimentsRead
       inviteInstallShare,
       abandonRate,
       ghostShare,
+      rechargeInput,
     ] = await Promise.all([
       // Comptes crees de J-31 a J-2, actifs a J+1.
       this.retention(1, dayStart(-31), dayStart(-1), null),
@@ -112,6 +118,7 @@ export class PrismaIndicatorsReader implements IndicatorsReader, ExperimentsRead
       this.inviteInstalls(dayStart(-30), dayStart(0)),
       this.abandons(week.from, week.to, null),
       this.ghostShare(week.from, week.to),
+      this.rechargeInput(week.from, week.to),
     ]);
 
     return {
@@ -125,6 +132,7 @@ export class PrismaIndicatorsReader implements IndicatorsReader, ExperimentsRead
         abandonRate,
       },
       ghostShare,
+      rechargeInput,
     };
   }
 
@@ -301,6 +309,53 @@ export class PrismaIndicatorsReader implements IndicatorsReader, ExperimentsRead
         }
     `;
     return ratio(row ?? { n: 0, hits: 0 });
+  }
+
+  /**
+   * Equite clavier contre tactile (docs/10) : par mode signale, les
+   * joueurs-matchs PvP termines dans la fenetre (date de FIN, comme le clip)
+   * et leurs points de recharge par recharge.
+   *
+   * Le mode vient du client (`recharge_input`) ; les points, du serveur
+   * (`MatchSeat.rechargePoints`, somme de `RechargeResult.points`) ; les
+   * recharges, des manches resolues (`MatchRound`). Hors mesure : un siege
+   * ecrit avant la colonne (points nuls) et un match sans manche resolue —
+   * pas de recharge, rien a comparer.
+   */
+  private async rechargeInput(
+    from: Prisma.Sql,
+    to: Prisma.Sql,
+  ): Promise<Record<RechargeInputMode, RechargeInputReading>> {
+    const rows = await this.prisma.$queryRaw<
+      { mode: string; playerMatches: number; points: number; recharges: number }[]
+    >`
+      SELECT e."inputMode" AS mode,
+             count(*)::int AS "playerMatches",
+             sum(s."rechargePoints")::int AS points,
+             sum(r.n)::int AS recharges
+      FROM "ProductEvent" e
+      JOIN "MatchSeat" s ON s."matchId" = e."matchId" AND s."playerId" = e."playerId"
+      JOIN "Match" m ON m.id = e."matchId"
+      CROSS JOIN LATERAL (
+        SELECT count(*)::int AS n FROM "MatchRound" mr WHERE mr."matchId" = m.id
+      ) r
+      WHERE e.kind = ${RECHARGE_INPUT}
+        AND e."inputMode" IN (${Prisma.join(RECHARGE_INPUT_MODES)})
+        AND ${PVP}
+        AND m.status = 'ENDED'
+        AND m."endedAt" >= ${from} AND m."endedAt" < ${to}
+        AND s."rechargePoints" IS NOT NULL
+        AND r.n > 0
+      GROUP BY e."inputMode"
+    `;
+    const reading = (mode: RechargeInputMode): RechargeInputReading => {
+      const row = rows.find((candidate) => candidate.mode === mode);
+      if (row === undefined || row.recharges === 0) {
+        return { playerMatches: 0, avgPointsPerRecharge: null };
+      }
+      return { playerMatches: row.playerMatches, avgPointsPerRecharge: row.points / row.recharges };
+    };
+    return { touch: reading('touch'), keys: reading('keys') };
   }
 
   /** Part des matchs PvP commences dans la fenetre joues contre un fantome. */

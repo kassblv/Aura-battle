@@ -30,6 +30,10 @@ const READINGS: IndicatorReadings = {
     abandonRate: { value: 0.02, n: 400 },
   },
   ghostShare: { value: 0.3, n: 400 },
+  rechargeInput: {
+    touch: { playerMatches: 180, avgPointsPerRecharge: 41.5 },
+    keys: { playerMatches: 22, avgPointsPerRecharge: 45.25 },
+  },
 };
 
 const NOW = Date.UTC(2026, 8, 26, 9, 30);
@@ -135,9 +139,14 @@ describe('GET /admin/indicators', () => {
       at: string;
       indicators: { id: string; verdict: string; value: number | null; n: number }[];
       ghostShare: { value: number; n: number };
+      rechargeInput: unknown;
     }>();
     expect(body.at).toBe('2026-09-26T09:30:00.000Z');
     expect(body.ghostShare).toEqual({ value: 0.3, n: 400 });
+    expect(body.rechargeInput).toEqual({
+      touch: { playerMatches: 180, avgPointsPerRecharge: 41.5 },
+      keys: { playerMatches: 22, avgPointsPerRecharge: 45.25 },
+    });
     expect(body.indicators[3]).toEqual({
       id: 'medianRankedWaitMs',
       label: 'Attente médiane en file classée',

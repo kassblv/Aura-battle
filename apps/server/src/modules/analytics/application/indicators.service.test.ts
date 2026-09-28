@@ -13,6 +13,10 @@ const READINGS: IndicatorReadings = {
     abandonRate: { value: 0.02, n: 400 },
   },
   ghostShare: { value: 0.3, n: 400 },
+  rechargeInput: {
+    touch: { playerMatches: 180, avgPointsPerRecharge: 41.5 },
+    keys: { playerMatches: 22, avgPointsPerRecharge: 45.25 },
+  },
 };
 
 /**

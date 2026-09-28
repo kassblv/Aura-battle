@@ -88,6 +88,10 @@ describe('buildIndicatorReport', () => {
       abandonRate: measure(0.08, 200),
     },
     ghostShare: measure(0.25, 200),
+    rechargeInput: {
+      touch: { playerMatches: 300, avgPointsPerRecharge: 40 },
+      keys: { playerMatches: 0, avgPointsPerRecharge: null },
+    },
   };
 
   it('rend une ligne par indicateur, dans l ordre de docs/00, libelle en francais', () => {
@@ -113,6 +117,14 @@ describe('buildIndicatorReport', () => {
       'insufficient',
       'missed',
     ]);
+  });
+
+  it('joint la recharge par mode, sans verdict : une comparaison, pas un objectif', () => {
+    const report = buildIndicatorReport(readings, 0);
+    expect(report.rechargeInput).toEqual({
+      touch: { playerMatches: 300, avgPointsPerRecharge: 40 },
+      keys: { playerMatches: 0, avgPointsPerRecharge: null },
+    });
   });
 
   it('joint la part de fantomes, sans verdict : c est un contexte, pas un objectif', () => {

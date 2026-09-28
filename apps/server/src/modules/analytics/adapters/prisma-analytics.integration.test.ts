@@ -106,7 +106,13 @@ function scenario() {
       endReason?: string;
       isGhost?: boolean;
       /** Siege `a`, puis siege `b` : `null` pour un fantome. */
-      seats: readonly (string | null | { playerId: string | null; queueWaitMs: number | null })[];
+      seats: readonly (
+        | string
+        | null
+        | { playerId: string | null; queueWaitMs?: number | null; rechargePoints?: number | null }
+      )[];
+      /** Nombre de manches resolues a ecrire (`MatchRound`). */
+      rounds?: number;
     }): Promise<string> {
       const id = `m_${randomUUID()}`;
       await prisma!.match.create({
@@ -123,12 +129,19 @@ function scenario() {
           endedAt: new Date(input.endedAtMs ?? input.startedAtMs + 60_000),
           seats: {
             create: input.seats.map((seat, index) => {
-              const { playerId, queueWaitMs } =
-                seat === null || typeof seat === 'string'
-                  ? { playerId: seat, queueWaitMs: null }
-                  : seat;
-              return { seat: index === 0 ? 'A' : 'B', playerId, queueWaitMs };
+              const {
+                playerId,
+                queueWaitMs = null,
+                rechargePoints = null,
+              } = seat === null || typeof seat === 'string' ? { playerId: seat } : seat;
+              return { seat: index === 0 ? 'A' : 'B', playerId, queueWaitMs, rechargePoints };
             }),
+          },
+          rounds: {
+            create: Array.from({ length: input.rounds ?? 0 }, (_, index) => ({
+              round: index + 1,
+              result: {},
+            })),
           },
         },
       });
@@ -157,6 +170,12 @@ function scenario() {
       });
     },
 
+    async input(playerId: string, matchId: string, inputMode: 'touch' | 'keys'): Promise<void> {
+      await prisma!.productEvent.create({
+        data: { playerId, matchId, kind: 'recharge_input', inputMode },
+      });
+    },
+
     async clip(playerId: string, matchId: string): Promise<void> {
       await prisma!.productEvent.create({ data: { playerId, matchId, kind: 'clip_shared' } });
     },
@@ -175,10 +194,14 @@ function scenario() {
 describe.skipIf(!reachable)('indicateurs produit, contre Postgres', () => {
   it('rend des mesures vides, jamais un zero invente, quand il n y a rien', async () => {
     const s = scenario();
-    const { indicators, ghostShare } = await s.read();
+    const { indicators, ghostShare, rechargeInput } = await s.read();
     for (const measure of [...Object.values(indicators), ghostShare]) {
       expect(measure).toEqual({ value: null, n: 0 });
     }
+    expect(rechargeInput).toEqual({
+      touch: { playerMatches: 0, avgPointsPerRecharge: null },
+      keys: { playerMatches: 0, avgPointsPerRecharge: null },
+    });
   });
 
   it('retention J1 : comptes crees de J-31 a J-2, actifs en PvP le lendemain (jours UTC)', async () => {
@@ -349,6 +372,77 @@ describe.skipIf(!reachable)('indicateurs produit, contre Postgres', () => {
 
       const { clipShareRate } = (await s.read()).indicators;
       expect(clipShareRate).toEqual({ value: 2 / 5, n: 5 });
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  it('recharge par mode : joueurs-matchs PvP des 7 jours, points du serveur par recharge', async () => {
+    const s = scenario();
+    try {
+      const [p1, p2, p3] = [
+        await s.player(s.at(-100)),
+        await s.player(s.at(-100)),
+        await s.player(s.at(-100)),
+      ];
+      const seat = (playerId: string | null, rechargePoints: number | null) => ({
+        playerId,
+        rechargePoints,
+      });
+      // Deux joueurs-matchs au doigt : 60 points en 2 recharges, 90 en 3.
+      const m1 = await s.match({
+        mode: 'RANKED',
+        startedAtMs: s.at(-1),
+        rounds: 2,
+        seats: [seat(p1, 60), seat(p2, 70)],
+      });
+      const m2 = await s.match({
+        mode: 'CASUAL',
+        startedAtMs: s.at(-7, 0),
+        rounds: 3,
+        seats: [seat(p1, 90), seat(null, null)],
+        isGhost: true,
+      });
+      await s.input(p1, m1, 'touch');
+      await s.input(p1, m2, 'touch');
+      // Un joueur-match au clavier : 70 points en 2 recharges.
+      await s.input(p2, m1, 'keys');
+
+      // Hors mesure : solo, hors fenetre, match sans recharge, match ecrit
+      // avant la colonne, et le siege de p3 qui n'a rien signale.
+      const solo = await s.match({
+        mode: 'SOLO',
+        startedAtMs: s.at(-2),
+        rounds: 2,
+        seats: [seat(p1, 999), seat(null, null)],
+      });
+      const ancien = await s.match({
+        mode: 'RANKED',
+        startedAtMs: s.at(-8),
+        rounds: 2,
+        seats: [seat(p1, 999), seat(p2, 999)],
+      });
+      const forfait = await s.match({
+        mode: 'RANKED',
+        startedAtMs: s.at(-2),
+        endReason: 'forfeit',
+        rounds: 0,
+        seats: [seat(p2, 0), seat(p3, 0)],
+      });
+      const avantColonne = await s.match({
+        mode: 'RANKED',
+        startedAtMs: s.at(-3),
+        rounds: 2,
+        seats: [seat(p2, null), seat(p3, 5)],
+      });
+      await s.input(p1, solo, 'keys');
+      await s.input(p1, ancien, 'keys');
+      await s.input(p2, forfait, 'keys');
+      await s.input(p2, avantColonne, 'keys');
+
+      const { rechargeInput } = await s.read();
+      expect(rechargeInput.touch).toEqual({ playerMatches: 2, avgPointsPerRecharge: 150 / 5 });
+      expect(rechargeInput.keys).toEqual({ playerMatches: 1, avgPointsPerRecharge: 70 / 2 });
     } finally {
       await s.cleanup();
     }

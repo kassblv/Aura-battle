@@ -1,3 +1,5 @@
+import type { RechargeInputMode } from '@aura/protocol';
+
 /**
  * Les indicateurs produit de docs/00-vision.md, et leur verdict.
  *
@@ -101,11 +103,31 @@ export function verdictOf(measure: Measure, target: IndicatorTarget): IndicatorV
   return met ? 'met' : 'missed';
 }
 
+/**
+ * La recharge d'un mode de saisie (doigt ou clavier), sur les 7 derniers jours.
+ *
+ * Une comparaison, pas un objectif : pas de seuil, pas de verdict. Les points
+ * sont ceux que le serveur a calcules (`MatchSeat.rechargePoints`) ; le client
+ * n'a dit que son mode.
+ */
+export interface RechargeInputReading {
+  /** Joueurs-matchs PvP termines qui ont signale ce mode et recharge au moins une fois. */
+  readonly playerMatches: number;
+  /**
+   * Points de recharge par recharge (par manche resolue), ou `null` sans
+   * observation. Par recharge et non par match : un match en trois manches
+   * n'est pas mieux joue qu'un match en deux.
+   */
+  readonly avgPointsPerRecharge: number | null;
+}
+
 /** Ce que le lecteur des indicateurs rend : une mesure par indicateur, plus le contexte. */
 export interface IndicatorReadings {
   readonly indicators: Readonly<Record<IndicatorId, Measure>>;
   /** Part des matchs PvP des 7 jours joues contre un fantome : un contexte, pas un objectif. */
   readonly ghostShare: Measure;
+  /** Equite clavier contre tactile (docs/10) : la recharge par mode, sur 7 jours. */
+  readonly rechargeInput: Readonly<Record<RechargeInputMode, RechargeInputReading>>;
 }
 
 export interface IndicatorLine extends IndicatorTarget, Measure {
@@ -118,6 +140,7 @@ export interface IndicatorReport {
   readonly at: string;
   readonly indicators: readonly IndicatorLine[];
   readonly ghostShare: Measure;
+  readonly rechargeInput: Readonly<Record<RechargeInputMode, RechargeInputReading>>;
 }
 
 export function buildIndicatorReport(readings: IndicatorReadings, nowMs: number): IndicatorReport {
@@ -138,5 +161,9 @@ export function buildIndicatorReport(readings: IndicatorReadings, nowMs: number)
       };
     }),
     ghostShare: { value: readings.ghostShare.value, n: readings.ghostShare.n },
+    rechargeInput: {
+      touch: { ...readings.rechargeInput.touch },
+      keys: { ...readings.rechargeInput.keys },
+    },
   };
 }
