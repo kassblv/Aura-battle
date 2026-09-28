@@ -31,7 +31,7 @@ import {
 } from '../ui/gauge.js';
 import { countdownLabel, orbPaint, ORB_SLOTS, phaseClock, progressTransform } from '../ui/frame.js';
 import { orbKey, pressedOrb, type OrbKey } from '../ui/orbKeys.js';
-import { isNative } from '../platform/capacitor.js';
+import { prefersKeys } from '../platform/inputMode.js';
 import type { AudioCue } from '../audio/cues.js';
 import { renderKey, type MeterZonesView } from '../ui/renderKey.js';
 import { betFor, levelFill, type Bet } from '../ui/bet.js';
@@ -1448,12 +1448,6 @@ function Gauge({
       </p>
     </div>
   );
-}
-
-/** Ordinateur : pointeur fin qui survole, et pas l'application native. */
-function prefersKeys(): boolean {
-  if (isNative()) return false;
-  return globalThis.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? false;
 }
 
 /**

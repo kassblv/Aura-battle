@@ -13,6 +13,7 @@ import { cuesForTransition } from '../audio/matchCues.js';
 import { viewOfOnline, type MatchView } from '../match/view.js';
 import { estimatedServerNow } from '../net/clock.js';
 import { reportProductEvent } from '../net/events.js';
+import { createOncePerMatch, rechargeInputMode } from '../platform/inputMode.js';
 import { currentPageLocation, resolveServerUrl } from '../net/serverUrl.js';
 import type { ConnectionStatus } from '../net/connection.js';
 import type { ArenaControls } from '../arena/useArena.js';
@@ -71,6 +72,9 @@ export interface OnlineSession {
    * Sans cela la vue restait `ended` jusqu au match suivant : l ecran
    * d invitation ne revenait jamais, et la recherche d un adversaire
    * s affichait par-dessus l ecran de defaite fige.
+   *
+   * C est aussi la que part la mesure `recharge_input` du match quitte, une
+   * seule fois, silencieuse.
    */
   readonly dismissEnded: () => void;
   /** Code d invitation cree par ce joueur, quand il en a demande un. */
@@ -167,6 +171,18 @@ export function useOnlineMatch(
     look: looks.b,
   });
 
+  /**
+   * Le match que le serveur vient de clore, en attente de sa mesure
+   * `recharge_input` (docs/10 : equite clavier contre tactile).
+   *
+   * On mesure en QUITTANT l'ecran de fin, pas a `match:end` : le serveur
+   * n'inscrit l'evenement que d'un joueur assis au match, et le match s'ecrit
+   * en base sans que `match:end` l'attende. Envoye trop tot, l'evenement
+   * tomberait avant le siege, sans erreur ni trace.
+   */
+  const endedMatchRef = useRef<string | null>(null);
+  const inputReportedRef = useRef(createOncePerMatch());
+
   /** Derniere vue deja sonnee : le son se declenche sur un bord, pas sur un etat. */
   const soundedRef = useRef<MatchView>(EMPTY_VIEW);
 
@@ -196,6 +212,7 @@ export function useOnlineMatch(
 
     const offEnd = client.on('match:end', (data) => {
       setSettled(data);
+      endedMatchRef.current = data.matchId;
     });
 
     const offQueue = client.on('queue:status', (data) => {
@@ -374,7 +391,22 @@ export function useOnlineMatch(
 
   const dismissEnded = useCallback(() => {
     matchRef.current?.dismiss();
-  }, []);
+    // Une fois par match en ligne : seul ce hook recoit `match:end`, le solo
+    // n'envoie donc jamais rien.
+    const ended = endedMatchRef.current;
+    endedMatchRef.current = null;
+    if (accessToken === null || ended === null || !inputReportedRef.current(ended)) return;
+    const url = resolveServerUrl(
+      import.meta.env.VITE_SERVER_URL,
+      window.location.hostname,
+      currentPageLocation(),
+    );
+    void reportProductEvent(url, accessToken, {
+      kind: 'recharge_input',
+      matchId: ended,
+      mode: rechargeInputMode(),
+    });
+  }, [accessToken]);
 
   const createInvite = useCallback(() => {
     setError(null);

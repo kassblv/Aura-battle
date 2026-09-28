@@ -55,6 +55,34 @@ describe('reportProductEvent', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('poste le mode de recharge, et rien d autre (protocole 2.8.0)', async () => {
+    const fetcher = answer(204);
+    await reportProductEvent(
+      'http://srv',
+      'jeton',
+      { kind: 'recharge_input', matchId: 'm_01', mode: 'keys' },
+      { fetcher },
+    );
+    const [, init] = fetcher.mock.calls[0] ?? [];
+    expect(JSON.parse(init?.body as string)).toStrictEqual({
+      kind: 'recharge_input',
+      matchId: 'm_01',
+      mode: 'keys',
+    });
+  });
+
+  it('n envoie aucun point de recharge : le schema refuse ce que le serveur calcule', async () => {
+    const fetcher = answer(204);
+    await reportProductEvent(
+      'http://srv',
+      'jeton',
+      // @ts-expect-error — champ hors protocole
+      { kind: 'recharge_input', matchId: 'm_01', mode: 'keys', points: 999 },
+      { fetcher },
+    );
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('n envoie rien pour un evenement hors protocole', async () => {
     const fetcher = answer(204);
     await reportProductEvent(
