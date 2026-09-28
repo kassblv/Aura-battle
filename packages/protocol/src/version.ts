@@ -92,7 +92,13 @@
   la semaine au serveur, qui peut le forcer depuis le panneau (ADR 0018). Et le
   contrat admin (`admin.ts`). Routes AJOUTEES : pas de rupture.
 */
-export const PROTOCOL_VERSION = '2.7.0';
+/*
+  2.8.0 — `productEventSchema` gagne la sorte `recharge_input` (`matchId`,
+  `mode: 'touch' | 'keys'`) : mesurer l'equite clavier contre tactile. Sorte
+  AJOUTEE a une route existante : un client 2.7 ne l'envoie pas. Pas de
+  rupture.
+*/
+export const PROTOCOL_VERSION = '2.8.0';
 
 const MAJOR = /^(\d+)\./;
 

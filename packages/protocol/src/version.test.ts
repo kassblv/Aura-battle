@@ -6,8 +6,8 @@ describe('PROTOCOL_VERSION', () => {
     expect(PROTOCOL_VERSION).toMatch(/^\d+\.\d+\.\d+$/);
   });
 
-  it('est en 2.7.0 : la semaine servie par le serveur, et le panneau qui ecrit', () => {
-    expect(PROTOCOL_VERSION).toBe('2.7.0');
+  it('est en 2.8.0 : la mesure clavier contre tactile (recharge_input)', () => {
+    expect(PROTOCOL_VERSION).toBe('2.8.0');
   });
 });
 
