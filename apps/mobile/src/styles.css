@@ -2563,6 +2563,13 @@ body {
   background: radial-gradient(circle at 34% 30%, #ffffff 0%, var(--accent) 62%);
   box-shadow: 0 0 22px var(--accent);
   animation: orb-in var(--d-chip) var(--e-over) both;
+  /* La touche a frapper, sur ordinateur seulement (`ui/orbKeys.ts`) : sur
+     mobile le bouton reste vide. Sombre sur un coeur clair, lisible d'un coup
+     d'oeil — lire la lettre fait partie du geste. */
+  color: #150a2b;
+  font-size: 24px;
+  font-weight: 900;
+  line-height: 1;
 }
 .orb[data-live='true'] {
   display: block;

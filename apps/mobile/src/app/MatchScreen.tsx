@@ -30,6 +30,8 @@ import {
   type MeterZones,
 } from '../ui/gauge.js';
 import { countdownLabel, orbPaint, ORB_SLOTS, phaseClock, progressTransform } from '../ui/frame.js';
+import { orbKey, pressedOrb, type OrbKey } from '../ui/orbKeys.js';
+import { isNative } from '../platform/capacitor.js';
 import type { AudioCue } from '../audio/cues.js';
 import { renderKey, type MeterZonesView } from '../ui/renderKey.js';
 import { betFor, levelFill, type Bet } from '../ui/bet.js';
@@ -300,6 +302,14 @@ function MatchScreenBody({
   const orbRefs = useRef<(HTMLButtonElement | null)[]>([]);
   /** Orbe posee sur chaque emplacement : c est elle que le clic vise. */
   const orbOn = useRef<(number | null)[]>(Array.from({ length: ORB_SLOTS }, () => null));
+  /**
+   * Recharge au clavier (`ui/orbKeys.ts`) : sur ordinateur seulement. Un
+   * ecran tactile garde le doigt — et une tablette avec clavier aussi, tant
+   * que son pointeur principal est grossier.
+   */
+  const keyboard = useRef(prefersKeys());
+  /** Touche affichee sur chaque emplacement, `null` s il est vide. */
+  const slotKeys = useRef<(OrbKey | null)[]>(Array.from({ length: ORB_SLOTS }, () => null));
 
   // Une nouvelle manche remet le choix a zero.
   const round = useRef(view.round);
@@ -362,7 +372,14 @@ function MatchScreenBody({
             orbOn.current[slot] = paintSlot.orbIndex;
             node.dataset.live = paintSlot.orbIndex === null ? 'false' : 'true';
             node.dataset.kind = paintSlot.golden ? 'golden' : 'normal';
-            node.setAttribute('aria-label', paintSlot.label);
+            let label = paintSlot.label;
+            if (keyboard.current) {
+              const key = keyForSlot(slot, paintSlot.orbIndex, current.orbs, slotKeys.current);
+              slotKeys.current[slot] = key;
+              node.textContent = key === null ? '' : key.toUpperCase();
+              if (key !== null) label = `${label}, touche ${key.toUpperCase()}`;
+            }
+            node.setAttribute('aria-label', label);
             if (paintSlot.orbIndex !== null) replay(node);
           }
           if (paintSlot.orbIndex === null) continue;
@@ -601,6 +618,27 @@ function MatchScreenBody({
   useEffect(() => {
     if (theirIntent !== null) cueRef.current?.({ type: 'card', action: 'flip' });
   }, [theirIntent]);
+
+  // Les touches ne jouent que pendant la recharge : ailleurs, S ou D ne
+  // doivent pas envoyer un tap que le serveur rejetterait de toute facon.
+  const rechargeOn = view.phase === 'recharge';
+  useEffect(() => {
+    if (!rechargeOn || !keyboard.current) return;
+    const onKey = (event: KeyboardEvent): void => {
+      // Une touche tenue enfoncee n est pas une frappe : sans ce garde, la
+      // repetition du systeme frapperait a sa place.
+      if (event.repeat || event.ctrlKey || event.metaKey || event.altKey) return;
+      const target = pressedOrb(event.key, slotKeys.current, orbOn.current);
+      if (target === null) return;
+      event.preventDefault();
+      const at = inPhaseNow();
+      actions.tap([{ atMs: at, orbIndex: target.orbIndex }], at);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => {
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [rechargeOn, actions, inPhaseNow]);
 
   const tapSlot = (slot: number): void => {
     const orbIndex = orbOn.current[slot];
@@ -1410,4 +1448,30 @@ function Gauge({
       </p>
     </div>
   );
+}
+
+/** Ordinateur : pointeur fin qui survole, et pas l'application native. */
+function prefersKeys(): boolean {
+  if (isNative()) return false;
+  return globalThis.matchMedia?.('(hover: hover) and (pointer: fine)').matches ?? false;
+}
+
+/**
+ * Touche de l'orbe qui vient d'apparaitre sur `slot`, differente de celles des
+ * autres emplacements.
+ */
+function keyForSlot(
+  slot: number,
+  orbIndex: number | null,
+  orbs: readonly { readonly index: number; readonly x: number; readonly y: number }[],
+  keys: readonly (OrbKey | null)[],
+): OrbKey | null {
+  if (orbIndex === null) return null;
+  const orb = orbs.find((candidate) => candidate.index === orbIndex);
+  if (orb === undefined) return null;
+  const taken = new Set<string>();
+  keys.forEach((key, other) => {
+    if (other !== slot && key !== null) taken.add(key);
+  });
+  return orbKey(orb, taken);
 }

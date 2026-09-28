@@ -138,6 +138,7 @@ Coût total d'une manche = coût du palier + coût de l'amplificateur (8 maximum
   - **Jauge d'Ultime** : +2,5 par point, **40 maximum** par recharge.
   - **Énergie** : +1 tous les 8 points, **+2 maximum** par manche, sans dépasser 14.
 - Plafond de validation : 12 taps comptabilisés par seconde (au-delà, taps ignorés et signalés à l'anti-triche).
+- **Sur ordinateur** (pointeur fin, hors application native), chaque orbe affiche une touche parmi **S D F J K L** — identiques en AZERTY et QWERTY — et on la frappe au lieu de la viser. La touche est tirée de la **position** de l'orbe (donc de la graine), jamais de son rang : aucune suite à apprendre. Une touche de la réserve qui ne vise aucune orbe est un **tap dans le vide** (combo à 0). Rien ne change côté serveur : un tap reste `{ orbIndex, t }`. Équité avec le tactile à mesurer sur les points de recharge par mode de saisie.
 
 ## 5. Timing
 
