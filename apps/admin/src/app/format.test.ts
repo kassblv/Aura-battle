@@ -1,5 +1,14 @@
 import { describe, expect, it } from 'vitest';
-import { ago, duration, measure, prettyJson, utcDay, WEEK_MS } from './format.js';
+import {
+  ago,
+  duration,
+  gap,
+  measure,
+  prettyJson,
+  signedPercent,
+  utcDay,
+  WEEK_MS,
+} from './format.js';
 
 describe('formats', () => {
   it('une valeur selon son unite', () => {
@@ -7,6 +16,21 @@ describe('formats', () => {
     expect(measure(12_300, 'ms')).toBe('12,3 s');
     expect(measure(3.456, 'perDay')).toBe('3,46');
     expect(measure(null, 'ratio')).toBe('—');
+  });
+
+  it('l ecart relatif d une valeur a sa reference, ou rien quand il ne se calcule pas', () => {
+    expect(gap(44, 40)).toBeCloseTo(0.1, 10);
+    expect(gap(30, 40)).toBeCloseTo(-0.25, 10);
+    expect(gap(null, 40)).toBeNull();
+    expect(gap(44, null)).toBeNull();
+    expect(gap(44, 0)).toBeNull();
+  });
+
+  it('un ecart signe, en %, sans signe pour zero', () => {
+    expect(signedPercent(0.09)).toBe('+9 %');
+    expect(signedPercent(-0.125)).toBe('−12,5 %');
+    expect(signedPercent(0)).toBe('0 %');
+    expect(signedPercent(null)).toBe('—');
   });
 
   it('durees et anciennete', () => {

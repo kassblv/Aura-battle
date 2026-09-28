@@ -69,6 +69,10 @@ export const indicators: IndicatorReport = {
     },
   ],
   ghostShare: measure(0.31, 540),
+  rechargeInput: {
+    touch: { playerMatches: 180, avgPointsPerRecharge: 40 },
+    keys: { playerMatches: 22, avgPointsPerRecharge: 43.6 },
+  },
 };
 
 export const experiments: ExperimentReport = {

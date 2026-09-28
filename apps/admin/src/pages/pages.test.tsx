@@ -64,6 +64,32 @@ describe('Tableau de bord', () => {
     expect(html).toContain('échantillon insuffisant');
   });
 
+  it('montre la recharge clavier contre tactile : joueurs-matchs, points et ecart', () => {
+    const html = render();
+    expect(html).toContain('Recharge : clavier contre tactile');
+    expect(html).toContain('Tactile');
+    expect(html).toContain('Clavier');
+    expect(html).toContain('180');
+    expect(html).toContain('43,6');
+    // (43,6 − 40) / 40 = +9 %.
+    expect(html).toContain('+9 %');
+    expect(html).not.toContain('Recharge : échantillon insuffisant');
+  });
+
+  it('dit quand un mode n a pas assez de joueurs-matchs pour conclure', () => {
+    const html = render({
+      indicators: ready({
+        ...f.indicators,
+        rechargeInput: {
+          touch: { playerMatches: 180, avgPointsPerRecharge: 40 },
+          keys: { playerMatches: 3, avgPointsPerRecharge: 50 },
+        },
+      }),
+    });
+    expect(html).toContain('+25 %');
+    expect(html).toContain('Recharge : échantillon insuffisant');
+  });
+
   it('montre les experiences par groupe', () => {
     const html = render();
     expect(html).toContain('Bulle d’intention');

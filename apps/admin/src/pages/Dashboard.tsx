@@ -6,10 +6,20 @@ import type {
   ExperimentReport,
   IndicatorReport,
   Measure,
+  RechargeInputReading,
   Unit,
   Verdict,
 } from '../api/dashboard.js';
-import { ago, duration, flagName, measure, time } from '../app/format.js';
+import {
+  ago,
+  duration,
+  flagName,
+  gap,
+  measure,
+  number,
+  signedPercent,
+  time,
+} from '../app/format.js';
 import { useResource, type Resource } from '../app/resource.js';
 import { Empty, ErrorBox, Loading } from '../ui/states.js';
 
@@ -42,6 +52,66 @@ const MEASURES: readonly (readonly [
 ];
 
 const withN = (m: Measure, unit: Unit): string => `${measure(m.value, unit)} (n = ${m.n})`;
+
+/** Meme seuil que le verdict des indicateurs (serveur, `MIN_SAMPLE`). */
+const MIN_SAMPLE = 20;
+
+const INPUT_MODES: readonly (readonly ['touch' | 'keys', string])[] = [
+  ['touch', 'Tactile'],
+  ['keys', 'Clavier'],
+];
+
+/**
+ * Equite clavier contre tactile (docs/10) : le mode vient du client, les
+ * points du serveur. Une comparaison, sans seuil ni verdict.
+ */
+function RechargeInput({
+  reading,
+}: {
+  readonly reading: Readonly<Record<'touch' | 'keys', RechargeInputReading>>;
+}) {
+  const spread = gap(reading.keys.avgPointsPerRecharge, reading.touch.avgPointsPerRecharge);
+  const thin = Math.min(reading.touch.playerMatches, reading.keys.playerMatches) < MIN_SAMPLE;
+  return (
+    <>
+      <h3 className="recharge-input__title">Recharge : clavier contre tactile</h3>
+      <div className="table-wrap">
+        <table className="table">
+          <thead>
+            <tr>
+              <th scope="col">Mode</th>
+              <th scope="col" className="table__num">
+                Joueurs-matchs
+              </th>
+              <th scope="col" className="table__num">
+                Points par recharge
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {INPUT_MODES.map(([id, label]) => (
+              <tr key={id}>
+                <th scope="row">{label}</th>
+                <td className="table__num table__muted">{reading[id].playerMatches}</td>
+                <td className="table__num table__strong">
+                  {reading[id].avgPointsPerRecharge === null
+                    ? '—'
+                    : number(reading[id].avgPointsPerRecharge, 1)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="note">
+        Écart clavier / tactile : <strong>{signedPercent(spread)}</strong>
+        {thin ? ' · Recharge : échantillon insuffisant (moins de 20 joueurs-matchs d’un côté)' : ''}
+        . Matchs PvP terminés sur 7 jours ; points calculés par le serveur, mode déclaré par
+        l’appareil.
+      </p>
+    </>
+  );
+}
 
 function Stat({ label, value }: { readonly label: string; readonly value: string | number }) {
   return (
@@ -174,6 +244,7 @@ function Indicators({ report }: { readonly report: IndicatorReport }) {
         {time(report.at)}. Jours UTC, jour en cours exclu. Seuils de docs/00-vision.md. Sous 20
         observations, aucun verdict.
       </p>
+      <RechargeInput reading={report.rechargeInput} />
     </>
   );
 }

@@ -41,6 +41,11 @@ export type Measure = z.infer<typeof measureSchema>;
 export const unitSchema = z.enum(['ratio', 'perDay', 'ms']);
 export type Unit = z.infer<typeof unitSchema>;
 
+const rechargeInputSchema = z.object({
+  playerMatches: z.number(),
+  avgPointsPerRecharge: z.number().nullable(),
+});
+
 export const indicatorReportSchema = z.object({
   at: z.string(),
   indicators: z.array(
@@ -56,8 +61,14 @@ export const indicatorReportSchema = z.object({
     }),
   ),
   ghostShare: measureSchema,
+  /** Equite clavier contre tactile : points calcules par le serveur, par recharge. */
+  rechargeInput: z.object({
+    touch: rechargeInputSchema,
+    keys: rechargeInputSchema,
+  }),
 });
 export type IndicatorReport = z.infer<typeof indicatorReportSchema>;
+export type RechargeInputReading = z.infer<typeof rechargeInputSchema>;
 export type IndicatorLine = IndicatorReport['indicators'][number];
 
 const groupSchema = z.object({

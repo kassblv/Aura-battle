@@ -494,6 +494,12 @@ pre {
   font-weight: 500;
 }
 
+/* Recharge : clavier contre tactile, sous les indicateurs produit. */
+.recharge-input__title {
+  margin: 20px 0 6px;
+  font-size: 16px;
+}
+
 /* ---------- Tableaux ---------- */
 
 .table-wrap {
