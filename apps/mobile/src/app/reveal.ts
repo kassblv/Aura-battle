@@ -1,0 +1,136 @@
+import type { Style, Tier } from '@aura/content';
+import { BALANCE, beats, type BalanceConfig, type Move } from '@aura/rules';
+import { CLASH_AT_MS, REVEAL_FIRST_AT_MS, REVEAL_GAP_MS, VICTORY_AT_MS } from '../arena/round.js';
+import { poseIcon } from '../content/animations.js';
+import type { RoundView } from '../match/view.js';
+import { memeGallery } from './memes.js';
+import { danceOptions, type Wardrobe } from './wardrobe.js';
+
+/**
+ * La scene de revelation (chantier n°3), en donnees pures.
+ *
+ * L'arene joue deja le rythme de la revelation ; ce module decide ce que
+ * l'interface en raconte : les deux cartes jouees, l'instant ou chacune se
+ * montre, et le bandeau qui dit POURQUOI une aura gagne au choc.
+ *
+ * Tout vient de la manche deja resolue (`RoundView`) : rien ici ne peut
+ * reveler plus tot ce que le serveur n'a pas encore publie.
+ */
+
+export type Side = 'moi' | 'adversaire';
+
+export interface RevealCard {
+  readonly poseId: string;
+  readonly name: string;
+  readonly icon: string;
+  readonly family: Style;
+  readonly tier: Tier;
+  /** Instant ou la carte se montre, en ms depuis le debut de la revelation. */
+  readonly atMs: number;
+  /** Arrive face cachee et se retourne a son instant. */
+  readonly faceDown: boolean;
+  readonly shiny: boolean;
+  /** Ce que vaut la brillante dans ce match : le badge le dit. */
+  readonly shinyMultiplier: number;
+}
+
+export type RevealCallout =
+  | {
+      readonly kind: 'counter';
+      readonly by: Side;
+      readonly winner: Style;
+      readonly loser: Style;
+      readonly multiplier: number;
+    }
+  | { readonly kind: 'mirror'; readonly family: Style }
+  /** `by` : le camp dont l'Ultime a annule le contre subi. */
+  | { readonly kind: 'blocked'; readonly by: Side };
+
+export interface RevealScene {
+  readonly mine: RevealCard;
+  readonly theirs: RevealCard;
+  readonly callout: RevealCallout | null;
+  readonly calloutAtMs: number;
+  /**
+   * Ma bulle d'intention tenue (2.6.0) : j'ai gagne avec la famille annoncee.
+   * `bonus` est ce que la jauge d'Ultime y a gagne, deja credite par le
+   * serveur ; `atMs`, l'instant de la victoire — apres le bandeau du contre.
+   */
+  readonly kept: { readonly bonus: number; readonly atMs: number } | null;
+}
+
+const gallery = memeGallery();
+
+/** La pose annoncee par le serveur, si elle joue bien ce mouvement ; sinon l'offerte. */
+function cellPose(move: Move, poseId: string | null): { id: string; name: string } {
+  const cell = gallery.filter((card) => card.style === move.style && card.tier === move.tier);
+  const card = cell.find((c) => c.animationId === poseId) ?? cell.find((c) => c.free) ?? cell[0];
+  return { id: card?.animationId ?? '', name: card?.name ?? '' };
+}
+
+function calloutOf(round: RoundView, rules: BalanceConfig): RevealCallout | null {
+  const mine = round.myMove.style;
+  const theirs = round.opponentMove.style;
+  if (round.counteredBy !== null) {
+    const byMe = round.counteredBy === 'moi';
+    return {
+      kind: 'counter',
+      by: round.counteredBy,
+      winner: byMe ? mine : theirs,
+      loser: byMe ? theirs : mine,
+      multiplier: rules.counter.winnerMultiplier,
+    };
+  }
+  if (round.counterBlocked) {
+    // L'Ultime protege celui qui aurait subi le contre.
+    return { kind: 'blocked', by: beats(mine, theirs) ? 'adversaire' : 'moi' };
+  }
+  if (mine === theirs) return { kind: 'mirror', family: mine };
+  return null;
+}
+
+export function revealScene(
+  round: RoundView,
+  wardrobe: Wardrobe,
+  /** Les regles du match : pendant un evenement, contre et brillante changent. */
+  rules: BalanceConfig = BALANCE,
+): RevealScene {
+  const first = REVEAL_FIRST_AT_MS;
+  const second = REVEAL_FIRST_AT_MS + REVEAL_GAP_MS;
+  const myFirst = round.revealFirst === 'moi';
+
+  // En ligne, la pose que le serveur a jouee ; en solo, celle du vestiaire.
+  const mine = cellPose(
+    round.myMove,
+    round.myPoseId ?? danceOptions(wardrobe, round.myMove).current,
+  );
+  const their = cellPose(round.opponentMove, round.opponentPoseId);
+
+  return {
+    mine: {
+      poseId: mine.id,
+      name: mine.name,
+      icon: poseIcon(mine.id),
+      family: round.myMove.style,
+      tier: round.myMove.tier,
+      atMs: myFirst ? first : second,
+      faceDown: false,
+      shiny: round.myShiny,
+      shinyMultiplier: rules.shiny.multiplier,
+    },
+    theirs: {
+      poseId: their.id,
+      name: their.name,
+      icon: poseIcon(their.id),
+      family: round.opponentMove.style,
+      tier: round.opponentMove.tier,
+      atMs: myFirst ? second : first,
+      faceDown: true,
+      shiny: round.opponentShiny,
+      shinyMultiplier: rules.shiny.multiplier,
+    },
+    callout: calloutOf(round, rules),
+    calloutAtMs: CLASH_AT_MS,
+    kept: round.myIntentKept ? { bonus: rules.intent.ultimateBonus, atMs: VICTORY_AT_MS } : null,
+  };
+}

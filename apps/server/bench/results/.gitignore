@@ -1,0 +1,4 @@
+# Les releves du banc sont des donnees de mesure, pas des sources : on garde le
+# dossier, pas son contenu. Ce qui doit survivre a la machine qui l'a produit
+# est recopie dans `docs/09-testing.md`.
+*.json

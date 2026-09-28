@@ -13,7 +13,9 @@ model Player {
   lastSeenAt   DateTime @default(now())
   softCurrency Int      @default(0)
   hardCurrency Int      @default(0)
-  bannedUntil  DateTime?
+  bannedAt     DateTime?                      // non nul = banni (ADR 0018)
+  bannedUntil  DateTime?                      // fin du bannissement ; nul avec bannedAt = definitif
+  banReason    String?                        // motif, obligatoire a l'ecriture, efface a la levee
   identities   AuthIdentity[]
   ratings      Rating[]
   inventory    InventoryItem[]
@@ -26,12 +28,77 @@ model AuthIdentity {
   id         String   @id @default(uuid())
   playerId   String
   provider   AuthProvider
-  subject    String            // identifiant d'appareil, Apple sub, Google sub
+  subject    String            // identifiant d'appareil, code de récupération, email, Apple sub, Google sub
+  secretHash String?           // EMAIL seulement : hachage argon2id du mot de passe
   createdAt  DateTime @default(now())
   player     Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   @@unique([provider, subject])
 }
-enum AuthProvider { DEVICE APPLE GOOGLE }
+enum AuthProvider { DEVICE RECOVERY EMAIL APPLE GOOGLE }
+
+### `RECOVERY` — garder son compte quand le navigateur oublie
+
+Un compte invité vit dans le stockage du navigateur. Sur ordinateur, ce
+stockage se vide pour un rien : un nettoyage, une fenêtre privée, un autre
+navigateur. Le joueur perd son classement sans avoir rien fait.
+
+Le code de récupération est une **deuxième façon de prouver qu'on est ce
+joueur** — une ligne de plus dans cette table, pas un compte à part. Le serveur
+n'en garde que l'empreinte SHA-256, dans `subject`, comme pour un appareil.
+
+**Seize symboles de l'alphabet de Crockford, soit quatre-vingts bits.** Le
+secret d'appareil en fait 256, et c'est pour cela qu'il est haché *sans sel* :
+aucun dictionnaire ne peut exister pour cet espace. Un code lisible par un
+humain ne peut pas faire 256 bits — mais recopier ce raisonnement sur un code
+de soixante bits mettrait la base à portée d'une attaque hors ligne réaliste le
+jour où elle fuiterait. `I`, `L`, `O` et `U` sont exclus : les trois premières
+se confondent avec `1` et `0`, la dernière fabrique des mots qu'on ne veut pas
+afficher.
+
+Trois règles, et chacune a une raison qui se perd si on ne l'écrit pas :
+
+- **Présenter un code ne le consomme pas.** On joue sur son téléphone et sur
+  son ordinateur ; un code à usage unique obligerait à en redemander un après
+  chaque appareil.
+- **En redemander un remplace l'ancien.** C'est la seule façon de révoquer un
+  code qui aurait traîné.
+- **Le serveur ne sait pas le réafficher.** Il n'a que l'empreinte, et c'est
+  voulu : une fonction « revoir mon code » serait une fonction « voler un compte
+  depuis une session ouverte ».
+
+**Le rattachement d'appareil, dans le même geste.** Présenter un code ouvre une
+session, mais le navigateur garde *son* secret d'appareil : au rechargement
+suivant il rouvrirait le compte invité local et la récupération serait perdue.
+Le client tire donc un secret **neuf** (l'ancien appartient encore au compte
+abandonné, et se heurterait à `@@unique([provider, subject])`) et l'envoie
+**avec le code** : `POST /auth/recovery/claim { code, deviceSecret }` rattache
+l'appareil puis ouvre la session. Il n'existe pas de route de rattachement à
+part — un jeton volé suffisait à l'appeler (ADR 0013). Le client ne range le
+secret neuf qu'une fois la requête acceptée. Là encore : on **ajoute** une
+ligne, on n'en déplace aucune, et un joueur garde au plus dix appareils (les
+plus anciens sont détachés).
+
+### `EMAIL` — un email et un mot de passe
+
+Même principe que le code : une ligne de plus, rattachée par un joueur
+connecté (`POST /auth/email/link`), présentée d'ailleurs pour ouvrir le compte
+(`POST /auth/email/login`, qui rattache l'appareil dans la même requête).
+
+- **`subject` porte l'adresse normalisée** (rognée, en minuscules), **en
+  clair** : c'est un identifiant qu'on cherche, pas un secret. Elle n'est ni
+  vérifiée ni jamais écrite à personne — le serveur n'envoie aucun courrier.
+- **`secretHash` porte le hachage argon2id du mot de passe** (ADR 0013), nul
+  pour tous les autres fournisseurs. Une colonne à part plutôt que dans
+  `subject` : `subject` est ce qu'on cherche (unique), le hachage est ce qu'on
+  vérifie (salé, donc impossible à chercher).
+- **Une adresse par joueur.** La contrainte `(provider, subject)` empêche deux
+  joueurs de partager une adresse, pas un joueur d'en avoir deux : le
+  rattachement verrouille la ligne du joueur (`FOR UPDATE`) le temps de
+  vérifier et d'écrire.
+- **Mot de passe oublié : le code de récupération.** `POST /auth/email/password`
+  accepte l'ancien mot de passe **ou** le code comme preuve.
+- **Rien ne sort :** `GET /auth/email` rend `linked` et l'adresse masquée
+  (`k•••@gmail.com`), jamais l'adresse ni le hachage.
 
 model Season {
   id        String   @id @default(uuid())
@@ -68,6 +135,7 @@ model Match {
   endReason      String?
   winnerSeat     Seat?
   isGhost        Boolean     @default(false)
+  intentBubble   Boolean     @default(false)  // bulle d'intention active (test A/B)
   startedAt      DateTime    @default(now())
   endedAt        DateTime?
   seats          MatchSeat[]
@@ -87,6 +155,8 @@ model MatchSeat {
   mmrBefore  Float?
   mmrAfter   Float?
   lpDelta    Int?
+  queueWaitMs Int?                            // attente en file (ms), null : invitation ou fantôme
+  rechargePoints Int?                         // points de recharge du moteur, sommés sur les manches ; null : fantôme
   match      Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
   player     Player? @relation(fields: [playerId], references: [id])
   @@id([matchId, seat])
@@ -147,6 +217,78 @@ model PlayerChallenge {
   @@id([playerId, day, challengeId])
 }
 
+model SeasonProgress {
+  playerId  String
+  seasonId  String
+  xp        Int       @default(0)             // XP de saison, créditée en fin de match
+  premiumAt DateTime?                         // piste premium achetée (jetons)
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season    Season   @relation(fields: [seasonId], references: [id])
+  @@id([playerId, seasonId])
+}
+
+model SeasonClaim {
+  playerId  String
+  seasonId  String
+  tier      Int
+  track     String                            // free | premium (contrainte CHECK)
+  claimedAt DateTime @default(now())
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  season    Season   @relation(fields: [seasonId], references: [id])
+  @@id([playerId, seasonId, tier, track])
+}
+
+model ProductEvent {
+  playerId  String
+  matchId   String
+  kind      String                            // clip_shared, recharge_input (productEventSchema)
+  inputMode String?                           // touch | keys pour recharge_input, sinon null
+  createdAt DateTime @default(now())          // heure serveur de réception
+  player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
+  @@id([playerId, matchId, kind])
+  @@index([matchId, kind])
+}
+
+enum FlagGroup { treatment control }
+
+model FlagAssignment {
+  playerId   String
+  flag       String                           // nom declare en code (FLAGS, module flags)
+  epoch      Int       @default(1)            // la mesure (FlagSetting.epoch) ; lignes anterieures = 1
+  group      FlagGroup
+  assignedAt DateTime  @default(now())        // heure serveur de la premiere inscription
+  player     Player    @relation(fields: [playerId], references: [id], onDelete: Cascade)
+  @@id([playerId, flag, epoch])
+  @@index([flag, epoch, group])
+}
+
+model FlagSetting {                           // reglage d'un drapeau (ADR 0018)
+  flag             String   @id               // nom declare en code, jamais une saisie
+  rollout          Int                        // part en vigueur, 0..100 (0 : coupe)
+  measureRollout   Int                        // part de la mesure en cours, 1..100
+  epoch            Int      @default(1)       // numero de la mesure
+  measureStartedAt DateTime
+  updatedAt        DateTime @updatedAt
+}
+
+model RuleEventOverride {                     // evenement force depuis le panneau (ADR 0018)
+  week      Int      @id                      // semaine UTC (weekIndexOf, lundi)
+  variant   String                            // id de RULE_VARIANTS, ou normal
+  updatedAt DateTime @updatedAt
+}
+
+model AdminAction {                           // journal d'administration (ADR 0018)
+  id     String   @id @default(uuid())
+  at     DateTime @default(now())
+  action String                               // flag.pause, event.override, player.ban...
+  target String                               // drapeau, week:<n>, identifiant de joueur
+  before Json?
+  after  Json?
+  reason String?
+  @@index([at])
+}
+
 model SuspicionFlag {
   id        String   @id @default(uuid())
   playerId  String
@@ -158,6 +300,50 @@ model SuspicionFlag {
   @@index([playerId, createdAt])
 }
 ```
+
+## Inventaire : ce qui est offert
+
+Les objets offerts ne sont **jamais écrits** dans `InventoryItem` : ils sont ajoutés à la lecture (`ownedWithFree`, module `inventory`), pour l'inventaire comme pour l'apparence annoncée en match. Un objet n'est offert que s'il remplit **toutes** ces conditions (`isOffered`) :
+
+- `rarity = 'default'` — critère explicite, réservé par le contenu à ce qu'il offre ;
+- `priceSoft = 0` et `priceHard` nul ;
+- ni `availableFrom` ni `availableTo` : un objet limité dans le temps n'est jamais offert pour toujours ;
+- un `kind` vendable (`PURCHASABLE_KINDS`).
+
+Un prix de zéro sous une autre rareté est refusé par un test de `@aura/content` (`pricing.test.ts`). Ce qui a été acheté reste possédé quelles que soient ces conditions.
+
+## Passe de saison : réclamer sans payer deux fois
+
+Le palier se **déduit** de `SeasonProgress.xp` (`seasonTierFor`), il n'est pas stocké. Une réclamation insère `SeasonClaim` **puis** crédite, dans une transaction : la clé primaire `(playerId, seasonId, tier, track)` refuse la seconde avant tout crédit. Un cosmétique accordé s'écrit dans `InventoryItem` avec `source = 'pass'` ; s'il est déjà possédé au moment de l'écriture, la ligne n'est pas écrite et le joueur reçoit ses pièces à la place. L'achat du premium marque `premiumAt` (conditionné à `premiumAt IS NULL`) puis débite les jetons (conditionné à `hardCurrency >= prix`), dans une transaction.
+
+## Indicateurs produit : ce qu'on ajoute, et rien de plus
+
+Les indicateurs de `docs/00` se déduisent presque tous de ce qui existe déjà (`Player.createdAt`, `Match`, `MatchSeat`) ; définitions dans la spec `docs/superpowers/specs/2026-09-26-indicateurs-produit-design.md`. Deux ajouts seulement :
+
+- **`MatchSeat.rechargePoints`** : la somme des `RechargeResult.points` du siège sur les manches résolues, telle que le moteur les a calculées — jamais une valeur du client. Zéro pour un siège réel qui n'a rien attrapé ; **nulle** au siège d'un fantôme et pour les matchs écrits avant la colonne. Sert la mesure clavier contre tactile (docs/10), avec `ProductEvent.inputMode`.
+- **`MatchSeat.queueWaitMs`** : l'attente en file du siège, en millisecondes, heure serveur, mesurée à l'appariement (`enqueuedAtMs` du ticket) et écrite avec le match. **Nulle** pour qui n'a pas fait la queue — les deux sièges d'une invitation, et le siège d'un fantôme (le joueur face à lui a bien la sienne). Zéro à la place de nul tirerait la médiane vers un appariement instantané qui n'a pas eu lieu.
+- **`ProductEvent`** : ce que seul le client sait (aujourd'hui, `clip_shared` et `recharge_input`, dont le mode vit dans `inputMode`). La clé primaire `(playerId, matchId, kind)` borne la table par construction ; l'insertion est un `INSERT … SELECT` depuis `MatchSeat`, donc rien n'est écrit pour un joueur qui ne siégeait pas à ce match, et un renvoi est sans effet (`ON CONFLICT DO NOTHING`). `kind` est une chaîne : la liste des sortes se décide dans `@aura/protocol` (`PRODUCT_EVENT_KINDS`), validée à l'entrée de `POST /events`. La ligne suit le joueur et le match (`Cascade`).
+
+## Tests A/B : une trace, pas une décision
+
+Spec `docs/superpowers/specs/2026-09-26-bulle-intention-ab-design.md`.
+
+- **Le groupe ne se lit jamais en base** : il se recalcule, `sha256(drapeau:joueur) mod 100 < part` (`modules/flags/domain/flags.ts`). L'ouverture d'un match reste ainsi entièrement synchrone.
+- **`FlagAssignment`** en garde la trace, pour comparer les groupes en SQL (`GET /admin/experiments`). Inscrite la première fois que l'affectation **sert** : à l'ouverture d'une partie rapide ou d'une invitation, pour chaque siège réel, témoin compris ; jamais en classé, jamais pour un fantôme. `INSERT … SELECT` depuis `Player` avec `ON CONFLICT DO NOTHING` : la première inscription fait foi (groupe et date), un joueur inconnu n'insère rien. Sans attente : une base muette coûte une trace, jamais un duel. Changer la part ne réécrit pas les lignes : elles disent le groupe **au moment de l'inscription**.
+- **Mesures successives** (panneau qui gère, ADR 0018). Le réglage vit en base (`FlagSetting`) ; l'environnement (`FLAG_INTENT_BUBBLE_ROLLOUT`) ne fait qu'initialiser une ligne absente, à l'époque 1. Changer de part, c'est **ouvrir une nouvelle mesure** : l'époque monte et le hachage devient `sha256(drapeau#époque:joueur)` — l'époque 1 garde exactement `sha256(drapeau:joueur)`, donc les inscriptions d'avant le panneau restent valides. `FlagAssignment.epoch` fait partie de la clé : un joueur est ré-inscrit à chaque mesure, et `GET /admin/experiments` ne lit que l'époque en cours. Couper (`rollout = 0`) et rallumer (`rollout = measureRollout`) ne changent pas d'époque. Chaque nœud relit `FlagSetting` toutes les 30 s ; tant qu'il ne l'a jamais lu, il n'expose ni n'inscrit personne.
+- **`Match.intentBubble`** : la bulle était active dans ce match (tous les sièges réels exposés, mode rapide ou invitation). **Le rejeu doit la lire** pour activer `intent.enabled` : contrairement à la variante de la semaine, elle n'est pas portée par `rulesVersion`, et sans elle le moteur refuserait les `INTENT_SHOWN` du journal et perdrait les +10.
+
+## Panneau d'administration : chaque écriture laisse une trace
+
+ADR 0018, spec `docs/superpowers/specs/2026-09-26-panneau-admin-gestion-design.md`.
+
+- **`AdminAction`** : une ligne par écriture du panneau (drapeau, événement forcé, bannissement, levée), **dans la même transaction** que l'écriture — le journal échoue, l'écriture n'a pas lieu. `before`/`after` gardent l'état lisible (JSON), `reason` le motif saisi. Pas d'auteur : un seul secret aujourd'hui. Index sur `at` : le panneau lit les 100 dernières.
+- **`RuleEventOverride`** : une ligne par semaine forcée ; sans ligne, la rotation décide. L'ouverture d'un match lit un cache relu toutes les 30 s ; une variante qui ne nomme plus rien (retirée du code) est ignorée. Écriture sous verrou de la ligne, pour que l'état « avant » du journal soit celui qu'on remplace.
+- **Bannissement** : `Player.bannedAt` non nul = banni, jusqu'à `bannedUntil`, définitivement si `bannedUntil` est nul — une colonne d'instant plutôt qu'une date sentinelle lointaine. `banReason` est obligatoire à l'écriture. Lu par la session (appareil, preuve, rafraîchissement : 403 `BANNED`), par le vérificateur partagé des jetons d'accès (dans la même lecture que `credentialsVersion`) et donc au handshake.
+
+## Loadout : un kind par emplacement
+
+`Loadout.data` range chaque objet à sa place (`inventory/domain/slots.ts`) : `outfit` → `OUTFIT`, `hair` → `HAIR`, `auraColor` → `AURA_COLOR`, `auraEffect` → `AURA_EFFECT` (kind lu au catalogue) ; `dances["<style>.t<palier>"]` → une danse de **ce** mouvement ; `signature` → une danse de mouvement. `PUT /inventory/loadout` refuse le reste en `WRONG_SLOT`. Le match rejoue la même règle en lecture (`wearingFrom`) : un loadout ancien mal rangé, ou un objet que le catalogue ne connaît plus, n'est simplement pas annoncé à l'adversaire.
 
 ## Redis
 

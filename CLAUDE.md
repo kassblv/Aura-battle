@@ -1,6 +1,6 @@
 # Aura Battle — mémoire projet
 
-Jeu mobile (iOS/Android) de **duels d'aura en PvP**. Deux joueurs s'affrontent au meilleur des 3 manches. Chaque manche enchaîne une recharge (taper des orbes), un choix secret (mouvement + amplificateur + Ultime), une jauge de timing, puis la révélation et le choc des auras.
+Jeu mobile (iOS/Android) de **duels d'aura en PvP**. Deux joueurs s'affrontent au meilleur des 3 manches. Chaque manche enchaîne une recharge (taper des orbes), un choix secret (une pose parmi cinq familles de contres + amplificateur + Ultime), une jauge de timing, puis la révélation et le choc des auras.
 
 Double objectif produit : **sortir vite pendant la tendance « aura »** et **durer au-delà du mème**. Le cœur du jeu (contres, bluff, énergie, timing) ne dépend d'aucun mème : les danses tendance sont des cosmétiques interchangeables.
 
@@ -10,7 +10,7 @@ Le prototype jouable (solo contre IA + duel local) est `prototype/aura-battle.ht
 
 1. **Le serveur fait autorité.** Le client n'envoie que des intentions (taps, choix, instants). Le serveur calcule tout : scores, contres, énergie, Ultime, vainqueur. Aucune valeur calculée par le client n'est crue.
 2. **`packages/rules` est pur et déterministe.** Pas d'I/O, pas de `Date.now()`, pas de `Math.random()` : le temps et un RNG seedé sont passés en entrée. Même code côté serveur (vérité) et client (prévisualisation).
-3. **Aucun avantage payant.** Tout ce qui modifie un score est accessible à tous. La boutique ne vend que du cosmétique (animations, tenues, couleurs d'aura, effets visuels).
+3. **Des poses de côté, jamais au-dessus.** Tout ce qui modifie un score s'obtient en jouant ; l'argent ne fait que raccourcir l'attente. Une pose achetable n'est jamais plus forte que la pose offerte de sa case, et chaque case en a une (ADR 0014). La boutique vend du temps et du style, jamais de la puissance.
 4. **Aucune fuite d'information.** Le choix adverse, son timing et ses points de recharge ne sont jamais envoyés avant `round:result`. Seul « l'adversaire a verrouillé » est public.
 5. **Le contenu est de la donnée.** Une danse = un fichier JSON validé (`packages/content`). Ajouter une danse ne doit demander aucun changement de code.
 6. **Tout changement d'équilibrage** passe par `packages/rules/src/balance.ts`, un test, et une mise à jour de `docs/01-game-design.md`.
@@ -79,6 +79,7 @@ Si une commande n'existe pas encore, c'est qu'elle fait partie d'un jalon à con
 | Format des animations et pipeline de contenu | `docs/07-content-pipeline.md` |
 | Jalons et critères d'acceptation | `docs/08-roadmap.md` |
 | Stratégie de test et d'équilibrage | `docs/09-testing.md` |
+| Exploitation : sauvegarde, restauration, ce qui n'est pas surveillé | `docs/10-exploitation.md` |
 | Décisions d'architecture | `docs/adr/` |
 
 ## Agents et skills du projet
@@ -89,8 +90,85 @@ Si une commande n'existe pas encore, c'est qu'elle fait partie d'un jalon à con
 
 ## Pièges connus
 
+### Outillage et versions
+
+- **`latest` n'est pas « stable ».** `pnpm add prisma` installe une *release candidate* de la v8 ; le dépôt est épinglé sur **7.10.0** (ADR 0007). Même logique pour TypeScript : **TS 6**, parce que typescript-eslint refuse TS 7 et qu'on perdrait toutes les règles typées qui protègent l'architecture (ADR 0004).
+- **Prisma 7 :** l'URL de connexion ne vit plus dans `schema.prisma` mais dans `prisma.config.ts`, et le client se construit avec un **adaptateur de driver** (`PrismaPg`). Le CLI ne lit plus `.env` tout seul — `prisma.config.ts` le charge via `process.loadEnvFile`.
+- **Prisma 7 : une migration ne régénère plus le client.** Après `migrate dev`, lancer `pnpm --filter server exec prisma generate` **puis redémarrer `pnpm dev`**. Sinon le serveur tourne avec un client qui ignore la nouvelle colonne : la colonne `xp` a fait échouer tous les crédits de fin de match — pièces comprises — pendant une journée, sous un simple `WARN` au message vide (volontairement : `describeCause` ne recopie pas les arguments refusés).
+- **pnpm 11** exige une décision explicite pour chaque dépendance qui veut exécuter du code à l'installation : clé `allowBuilds` dans `pnpm-workspace.yaml`, valeur `true` ou `false`. pnpm réécrit lui-même le fichier avec un `set this to true or false` s'il manque une entrée.
+- **NestJS + tsx :** esbuild **n'émet pas `emitDecoratorMetadata`**. Sans `design:paramtypes`, Nest injecte `undefined` en silence, et la panne n'apparaît qu'au premier appel. Tout paramètre de constructeur injecté doit porter un `@Inject(Token)` explicite.
+- **`nestjs-pino` est incompatible** avec l'injecteur de Nest 12 : pino est câblé directement dans `shared/logger.ts`.
+
+### Conteneur et déploiement
+
+Le jeu tourne en ligne dans **un seul conteneur** — NestJS sert le client en
+plus de son API — déployé par Coolify sur `shipease` (ADR 0012). Six pièges
+qui ne se voient qu'en construisant l'image :
+
+- **`prisma generate` exige `DATABASE_URL`** alors qu'il ne touche aucune base :
+  `prisma.config.ts` évalue `env()` à l'import. On la donne pour cette seule
+  commande, jamais en `ENV` — une URL de construction restée dans l'image serait
+  une valeur par défaut crédible et fausse.
+- **Le client Prisma est généré au fond du magasin pnpm**, dans un chemin qui
+  contient le hachage des dépendances. On le régénère sur l'arbre de production
+  plutôt que de coder ce hachage en dur.
+- **`pnpm install --prod` par-dessus une installation complète ne réduit rien** :
+  pnpm défait les liens, les paquets restent dans `node_modules/.pnpm`, qui
+  appartient déjà à la couche précédente. Il faut repartir d'une base propre.
+- **pnpm 11 refuse de purger `node_modules` sans terminal** : `CI=true` dans
+  l'image, sinon l'étape s'arrête sur une question que personne ne peut lire.
+- **Nest pose son propre gestionnaire de 404** pendant `init()`. Un second
+  `setNotFoundHandler` fait échouer Fastify au démarrage, donc *après* un
+  déploiement annoncé réussi. Le repli de page unique passe par un filtre
+  d'exception.
+- **Le seed doit tourner à chaque démarrage**, pas une fois à la main : il est
+  idempotent, et sans lui un nouvel environnement démarre sans saison, sans
+  catalogue et sans vivier de fantômes — les premiers joueurs attendent alors un
+  adversaire qui ne vient jamais.
+
+### Développement local
+
+- **Un PostgreSQL natif occupe déjà `127.0.0.1:5432`** sur la machine de développement. Notre conteneur publie donc sur **5433**. Piège : `docker compose ps` affiche fièrement `0.0.0.0:5432->5432/tcp` alors que `localhost` ne l'atteint jamais — macOS résout vers l'installation locale en premier.
+
+### Journalisation
+
+- **`JSON.stringify(new Error('x'))` rend `{}`** : `message` et `stack` ne sont pas énumérables. Un adaptateur de logger naïf avale donc toutes les erreurs en silence, ce qui est pire que pas de journal. `PinoLoggerService` traite les `Error` explicitement.
+- La rédaction couvre les secrets **et l'état de match confidentiel** (`choice`, `timing`, `taps`) : un `logger.debug({ choice })` posé pendant un débogage est exactement le genre de fuite qui survit au débogage.
+
+### Anti-triche
+
+- **Un compteur de suspicion se compte par siège, jamais par match.** `docs/06` sanctionne un *joueur*, et ses premières sanctions sont automatiques, avant toute revue humaine. Un compteur commun aux deux sièges attribue à un innocent les mensonges de son adversaire — un tricheur prolifique empoisonnerait le score de chaque personne qu'il croise.
+- **Un instant déclaré par le client doit être confronté à son instant d'arrivée.** Sans cela, un bot peut rester muet, recevoir la séquence d'orbes, calculer le programme optimal hors ligne et l'envoyer d'un coup : le moteur rejoue la scène sans rien voir d'anormal. Les tolérances réseau (400 ms sur les taps, 300 ms sur le verrouillage, 250 ms d'horloge) vivent **côté serveur**, jamais dans `@aura/rules` — le moteur doit pouvoir rejouer un match sans entendre parler de latence.
+- **Le protocole borne un message, pas la somme des messages.** Un schéma qui accepte 72 taps par paquet ne dit rien du nombre de paquets. Chaque accumulation côté serveur a besoin de sa propre borne.
+
+### Tests temps réel
+
+- **Poser un écouteur au moment où l'on s'intéresse à un message arrive trop tard.** Une phase de match dure quelques dizaines de millisecondes en test : il faut enregistrer avec `onAny` dès la connexion et lire le journal ensuite.
+- **Un résultat de tâche mis en cache ment** quand des agents écrivent en parallèle : Turbo peut servir un typecheck calculé avant la dernière édition. `--force` avant de conclure qu'un agent s'est trompé.
+- **Un test lourd posé sur le délai par défaut passe seul et tombe sous Turbo.** Le contrôle de cadrage des 26 animations prend ~6 s au repos, pour un délai de 5 s : vert en lançant `vitest` sur le seul paquet mobile, rouge dès que `pnpm test` lance les cinq paquets en parallèle. Un test qui est lourd **par nature** porte son `timeout` explicite ; échantillonner moins pour rentrer dans le délai coûterait ce qui justifie le test.
+- **Chaque scénario doit utiliser des identifiants de joueur distincts.** Le notifier indexe les sockets par joueur et une nouvelle socket remplace l'ancienne — c'est le comportement voulu pour une reconnexion, mais deux tests qui partagent une identité se volent leurs messages.
+
+### Interface et cascade CSS
+
+- **La cascade CSS n'a pas de compilateur.** Un `@media` écrit avant la règle qu'il corrige perd silencieusement. Une classe `.field` ajoutée aux réglages a hérité de l'aire de jeu des orbes — une couche en absolu sur tout l'écran — et posé le champ de saisie par-dessus ses propres titres. **La portée vit dans les noms** : préfixer par le bloc (`account__field`), jamais par le rôle.
+- **Un point de bascule `@media` doit tomber du bon côté de l'appareil cible.** `max-width: 860px` renvoyait le format visé — 844×390 — à la mise en page de secours. Un seuil mal placé est pire que pas de seuil.
+- **En paysage, la hauteur est la ressource rare et la largeur ne manque pas.** Un panneau de droite qui empile ses sections déborde pendant que la moitié gauche de l'écran ne sert à rien. Les écrans à plusieurs sujets se posent en colonnes (`sheet--wide`, `sheet__cols`) — et rien ne doit défiler au doigt au milieu d'un jeu.
+- **Un panneau `.sheet` porte un voile** — et n'en avait aucun pendant longtemps, « pour flotter sur l'arène ». Il ne flottait pas sur l'arène, il flottait sur le **personnage** : le profil imprimait ses statistiques en travers d'une silhouette claire. Un fond qu'on oublie de poser ne se voit pas dans le code, seulement à l'écran, et seulement quand quelqu'un regarde. L'en-tête reste collant sur la surface du HUD, pour la raison d'origine : dès que le panneau défile, son titre partirait.
+- **Une classe absente de la feuille de style ne casse rien** — et c'est ce qui la rend dangereuse. Rien ne relie un `className` à une règle CSS : ni le typecheck, ni le lint. `.mini` n'a jamais existé, donc sept boutons « Fermer » et « Rejoindre » se sont affichés pendant des mois avec le style par défaut du navigateur — gris, Arial 13 px, 59×21, moitié moins que la cible tactile de l'ADR 0008. Un bouton laid reste un bouton qui marche : personne ne le signale. `apps/mobile/src/app/styles.test.ts` échoue désormais sur toute classe du balisage sans règle, et sur toute cible tactile sous 46 px.
+- **Sur l'accueil, le sujet n'est pas en bas de l'écran, il est au MILIEU.** La bande de commandes du match tient sous les combattants (`ui/layout.ts`) ; l'accueil, lui, a un personnage debout au centre — mesuré en masquant l'interface et en comptant les colonnes sombres du canvas : 45 % à 56 % de la largeur. Les grappes se rangent de part et d'autre (`homeClusters`), jamais dessus. Le rail allait jusqu'à 463 px sur 844 et lui coupait les jambes.
+- **Un bloc `flex: 1 1 auto` entre deux `flex: none` reçoit ce qui reste, même si c'est moins que son contenu minimal.** La galerie de mèmes recevait 87 px pour deux flèches qui en font 92 : la carte tombait à 26 px et son nom débordait sous le bouton de duel. Aucune règle de texte ne rattrape une boîte plus petite que son minimum — le défaut est dans la répartition.
+
+### Rendu 3D
+
 - **Horloges :** ne compare jamais une heure client à une heure serveur sans l'offset mesuré par `ping/pong`. Les timings du client sont exprimés **en millisecondes relatives au début de phase**, mesurées avec `performance.now()`.
-- **Three.js récent vs prototype (r128) :** `THREE.LuminanceFormat` n'existe plus, utiliser `RedFormat` pour la texture de dégradé toon ; `setUsage` et `InstancedMesh.setColorAt` restent valides.
+- **Three.js récent vs prototype (r128) :** `THREE.LuminanceFormat` n'existe plus, utiliser `RedFormat` pour la texture de dégradé toon. Cette texture exige aussi `minFilter` **et** `magFilter` à `NearestFilter` — sans quoi l'interpolation lisse les paliers et l'effet toon disparaît — et doit rester en `NoColorSpace` (c'est une donnée, pas une couleur). `DataTexture` pose déjà ces trois valeurs par défaut : les écrire quand même, **un défaut n'est pas un contrat**. Les textures de couleur peintes au canvas, elles, se marquent `SRGBColorSpace`. `setUsage` et `InstancedMesh.setColorAt` restent valides.
+- **Lumières ponctuelles r128 → récent :** `physicallyCorrectLights` a disparu (r155) et l'atténuation en inverse du carré est désormais **permanente**. Le `PointLight(0xffffff, 1, 3.4, 2)` du rig du prototype doit être réétalonné, pas recopié : avec `decay: 2`, le halo sera bien plus violent de près et éteint au-delà d'un mètre. Les lumières **directionnelles et hémisphériques sont inchangées** — vérifié dans les deux versions, ne perdez pas de temps à les « corriger ».
+- **Trois.js ne fournit pas ses types** en 0.186 : `@types/three` est nécessaire, à la même version.
 - **iOS WebView :** l'`AudioContext` ne démarre qu'après un geste ; la vibration passe par `@capacitor/haptics`, pas `navigator.vibrate`.
+- **Les greffons Capacitor se chargent par import dynamique**, derrière `isNative()`. Les importer à la racine embarquerait leur repli web dans le paquet servi au navigateur — du code qui ne fera jamais rien, téléchargé par tout le monde. Vérifié : zéro morceau de greffon téléchargé sur le web.
+- **Un `addListener` de Capacitor est asynchrone.** Retenir la poignée une fois résolue laisse une fenêtre où l'appelant démonte avant que l'écouteur soit posé : l'arrêt ne trouve rien à retirer et l'écouteur survit. On garde la **promesse**, pas son résultat.
+- **Un splash effacé à la main peut ne jamais s'effacer** — la pire panne possible, et muette : le jeu tourne derrière, personne ne le voit. `launchAutoHide: false` impose donc un délai maximal de sécurité.
+- **Le paysage s'impose au manifeste, pas en JavaScript** : `sensorLandscape` (Android) et le portrait retiré de l'`Info.plist` (iOS) valent dès le premier instant, avant que le moindre script ne tourne. `sensorLandscape` et non `landscape` : le jeu se tient dans les deux sens.
+- **ESLint et Prettier ignorent `apps/mobile/{ios,android}`** : `cap sync` y recopie le build du client, qui n'appartient à aucun `tsconfig` et faisait échouer `pnpm lint`.
 - **Mise en arrière-plan mobile :** l'app peut être suspendue en plein match ; la reconnexion doit reprendre l'état via `match:state`.
 - **Noms de danses :** ne pas utiliser de nom de personne réelle, de chanson ou de marque dans le contenu publié (voir `docs/07-content-pipeline.md`).

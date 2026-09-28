@@ -1,0 +1,17 @@
+node_modules
+dist
+coverage
+.turbo
+pnpm-lock.yaml
+prototype
+
+# La doc et le prototype gardent leur mise en forme d origine.
+*.md
+docs
+
+# Releves du banc de charge : des donnees, pas du code.
+apps/server/bench/results
+
+# Projets natifs Capacitor : Gradle, Xcode et le build recopie par cap sync.
+apps/mobile/android/
+apps/mobile/ios/

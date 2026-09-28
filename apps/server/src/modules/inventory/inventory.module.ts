@@ -1,0 +1,56 @@
+import { Module } from '@nestjs/common';
+import { AuthModule } from '../auth/auth.module.js';
+import { SystemClock } from '../../shared/clock.js';
+import { PinoLoggerService } from '../../shared/logger.js';
+import { InventoryService } from './application/inventory.js';
+import { InventoryRateLimit } from './application/inventory-rate-limit.js';
+import { InventoryController } from './adapters/inventory.controller.js';
+import { PrismaInventoryRepository } from './adapters/prisma-inventory.repository.js';
+import { InventoryStoreModule } from './inventory-store.module.js';
+import { INVENTORY_CHANGES, type InventoryChanges } from './domain/ports.js';
+import { MatchModule } from '../match/match.module.js';
+
+/**
+ * L'inventaire (jalon M8) : ce qu'on possede, ce qu'on achete, ce qu'on porte.
+ *
+ * Il importe `AuthModule` pour deux choses seulement — le verificateur de
+ * jetons et `PrismaService`. Le verificateur vient de la, et pas d'ici : deux
+ * verificateurs seraient deux endroits ou la validite d'un jeton pourrait
+ * diverger, ce qui est exactement le genre d'ecart qu'on ne remarque qu'une
+ * fois quelqu'un connecte avec un jeton qu'un autre module refuse.
+ */
+@Module({
+  // `MatchModule` pour une seule chose : l'ecoute des changements, qu'il
+  // realise. L'inventaire ne connait que le port — il previent, sans savoir qui.
+  // `InventoryStoreModule` : le depot, partage avec `MatchModule` plutot que
+  // construit une seconde fois (et son catalogue garde une seconde fois).
+  imports: [AuthModule, MatchModule, InventoryStoreModule],
+  controllers: [InventoryController],
+  providers: [
+    {
+      provide: InventoryService,
+      inject: [PrismaInventoryRepository, SystemClock, INVENTORY_CHANGES, PinoLoggerService],
+      useFactory: (
+        inventory: PrismaInventoryRepository,
+        clock: SystemClock,
+        changes: InventoryChanges,
+        logger: PinoLoggerService,
+      ) =>
+        new InventoryService({
+          inventory,
+          clock,
+          changes,
+          log: {
+            warn: (message: string) => {
+              logger.warn(message, 'InventoryService');
+            },
+          },
+        }),
+    },
+    SystemClock,
+    // Un seul exemplaire pour le processus : les seaux vivent en memoire, et
+    // deux exemplaires doubleraient la limite.
+    { provide: InventoryRateLimit, useFactory: () => new InventoryRateLimit() },
+  ],
+})
+export class InventoryModule {}

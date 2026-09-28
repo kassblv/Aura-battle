@@ -1,0 +1,58 @@
+{
+  "id": "anim.system.none.defeat",
+  "version": 1,
+  "name": {
+    "fr": "Defaite"
+  },
+  "move": {
+    "style": "system",
+    "tier": null
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 0.8,
+    "weights": null,
+    "ease": false
+  },
+  "flags": {
+    "expression": "sad"
+  },
+  "hands": [
+    ["relax", "in"],
+    ["relax", "in"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [12, -90],
+        "neck": [4, -78],
+        "hip": [-2, -40],
+        "le": [4, -58],
+        "lh": [8, -36],
+        "re": [10, -58],
+        "rh": [16, -34],
+        "lk": [-6, -3],
+        "lf": [-30, -3],
+        "rk": [18, -38],
+        "rf": [18, 0]
+      },
+      "hy": 0.15
+    },
+    {
+      "joints": {
+        "head": [13, -87],
+        "neck": [4, -76],
+        "hip": [-2, -40],
+        "le": [4, -56],
+        "lh": [8, -35],
+        "re": [10, -56],
+        "rh": [16, -33],
+        "lk": [-6, -3],
+        "lf": [-30, -3],
+        "rk": [18, -38],
+        "rf": [18, 0]
+      },
+      "hy": 0.2
+    }
+  ]
+}

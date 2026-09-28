@@ -1,0 +1,60 @@
+{
+  "id": "anim.hype.t2.fist",
+  "version": 1,
+  "name": {
+    "fr": "Poing levé"
+  },
+  "icon": "✊",
+  "move": {
+    "style": "hype",
+    "tier": 2
+  },
+  "rarity": "default",
+  "loop": {
+    "duration": 1.2,
+    "weights": [0.25, 0.75],
+    "ease": true
+  },
+  "flags": {
+    "expression": "neutral"
+  },
+  "hands": [
+    ["fist", "in"],
+    ["fist", "fwd"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [1, -148],
+        "neck": [0, -131],
+        "hip": [0, -80],
+        "le": [-14, -106],
+        "lh": [-16, -82],
+        "re": [20, -148],
+        "rh": [18, -168],
+        "lk": [-14, -39],
+        "lf": [-24, 0],
+        "rk": [14, -39],
+        "rf": [24, 0]
+      },
+      "hy": -0.1
+    },
+    {
+      "joints": {
+        "head": [0, -152],
+        "neck": [0, -133],
+        "hip": [0, -80],
+        "le": [-14, -106],
+        "lh": [-16, -82],
+        "re": [16, -160],
+        "rh": [20, -194],
+        "lk": [-14, -41],
+        "lf": [-24, 0],
+        "rk": [14, -41],
+        "rf": [24, 0]
+      },
+      "lift": -3,
+      "hy": -0.2
+    }
+  ]
+}

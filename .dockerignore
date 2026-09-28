@@ -1,0 +1,16 @@
+node_modules
+**/node_modules
+**/dist
+**/coverage
+**/.turbo
+.git
+.github
+.remember
+.playwright-mcp
+prototype
+docs
+*.log
+*.zip
+.env
+.env.*
+!.env.example

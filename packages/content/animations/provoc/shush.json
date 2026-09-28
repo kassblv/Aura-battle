@@ -1,0 +1,62 @@
+{
+  "id": "anim.provoc.t0.shush",
+  "version": 1,
+  "name": {
+    "fr": "Chut"
+  },
+  "icon": "🤫",
+  "move": {
+    "style": "provoc",
+    "tier": 0
+  },
+  "rarity": "default",
+  "framing": {
+    "shot": "bust"
+  },
+  "loop": {
+    "duration": 1.4,
+    "weights": [0.24, 0.76],
+    "ease": true
+  },
+  "flags": {
+    "expression": "smug"
+  },
+  "hands": [
+    ["relax", "in"],
+    ["point", "back"]
+  ],
+  "frames": [
+    {
+      "joints": {
+        "head": [4, -150],
+        "neck": [2, -132],
+        "hip": [0, -80],
+        "le": [-16, -106],
+        "lh": [-8, -84],
+        "re": [18, -118],
+        "rh": [17, -142],
+        "lk": [-8, -40],
+        "lf": [-12, 0],
+        "rk": [12, -40],
+        "rf": [18, 0]
+      },
+      "hy": -0.2
+    },
+    {
+      "joints": {
+        "head": [7, -148],
+        "neck": [3, -131],
+        "hip": [0, -80],
+        "le": [-16, -106],
+        "lh": [-8, -84],
+        "re": [20, -116],
+        "rh": [20, -139],
+        "lk": [-8, -40],
+        "lf": [-12, 0],
+        "rk": [12, -40],
+        "rf": [18, 0]
+      },
+      "hy": -0.05
+    }
+  ]
+}

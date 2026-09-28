@@ -1,0 +1,15 @@
+packages:
+  - 'packages/*'
+  - 'apps/*'
+
+# Scripts d'installation autorises. pnpm 11 exige une decision explicite pour
+# chaque dependance qui veut executer du code a l'installation.
+allowBuilds:
+  # Necessaires : ils installent un binaire de plateforme.
+  esbuild: true
+  '@prisma/engines': true
+  prisma: true
+  # Accelerateurs natifs optionnels. Le code JavaScript de repli fait le meme
+  # travail : rien a compiler sur la machine de chacun.
+  msgpackr-extract: false
+  workerd: false
