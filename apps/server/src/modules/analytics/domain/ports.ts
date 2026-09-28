@@ -1,4 +1,4 @@
-import type { ProductEventKind } from '@aura/protocol';
+import type { ProductEventKind, RechargeInputMode } from '@aura/protocol';
 import type { ExperimentCohort, ExperimentGroupReading } from './experiments.js';
 import type { IndicatorReadings } from './indicators.js';
 
@@ -14,6 +14,8 @@ export interface ProductEventEntry {
   readonly playerId: string;
   readonly matchId: string;
   readonly kind: ProductEventKind;
+  /** Le mode de recharge d'un `recharge_input` ; `null` pour toute autre sorte. */
+  readonly inputMode: RechargeInputMode | null;
   /** Heure serveur de reception, jamais une heure declaree par le client. */
   readonly atMs: number;
 }
@@ -21,7 +23,8 @@ export interface ProductEventEntry {
 export interface ProductEventStore {
   /**
    * Inscrit l'evenement **si et seulement si** le joueur a occupe un siege de
-   * ce match, et au plus une fois par (joueur, match, sorte).
+   * ce match, et au plus une fois par (joueur, match, sorte). Le premier
+   * envoi fait foi : un renvoi d'un autre `inputMode` n'ecrase rien.
    *
    * Le controle et l'ecriture forment une seule operation : un controle suivi
    * d'une ecriture laisserait une fenetre, et deux renvois simultanes

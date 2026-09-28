@@ -523,6 +523,7 @@ describe.skipIf(!reachable)('evenements produit, contre Postgres', () => {
         playerId,
         matchId: id,
         kind: 'clip_shared' as const,
+        inputMode: null,
         atMs: s.now,
       });
 
@@ -538,7 +539,57 @@ describe.skipIf(!reachable)('evenements produit, contre Postgres', () => {
         where: { playerId: { in: [assis, adverse, etranger] } },
       });
       expect(rows).toEqual([
-        { playerId: assis, matchId, kind: 'clip_shared', createdAt: new Date(s.now) },
+        {
+          playerId: assis,
+          matchId,
+          kind: 'clip_shared',
+          inputMode: null,
+          createdAt: new Date(s.now),
+        },
+      ]);
+    } finally {
+      await s.cleanup();
+    }
+  });
+
+  it('inscrit le mode de recharge d un joueur assis ; le premier envoi fait foi', async () => {
+    const s = scenario();
+    try {
+      const [assis, adverse, etranger] = [
+        await s.player(s.at(-1)),
+        await s.player(s.at(-1)),
+        await s.player(s.at(-1)),
+      ];
+      const matchId = await s.match({
+        mode: 'CASUAL',
+        startedAtMs: s.at(-1),
+        seats: [assis, adverse],
+      });
+      const store = new PrismaProductEventStore(prisma as never);
+      const entry = (playerId: string, inputMode: 'touch' | 'keys') => ({
+        playerId,
+        matchId,
+        kind: 'recharge_input' as const,
+        inputMode,
+        atMs: s.now,
+      });
+
+      expect(await store.recordIfSeated(entry(assis, 'keys'))).toBe(true);
+      // Un renvoi d'un autre mode n'ecrase rien.
+      expect(await store.recordIfSeated(entry(assis, 'touch'))).toBe(false);
+      expect(await store.recordIfSeated(entry(etranger, 'touch'))).toBe(false);
+
+      const rows = await prisma!.productEvent.findMany({
+        where: { playerId: { in: [assis, adverse, etranger] } },
+      });
+      expect(rows).toEqual([
+        {
+          playerId: assis,
+          matchId,
+          kind: 'recharge_input',
+          inputMode: 'keys',
+          createdAt: new Date(s.now),
+        },
       ]);
     } finally {
       await s.cleanup();

@@ -86,8 +86,47 @@ describe('POST /events', () => {
     expect(reply.statusCode).toBe(204);
     expect(reply.body).toBe('');
     expect(store.rows).toEqual([
-      { playerId: 'p-seated', matchId: MATCH, kind: 'clip_shared', atMs: nowMs },
+      { playerId: 'p-seated', matchId: MATCH, kind: 'clip_shared', inputMode: null, atMs: nowMs },
     ]);
+  });
+
+  it('inscrit le mode de recharge d un joueur assis, avec son mode et rien d autre', async () => {
+    const reply = await post({ kind: 'recharge_input', matchId: MATCH, mode: 'keys' });
+    expect(reply.statusCode).toBe(204);
+    expect(reply.body).toBe('');
+    expect(store.rows).toEqual([
+      {
+        playerId: 'p-seated',
+        matchId: MATCH,
+        kind: 'recharge_input',
+        inputMode: 'keys',
+        atMs: nowMs,
+      },
+    ]);
+  });
+
+  it('garde le premier mode : un renvoi, meme d un autre mode, ne change rien', async () => {
+    await post({ kind: 'recharge_input', matchId: MATCH, mode: 'touch' });
+    await post({ kind: 'recharge_input', matchId: MATCH, mode: 'keys' });
+    expect(store.rows.map((row) => row.inputMode)).toEqual(['touch']);
+  });
+
+  it('inscrit clip et mode de recharge du meme match : deux sortes, deux lignes', async () => {
+    await post({ kind: 'clip_shared', matchId: MATCH });
+    await post({ kind: 'recharge_input', matchId: MATCH, mode: 'touch' });
+    expect(store.rows.map((row) => row.kind)).toEqual(['clip_shared', 'recharge_input']);
+  });
+
+  it('n inscrit aucun mode de recharge pour un match ou le joueur n etait pas assis', async () => {
+    const reply = await post(
+      { kind: 'recharge_input', matchId: MATCH, mode: 'keys' },
+      'p-stranger',
+    );
+    expect(reply.statusCode).toBe(204);
+    expect(
+      (await post({ kind: 'recharge_input', matchId: OTHER_MATCH, mode: 'keys' })).statusCode,
+    ).toBe(204);
+    expect(store.rows).toEqual([]);
   });
 
   it('n inscrit qu une ligne quand le client renvoie', async () => {
@@ -126,6 +165,10 @@ describe('POST /events', () => {
       { kind: 'clip_shared', matchId: 'pas un match' },
       { kind: 'clip_shared', matchId: 'm_'.padEnd(65, 'x') },
       { kind: 'clip_shared', matchId: MATCH, playerId: 'p-autre' },
+      { kind: 'clip_shared', matchId: MATCH, mode: 'keys' },
+      { kind: 'recharge_input', matchId: MATCH },
+      { kind: 'recharge_input', matchId: MATCH, mode: 'mouse' },
+      { kind: 'recharge_input', matchId: MATCH, mode: 'keys', points: 999 },
     ].entries()) {
       // Un joueur par corps : sept envois d'affilee videraient le seau d'un seul.
       const reply = await post(body, `p-bad-${String(index)}`);

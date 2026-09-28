@@ -23,8 +23,8 @@ export class PrismaProductEventStore implements ProductEventStore {
 
   async recordIfSeated(entry: ProductEventEntry): Promise<boolean> {
     const inserted = await this.prisma.$executeRaw`
-      INSERT INTO "ProductEvent" ("playerId", "matchId", "kind", "createdAt")
-      SELECT s."playerId", s."matchId", ${entry.kind}, ${utcTimestamp(entry.atMs)}
+      INSERT INTO "ProductEvent" ("playerId", "matchId", "kind", "inputMode", "createdAt")
+      SELECT s."playerId", s."matchId", ${entry.kind}, ${entry.inputMode}, ${utcTimestamp(entry.atMs)}
       FROM "MatchSeat" s
       WHERE s."matchId" = ${entry.matchId} AND s."playerId" = ${entry.playerId}
       LIMIT 1
