@@ -156,6 +156,7 @@ model MatchSeat {
   mmrAfter   Float?
   lpDelta    Int?
   queueWaitMs Int?                            // attente en file (ms), null : invitation ou fantôme
+  rechargePoints Int?                         // points de recharge du moteur, sommés sur les manches ; null : fantôme
   match      Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
   player     Player? @relation(fields: [playerId], references: [id])
   @@id([matchId, seat])
@@ -240,7 +241,8 @@ model SeasonClaim {
 model ProductEvent {
   playerId  String
   matchId   String
-  kind      String                            // clip_shared (productEventSchema, protocole 2.5.0)
+  kind      String                            // clip_shared, recharge_input (productEventSchema)
+  inputMode String?                           // touch | keys pour recharge_input, sinon null
   createdAt DateTime @default(now())          // heure serveur de réception
   player    Player   @relation(fields: [playerId], references: [id], onDelete: Cascade)
   match     Match    @relation(fields: [matchId], references: [id], onDelete: Cascade)
@@ -318,8 +320,9 @@ Le palier se **déduit** de `SeasonProgress.xp` (`seasonTierFor`), il n'est pas 
 
 Les indicateurs de `docs/00` se déduisent presque tous de ce qui existe déjà (`Player.createdAt`, `Match`, `MatchSeat`) ; définitions dans la spec `docs/superpowers/specs/2026-09-26-indicateurs-produit-design.md`. Deux ajouts seulement :
 
+- **`MatchSeat.rechargePoints`** : la somme des `RechargeResult.points` du siège sur les manches résolues, telle que le moteur les a calculées — jamais une valeur du client. Zéro pour un siège réel qui n'a rien attrapé ; **nulle** au siège d'un fantôme et pour les matchs écrits avant la colonne. Sert la mesure clavier contre tactile (docs/10), avec `ProductEvent.inputMode`.
 - **`MatchSeat.queueWaitMs`** : l'attente en file du siège, en millisecondes, heure serveur, mesurée à l'appariement (`enqueuedAtMs` du ticket) et écrite avec le match. **Nulle** pour qui n'a pas fait la queue — les deux sièges d'une invitation, et le siège d'un fantôme (le joueur face à lui a bien la sienne). Zéro à la place de nul tirerait la médiane vers un appariement instantané qui n'a pas eu lieu.
-- **`ProductEvent`** : ce que seul le client sait (aujourd'hui, `clip_shared`). La clé primaire `(playerId, matchId, kind)` borne la table par construction ; l'insertion est un `INSERT … SELECT` depuis `MatchSeat`, donc rien n'est écrit pour un joueur qui ne siégeait pas à ce match, et un renvoi est sans effet (`ON CONFLICT DO NOTHING`). `kind` est une chaîne : la liste des sortes se décide dans `@aura/protocol` (`PRODUCT_EVENT_KINDS`), validée à l'entrée de `POST /events`. La ligne suit le joueur et le match (`Cascade`).
+- **`ProductEvent`** : ce que seul le client sait (aujourd'hui, `clip_shared` et `recharge_input`, dont le mode vit dans `inputMode`). La clé primaire `(playerId, matchId, kind)` borne la table par construction ; l'insertion est un `INSERT … SELECT` depuis `MatchSeat`, donc rien n'est écrit pour un joueur qui ne siégeait pas à ce match, et un renvoi est sans effet (`ON CONFLICT DO NOTHING`). `kind` est une chaîne : la liste des sortes se décide dans `@aura/protocol` (`PRODUCT_EVENT_KINDS`), validée à l'entrée de `POST /events`. La ligne suit le joueur et le match (`Cascade`).
 
 ## Tests A/B : une trace, pas une décision
 
