@@ -157,6 +157,7 @@ function aRecord(overrides: Partial<MatchRecord> = {}): MatchRecord {
     impossibleTaps: { a: 0, b: 0 },
     queueWaitMs: { a: null, b: null },
     intentBubble: false,
+    rechargePoints: { a: 0, b: 0 },
     ...overrides,
   };
 }
@@ -307,8 +308,22 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord());
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: null },
-      { matchId: 'm_1', seat: 'B', playerId: 'p_bob', ghostOfId: null, queueWaitMs: null },
+      {
+        matchId: 'm_1',
+        seat: 'A',
+        playerId: 'p_alice',
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
+      {
+        matchId: 'm_1',
+        seat: 'B',
+        playerId: 'p_bob',
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
     ]);
   });
 
@@ -320,9 +335,33 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord({ queueWaitMs: { a: 4_200, b: null } }));
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: 4_200 },
-      { matchId: 'm_1', seat: 'B', playerId: 'p_bob', ghostOfId: null, queueWaitMs: null },
+      {
+        matchId: 'm_1',
+        seat: 'A',
+        playerId: 'p_alice',
+        ghostOfId: null,
+        queueWaitMs: 4_200,
+        rechargePoints: 0,
+      },
+      {
+        matchId: 'm_1',
+        seat: 'B',
+        playerId: 'p_bob',
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
     ]);
+  });
+
+  /** Mesure clavier contre tactile (docs/10) : les points que le moteur a calcules, par siege. */
+  it('ecrit les points de recharge de chaque siege, nuls au siege d un fantome', async () => {
+    await repository.save(aRecord({ rechargePoints: { a: 57, b: null } }));
+
+    const data = prisma.callsTo('matchSeat.createMany')[0]?.args.data as {
+      rechargePoints: number | null;
+    }[];
+    expect(data.map((seat) => seat.rechargePoints)).toEqual([57, null]);
   });
 
   /** Test A/B de la bulle d'intention (spec 2026-09-26) : on sait quels matchs l'avaient. */
@@ -351,8 +390,22 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord({ seats: { a: 'p_alice', b: null } }));
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: null },
-      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null, queueWaitMs: null },
+      {
+        matchId: 'm_1',
+        seat: 'A',
+        playerId: 'p_alice',
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
+      {
+        matchId: 'm_1',
+        seat: 'B',
+        playerId: null,
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
     ]);
   });
 
@@ -393,8 +446,22 @@ describe('PrismaMatchRepository', () => {
     await repository.save(aRecord());
 
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: 'p_alice', ghostOfId: null, queueWaitMs: null },
-      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null, queueWaitMs: null },
+      {
+        matchId: 'm_1',
+        seat: 'A',
+        playerId: 'p_alice',
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
+      {
+        matchId: 'm_1',
+        seat: 'B',
+        playerId: null,
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
     ]);
     expect(prisma.callsTo('matchRound.createMany')[0]?.args.data).toHaveLength(2);
   });
@@ -454,8 +521,22 @@ describe('PrismaMatchRepository', () => {
 
     expect(prisma.callsTo('$queryRaw')).toHaveLength(0);
     expect(prisma.callsTo('matchSeat.createMany')[0]?.args.data).toEqual([
-      { matchId: 'm_1', seat: 'A', playerId: null, ghostOfId: null, queueWaitMs: null },
-      { matchId: 'm_1', seat: 'B', playerId: null, ghostOfId: null, queueWaitMs: null },
+      {
+        matchId: 'm_1',
+        seat: 'A',
+        playerId: null,
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
+      {
+        matchId: 'm_1',
+        seat: 'B',
+        playerId: null,
+        ghostOfId: null,
+        queueWaitMs: null,
+        rechargePoints: 0,
+      },
     ]);
   });
 

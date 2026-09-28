@@ -565,6 +565,51 @@ describe('persistance — un match doit pouvoir etre rejoue', () => {
     expect(repository.saved[0]?.queueWaitMs).toEqual({ a: 25_000, b: null });
   });
 
+  it('ecrit les points de recharge de chaque siege : ceux du moteur, sommes sur les manches', () => {
+    // Manche 1 : le siege a attrape trois orbes, b n'a rien tape.
+    scheduler.fire(MATCH_ID);
+    const [start] = notifier.to(SEATS.a, 'recharge:start') as [ServerMessage<'recharge:start'>];
+    runtime.submitTaps(
+      MATCH_ID,
+      'a',
+      start.orbs.slice(0, 3).map((orb, i) => ({ atMs: (i + 1) * 200, orbIndex: orb.index })),
+    );
+    playRound('a');
+    playRound('a');
+
+    const announced = (notifier.to(SEATS.a, 'round:result') as ServerMessage<'round:result'>[])
+      .map((result) => result.sides)
+      .reduce(
+        (sum, sides) => ({
+          a: sum.a + sides.a.recharge.points,
+          b: sum.b + sides.b.recharge.points,
+        }),
+        {
+          a: 0,
+          b: 0,
+        },
+      );
+    expect(announced.a).toBeGreaterThanOrEqual(3);
+    expect(repository.saved[0]?.rechargePoints).toEqual(announced);
+  });
+
+  it('ecrit zero point, pas nul, a qui a abandonne avant toute manche', () => {
+    runtime.forfeit(MATCH_ID, 'a');
+    expect(repository.saved[0]?.rechargePoints).toEqual({ a: 0, b: 0 });
+  });
+
+  it('n ecrit aucun point de recharge au siege d un fantome : ce n est pas un joueur', () => {
+    runtime.createMatch({
+      matchId: 'm_fantome_recharge',
+      seed: 'g',
+      seats: { a: 'p_seul_recharge', b: 'ghost_y' },
+      mode: 'RANKED',
+      ghost: { seat: 'b', mmr: 1000, sourcePlayerId: 'p_source', displayName: 'Y', league: 'y' },
+    });
+    runtime.forfeit('m_fantome_recharge', 'a');
+    expect(repository.saved[0]?.rechargePoints).toEqual({ a: 0, b: null });
+  });
+
   it('ecrit aussi un match termine par abandon', () => {
     runtime.forfeit(MATCH_ID, 'a');
     expect(repository.saved[0]?.reason).toBe('forfeit');

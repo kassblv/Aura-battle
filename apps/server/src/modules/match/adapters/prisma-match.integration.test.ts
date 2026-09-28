@@ -271,6 +271,7 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
         impossibleTaps: { a: 0, b: 0 },
         queueWaitMs: { a: null, b: null },
         intentBubble: false,
+        rechargePoints: { a: 0, b: null },
       }),
     ).rejects.toThrow();
 
@@ -279,6 +280,42 @@ describe.skipIf(!reachable)('ecriture reelle en base', () => {
     expect(await prisma!.matchRound.findMany({ where: { matchId } })).toHaveLength(0);
 
     await prisma!.player.delete({ where: { id: playerA } });
+  });
+
+  it('ecrit les points de recharge de chaque siege, nuls au siege d un fantome', async () => {
+    const playerA = await createPlayer();
+    const matchId = `m_${randomUUID()}`;
+    try {
+      await buildRepository().save({
+        matchId,
+        seed: randomUUID(),
+        mode: 'RANKED',
+        rulesVersion: '1.0.0',
+        contentVersion: '1.0.0',
+        seats: { a: playerA, b: null },
+        ghost: { seat: 'b', mmr: 1000, sourcePlayerId: 'p_source' },
+        winner: 'a',
+        reason: 'rounds',
+        startedAtMs: Date.now() - 60_000,
+        endedAtMs: Date.now(),
+        rounds: [],
+        events: [],
+        rejectedEvents: { a: 0, b: 0 },
+        droppedEvents: { a: 0, b: 0 },
+        impossibleTaps: { a: 0, b: 0 },
+        queueWaitMs: { a: null, b: null },
+        intentBubble: false,
+        rechargePoints: { a: 42, b: null },
+      });
+      const seats = await prisma!.matchSeat.findMany({
+        where: { matchId },
+        orderBy: { seat: 'asc' },
+      });
+      expect(seats.map((seat) => seat.rechargePoints)).toEqual([42, null]);
+    } finally {
+      await prisma!.match.deleteMany({ where: { id: matchId } });
+      await prisma!.player.deleteMany({ where: { id: playerA } });
+    }
   });
 
   it('ecrit la bulle d intention d un match expose', async () => {

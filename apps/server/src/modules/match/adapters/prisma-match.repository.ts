@@ -230,6 +230,7 @@ export class PrismaMatchRepository implements MatchRepository {
                 playerId: seats.a,
                 ghostOfId: ghostOf('a'),
                 queueWaitMs: record.queueWaitMs.a,
+                rechargePoints: record.rechargePoints.a,
               },
               {
                 matchId: record.matchId,
@@ -237,6 +238,7 @@ export class PrismaMatchRepository implements MatchRepository {
                 playerId: seats.b,
                 ghostOfId: ghostOf('b'),
                 queueWaitMs: record.queueWaitMs.b,
+                rechargePoints: record.rechargePoints.b,
               },
             ],
           });

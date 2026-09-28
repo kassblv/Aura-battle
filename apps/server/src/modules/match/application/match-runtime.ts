@@ -346,6 +346,15 @@ function fallbackMove(state: MatchState): Move {
   return { style: state.roundContext?.defaultStyle ?? 'calme', tier: 0 };
 }
 
+/**
+ * Points de recharge d'un siege sur tout le match, relus de sa trace : la
+ * trace est prise a chaque manche pour TOUS les matchs (le fantome n'en garde
+ * que les classes). Une somme, jamais un recalcul.
+ */
+function rechargePointsOf(trace: readonly GhostRoundTrace[]): number {
+  return trace.reduce((sum, round) => sum + round.rechargePoints, 0);
+}
+
 /** Cle du minuteur de deconnexion d'un siege. */
 const disconnectKey = (matchId: string, seat: Seat): string => `${matchId}:disconnect:${seat}`;
 
@@ -1305,6 +1314,12 @@ export class MatchRuntime {
       droppedEvents: { ...match.dropped },
       impossibleTaps: { ...match.impossibleTaps },
       intentBubble: match.intentBubble,
+      // Relus de la trace des manches, prise a chaque `round:result` sur ce que
+      // le moteur a calcule : a la fin du match, `pending` est deja vide.
+      rechargePoints: {
+        a: match.ghost?.seat === 'a' ? null : rechargePointsOf(match.ghostTrace.a),
+        b: match.ghost?.seat === 'b' ? null : rechargePointsOf(match.ghostTrace.b),
+      },
     };
 
     void this.repository.save(record).catch(() => {

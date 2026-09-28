@@ -212,19 +212,24 @@ enum Seat {
 }
 
 model MatchSeat {
-  matchId     String
-  seat        Seat
+  matchId        String
+  seat           Seat
   /// Null pour un fantome (rejeu d'un enregistrement, jalon M5).
-  playerId    String?
-  ghostOfId   String?
-  mmrBefore   Float?
-  mmrAfter    Float?
-  lpDelta     Int?
+  playerId       String?
+  ghostOfId      String?
+  mmrBefore      Float?
+  mmrAfter       Float?
+  lpDelta        Int?
   /// Attente en file du siege, en millisecondes (heure serveur), mesuree a
   /// l'appariement. Nulle pour qui n'a pas fait la queue : invitation, et
   /// siege d'un fantome. Sert l'indicateur « attente mediane en file classee »
   /// (docs/00) ; zero a la place de nul fausserait la mediane.
-  queueWaitMs Int?
+  queueWaitMs    Int?
+  /// Points de recharge du siege, sommes sur les manches resolues, tels que le
+  /// moteur les a calcules — jamais une valeur du client. Nuls pour le siege
+  /// d'un fantome et pour les matchs ecrits avant la colonne. Sert la mesure
+  /// clavier contre tactile (docs/10, `ProductEvent.inputMode`).
+  rechargePoints Int?
 
   match  Match   @relation(fields: [matchId], references: [id], onDelete: Cascade)
   player Player? @relation(fields: [playerId], references: [id])
@@ -412,9 +417,10 @@ model TokenPurchase {
 
 /// Un evenement produit envoye par le client (`POST /events`, protocole 2.5.0).
 ///
-/// Ne passe par ici que ce que SEUL le client sait — qu'un clip est parti ;
-/// tout le reste des indicateurs se deduit de `Player`, `Match` et
-/// `MatchSeat`. Aucune donnee ne quitte nos serveurs (docs/10).
+/// Ne passe par ici que ce que SEUL le client sait — qu'un clip est parti, et
+/// avec quoi il a recharge (protocole 2.8.0) ; tout le reste des indicateurs
+/// se deduit de `Player`, `Match` et `MatchSeat`. Aucune donnee ne quitte nos
+/// serveurs (docs/10).
 ///
 /// La cle primaire `(playerId, matchId, kind)` borne la table par
 /// construction : un renvoi ne cree rien. L'insertion n'a lieu que si le
@@ -424,6 +430,9 @@ model ProductEvent {
   playerId  String
   matchId   String
   kind      String
+  /// `touch` ou `keys` pour `recharge_input`, nul pour toute autre sorte.
+  /// Valide a l'entree (`RECHARGE_INPUT_MODES`) ; le premier envoi fait foi.
+  inputMode String?
   createdAt DateTime @default(now())
 
   player Player @relation(fields: [playerId], references: [id], onDelete: Cascade)

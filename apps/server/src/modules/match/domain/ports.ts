@@ -100,6 +100,16 @@ export interface MatchRecord {
   readonly queueWaitMs: Readonly<Record<'a' | 'b', number | null>>;
   /** La bulle d'intention etait active dans ce match (test A/B, spec 2026-09-26). */
   readonly intentBubble: boolean;
+  /**
+   * Points de recharge de chaque siege, sommes sur les manches resolues
+   * (indicateurs produit, docs/10 : equite clavier contre tactile).
+   *
+   * Ceux que le moteur a calcules (`RechargeResult.points`), jamais une valeur
+   * du client. `null` au siege d'un fantome : un rejeu n'est pas un joueur a
+   * mesurer. Zero, pas nul, pour un siege reel qui n'a rien attrape — ou dont
+   * le match s'est arrete avant la premiere manche.
+   */
+  readonly rechargePoints: Readonly<Record<'a' | 'b', number | null>>;
 }
 
 /** Groupe d'un joueur dans une experience (module `flags`). */
